@@ -28,14 +28,15 @@ from sqlalchemy import select  # noqa: E402
 
 from app.core.database import AsyncSessionLocal  # noqa: E402
 from app.models.user import TIERS, User  # noqa: E402
-from app.services.auth_service import hash_password, normalize_email  # noqa: E402
+from app.services.auth_service import (  # noqa: E402
+    MAX_PASSWORD_LEN, MIN_PASSWORD_LEN, hash_password, normalize_email,
+)
 
-MIN_PASSWORD_LEN = 12
-# Must match LoginRequest.password's max_length in app/api/routes/auth.py.
-# Without the cap here an operator could provision an account with a password
-# longer than the login route accepts — valid in the database, impossible to
-# log in with, and no error explaining why.
-MAX_PASSWORD_LEN = 1024
+# Imported, not redefined. These were a local copy tied to LoginRequest's
+# max_length by a comment saying they must match — which is not a mechanism.
+# The failure it warned about is real: provision an account with a password
+# longer than the login route accepts and it is valid in the database and
+# impossible to log in with, with no error explaining why.
 
 
 async def main() -> int:

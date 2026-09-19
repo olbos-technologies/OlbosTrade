@@ -18,8 +18,9 @@ from app.api.auth_deps import current_user
 from app.api.rate_limit import client_ip, login_rate_limit
 from app.core.config import settings
 from app.services.auth_service import (
-    SESSION_COOKIE_NAME, hash_token, new_session_token, normalize_email,
-    session_expiry, verify_password,
+    MAX_PASSWORD_LEN, MIN_PASSWORD_LEN, SESSION_COOKIE_NAME, hash_password,
+    hash_token, new_session_token, normalize_email, session_expiry,
+    verify_password,
 )
 from app.utils.logger import get_logger
 
@@ -30,7 +31,25 @@ router = APIRouter(prefix="/api/auth", tags=["Auth"])
 
 class LoginRequest(BaseModel):
     email: str = Field(..., max_length=320)
-    password: str = Field(..., max_length=1024)
+    # The shared bound, not a literal: a cap here that is lower than the one
+    # create_user.py enforces makes a provisioned account impossible to log
+    # into, with nothing saying why.
+    password: str = Field(..., max_length=MAX_PASSWORD_LEN)
+
+
+class PasswordChangeRequest(BaseModel):
+    current_password: str = Field(..., max_length=MAX_PASSWORD_LEN)
+    new_password: str = Field(..., min_length=MIN_PASSWORD_LEN,
+                              max_length=MAX_PASSWORD_LEN)
+
+
+class SessionOut(BaseModel):
+    id: str
+    created_at: str
+    last_seen_at: str | None
+    user_agent: str | None
+    ip: str | None
+    current: bool
 
 
 class UserOut(BaseModel):
@@ -208,3 +227,197 @@ async def me(request: Request) -> dict:
 from app.services.auth_service import hash_password as _hash_password  # noqa: E402
 
 _DUMMY_HASH = _hash_password("not-a-real-password-timing-equaliser")
+
+
+@router.post("/password")
+async def change_password(
+    body: PasswordChangeRequest,
+    request: Request,
+    _rl: None = Depends(login_rate_limit),
+) -> dict:
+    """
+    Change the signed-in user's password and cut every other session loose.
+
+    THE CURRENT PASSWORD IS REQUIRED even though the caller already holds a
+    valid session. A session cookie proves "this browser logged in at some
+    point"; it does not prove the person typing now is the owner. Without this
+    check, anyone with a borrowed laptop or a lifted cookie could set a new
+    password and own the account outright — the one action that turns temporary
+    access into permanent access.
+
+    EVERY OTHER SESSION IS REVOKED, and that is the point rather than a side
+    effect. People change a password precisely when they think someone else has
+    access; leaving that someone else logged in makes the whole exercise
+    theatre. The CURRENT session survives, because logging you out of the tab
+    you just used is a worse experience for no security gain — you have already
+    proved the password twice in this request.
+
+    Rate-limited on the login limiter deliberately: this route verifies a
+    password, so it is an oracle for guessing one, and it should cost the same
+    as guessing at the front door.
+    """
+    from sqlalchemy import select
+
+    from app.core.database import AsyncSessionLocal
+    from app.models.user import User, UserSession
+
+    if not settings.auth_enabled:
+        raise HTTPException(status_code=404, detail="Authentication is not enabled")
+
+    user_id = (current_user(request) or {}).get("id")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    token = request.cookies.get(SESSION_COOKIE_NAME)
+    current_hash = hash_token(token) if token else None
+
+    async with AsyncSessionLocal() as db:
+        user = (await db.execute(
+            select(User).where(User.id == user_id).limit(1)
+        )).scalar_one_or_none()
+        if user is None or not user.is_active:
+            raise HTTPException(status_code=401, detail="Authentication required")
+
+        if not verify_password(body.current_password, user.password_hash):
+            logger.warning("Password change refused for %s — wrong current password",
+                           user.email)
+            raise HTTPException(status_code=401, detail="Current password is incorrect")
+
+        # Rejected AFTER the current-password check, so this cannot be used to
+        # probe whether a password is correct without knowing it.
+        if body.new_password == body.current_password:
+            raise HTTPException(status_code=400,
+                                detail="New password must differ from the current one")
+
+        user.password_hash = hash_password(body.new_password)
+
+        now = datetime.now(timezone.utc)
+        others = (await db.execute(
+            select(UserSession).where(
+                UserSession.user_id == user.id,
+                UserSession.revoked_at.is_(None),
+            )
+        )).scalars().all()
+        revoked = 0
+        for s in others:
+            if current_hash is not None and s.token_hash == current_hash:
+                continue
+            s.revoked_at = now
+            revoked += 1
+
+        await db.commit()
+        email = user.email
+
+    logger.info("Password changed for %s — %d other session(s) revoked", email, revoked)
+    return {"ok": True, "other_sessions_revoked": revoked}
+
+
+@router.get("/sessions")
+async def list_sessions(request: Request) -> dict:
+    """
+    Every live session for the signed-in user, newest first.
+
+    Exists so "am I logged in somewhere I don't recognise?" is answerable. A
+    session list nobody can see is an audit trail for after the fact only.
+
+    Returns no token or token hash. The hash is enough to look up and revoke a
+    session, so shipping it to the browser would turn an informational endpoint
+    into a way to cut someone else off.
+    """
+    from sqlalchemy import select
+
+    from app.core.database import AsyncSessionLocal
+    from app.models.user import UserSession
+
+    if not settings.auth_enabled:
+        raise HTTPException(status_code=404, detail="Authentication is not enabled")
+
+    user_id = (current_user(request) or {}).get("id")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    token = request.cookies.get(SESSION_COOKIE_NAME)
+    current_hash = hash_token(token) if token else None
+    now = datetime.now(timezone.utc)
+
+    async with AsyncSessionLocal() as db:
+        rows = (await db.execute(
+            select(UserSession)
+            .where(
+                UserSession.user_id == user_id,
+                UserSession.revoked_at.is_(None),
+                UserSession.expires_at > now,
+            )
+            .order_by(UserSession.created_at.desc())
+        )).scalars().all()
+
+        out = [
+            SessionOut(
+                id=str(s.id),
+                created_at=s.created_at.isoformat(),
+                last_seen_at=s.last_seen_at.isoformat() if s.last_seen_at else None,
+                user_agent=s.user_agent,
+                ip=s.ip,
+                current=(current_hash is not None and s.token_hash == current_hash),
+            ).model_dump()
+            for s in rows
+        ]
+
+    return {"sessions": out}
+
+
+@router.post("/sessions/{session_id}/revoke")
+async def revoke_session(session_id: str, request: Request) -> dict:
+    """
+    Revoke one of the signed-in user's own sessions.
+
+    Scoped to the caller's own rows by the WHERE clause, not by checking
+    ownership after loading: a query that can only ever return your own
+    sessions cannot be talked into revoking someone else's with a guessed id.
+    An id belonging to another user returns 404, the same as one that does not
+    exist — which is also the right answer, since confirming "that id is real
+    but not yours" is an enumeration oracle.
+
+    Revoking the CURRENT session is allowed and behaves as a logout, except the
+    cookie is left in place — the next request fails the session check and the
+    browser is bounced to login. Refusing it would be surprising: "log out my
+    other devices" and "log out this one" belong on the same list.
+    """
+    import uuid as _uuid
+
+    from sqlalchemy import select
+
+    from app.core.database import AsyncSessionLocal
+    from app.models.user import UserSession
+
+    if not settings.auth_enabled:
+        raise HTTPException(status_code=404, detail="Authentication is not enabled")
+
+    user_id = (current_user(request) or {}).get("id")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    try:
+        target = _uuid.UUID(session_id)
+    except (ValueError, AttributeError, TypeError):
+        # A malformed id is not a server error and must not reach the database.
+        raise HTTPException(status_code=404, detail="No such session")
+
+    async with AsyncSessionLocal() as db:
+        session = (await db.execute(
+            select(UserSession).where(
+                UserSession.id == target,
+                UserSession.user_id == user_id,
+            ).limit(1)
+        )).scalar_one_or_none()
+
+        if session is None:
+            raise HTTPException(status_code=404, detail="No such session")
+        if session.revoked_at is not None:
+            return {"ok": True, "already_revoked": True}
+
+        session.revoked_at = datetime.now(timezone.utc)
+        await db.commit()
+
+    logger.info("Session %s revoked by its owner", session_id)
+    return {"ok": True}
