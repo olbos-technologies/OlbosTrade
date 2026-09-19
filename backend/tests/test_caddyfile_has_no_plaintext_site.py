@@ -146,7 +146,13 @@ DOC_ROOTS = [REPO / "docs", REPO / "deploy"]
 #: `http://localhost/...` or `http://127.0.0.1/...` with NO port, which means
 #: port 80. A port that is spelled out (`:8080`, `:8000`) is something else —
 #: an SSH tunnel or a container-local address — and is fine.
-HOST_PORT80_URL = re.compile(r"https?://(?:localhost|127\.0\.0\.1)(?![:\w])")
+#:
+#: `http`, NOT `https?`. The first version matched both schemes, so
+#: `https://localhost/...` — which means port 443, not 80 — would have failed a
+#: guard whose entire subject is port 80. Caught by Copilot on #68. A guard
+#: that fires outside its own stated scope is one someone eventually silences,
+#: and it would have taken the real check with it.
+HOST_PORT80_URL = re.compile(r"http://(?:localhost|127\.0\.0\.1)(?![:\w])")
 
 
 def commands_curling_port_80() -> list[tuple[str, int, str]]:
@@ -189,3 +195,42 @@ def test_no_runbook_curls_the_app_on_port_80():
           "credentials. Restoring a plaintext `:80` site block to make these "
           "work again is the defect this module exists to prevent."
     )
+
+
+def test_the_port_80_pattern_matches_port_80_and_nothing_else():
+    """Asserted directly, because the repo scan only proves today's files pass.
+
+    Nothing in `docs/` or `deploy/` currently contains an `https://localhost`
+    URL, so the over-match Copilot found was invisible through
+    commands_curling_port_80() — the guard was wrong and the suite was green.
+    The same blind spot would hide the opposite error: narrow the pattern until
+    it matches nothing and every scan still passes.
+    """
+    must_match = [
+        "curl -s http://localhost/api/health/detail",
+        "curl http://127.0.0.1/api/rotation/preflight",
+        "ssh root@host 'curl -s http://localhost/api/x'",
+    ]
+    must_not_match = [
+        # 443, not 80 — the false positive.
+        "curl -s https://localhost/api/health/detail",
+        "curl -s https://127.0.0.1/api/health",
+        # An explicit port is a tunnel or a container-local address.
+        "curl -s http://localhost:8080/health",
+        "curl -s http://127.0.0.1:8000/api/health/detail",
+        # A different host entirely.
+        "curl -sI https://trade.olbos.us | head -2",
+        # Substring of a longer hostname must not count.
+        "curl http://localhosting.example.com/",
+    ]
+    for line in must_match:
+        assert HOST_PORT80_URL.search(line), (
+            f"pattern failed to match a port-80 host URL: {line!r}. Narrowing "
+            f"it until it matches nothing would leave every repo scan passing."
+        )
+    for line in must_not_match:
+        assert not HOST_PORT80_URL.search(line), (
+            f"pattern matched something that is not a port-80 host URL: "
+            f"{line!r}. A guard that fires outside its stated scope is one "
+            f"someone silences, taking the real check with it."
+        )
