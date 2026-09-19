@@ -524,6 +524,14 @@ async def _background_scheduler() -> None:
                 # missing a stop, so the usual cost is one query.
                 await _guarded(_backfill_equity_stops(), "stop_backfill", 45)
 
+                # And its mirror image, on the same tick and for the same
+                # reason. The backfill above handles a POSITION WITHOUT AN
+                # ORDER; this handles an ORDER WITHOUT A POSITION. Both are
+                # created by reconciliation — one adopts, the other closes —
+                # so both belong behind it rather than on timers of their own
+                # drifting in and out of phase.
+                await _guarded(_sweep_orphaned_orders(), "orphan_sweep", 45)
+
             # Every 20 min: refresh the rotation-scoped correlation cluster
             # cache (position_rotation.py's cluster-membership tiebreaker
             # reads this synchronously — see rotation_correlation_cache.py).
@@ -2264,6 +2272,69 @@ async def _poll_fills() -> None:
 
     except Exception as exc:
         logger.debug("_poll_fills: %s", exc)  # non-fatal
+
+
+async def _sweep_orphaned_orders() -> None:
+    """Cancel resting orders on symbols the broker holds no position in.
+
+    The reconciliation loop above already cancels the bracket of anything IT
+    books closed, by iterating the `closed_symbols` set it just built. That
+    prevents new orphans arriving by one path and cannot see an orphan that
+    already exists — from a manual close in TWS, a close booked while this
+    process was down, a path predating that fix, or its own swallowed cancel
+    failure ("the orphan survives to the next pass", where no later pass looks
+    at it again).
+
+    Production proved the difference. The canceller landed 2026-08-28 after 20
+    orphans across ASML/EXC/INTU/MU. On 2026-09-19 there were 18, on three of
+    the same tickers, still resting — roughly $176k of potential unintended
+    exposure on a $100k book. An orphaned stop is not dormant: both legs of a
+    short's bracket are BUYs, so with nothing to close, a touch OPENS a
+    position instead of exiting one.
+
+    Event-triggered cleanup could not fix that. This is state-triggered: it
+    reads the book every reconciliation interval and acts on what is there,
+    regardless of how it got there.
+
+    Every rule inside fails toward leaving the order alone — see the module
+    docstring. Failures are logged, never raised: this runs behind
+    reconciliation and must not take the tick with it.
+    """
+    from app.broker.broker_factory import get_broker
+    from app.services.orphan_order_sweep import sweep_orphaned_orders
+
+    report = await sweep_orphaned_orders(get_broker(), dry_run=False)
+
+    if report.get("nothing_to_do"):
+        return
+    if report.get("status") == "skipped":
+        # Expected in normal operation (cached book, disconnected broker), so
+        # debug rather than warning — except the per-pass limit, which means
+        # the book looks nothing like expectations and someone should look.
+        if "exceeds the" in (report.get("reason") or ""):
+            logger.warning("orphan sweep refused to act: %s | %s",
+                           report.get("reason"), report.get("by_symbol"))
+        else:
+            logger.debug("orphan sweep skipped: %s", report.get("reason"))
+        return
+    if report.get("status") != "ok":
+        logger.warning("orphan sweep did not run: %s", report.get("reason"))
+        return
+
+    logger.warning(
+        "orphan sweep cancelled %d of %d resting order(s) with no position: %s",
+        report.get("confirmed_cancelled", 0), report.get("requested", 0),
+        report.get("by_symbol"),
+    )
+    if report.get("still_open"):
+        # IBKR accepted the cancel and the order is still in the book. That is
+        # the 2026-08-29 failure mode, where cancelling in TWS reported nothing
+        # and changed nothing. Worth an error: the exposure is still live.
+        logger.error(
+            "orphan sweep: %s still in the order book after cancel — the "
+            "unintended-position risk is NOT cleared",
+            report["still_open"],
+        )
 
 
 async def _update_portfolio_greeks() -> None:
