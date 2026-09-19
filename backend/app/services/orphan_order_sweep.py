@@ -72,12 +72,30 @@ MAX_CANCELS_PER_PASS = 40
 
 
 async def _held_symbols(broker: Any) -> set[str]:
-    """Upper-cased symbols the broker currently holds a position in."""
+    """Every upper-cased name under which the broker holds a position.
+
+    BOTH `symbol` and `underlying`, and the difference is not cosmetic.
+    IBKRClient builds an OPTION position with `symbol=c.localSymbol` (e.g.
+    "AAPL  260116C00150000") and `underlying=c.symbol` ("AAPL"), while
+    get_open_orders() reports that same contract's order as `symbol=c.symbol`
+    ("AAPL"). Reading only `p.symbol` therefore means a live option position
+    never puts "AAPL" into this set — so its resting bracket looks orphaned and
+    gets cancelled, stripping a real position of its protection.
+
+    Equities are unaffected (both fields are c.symbol), which is exactly why
+    this would have survived testing on the equity book it was written for.
+    Caught by Copilot on #69.
+
+    Collecting both over-matches rather than under-matches: at worst an order
+    is spared that could have been swept, which is the direction this module
+    fails in by design.
+    """
     held: set[str] = set()
     for p in await broker.get_positions():
-        sym = (getattr(p, "symbol", "") or "").upper()
-        if sym:
-            held.add(sym)
+        for attr in ("symbol", "underlying"):
+            sym = (getattr(p, attr, "") or "").strip().upper()
+            if sym:
+                held.add(sym)
     return held
 
 
@@ -250,27 +268,70 @@ async def sweep_orphaned_orders(broker: Any, dry_run: bool = False) -> dict:
         return {"status": "error", "reason": f"cancel failed: {exc}",
                 "by_symbol": by_symbol}
 
+    # WHAT THE BROKER SAID PER ORDER. cancel_orders_by_id returns "not_found"
+    # when the order is no longer in openTrades() — which happens when someone
+    # else cancelled it AND when it FILLED. A fill is the unintended position
+    # this module exists to prevent, so counting not_found as a confirmed
+    # cancel would report the exact failure as a success. Caught by Copilot
+    # on #69.
+    by_result: dict[int, str] = {}
+    for r in (results or []):
+        oid = r.get("order_id")
+        if oid is not None:
+            by_result[int(oid)] = (r.get("result") or "").lower()
+
+    not_found = sorted(oid for oid, res in by_result.items() if res == "not_found")
+    errored = sorted(oid for oid, res in by_result.items() if res == "error")
+
     # Verify against a fresh read rather than trusting the send — the
     # 2026-08-29 attempt in TWS reported nothing and changed nothing.
-    still_open: set[int] | None
+    #
+    # The verification read's `source` is checked exactly as the first read's
+    # is. get_open_orders(refresh=True) falls back to
+    # "cache_after_refresh_failed", and an empty or partial cache would show
+    # every order as gone — marking them all confirmed and suppressing the
+    # error while they are still resting.
+    verified = False
+    still_open: list[int] = []
     try:
         after = await broker.get_open_orders(refresh=True)
-        still_open = {int(o["order_id"]) for o in (after.get("orders") or [])
-                      if o.get("order_id") is not None}
+        if after.get("source") == "refreshed":
+            verified = True
+            present = {int(o["order_id"]) for o in (after.get("orders") or [])
+                       if o.get("order_id") is not None}
+            still_open = sorted(oid for oid in order_ids if oid in present)
     except Exception:
-        still_open = None
+        pass
 
-    if still_open is None:
-        confirmed, unconfirmed = 0, order_ids
-    else:
-        confirmed = sum(1 for oid in order_ids if oid not in still_open)
-        unconfirmed = [oid for oid in order_ids if oid in still_open]
+    confirmed = sorted(
+        oid for oid in order_ids
+        if verified and by_result.get(oid) == "cancel_sent" and oid not in still_open
+    )
+
+    # A not_found order may have filled. If its symbol now has a position, that
+    # is the unintended position opening — the outcome this sweep exists to
+    # prevent, and it must be loud rather than counted as a win.
+    possible_fills: list[str] = []
+    if not_found:
+        sym_of = {int(o["order_id"]): (o.get("symbol") or "").upper() for o in orphans}
+        try:
+            held_after = await _held_symbols(broker)
+        except Exception:
+            held_after = set()
+        possible_fills = sorted({
+            sym_of[oid] for oid in not_found
+            if sym_of.get(oid) and sym_of[oid] in held_after
+        })
 
     return {
         "status": "ok",
         "requested": len(order_ids),
         "confirmed_cancelled": confirmed,
-        "still_open": unconfirmed,
+        "not_found": not_found,
+        "errored": errored,
+        "still_open": still_open,
+        "verified": verified,
+        "possible_fills": possible_fills,
         "by_symbol": by_symbol,
         "deferred_symbols": deferred,
         "raced_symbols": raced,

@@ -2322,10 +2322,20 @@ async def _sweep_orphaned_orders() -> None:
         return
 
     logger.warning(
-        "orphan sweep cancelled %d of %d resting order(s) with no position: %s",
-        report.get("confirmed_cancelled", 0), report.get("requested", 0),
+        "orphan sweep: %d of %d resting order(s) with no position confirmed "
+        "cancelled: %s",
+        len(report.get("confirmed_cancelled") or []), report.get("requested", 0),
         report.get("by_symbol"),
     )
+
+    if not report.get("verified"):
+        # The post-cancel read fell back to cache, so nothing is confirmed.
+        # Saying so beats an optimistic count: the next pass will re-check.
+        logger.warning(
+            "orphan sweep could not verify the cancels — the post-cancel read "
+            "was not a live one. Treat this pass as unconfirmed.",
+        )
+
     if report.get("still_open"):
         # IBKR accepted the cancel and the order is still in the book. That is
         # the 2026-08-29 failure mode, where cancelling in TWS reported nothing
@@ -2335,6 +2345,30 @@ async def _sweep_orphaned_orders() -> None:
             "unintended-position risk is NOT cleared",
             report["still_open"],
         )
+
+    if report.get("not_found"):
+        # Already gone from the broker's book. Benign if someone else
+        # cancelled it; NOT benign if it filled.
+        logger.warning(
+            "orphan sweep: %s were already gone from the order book — "
+            "cancelled elsewhere, or filled",
+            report["not_found"],
+        )
+
+    if report.get("possible_fills"):
+        # A not_found order whose symbol now HAS a position. That is the
+        # unintended position opening — the exact outcome this sweep exists to
+        # prevent — so it is an error, not a footnote.
+        logger.error(
+            "orphan sweep: %s now hold a position after an orphaned order went "
+            "missing — an orphan may have FILLED and opened an unintended "
+            "position. Check the book by hand.",
+            report["possible_fills"],
+        )
+
+    if report.get("errored"):
+        logger.error("orphan sweep: broker refused to cancel %s",
+                     report["errored"])
 
 
 async def _update_portfolio_greeks() -> None:

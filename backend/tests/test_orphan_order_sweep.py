@@ -24,8 +24,14 @@ from app.services.orphan_order_sweep import MAX_CANCELS_PER_PASS, sweep_orphaned
 
 
 class _Pos:
-    def __init__(self, symbol: str):
+    """Mirrors IBKRClient: equities set symbol == underlying, OPTIONS DO NOT.
+
+    An option position carries symbol=localSymbol ("AAPL  260116C00150000")
+    and underlying=c.symbol ("AAPL"), while its ORDER reports c.symbol.
+    """
+    def __init__(self, symbol: str, underlying: str | None = None):
         self.symbol = symbol
+        self.underlying = underlying if underlying is not None else symbol
 
 
 class FakeBroker:
@@ -41,6 +47,11 @@ class FakeBroker:
         #: When set, the SECOND and later get_positions() calls return this
         #: instead — the sweep re-reads immediately before cancelling.
         self.positions_after: list[str] | None = None
+        #: From the THIRD get_positions() onward — i.e. after the cancel, which
+        #: is the only point at which a filled orphan can show up as a position.
+        self.positions_final: list[str] | None = None
+        #: Per-order-id override for what cancel_orders_by_id reports back.
+        self.cancel_results: dict[int, str] = {}
 
     async def get_open_orders(self, refresh: bool = False):
         self.reads += 1
@@ -51,6 +62,10 @@ class FakeBroker:
         """Serves `positions_after` from the second call onward, so a test can
         simulate a fill landing between the sweep's two position reads."""
         self.position_reads += 1
+        # Read 1 = initial `held`. Read 2 = the pre-cancel re-read.
+        # Read 3 = the post-cancel possible-fills check.
+        if self.positions_final is not None and self.position_reads > 2:
+            return [_Pos(s) for s in self.positions_final]
         if self.positions_after is not None and self.position_reads > 1:
             return [_Pos(s) for s in self.positions_after]
         return list(self._positions)
@@ -58,7 +73,9 @@ class FakeBroker:
     async def cancel_orders_by_id(self, order_ids):
         self.cancelled.extend(order_ids)
         self._orders = [o for o in self._orders if o["order_id"] not in set(order_ids)]
-        return [{"order_id": oid, "result": "cancel_sent"} for oid in order_ids]
+        return [{"order_id": oid,
+                 "result": self.cancel_results.get(oid, "cancel_sent")}
+                for oid in order_ids]
 
 
 def order(oid: int, symbol: str) -> dict:
@@ -88,7 +105,8 @@ async def test_it_cancels_orders_whose_symbol_has_no_position(no_live_rows):
     assert report["status"] == "ok"
     assert sorted(broker.cancelled) == [3, 4, 5]
     assert report["by_symbol"] == {"EXC": 2, "MU": 1}
-    assert report["confirmed_cancelled"] == 3
+    assert report["confirmed_cancelled"] == [3, 4, 5]
+    assert report["verified"] is True
 
 
 @pytest.mark.asyncio
@@ -229,7 +247,7 @@ async def test_an_order_still_resting_after_cancel_is_reported(no_live_rows):
     broker.cancel_orders_by_id = _cancel_that_does_nothing
 
     report = await sweep_orphaned_orders(broker)
-    assert report["confirmed_cancelled"] == 0
+    assert report["confirmed_cancelled"] == []
     assert report["still_open"] == [1]
 
 
@@ -347,3 +365,105 @@ async def test_dry_run_does_not_need_the_second_read(no_live_rows):
     report = await sweep_orphaned_orders(broker, dry_run=True)
     assert report["would_cancel"] == [1]
     assert broker.position_reads == 1
+
+
+# ── Options report a different symbol than their orders ──────────────────────
+
+@pytest.mark.asyncio
+async def test_a_live_option_positions_bracket_is_not_an_orphan(no_live_rows):
+    """The HIGH one. IBKRClient gives an option position symbol=localSymbol and
+    underlying=c.symbol, while its order reports c.symbol. Matching only on
+    `symbol` means a live option position never covers its own order."""
+    broker = FakeBroker(orders=[order(1, "AAPL")], positions=[])
+    broker._positions = [_Pos("AAPL  260116C00150000", underlying="AAPL")]
+
+    await sweep_orphaned_orders(broker)
+    assert broker.cancelled == [], (
+        "cancelled the bracket of a LIVE option position — the order book "
+        "reports the underlying, the position reports the localSymbol"
+    )
+
+
+@pytest.mark.asyncio
+async def test_an_option_underlying_with_no_position_is_still_swept(no_live_rows):
+    """Guards the guard: matching on underlying must not spare everything."""
+    broker = FakeBroker(orders=[order(1, "AAPL"), order(2, "MSFT")], positions=[])
+    broker._positions = [_Pos("AAPL  260116C00150000", underlying="AAPL")]
+
+    await sweep_orphaned_orders(broker)
+    assert broker.cancelled == [2]
+
+
+# ── A cancel that was not a cancel ───────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_not_found_is_not_counted_as_a_confirmed_cancel(no_live_rows):
+    """not_found means the order left the book — possibly by FILLING.
+
+    Counting that as a confirmed cancel reports the exact failure this module
+    exists to prevent as a success.
+    """
+    broker = FakeBroker(orders=[order(1, "EXC"), order(2, "MU")], positions=[])
+    broker.cancel_results = {1: "not_found"}
+
+    report = await sweep_orphaned_orders(broker)
+    assert report["confirmed_cancelled"] == [2]
+    assert report["not_found"] == [1]
+
+
+@pytest.mark.asyncio
+async def test_a_not_found_order_whose_symbol_now_holds_a_position_is_flagged(no_live_rows):
+    """The bad case made loud: the orphan FILLED and opened a position.
+
+    The position must appear only AFTER the cancel. Making it appear earlier
+    exercises the pre-cancel race guard instead — which is correct behaviour
+    and strictly safer, but a different path, and asserting on it here would
+    have tested the wrong thing while looking like it passed.
+    """
+    broker = FakeBroker(orders=[order(1, "EXC"), order(2, "MU")], positions=[])
+    broker.cancel_results = {1: "not_found"}
+    broker.positions_final = ["EXC"]   # the fill shows up only afterwards
+
+    report = await sweep_orphaned_orders(broker)
+    assert report["not_found"] == [1]
+    assert 1 not in report["confirmed_cancelled"]
+    assert report["possible_fills"] == ["EXC"], (
+        "an orphan that vanished and left a position behind is the unintended "
+        "position opening — it must be reported, not counted as a clean cancel"
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_broker_error_is_not_a_confirmed_cancel(no_live_rows):
+    broker = FakeBroker(orders=[order(1, "EXC")], positions=[])
+    broker.cancel_results = {1: "error"}
+    report = await sweep_orphaned_orders(broker)
+    assert report["confirmed_cancelled"] == []
+    assert report["errored"] == [1]
+
+
+# ── The verification read is itself verified ─────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_a_cached_verification_read_confirms_nothing(no_live_rows):
+    """get_open_orders(refresh=True) falls back to cache_after_refresh_failed.
+    An empty cache shows every order as gone — marking them all confirmed
+    while they are still resting."""
+    broker = FakeBroker(orders=[order(1, "EXC")], positions=[])
+
+    original = broker.get_open_orders
+    calls = {"n": 0}
+
+    async def _cache_on_verification(refresh: bool = False):
+        calls["n"] += 1
+        result = await original(refresh=refresh)
+        if calls["n"] > 1:
+            return {"source": "cache_after_refresh_failed", "orders": []}
+        return result
+    broker.get_open_orders = _cache_on_verification
+
+    report = await sweep_orphaned_orders(broker)
+    assert report["verified"] is False
+    assert report["confirmed_cancelled"] == [], (
+        "an empty cache was treated as proof the orders are gone"
+    )
