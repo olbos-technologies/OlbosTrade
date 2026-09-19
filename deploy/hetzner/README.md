@@ -1,23 +1,41 @@
-# OlbosTrade — Deploy on Hetzner (alongside olbos app)
+# OlbosTrade — Deploy on Hetzner
 
-Runs OlbosTrade on the **same Hetzner server** as the olbos app.
-Caddy (already running in olbos) handles HTTPS for both — no second reverse proxy needed.
+Runs OlbosTrade on a Hetzner server, with its own Caddy for HTTPS.
 
 ## Architecture
 
 ```
 Internet
     │
-    ▼
- Caddy (olbos-caddy container, ports 80/443)
-    ├── olbos.<the other app>     → olbos-backend / olbos-frontend
-    └── trade.olbos.us          → olbostrade-backend / olbostrade-frontend
-                                       │
-                                  olbostrade-db (postgres)
-                                  olbostrade-redis
+    ▼  :80 (ACME + 308 redirect), :443
+ olbostrade-caddy          ← this repo's compose file owns it
+    │
+    ▼  docker_default network, NOT a host port
+ olbostrade-frontend       ← nginx: Basic Auth + proxies /api, /ws to backend
+    │
+    ▼  internal network only
+ olbostrade-backend ──► olbostrade-db (postgres)
+         │
+         ▼  docker_default
+   ibkr-gateway            ← separate compose project; IBKR_HOST=ibkr-gateway
 ```
 
-OlbosTrade joins the `olbos_default` Docker network so Caddy can reach it.
+Caddy reaches the frontend **over `docker_default` by container name**, not
+through a published host port. That is why the frontend's own `:8080` is bound
+to loopback (step 7b) without breaking anything.
+
+> **History worth knowing.** Until 2026-09-19 Caddy belonged to a separate
+> `OlbosTerminal` project whose application had already been deleted. This
+> stack's TLS, its ports 80/443, and the network it reaches `ibkr-gateway`
+> over all depended on a compose file for software that no longer existed —
+> and the obvious cleanup command in that directory, `docker compose down`,
+> would have removed the `docker_default` network and cut the broker
+> connection. Caddy now lives in `docker-compose.hetzner.yml` here.
+>
+> The network keeps its historical `docker_default` name and stays declared
+> `external: true`. `ibkr-gateway` sits on it and belongs to a third project,
+> so this stack's `down` must never take it away — and renaming a network means
+> recreating every container attached to it.
 Its database and Redis are isolated on `olbostrade_internal` — separate from olbos.
 
 NOTE: the Postgres database is `olbostrade`; the role stays `olbosquant`
@@ -121,35 +139,104 @@ bash deploy/hetzner/up.sh
 ```
 
 The script will:
-- Build and start all containers
+- Build and start all containers, Caddy included
 - Run database migrations
-- Print the Caddyfile block you need to add
 
-### 6. Add OlbosTrade to Caddy
+### 6. Caddy
 
-The script prints exactly what to add. Manually:
+Nothing to paste. `deploy/hetzner/Caddyfile` is a tracked file in this repo,
+mounted read-only into the `caddy` service, so `up.sh` starts a correctly
+configured proxy.
+
+Edit it **here and deploy with git**, never on the server: `update.sh` begins
+with `git pull origin main`, so a host-side edit to a tracked file either stops
+the next deploy with a conflict or is silently reverted.
+
+Apply a Caddyfile change without restarting the container:
 ```bash
-nano /root/OlbosTerminal/docker/Caddyfile
+docker exec olbostrade-caddy caddy reload --config /etc/caddy/Caddyfile
+```
+A clean reload prints only its two "adapted config" lines. **If it errors, the
+running config is kept** — nothing goes down while you fix it.
+
+Caddy obtains its certificate over the ACME **HTTP** challenge, so port 80 must
+be reachable from the internet. Do not add a `:80` site block to take it over:
+with none, Caddy uses port 80 for challenges and a 308 to HTTPS, which is what
+you want. See the note at the bottom of the Caddyfile for what happened the
+last time one existed.
+
+If your DNS is behind a proxying CDN (Cloudflare's orange cloud, for example),
+**turn the proxy off** for this record. The ACME HTTP challenge has to reach
+this server, and a proxied record resolves to the CDN instead — issuance then
+fails or loops.
+
+### 6b. One-time cutover (existing servers only)
+
+**Skip this on a fresh deploy** — `up.sh` already starts the right container.
+
+A server set up before 2026-09-19 is running `olbos-caddy` from the deleted
+OlbosTerminal project. Compose cannot adopt it: that container carries the
+other project's labels, so this stack will try to create its own and fail on
+the port conflict. It has to be removed first.
+
+> **Read this before starting.** Ports 80 and 443 are unavailable for the few
+> seconds between the two commands, and if the new container does not come up,
+> HTTPS stays down — with `:8080` now bound to loopback, the browser has no
+> fallback. Your way back in is
+> `ssh -L 8080:localhost:8080 root@<YOUR_HETZNER_IP>` then
+> `http://localhost:8080`. Have that terminal open before you begin.
+
+```bash
+cd /opt/olbostrade && git pull origin main
+
+# Keep a copy of the old config — it is not in this repo's history.
+cp /root/OlbosTerminal/docker/Caddyfile /root/Caddyfile.pre-migration.bak
+
+docker stop olbos-caddy && docker rm olbos-caddy
+
+set -a; source backend/.env.prod; set +a
+docker compose -f docker-compose.hetzner.yml up -d caddy
 ```
 
-If that path doesn't exist on your server, find the real one — the host
-path and container name for the sibling Caddy stack are NOT guaranteed to
-match the docs (verified the hard way during the Hetzner infra migration):
+Verify, from your laptop rather than the server:
+
 ```bash
-docker ps --format '{{.Names}}' | grep -i caddy
-docker inspect <name-from-above> --format '{{range .Mounts}}{{.Source}} -> {{.Destination}}{{"\n"}}{{end}}'
+curl -sI http://<YOUR_HETZNER_IP>/  | head -2     # want 308 → https://
+curl -sI https://trade.olbos.us     | head -2     # want 401
+curl -s -o /dev/null -w '8081: %{http_code}\n' http://<YOUR_HETZNER_IP>:8081/
 ```
 
-Add the block from `deploy/hetzner/Caddyfile.snippet` verbatim — it already
-names `trade.olbos.us`.
+The certificates survive because the compose file pins the same volumes the old
+stack used (`docker_caddy-data`, `docker_caddy-config`) rather than creating new
+ones — a fresh volume would mean re-issuing from Let's Encrypt, whose per-name
+rate limit is measured in hours. Confirm with `docker volume ls | grep caddy`:
+you should see the two `docker_`-prefixed volumes and no new ones.
 
-Caddy obtains its certificate over the ACME **HTTP** challenge, so port 80
-must be reachable. UFW is active on this host; check with `ufw status`.
+Port **8081** is gone deliberately: the old stack published it, it served the
+app over plain HTTP on every interface, and its number is the one
+`ARCHITECTURE_AUDIT.md` recorded as the production URL — a misattribution that
+cost an afternoon during the 2026-09-17 outage.
 
-Then reload Caddy (no downtime for the olbos app):
+**Rollback**, if the new container will not serve:
+
 ```bash
-docker exec olbos-caddy caddy reload --config /etc/caddy/Caddyfile
+docker stop olbostrade-caddy && docker rm olbostrade-caddy
+docker run -d --name olbos-caddy --restart unless-stopped \
+  --network docker_default -p 80:80 -p 443:443 \
+  -v /root/Caddyfile.pre-migration.bak:/etc/caddy/Caddyfile:ro \
+  -v docker_caddy-data:/data -v docker_caddy-config:/config \
+  caddy:2-alpine
 ```
+
+Once HTTPS is confirmed on the new container, the old project directory can go:
+
+```bash
+rm -rf /root/OlbosTerminal        # nothing runs from it any more
+```
+
+Nothing on this host depends on it after the cutover — but verify with
+`docker ps` first that no container's name starts with `olbos-` rather than
+`olbostrade-`.
 
 ### 7. Verify
 ```bash

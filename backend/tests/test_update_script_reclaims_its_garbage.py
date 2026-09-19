@@ -15,7 +15,7 @@ deploy's garbage and leave its own — technically present, quietly useless.
 
 It also pins `image prune` to the dangling-only form. `-a` evicts every image
 without a running container, and this host runs other compose projects
-(ibkr-gateway, olbos-caddy). A deploy that happened to coincide with one of
+(ibkr-gateway). A deploy that happened to coincide with one of
 those being stopped would delete its image. That is a real footgun in an
 unattended script, and the dangling-only sweep already collects what a rebuild
 orphans.
@@ -139,7 +139,7 @@ def test_image_prune_stays_dangling_only():
     assert not greedy, (
         f"update.sh runs an image prune with -a: {greedy}. That evicts every "
         f"image without a RUNNING container, and this host carries other "
-        f"compose projects (ibkr-gateway, olbos-caddy) whose images would be "
+        f"compose project (ibkr-gateway) whose images would be "
         f"deleted if they were stopped when the deploy ran. Rebuilding a tag "
         f"already orphans the image it replaces, so dangling-only collects this "
         f"deploy's garbage without reaching into anyone else's."
@@ -167,7 +167,7 @@ def test_the_prunes_keep_their_cross_project_age_filter():
     daemon, not this compose project. The first version of this step used a
     bare `-af`, justified by "our build passes --no-cache so the cache is
     worthless" — true of OlbosTrade's layers and silent about the sibling
-    projects on this host (ibkr-gateway, olbos-caddy). `--filter until=` is
+    projects on this host (ibkr-gateway). `--filter until=` is
     what scopes it; a guard that only checks a prune EXISTS would let the
     unscoped form back in unnoticed. Caught in review on PR #64.
     """

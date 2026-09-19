@@ -67,11 +67,19 @@ PORT_ENTRY = re.compile(
 )
 
 
-def compose_port_entries() -> list[tuple[str, int]]:
-    """(bind address, host port) for every `ports:` entry in the Hetzner stack.
+def compose_port_entries() -> list[tuple[str, str, int]]:
+    """(service, bind address, host port) for every `ports:` entry.
 
     Bind address is "" when Compose was given none, which means 0.0.0.0 — every
     interface, including the public one.
+
+    The SERVICE is tracked because the two kinds of public port mean opposite
+    things. Caddy publishing 80/443 is the deployment working as designed; an
+    application container publishing a port is a plain-HTTP route around it.
+    An earlier version of this module lumped them together and asserted that
+    nothing at all was public, which was true only while no reverse proxy lived
+    in this file — and the moment Caddy moved in, the honest fix would have
+    looked like weakening the test.
 
     Comments are stripped: the `ports:` block carries an explanatory comment
     naming the URL, and this repo has already shipped one guard that matched
@@ -81,30 +89,58 @@ def compose_port_entries() -> list[tuple[str, int]]:
         l for l in COMPOSE.read_text().splitlines()
         if not l.lstrip().startswith("#")
     ]
-    entries: list[tuple[str, int]] = []
+    entries: list[tuple[str, str, int]] = []
+    service = ""
     for line in lines:
+        svc = re.match(r"^  ([a-z][a-z0-9_-]*):\s*$", line)
+        if svc:
+            service = svc.group(1)
+            continue
         m = PORT_ENTRY.match(line)
         if m:
-            entries.append((m.group("bind") or "", int(m.group("host"))))
+            entries.append((service, m.group("bind") or "", int(m.group("host"))))
     return entries
 
 
-def publicly_published_ports() -> set[int]:
-    """Host ports reachable from OFF the machine.
+#: The one service allowed to publish on every interface, and the only ports it
+#: may publish. Caddy terminates TLS and answers ACME challenges, so it has to
+#: be reachable from the internet — that is its whole job. 80 must stay open
+#: too: with no `:80` site block Caddy uses it for certificate challenges and a
+#: 308 to HTTPS, which carries no app content and no credentials.
+PUBLIC_PROXY_SERVICE = "caddy"
+PUBLIC_PROXY_PORTS = {80, 443}
 
-    A loopback-bound entry publishes a port on 127.0.0.1 only. Calling that
+
+def publicly_published_ports() -> set[int]:
+    """Host ports reachable from OFF the machine, whatever publishes them.
+
+    A loopback-bound entry publishes on 127.0.0.1 only. Calling that
     "published" is what would let a doc go on advertising
     `http://<public-ip>:8080` after the bind closed it — the precise drift this
     module exists to catch, just pointing the other way.
     """
-    return {port for bind, port in compose_port_entries()
+    return {port for _svc, bind, port in compose_port_entries()
             if not is_loopback_bind(bind)}
+
+
+def publicly_published_app_ports() -> set[tuple[str, int]]:
+    """(service, port) for public ports that are NOT the reverse proxy's.
+
+    This is the set that must stay empty. Everything in this stack is reached
+    either through Caddy or from on the host; anything else publishing to the
+    world is a plain-HTTP way around the TLS.
+    """
+    return {
+        (svc, port) for svc, bind, port in compose_port_entries()
+        if not is_loopback_bind(bind)
+        and not (svc == PUBLIC_PROXY_SERVICE and port in PUBLIC_PROXY_PORTS)
+    }
 
 
 def loopback_only_ports() -> set[int]:
     """Host ports bound to 127.x — reachable from on the host, e.g. via an SSH
     tunnel, and from nowhere else."""
-    return {port for bind, port in compose_port_entries()
+    return {port for _svc, bind, port in compose_port_entries()
             if is_loopback_bind(bind)}
 
 
@@ -217,16 +253,22 @@ def test_every_documented_ip_port_is_one_the_stack_publishes():
     )
 
 
-def test_nothing_is_published_to_the_public_interface():
-    """NO service in the Hetzner stack may publish a port on all interfaces.
+def test_no_application_port_is_published_to_the_public_interface():
+    """Only the reverse proxy may publish publicly, and only on 80/443.
 
-    The scope is the whole compose file, not just the frontend. Copilot caught
-    the docstring claiming the narrower invariant on #67, which matters because
-    the next person to add a `ports:` entry would read the docstring, assume
-    only the frontend was constrained, and be surprised by the failure — or
-    worse, narrow the assertion to match the prose and quietly reopen the stack
-    to public binds. The broad form is the one worth keeping: every service
-    here is reached either through Caddy or from on the host.
+    The scope is every service in the compose file, not just the frontend.
+    Copilot caught the docstring claiming the narrower invariant on #67, which
+    matters because the next person to add a `ports:` entry would read the
+    docstring, assume only the frontend was constrained, and be surprised by
+    the failure — or worse, narrow the assertion to match the prose and quietly
+    reopen the stack to public binds.
+
+    The proxy exemption is NOT that weakening arriving by the back door. When
+    Caddy moved into this file on 2026-09-19 the flat "nothing is public" rule
+    became false by design — a TLS terminator must be reachable — and the
+    choice was between an honest exemption naming exactly one service and two
+    ports, or deleting the test. The exemption is checked: a public port on any
+    other service, or on Caddy at any other port, still fails.
 
     This is an invariant, not a preference. Caddy reaches the frontend over
     docker_default, so a public bind adds no capability — it only adds a
@@ -249,13 +291,16 @@ def test_nothing_is_published_to_the_public_interface():
     commit that changes compose, and say in the message why the exposure is
     acceptable. Do not delete it to make a deploy go through.
     """
-    public = publicly_published_ports()
+    public = publicly_published_app_ports()
     assert not public, (
-        f"docker-compose.hetzner.yml publishes {sorted(public)} on ALL "
-        f"interfaces. Bind to loopback instead — `127.0.0.1:<port>:<container>` "
-        f"— so the port answers only from on the host. An SSH tunnel "
-        f"(`ssh -L <port>:localhost:<port> root@<server>`) still reaches it, "
-        f"and Caddy never needed the host port at all."
+        "docker-compose.hetzner.yml publishes these on ALL interfaces:\n"
+        + "\n".join(f"  service {svc!r} → :{port}" for svc, port in sorted(public))
+        + f"\n\nOnly {PUBLIC_PROXY_SERVICE!r} may do that, and only on "
+          f"{sorted(PUBLIC_PROXY_PORTS)}. Bind the rest to loopback — "
+          f"`127.0.0.1:<port>:<container>` — so they answer only from on the "
+          f"host. An SSH tunnel (`ssh -L <port>:localhost:<port> root@<server>`) "
+          f"still reaches them, and Caddy reaches the containers over "
+          f"docker_default rather than through any host port."
     )
 
 
@@ -327,50 +372,46 @@ def test_the_readme_tells_an_operator_how_to_reach_the_app():
     a working way in, so a wrong one went unchallenged for months.
 
     What counts as a working way in depends on what compose publishes, so this
-    asserts the direction rather than a fixed answer:
+    asserts the direction rather than a fixed answer. Two routes must be
+    documented, because they fail independently:
 
-      * anything public  → the README must name one of those ports
-      * loopback only    → the README must document the tunnel, because that is
-                           now the only direct route, and it must name the
-                           HTTPS domain as the primary one
+      * PRIMARY — the HTTPS domain Caddy serves. Always required: the proxy is
+        how this app is meant to be reached.
+      * FALLBACK — an SSH tunnel for every loopback-bound port. Required
+        precisely BECAUSE the primary can fail: a bad Caddyfile, an expired
+        certificate or a DNS problem leaves the domain dead, and the loopback
+        ports are then the only way in. Documenting only the primary is what
+        turns a TLS problem into a lockout.
+
+    The old version had an `if published: ... return` branch that named a
+    public app port instead. That branch is gone with the port it described —
+    keeping it would have meant Caddy's own 80/443 satisfying "the README names
+    a published port", which is true and useless: nobody reaches this app by
+    typing a port number any more.
     """
-    published = publicly_published_ports()
     loopback = loopback_only_ports()
-    readme = (REPO / "deploy" / "hetzner" / "README.md").read_text()
+    readme = DEPLOY_README.read_text()
+    domain = caddy_site_domain()
 
-    if published:
-        # `:8080`, not a bare 8080. A loose \b(\d{4,5})\b scan is satisfied by
-        # the number appearing anywhere at all — including inside a quoted
-        # `ports: ["8080:3000"]` example — which is the difference between "the
-        # README tells an operator the URL" and "the digits occur in this
-        # file". Mutation-testing caught exactly that: gutting the URL prose
-        # left the earlier version passing.
-        named = {int(m) for m in re.findall(r":(\d{4,5})\b", readme)}
-        assert published & named, (
-            f"deploy/hetzner/README.md names none of the publicly published "
-            f"host ports {sorted(published)}. An operator deploying without a "
-            f"domain has nowhere to find the direct URL but a comment inside "
-            f"the compose file — which is how :8081 survived unchallenged."
-        )
-        return
+    assert domain and re.search(r"https://" + re.escape(domain), readme), (
+        f"deploy/hetzner/README.md never names https://{domain} — the URL Caddy "
+        f"actually serves and the primary way into this deployment."
+    )
 
     assert loopback, (
-        "compose publishes nothing publicly AND nothing on loopback, so there "
-        "is no direct route into the frontend at all. If that is intended, this "
-        "test needs rewriting deliberately rather than deleting."
+        "compose publishes nothing on loopback, so there is no direct route in "
+        "if Caddy is broken. If that is genuinely intended, rewrite this test "
+        "deliberately rather than deleting it — and say in the commit how an "
+        "operator is meant to reach a stack whose TLS has failed."
     )
     for port in sorted(loopback):
         assert re.search(rf"ssh\s+-L\s+{port}:localhost:{port}\b", readme), (
-            f"port {port} is bound to loopback, so the ONLY direct route in is "
-            f"an SSH tunnel — and deploy/hetzner/README.md does not show one "
-            f"(`ssh -L {port}:localhost:{port} ...`). Closing the public port "
-            f"without documenting the replacement leaves an operator locked "
-            f"out during an incident, which is worse than the exposure it fixed."
+            f"port {port} is bound to loopback, so an SSH tunnel is the only "
+            f"direct route to it — and deploy/hetzner/README.md does not show "
+            f"one (`ssh -L {port}:localhost:{port} ...`). Closing a public port "
+            f"without documenting the replacement leaves an operator locked out "
+            f"during an incident, which is worse than the exposure it fixed."
         )
-    assert re.search(r"https://" + re.escape(caddy_site_domain()), readme), (
-        "nothing is published publicly, so HTTPS via Caddy is the primary way "
-        "in, and the README must name that URL."
-    )
 
 
 # ── The domain half of the same problem ──────────────────────────────────────
@@ -381,14 +422,18 @@ def test_the_readme_tells_an_operator_how_to_reach_the_app():
 # sends an operator to a host that answers nothing — during an incident, which
 # is the only time anyone reads a deploy guide.
 
-CADDY_SNIPPET = REPO / "deploy" / "hetzner" / "Caddyfile.snippet"
+#: The real, mounted Caddy config — not a snippet to paste any more. Caddy
+#: moved into this repo's compose file on 2026-09-19, so the config Caddy
+#: actually loads is now a tracked file and this guard reads THAT rather than
+#: an instruction to copy it somewhere.
+CADDYFILE = REPO / "deploy" / "hetzner" / "Caddyfile"
 DEPLOY_README = REPO / "deploy" / "hetzner" / "README.md"
 
 
 def caddy_site_domain() -> str:
     """The hostname Caddy actually serves, from its site block.
 
-    On parsing: the snippet's header comment names the domain in prose, so a
+    On parsing: the file's header comment names the domain in prose, so a
     loose scan would match the explanation instead of the directive.
 
     What prevents that is the ANCHORED regex — the whole line must be
@@ -402,7 +447,7 @@ def caddy_site_domain() -> str:
     future comment that is itself a bare `something.tld {` line; it is not
     what is holding today. Loosening the regex is what would break this.
     """
-    lines = [l for l in CADDY_SNIPPET.read_text().splitlines()
+    lines = [l for l in CADDYFILE.read_text().splitlines()
              if not l.lstrip().startswith("#")]
     for line in lines:
         m = re.match(r"^\s*([A-Za-z0-9.-]+\.[A-Za-z]{2,})\s*\{\s*$", line)
@@ -414,9 +459,11 @@ def caddy_site_domain() -> str:
 def test_the_caddy_site_block_was_found():
     """Guards the guard: an empty domain makes the comparison vacuous."""
     assert caddy_site_domain(), (
-        "no site block parsed out of Caddyfile.snippet. Either the snippet "
+        "no site block parsed out of deploy/hetzner/Caddyfile. Either it "
         "changed shape or it no longer declares a site — the comparison below "
-        "would otherwise pass against nothing."
+        "would otherwise pass against nothing. Note this is the config Caddy "
+        "actually mounts, so an empty result here means the deployment serves "
+        "nothing, not merely that a doc drifted."
     )
 
 
@@ -435,7 +482,7 @@ def readme_https_hosts() -> set[str]:
 def test_the_deploy_readme_names_the_domain_caddy_serves():
     domain = caddy_site_domain()
     assert domain in readme_https_hosts(), (
-        f"Caddyfile.snippet serves {domain!r} but no https:// URL in "
+        f"deploy/hetzner/Caddyfile serves {domain!r} but no https:// URL in "
         f"deploy/hetzner/README.md points there. The README is what an "
         f"operator follows; if it names a different host they will curl "
         f"something that does not answer and conclude the deploy failed when "
@@ -488,4 +535,94 @@ def test_no_placeholder_domain_survives_the_rename():
         f"placeholder domains still present after the rename: {stale}. Mixed "
         f"real and placeholder hostnames in one deploy guide is the worst of "
         f"both — a reader cannot tell which lines they are meant to edit."
+    )
+
+
+# ── The container-name half of the same problem ──────────────────────────────
+#
+# Caddy moved into this repo's compose file on 2026-09-19 and was renamed
+# olbos-caddy -> olbostrade-caddy in the same change, because the old name
+# pointed at a project that had been deleted. Every `docker exec <name> caddy
+# reload` in the docs had to move with it, and a stale one fails with
+# "No such container" at the exact moment someone is trying to fix TLS.
+#
+# Same shape as the port and domain guards above: the authoritative value lives
+# in compose, the copies live in prose, and nothing tied them together.
+
+CADDY_EXEC = re.compile(r"docker\s+exec\s+(?:-\w+\s+)*([A-Za-z0-9_.-]+)\s+caddy\b")
+
+
+def compose_caddy_container() -> str:
+    """The container_name of the `caddy` service, from compose."""
+    lines = COMPOSE.read_text().splitlines()
+    in_caddy = False
+    for line in lines:
+        svc = re.match(r"^  ([a-z][a-z0-9_-]*):\s*$", line)
+        if svc:
+            in_caddy = svc.group(1) == "caddy"
+            continue
+        if in_caddy:
+            m = re.match(r"^\s+container_name:\s*(\S+)\s*$", line)
+            if m:
+                return m.group(1)
+    return ""
+
+
+def deploy_files_naming_a_caddy_container() -> list[tuple[str, int, str]]:
+    """(file, line_no, container) for every `docker exec <x> caddy ...`."""
+    found: list[tuple[str, int, str]] = []
+    targets = [DEPLOY_README, CADDYFILE, *sorted((REPO / "deploy").rglob("*.sh"))]
+    for path in targets:
+        try:
+            text = path.read_text()
+        except (UnicodeDecodeError, OSError):
+            continue
+        for n, line in enumerate(text.splitlines(), 1):
+            for name in CADDY_EXEC.findall(line):
+                found.append((str(path.relative_to(REPO)), n, name))
+    return found
+
+
+def test_the_compose_caddy_container_name_was_found():
+    """Guards the guard: an empty name would make the check below vacuous —
+    every reference would compare against "" and the list of mismatches would
+    be everything, or nothing, depending on the direction of the test. Assert
+    it directly instead."""
+    assert compose_caddy_container(), (
+        "no container_name found for the `caddy` service in "
+        "docker-compose.hetzner.yml. Either the service was removed (the app "
+        "has no TLS) or the file's shape changed and this test stopped seeing "
+        "it."
+    )
+
+
+def test_every_documented_caddy_exec_names_the_container_compose_declares():
+    expected = compose_caddy_container()
+    wrong = [
+        (f, n, name) for f, n, name in deploy_files_naming_a_caddy_container()
+        if name != expected
+    ]
+    assert not wrong, (
+        f"these docs run `docker exec` against a container that is not the one "
+        f"compose declares ({expected!r}):\n"
+        + "\n".join(f"  {f}:{n} → {name!r}" for f, n, name in wrong)
+        + "\n\nA stale name fails with 'No such container' at the moment "
+          "someone is trying to reload TLS during an incident. olbos-caddy was "
+          "the previous owner's name and no longer exists."
+    )
+
+
+def test_at_least_one_doc_shows_how_to_reload_caddy():
+    """Otherwise the guard above is satisfied by naming it nowhere at all.
+
+    Reloading is the operation an operator needs under pressure — a config
+    change that does not take effect reads as a broken deploy — so the guide
+    has to show it, not merely avoid getting it wrong.
+    """
+    refs = deploy_files_naming_a_caddy_container()
+    assert refs, (
+        "no deploy doc or script shows `docker exec <caddy> caddy reload`. The "
+        "name-consistency check above passes vacuously when nothing names the "
+        "container, and an operator has nowhere to learn how to apply a "
+        "Caddyfile change without restarting the container."
     )

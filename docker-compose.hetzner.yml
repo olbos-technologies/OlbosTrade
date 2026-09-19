@@ -113,8 +113,10 @@ services:
           # problem and raising it again will not help.
           #
           # Budget (see tests/test_hetzner_memory_budget.py): this file's
-          # limits total 4024M. ibkr-gateway and olbos-caddy share the host
-          # from other compose projects and are not counted here.
+          # limits total 4280M — 4024M plus Caddy's 256M, which moved INTO this
+          # file on 2026-09-19 and so is now counted here rather than as a
+          # neighbour. ibkr-gateway is the only container left sharing the host
+          # from another compose project.
           memory: 3000M
     logging:
       driver: "json-file"
@@ -215,15 +217,72 @@ services:
         max-size: "20m"
         max-file: "3"
 
+  # ── Reverse proxy / TLS ─────────────────────────────────────────────────────
+  # Adopted from the deleted OlbosTerminal stack on 2026-09-19. It had been the
+  # last thing running from that project, so this app's TLS, its ports 80/443
+  # and the network it reaches ibkr-gateway over all depended on a compose file
+  # for an application that no longer existed — and the obvious cleanup command
+  # in that directory (`docker compose down`) would have removed the
+  # docker_default network, cutting the broker connection.
+  caddy:
+    image: caddy:2-alpine
+    container_name: olbostrade-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    # Port 8081 was published by the previous owner and is deliberately NOT
+    # carried over. It served the app over plain HTTP on every interface, and
+    # its number is the one ARCHITECTURE_AUDIT.md recorded as the production
+    # URL — a misattribution that cost an afternoon during the 2026-09-17
+    # outage, because the port was real but belonged to a different stack.
+    volumes:
+      - ./deploy/hetzner/Caddyfile:/etc/caddy/Caddyfile:ro
+      - olbostrade_caddy_data:/data
+      - olbostrade_caddy_config:/config
+    networks:
+      - olbos_default        # must reach olbostrade-frontend by container name
+    depends_on:
+      frontend:
+        condition: service_started
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "3"
+
 volumes:
   olbostrade_pgdata:
     external: true
     name: olbosquant_olbosquant_pgdata   # pinned to the original external volume (see NOTE above)
   olbostrade_archive:
+  # The TLS certificates and ACME account live here. Both are pinned to the
+  # volumes the previous stack created, exactly as olbostrade_pgdata is above:
+  # declaring fresh ones would make Caddy re-issue from Let's Encrypt, and the
+  # per-name rate limit is measured in hours. `docker volume ls` shows them as
+  # docker_caddy-data / docker_caddy-config — the `docker_` prefix is Compose's
+  # project prefix, taken from the old /root/OlbosTerminal/docker directory.
+  olbostrade_caddy_data:
+    external: true
+    name: docker_caddy-data
+  olbostrade_caddy_config:
+    external: true
+    name: docker_caddy-config
 
 networks:
   olbostrade_internal:
     driver: bridge
   olbos_default:
     external: true
-    name: docker_default    # the network Caddy is already on (created by the olbos app)
+    # Kept EXTERNAL deliberately, even though this stack now owns Caddy.
+    # ibkr-gateway sits on this network too and belongs to a third compose
+    # project, and IBKR_HOST=ibkr-gateway resolves over it — so `docker compose
+    # down` here must never take it with them. The name keeps its historical
+    # `docker_` prefix because renaming a network means recreating every
+    # container attached to it, ibkr-gateway included.
+    name: docker_default

@@ -47,24 +47,26 @@ echo "[5/5] Reclaiming build cache..."
 #
 # `image prune -f` is dangling-only, deliberately. `-a` would evict any image
 # without a running container, and this host runs other compose projects
-# (ibkr-gateway, olbos-caddy) whose images would be fair game if they happened
-# to be stopped. Rebuilding a tag orphans the image it replaces, so the
-# dangling-only sweep already collects exactly this deploy's garbage.
+# (ibkr-gateway) whose images would be fair game if it happened to be stopped.
+# Rebuilding a tag orphans the image it replaces, so the dangling-only sweep
+# already collects exactly this deploy's garbage. Caddy was on that list until
+# 2026-09-19 and is now ours, which makes the list shorter but not the reasoning
+# weaker: one neighbour is enough for -a to be wrong.
 #
 # Non-fatal: the deploy succeeded at step 4. `set -e` is on, and failing the
 # whole run over cleanup would report a working deployment as broken.
 # `--filter until=72h`, not a bare -af. `docker builder prune` operates on the
 # DEFAULT BUILDER's cache, which is shared by every compose project on this
 # host — not just OlbosTrade. The --no-cache argument for discarding our own
-# layers says nothing about a sibling project's cache, and nuking it would
-# force expensive full rebuilds elsewhere. 72h clears the accumulation (our
+# layers says nothing about ibkr-gateway's cache, and nuking it would force
+# expensive full rebuilds elsewhere. 72h clears the accumulation (our
 # garbage is regenerated every deploy and is never reused) while sparing
 # anything a neighbour has touched recently. Caught in review on PR #64.
 CLEANUP_OK=1
 docker builder prune -af --filter until=72h \
   || { CLEANUP_OK=0; echo "      ⚠ build cache prune failed"; }
 # Also age-filtered. `image prune -f` is dangling-only but still DAEMON-WIDE:
-# a sibling project's just-replaced image is dangling too, and someone may be
+# ibkr-gateway's just-replaced image is dangling too, and someone may be
 # holding it for a rollback. 72h matches the builder prune above — our own
 # per-deploy garbage ages out, a neighbour's recent work does not.
 docker image prune -f --filter until=72h \

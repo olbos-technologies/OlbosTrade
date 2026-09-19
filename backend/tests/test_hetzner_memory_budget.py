@@ -46,9 +46,14 @@ HOST_TOTAL_MB = 7771
 
 #: Ceiling for the limits declared in THIS file. The remainder is for the
 #: containers that share the host from other compose projects (ibkr-gateway,
-#: measured at ~617M and uncapped; olbos-caddy at 256M) plus the OS and the
-#: Docker daemon. Limits are ceilings rather than usage, so this is the
-#: worst-case sum, not the expected one.
+#: measured at ~617M and uncapped) plus the OS and the Docker daemon. Limits
+#: are ceilings rather than usage, so this is the worst-case sum, not the
+#: expected one.
+#:
+#: Caddy used to be counted in that remainder at 256M. It moved into this
+#: compose file on 2026-09-19, so its limit is now inside the sum below rather
+#: than outside it — the same 256M, just on the other side of the line. The
+#: budget did not change; what changed is which total it constrains.
 STACK_BUDGET_MB = 5000
 
 #: The backend's measured death point: anon-rss at the moment the kernel killed
@@ -100,8 +105,8 @@ def test_the_stack_fits_the_machine():
     assert total <= STACK_BUDGET_MB, (
         f"the limits in docker-compose.hetzner.yml total {total}M, over the "
         f"{STACK_BUDGET_MB}M budgeted for this stack on a {HOST_TOTAL_MB}M host. "
-        f"ibkr-gateway and olbos-caddy share this machine from other compose "
-        f"projects and are not counted here. Overcommitting means the kernel "
+        f"ibkr-gateway shares this machine from another compose project and "
+        f"is not counted here. Overcommitting means the kernel "
         f"picks the victim globally — which can be Postgres or sshd, not the "
         f"container that grew. Per service: {limits}"
     )

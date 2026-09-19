@@ -1,0 +1,49 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# OlbosTrade — Caddy site configuration
+#
+# Mounted read-only into the `caddy` service by docker-compose.hetzner.yml.
+# Edit it HERE and deploy with git, never on the server: update.sh begins with
+# `git pull origin main`, so a host-side edit to a tracked file either stops the
+# next deploy with a conflict or is silently reverted.
+#
+# Apply a change without restarting the container:
+#   docker exec olbostrade-caddy caddy reload --config /etc/caddy/Caddyfile
+# A clean reload prints nothing but the two "adapted config" lines. If it
+# errors, the RUNNING config is kept — nothing breaks while you fix it.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Everything routes through the frontend container's own nginx (port 3000, see
+# frontend/docker-entrypoint.sh), which already does the real routing: it
+# proxies /api, /docs, /openapi.json and /ws to the backend itself, AND applies
+# DASH_USER/DASH_PASS Basic Auth to its whole server block.
+#
+# Do NOT add a `handle /api` or `handle /ws` here to reach the backend directly.
+# That bypasses nginx's auth_basic block, so DASH_USER/DASH_PASS silently stops
+# protecting the API while still being documented as covering the whole app. A
+# previous version of this config did exactly that.
+trade.olbos.us {
+	reverse_proxy olbostrade-frontend:3000
+}
+
+# ── Why there is no `:80` or `:8081` block here ───────────────────────────────
+#
+# Until 2026-09-19 this file carried `:80 { import olbos_app }` and
+# `:8081 { import olbos_app }`. An address-only site block matches ANY hostname
+# over PLAIN HTTP, so both served the entire terminal — kill switch, position
+# closing, execution mode — in clear text to anyone who knew the server's IP.
+# Basic Auth still applied, which made it worse rather than better: HTTP Basic
+# sends user:password base64-encoded, so the credentials travelled reversibly
+# over the wire.
+#
+# It was found the same afternoon the frontend's own :8080 was closed for that
+# exact reason, which is the lesson worth keeping: closing one plain-HTTP door
+# is not the same as closing them all, and the two that remained were on the
+# DEFAULT http port.
+#
+# An explicit `:80` block also SUPPRESSES Caddy's automatic HTTP-to-HTTPS
+# redirect — that is why port 80 served the app instead of bouncing to TLS.
+# With no such block, Caddy handles :80 itself: ACME challenges and a 308 to
+# https://trade.olbos.us. Leave it that way.
+#
+# backend/tests/test_caddyfile_has_no_plaintext_site.py fails on any
+# address-only site block, so this cannot come back quietly.

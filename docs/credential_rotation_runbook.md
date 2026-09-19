@@ -37,6 +37,14 @@ The `set -a; . backend/.env.prod` preamble is required — compose interpolates
 `${VAR}` from the shell environment, and without it the DB password
 interpolation fails.
 
+The verification commands below go through `docker exec` into the backend
+rather than `curl http://localhost/...` on the host. They used the host URL
+until 2026-09-19, which reached the app through Caddy's plain-HTTP `:80` site
+block; that block served the whole terminal in clear text to anyone who knew
+the server's IP and has been removed. `docker exec` does not traverse Caddy at
+all, so these checks keep working and never depend on a plaintext route
+existing.
+
 4. Run the credential-specific verification below.
 5. Revoke the old credential provider-side.
 6. Confirm the old credential is dead (see per-credential notes).
@@ -55,7 +63,7 @@ interpolation fails.
 - **Verify (no secret printed):**
 
 ```bash
-ssh root@46.224.0.213 'curl -s http://localhost/api/health/detail | grep -o "\"connected\":[a-z]*" | head -1'
+ssh root@46.224.0.213 'docker exec olbostrade-backend curl -s http://127.0.0.1:8000/api/health/detail | grep -o "\"connected\":[a-z]*" | head -1'
 ```
 
 Then confirm real account data flows — `GET /api/paper-trade/portfolio`
@@ -77,7 +85,7 @@ returning a non-empty `net_liquidation` with `broker_error: ""`.
 - **Verify:**
 
 ```bash
-ssh root@46.224.0.213 'curl -s http://localhost/api/health/detail | grep -o "\"database\":{\"connected\":[a-z]*}"'
+ssh root@46.224.0.213 'docker exec olbostrade-backend curl -s http://127.0.0.1:8000/api/health/detail | grep -o "\"database\":{\"connected\":[a-z]*}"'
 ```
 
 - **Old-credential check:** `ALTER ROLE` replaces rather than adds, so the old
@@ -134,7 +142,7 @@ Expect `-rw------- root root`.
 - Run the rotation preflight and confirm no regression:
 
 ```bash
-ssh root@46.224.0.213 'curl -s http://localhost/api/rotation/preflight | head -c 200'
+ssh root@46.224.0.213 'docker exec olbostrade-backend curl -s http://127.0.0.1:8000/api/rotation/preflight | head -c 200'
 ```
 
 `ibkr_connection`, `account_state_synchronized` and `audit_logging_functional`
