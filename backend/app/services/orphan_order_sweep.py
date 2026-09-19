@@ -136,10 +136,32 @@ async def sweep_orphaned_orders(broker: Any, dry_run: bool = False) -> dict:
         # Without positions every order looks orphaned. Never guess this one.
         return {"status": "skipped", "reason": f"could not read positions: {exc}"}
 
-    candidates = [o for o in orders if (o.get("symbol") or "").upper() not in held]
+    # An order with no symbol cannot be proven unprotected: "" is never in
+    # `held`, so a truthiness-free comparison would classify it as an orphan
+    # and cancel it on the strength of a field that is missing. That is failing
+    # toward the cancel, which is the one direction this module must never
+    # fail in. Caught by Sourcery on #69.
+    #
+    # Surfaced rather than silently dropped — an order book returning entries
+    # without a symbol means something is wrong upstream, and a sweep that
+    # quietly ignores them hides it.
+    unidentifiable = [o for o in orders if not (o.get("symbol") or "").strip()]
+    if unidentifiable:
+        logger.warning(
+            "orphan sweep ignoring %d order(s) with no symbol — cannot prove "
+            "they are unprotected: ids %s",
+            len(unidentifiable),
+            [o.get("order_id") for o in unidentifiable],
+        )
+
+    identifiable = [o for o in orders if (o.get("symbol") or "").strip()]
+    candidates = [o for o in identifiable
+                  if (o.get("symbol") or "").upper() not in held]
     if not candidates:
         return {"status": "ok", "nothing_to_do": True,
-                "reason": f"all {len(orders)} order(s) map to a held position"}
+                "reason": f"all {len(identifiable)} identifiable order(s) map "
+                          f"to a held position",
+                "ignored_no_symbol": len(unidentifiable)}
 
     candidate_symbols = {(o.get("symbol") or "").upper() for o in candidates}
     try:
@@ -177,11 +199,50 @@ async def sweep_orphaned_orders(broker: Any, dry_run: bool = False) -> dict:
                            f"from expectations"),
                 "by_symbol": by_symbol}
 
-    order_ids = [int(o["order_id"]) for o in orphans]
-
     if dry_run:
-        return {"status": "ok", "dry_run": True, "would_cancel": order_ids,
-                "by_symbol": by_symbol, "deferred_symbols": deferred}
+        return {"status": "ok", "dry_run": True,
+                "would_cancel": [int(o["order_id"]) for o in orphans],
+                "by_symbol": by_symbol, "deferred_symbols": deferred,
+                "ignored_no_symbol": len(unidentifiable)}
+
+    # RE-READ POSITIONS IMMEDIATELY BEFORE CANCELLING.
+    #
+    # `held` above is a snapshot taken before the DB query. A fill landing in
+    # that window opens a position whose bracket is, by then, already on the
+    # orphan list — and cancelling it strips a live position of its stop, the
+    # worst outcome this module can produce. Caught by Sourcery on #69.
+    #
+    # This narrows the window from "a DB round-trip plus processing" to "one
+    # broker call", it does not close it: without broker-side atomicity a fill
+    # can still land between this read and the cancel. That residual is stated
+    # rather than papered over — the honest claim is a much smaller window, not
+    # a safe one. A failed re-read aborts, because an unverifiable position
+    # list is exactly when not to act.
+    try:
+        held_now = await _held_symbols(broker)
+    except Exception as exc:
+        return {"status": "skipped",
+                "reason": f"could not re-read positions before cancelling: {exc}",
+                "by_symbol": by_symbol}
+
+    raced = sorted({(o.get("symbol") or "").upper() for o in orphans
+                    if (o.get("symbol") or "").upper() in held_now})
+    if raced:
+        logger.warning(
+            "orphan sweep dropping %s — a position appeared between the two "
+            "position reads; its bracket is live protection, not an orphan",
+            ", ".join(raced),
+        )
+        orphans = [o for o in orphans
+                   if (o.get("symbol") or "").upper() not in held_now]
+        by_symbol = {s: c for s, c in by_symbol.items() if s not in set(raced)}
+
+    if not orphans:
+        return {"status": "ok", "nothing_to_do": True,
+                "reason": "every candidate gained a position before the cancel",
+                "raced_symbols": raced}
+
+    order_ids = [int(o["order_id"]) for o in orphans]
 
     try:
         results = await broker.cancel_orders_by_id(order_ids)
@@ -212,5 +273,7 @@ async def sweep_orphaned_orders(broker: Any, dry_run: bool = False) -> dict:
         "still_open": unconfirmed,
         "by_symbol": by_symbol,
         "deferred_symbols": deferred,
+        "raced_symbols": raced,
+        "ignored_no_symbol": len(unidentifiable),
         "results": results,
     }

@@ -37,6 +37,10 @@ class FakeBroker:
         self._source = source
         self.cancelled: list[int] = []
         self.reads = 0
+        self.position_reads = 0
+        #: When set, the SECOND and later get_positions() calls return this
+        #: instead — the sweep re-reads immediately before cancelling.
+        self.positions_after: list[str] | None = None
 
     async def get_open_orders(self, refresh: bool = False):
         self.reads += 1
@@ -44,6 +48,11 @@ class FakeBroker:
                 "order_count": len(self._orders)}
 
     async def get_positions(self):
+        """Serves `positions_after` from the second call onward, so a test can
+        simulate a fill landing between the sweep's two position reads."""
+        self.position_reads += 1
+        if self.positions_after is not None and self.position_reads > 1:
+            return [_Pos(s) for s in self.positions_after]
         return list(self._positions)
 
     async def cancel_orders_by_id(self, order_ids):
@@ -242,3 +251,99 @@ async def test_a_broker_that_cannot_cancel_by_id_is_skipped():
     report = await sweep_orphaned_orders(Limited())
     assert report["status"] == "skipped"
     assert "cancel by id" in report["reason"]
+
+
+# ── An order the sweep cannot identify ───────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_an_order_with_no_symbol_is_never_cancelled(no_live_rows):
+    """"" is never in `held`, so a naive comparison calls it an orphan.
+
+    Cancelling on the strength of a MISSING field is failing toward the cancel,
+    which is the one direction this module must never fail in. Caught by
+    Sourcery on #69.
+    """
+    broker = FakeBroker(
+        orders=[{"order_id": 1, "symbol": None},
+                {"order_id": 2, "symbol": "   "},
+                {"order_id": 3, "symbol": ""},
+                order(4, "EXC")],
+        positions=[],
+    )
+    report = await sweep_orphaned_orders(broker)
+    assert broker.cancelled == [4], (
+        "the sweep cancelled an order it could not identify a symbol for"
+    )
+    assert report["ignored_no_symbol"] == 3
+
+
+@pytest.mark.asyncio
+async def test_symbolless_orders_do_not_hide_a_clean_book(no_live_rows):
+    """The ignore path must not become a silent pass — the count is reported
+    so an order book returning entries without symbols is visible."""
+    broker = FakeBroker(
+        orders=[{"order_id": 1, "symbol": None}, order(2, "ALNY")],
+        positions=["ALNY"],
+    )
+    report = await sweep_orphaned_orders(broker)
+    assert report.get("nothing_to_do") is True
+    assert report["ignored_no_symbol"] == 1
+    assert broker.cancelled == []
+
+
+# ── The race between reading positions and cancelling ────────────────────────
+
+@pytest.mark.asyncio
+async def test_a_position_appearing_before_the_cancel_spares_its_bracket(no_live_rows):
+    """A fill between the position read and the cancel would otherwise strip a
+    live position's stop — the worst outcome this module can produce."""
+    broker = FakeBroker(orders=[order(1, "EXC"), order(2, "MU")], positions=[])
+    broker.positions_after = ["EXC"]          # EXC fills mid-sweep
+
+    report = await sweep_orphaned_orders(broker)
+    assert 1 not in broker.cancelled, (
+        "cancelled the bracket of a position that appeared before the cancel"
+    )
+    assert broker.cancelled == [2]
+    assert report["raced_symbols"] == ["EXC"]
+
+
+@pytest.mark.asyncio
+async def test_everything_racing_cancels_nothing(no_live_rows):
+    broker = FakeBroker(orders=[order(1, "EXC")], positions=[])
+    broker.positions_after = ["EXC"]
+    report = await sweep_orphaned_orders(broker)
+    assert broker.cancelled == []
+    assert report.get("nothing_to_do") is True
+    assert report["raced_symbols"] == ["EXC"]
+
+
+@pytest.mark.asyncio
+async def test_a_failed_reread_aborts_rather_than_cancelling(no_live_rows):
+    """An unverifiable position list is exactly when not to act."""
+    broker = FakeBroker(orders=[order(1, "EXC")], positions=[])
+
+    calls = {"n": 0}
+    original = broker.get_positions
+
+    async def _fail_second_time():
+        calls["n"] += 1
+        if calls["n"] > 1:
+            raise RuntimeError("IBKR dropped")
+        return await original()
+    broker.get_positions = _fail_second_time
+
+    report = await sweep_orphaned_orders(broker)
+    assert report["status"] == "skipped"
+    assert "re-read" in report["reason"]
+    assert broker.cancelled == []
+
+
+@pytest.mark.asyncio
+async def test_dry_run_does_not_need_the_second_read(no_live_rows):
+    """Dry run reports intent without touching anything, so it returns before
+    the re-read — asserted so the re-read is never quietly made unreachable."""
+    broker = FakeBroker(orders=[order(1, "EXC")], positions=[])
+    report = await sweep_orphaned_orders(broker, dry_run=True)
+    assert report["would_cancel"] == [1]
+    assert broker.position_reads == 1
