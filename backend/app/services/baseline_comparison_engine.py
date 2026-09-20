@@ -275,14 +275,30 @@ def _random_entry_actions(
     occupied = sum(d + 1 for d in usable)
     free = n - occupied
 
-    # The bijection: k sorted offsets in [0, free], each shifted by the space
-    # the EARLIER trades occupy. `consumed` therefore accumulates lengths only
-    # — never the gaps, which the sorted offsets already carry. Adding the
-    # gaps here too double-counts them, which pushes later trades past the end
-    # of the window and silently drops them: the first version did exactly
-    # that and placed 3 of 7 trades, so the count matching this whole
-    # comparison rests on was quietly false.
-    offsets = np.sort(rng.integers(0, free + 1, size=k)) if free > 0 else np.zeros(k, int)
+    # The bijection: k non-decreasing offsets in [0, free], each shifted by the
+    # space the EARLIER trades occupy. `consumed` therefore accumulates lengths
+    # only — never the gaps, which the offsets already carry. Adding the gaps
+    # here too double-counts them, which pushes later trades past the end of
+    # the window and silently drops them: the first version did exactly that
+    # and placed 3 of 7 trades, so the count matching this whole comparison
+    # rests on was quietly false.
+    #
+    # DISTINCT cuts, then subtract ranks — NOT `integers(size=k)` then sort.
+    # Sampling with replacement and sorting is not uniform over layouts: tied
+    # tuples arise one way while distinct ones arise k! ways, so sorting
+    # concentrates probability on the mixed layouts. Measured with k=2 and one
+    # free bar, where the three layouts should be 1/3 each:
+    #
+    #     integers + sort   0.249  0.502  0.249     ← biased
+    #     distinct cuts     0.335  0.333  0.332     ← uniform
+    #
+    # Choosing k distinct values from [0, free + k) and subtracting each one's
+    # rank is the standard bijection onto non-decreasing k-tuples in [0, free],
+    # and it is uniform because the subsets are. Raised in review on #73; the
+    # original uniformity test used a SINGLE trade, where sampling with
+    # replacement is uniform, so it could not see this.
+    offsets = (np.sort(rng.choice(free + k, size=k, replace=False))
+               - np.arange(k)) if free > 0 else np.zeros(k, int)
     lengths = [usable[i] for i in rng.permutation(k)]
 
     consumed = 0
@@ -312,8 +328,23 @@ def random_baseline_distribution(
     if not reference_trades:
         return None
 
-    durations = [max(1, int(t.hold_days)) for t in reference_trades]
-    reference_return = sum(t.pnl for t in reference_trades) / starting_capital * 100.0
+    # Zero-duration trades are EXCLUDED, not rounded up to one.
+    #
+    # simulate_positions force-closes a position still open at the last bar so
+    # Buy & Hold produces a realized trade. A BUY on that final bar therefore
+    # exits on the same bar: hold_days == 0, and pnl == 0 because entry and
+    # exit take the same price. Coercing that to a 1-day hold — which the
+    # first version did, via max(1, ...) — hands the random draws a day of
+    # exposure the reference never had, and an extra trade, so the matching
+    # this whole comparison rests on is off by one in both count and duration.
+    #
+    # Dropping them does not move the reference return: their P&L is exactly
+    # zero. Raised in review on #73.
+    matched = [t for t in reference_trades if int(t.hold_days) > 0]
+    if not matched:
+        return None
+    durations = [int(t.hold_days) for t in matched]
+    reference_return = sum(t.pnl for t in matched) / starting_capital * 100.0
 
     rng = np.random.default_rng(seed)
     returns: list[float] = []
@@ -325,15 +356,27 @@ def random_baseline_distribution(
         trade_counts.append(len(trades))
 
     arr = np.array(returns, dtype=float)
-    # Strictly-less-than, so a model that merely ties the draws does not get
-    # credit for beating them.
-    percentile = float((arr < reference_return).mean() * 100.0)
+    # MID-RANK, the standard tie correction: ties count half.
+    #
+    # A strict `<` was wrong in the direction that matters most. On a flat tape
+    # a reference that ties every single draw scored 0 — the bottom of the
+    # distribution — and _verdict(0) called it "inverted or harmful". Tying
+    # every draw is the definition of indistinguishable, not of harmful, and
+    # that is exactly the verdict this tool exists to get right.
+    #
+    # Mid-rank gives that case 50 and still refuses to credit a tie as a win:
+    # tying everything lands mid-distribution, beating everything is 100,
+    # losing to everything is 0. Raised in review on #73.
+    below = float((arr < reference_return).sum())
+    equal = float((arr == reference_return).sum())
+    percentile = (below + 0.5 * equal) / len(arr) * 100.0
 
     return {
         "draws": draws,
         "seed": seed,
         "reference_return_pct": round(reference_return, 2),
-        "reference_trades": len(reference_trades),
+        "reference_trades": len(matched),
+        "excluded_zero_duration_trades": len(reference_trades) - len(matched),
         "random_trades_median": int(np.median(trade_counts)),
         "random_return_mean_pct": round(float(arr.mean()), 2),
         "random_return_p05_pct": round(float(np.percentile(arr, 5)), 2),

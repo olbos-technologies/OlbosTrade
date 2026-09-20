@@ -208,13 +208,25 @@ def test_the_result_is_reproducible():
 
     a = random_baseline_distribution(dates, closes, ref_trades, draws=50, seed=42)
     b = random_baseline_distribution(dates, closes, ref_trades, draws=50, seed=42)
-    c = random_baseline_distribution(dates, closes, ref_trades, draws=50, seed=43)
 
     assert a == b
-    assert a["percentile_of_random"] != c["percentile_of_random"] or \
-        a["random_return_mean_pct"] != c["random_return_mean_pct"], (
-            "two different seeds produced identical results — the seed is "
-            "not reaching the generator")
+
+
+def test_the_seed_reaches_the_generator():
+    """Checked on the LAYOUTS, not on the summary statistics.
+
+    The first version compared two runs' mean return under different seeds and
+    was brittle for a reason worth keeping: on a smooth exponential tape the
+    draw-to-draw spread is small enough that the rounded mean collides, so the
+    test failed while the seeding was perfectly correct. Layouts differ
+    whenever the generator differs, with nothing rounded away.
+    """
+    a = _random_entry_actions(200, [5] * 4, _rng(42))
+    b = _random_entry_actions(200, [5] * 4, _rng(42))
+    c = _random_entry_actions(200, [5] * 4, _rng(43))
+
+    assert a == b, "the same seed produced different layouts"
+    assert a != c, "two different seeds produced identical layouts"
 
 
 def test_random_draws_match_the_reference_trade_count():
@@ -262,13 +274,102 @@ def test_the_verdict_is_monotonic():
     assert seen == sorted(seen), "verdict bands are not monotonic in percentile"
 
 
-def test_a_tie_does_not_count_as_beating_random():
-    """Strictly-less-than. A model that merely reproduces the draws should sit
-    at the bottom, not be credited with beating them."""
+def test_tying_every_draw_is_indistinguishable_not_harmful():
+    """The tie case, and my first version of this test had it backwards.
+
+    It asserted percentile == 0 for a reference that ties every draw and
+    called that correct, because strict `<` "refuses to credit a tie as a
+    win". But 0 is the BOTTOM of the distribution, and _verdict(0) reads
+    "inverted or harmful" — so a signal that exactly matches chance was
+    reported as actively damaging. That is the single worst thing this tool
+    could say wrongly, and my own test was pinning it. Raised in review.
+
+    Mid-rank puts an all-tie reference at 50 and still does not credit a tie
+    as a win.
+    """
     dates, closes = _flat_market()
     ref = [_trade(5, pnl=0.0) for _ in range(3)]
 
     out = random_baseline_distribution(dates, closes, ref, draws=50)
 
     assert out["reference_return_pct"] == 0.0
+    assert out["percentile_of_random"] == 50.0
+    assert "indistinguishable" in out["verdict"]
+
+
+def test_beating_every_draw_still_scores_100():
+    """The tie correction must not blunt a genuine win."""
+    arr_ref = 999.0
+    dates, closes = _flat_market()
+    ref = [_trade(5, pnl=arr_ref * STARTING_CAPITAL_DEFAULT / 100.0)]
+
+    out = random_baseline_distribution(dates, closes, ref, draws=30)
+
+    assert out["percentile_of_random"] == 100.0
+    assert "beats random" in out["verdict"]
+
+
+def test_losing_to_every_draw_still_scores_0():
+    dates, closes = _rising_market()
+    ref = [_trade(10, pnl=-STARTING_CAPITAL_DEFAULT * 0.9)]
+
+    out = random_baseline_distribution(dates, closes, ref, draws=30)
+
     assert out["percentile_of_random"] == 0.0
+    assert "inverted or harmful" in out["verdict"]
+
+
+# ── layout uniformity ───────────────────────────────────────────────────────
+
+def test_multi_trade_layouts_are_sampled_uniformly():
+    """The bias the single-trade test could not see.
+
+    `rng.integers(size=k)` then sort is NOT uniform over layouts: a tied tuple
+    arises one way while a distinct one arises k! ways, so sorting piles
+    probability onto the mixed layouts. With k=2 and one free bar the three
+    valid layouts measured 0.249 / 0.502 / 0.249 against a uniform 1/3.
+
+    That skews which parts of the tape random entries sample, which is the
+    whole basis of the comparison. Two 1-bar trades in a 5-bar window is the
+    smallest case that shows it.
+    """
+    from collections import Counter
+
+    rng = _rng(0)
+    counts = Counter()
+    for _ in range(30000):
+        actions = _random_entry_actions(5, [1, 1], rng)
+        counts[tuple(i for i, a in enumerate(actions) if a == "BUY")] += 1
+
+    total = sum(counts.values())
+    assert len(counts) == 3, f"expected 3 valid layouts, saw {sorted(counts)}"
+    for layout, n in counts.items():
+        share = n / total
+        assert 0.30 < share < 0.37, (
+            f"layout {layout} occurred {share:.3f} of the time, not ~0.333 — "
+            f"the sampler is not uniform: "
+            f"{ {k: round(v / total, 3) for k, v in counts.items()} }")
+
+
+# ── force-closed trades ─────────────────────────────────────────────────────
+
+def test_a_zero_duration_trade_is_excluded_not_rounded_up():
+    """simulate_positions force-closes a position open at the last bar, so a
+    BUY there exits on the same bar: hold_days == 0, pnl == 0. Rounding that
+    to a 1-day hold hands the random draws exposure and a trade the reference
+    never had — the matching is then off by one in both count and duration."""
+    dates, closes = _rising_market()
+    ref = [_trade(10, pnl=100.0), _trade(0, pnl=0.0), _trade(5, pnl=50.0)]
+
+    out = random_baseline_distribution(dates, closes, ref, draws=40)
+
+    assert out["reference_trades"] == 2
+    assert out["excluded_zero_duration_trades"] == 1
+    assert out["random_trades_median"] == 2
+
+
+def test_a_reference_of_only_zero_duration_trades_has_no_baseline():
+    """Nothing real to match against — same reasoning as an empty reference."""
+    dates, closes = _rising_market()
+    assert random_baseline_distribution(
+        dates, closes, [_trade(0, pnl=0.0)]) is None
