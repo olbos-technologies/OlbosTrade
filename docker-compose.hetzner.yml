@@ -65,6 +65,23 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://olbosquant:${OLBOSTRADE_DB_PASSWORD}@olbostrade-db:5432/olbostrade
       TRUSTED_PROXY_SECRET: "${TRUSTED_PROXY_SECRET:?set TRUSTED_PROXY_SECRET in backend/.env.prod, generated with openssl rand -hex 32}"
+      # REQUIRED, with no default, and that is the whole point.
+      #
+      # settings.auth_enabled defaults to False in config.py — deliberately, so
+      # a single-operator install keeps working on nginx Basic Auth alone. But
+      # that default is dangerous HERE, because an absent or misspelled line in
+      # .env.prod is indistinguishable from AUTH_ENABLED=false: the stack comes
+      # up healthy, the site works, and application auth is simply off.
+      #
+      # The documented rollout is to ship app auth BEHIND Basic Auth, verify
+      # it, and only then remove Basic Auth. A silent false is exactly the
+      # failure that lets you take down the outer wall while the inner one was
+      # never up — and the site looks identical either way.
+      #
+      # So compose refuses to start rather than guess. Same contract as
+      # TRUSTED_PROXY_SECRET above; the app's own default is unchanged for
+      # anyone running outside this compose file.
+      AUTH_ENABLED: "${AUTH_ENABLED:?set AUTH_ENABLED=true or AUTH_ENABLED=false in backend/.env.prod — it must be an explicit choice, see deploy/hetzner/README.md}"
     volumes:
       # Trained models are not committed (see .gitignore) and the build context
       # is ./backend, so nothing puts a .pkl inside the image. Mounting the
