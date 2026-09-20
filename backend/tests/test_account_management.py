@@ -46,6 +46,38 @@ NEW_PASSWORD = "a different sufficiently long passphrase"
 
 # ── in-memory stand-in ───────────────────────────────────────────────────────
 
+def _revoked_copy(session: UserSession) -> UserSession:
+    """The same session as the database would report it a moment later."""
+    clone = UserSession(
+        id=session.id, user_id=session.user_id, token_hash=session.token_hash,
+        expires_at=session.expires_at, created_at=session.created_at,
+        user_agent=session.user_agent, ip=session.ip,
+    )
+    clone.revoked_at = datetime.now(timezone.utc)
+    return clone
+
+
+def _require_uuid(column: str, value) -> None:
+    """Refuse a string where the column is UUID(as_uuid=True).
+
+    The first version of this stand-in compared `str(a) == str(b)`, so a
+    handler passing the session's `str(user.id)` into a UUID predicate passed
+    here and would have raised an asyncpg binding error against real Postgres.
+    Copilot caught it on #70; nothing in this file could have.
+
+    Being strict about types is the only way a stand-in catches that class at
+    all — a permissive fake does not merely fail to find the bug, it actively
+    certifies the broken code as working.
+    """
+    import uuid as _uuid
+    if not isinstance(value, _uuid.UUID):
+        raise AssertionError(
+            f"{column} is UUID(as_uuid=True) but the query bound "
+            f"{type(value).__name__} {value!r}. asyncpg would reject this "
+            f"before the query ran. Parse it with uuid.UUID() at the call site."
+        )
+
+
 class _Scalars:
     def __init__(self, rows):
         self._rows = rows
@@ -73,6 +105,17 @@ class _Store:
         self.users: list[User] = []
         self.sessions: list[UserSession] = []
         self.commits = 0
+        #: Simulates the TOCTOU window: the session is VALID when
+        #: require_session resolves it (a UserSession+User join) and REVOKED
+        #: when the handler revalidates it (a plain UserSession lookup by
+        #: token_hash). Those are different query shapes, which is what makes
+        #: the window reproducible at all.
+        #:
+        #: Revoking the row outright instead would make require_session reject
+        #: the request on the way in, and the 401 would prove nothing about
+        #: the handler's own check — which is exactly how the first version of
+        #: these two tests passed with the revalidation deleted.
+        self.revoke_between_dependency_and_handler = False
 
 
 class _FakeSession:
@@ -98,18 +141,25 @@ class _FakeSession:
                 return _Result([u for u in self.store.users
                                 if u.email == params["email_1"]])
             if "id_1" in params:
+                _require_uuid("User.id", params["id_1"])
                 return _Result([u for u in self.store.users
-                                if str(u.id) == str(params["id_1"])])
+                                if u.id == params["id_1"]])
             raise AssertionError(f"unexpected User query params: {sorted(params)}")
 
         if entities == ["UserSession"]:
             rows = list(self.store.sessions)
             if "token_hash_1" in params:
                 rows = [s for s in rows if s.token_hash == params["token_hash_1"]]
+                if self.store.revoke_between_dependency_and_handler:
+                    # A copy, so the store still holds a live row — the point
+                    # is what THIS query sees, not a permanent change.
+                    rows = [_revoked_copy(s) for s in rows]
             if "user_id_1" in params:
-                rows = [s for s in rows if str(s.user_id) == str(params["user_id_1"])]
+                _require_uuid("UserSession.user_id", params["user_id_1"])
+                rows = [s for s in rows if s.user_id == params["user_id_1"]]
             if "id_1" in params:
-                rows = [s for s in rows if str(s.id) == str(params["id_1"])]
+                _require_uuid("UserSession.id", params["id_1"])
+                rows = [s for s in rows if s.id == params["id_1"]]
             # revoked_at IS NULL and expires_at > now appear as SQL, not params;
             # applying them here keeps the stand-in honest about what the real
             # query would return.
@@ -119,6 +169,11 @@ class _FakeSession:
             if "expires_at >" in sql:
                 now = datetime.now(timezone.utc)
                 rows = [s for s in rows if s.expires_at > now]
+            # ORDER BY is honoured rather than ignored: a route that promises
+            # "newest first" and a stand-in that returns insertion order agree
+            # by accident, and the test then proves nothing about the ordering.
+            if "ORDER BY" in sql and "created_at DESC" in sql:
+                rows = sorted(rows, key=lambda s: s.created_at, reverse=True)
             return _Result(rows)
 
         if entities == ["UserSession", "User"]:
@@ -433,4 +488,120 @@ def test_the_login_route_does_not_hardcode_a_password_length():
             / "backend" / "app" / "api" / "routes" / "auth.py").read_text()
     assert "max_length=1024" not in text, (
         "auth.py hardcodes a password max_length again — use MAX_PASSWORD_LEN"
+    )
+
+
+# ── the session is revalidated inside the mutating transaction ───────────────
+
+async def test_a_session_revoked_mid_flight_cannot_change_the_password(client, user, store):
+    """require_session checked the session before the handler ran.
+
+    A session revoked in that window — "log out my other devices" on another
+    tab, or expiry — must not still be able to change the password. Simulated
+    by revoking the row after login and before the call, which is the same
+    state the race produces.
+    """
+    from app.services.auth_service import verify_password
+
+    async with client:
+        await _login(client)
+        # Valid when require_session resolves it, revoked when the handler
+        # revalidates it — the race, not a blanket revocation.
+        store.revoke_between_dependency_and_handler = True
+        r = await client.post("/api/auth/password", json={
+            "current_password": PASSWORD,
+            "new_password": NEW_PASSWORD,
+        })
+
+    assert r.status_code == 401
+    assert verify_password(PASSWORD, user.password_hash), (
+        "a revoked session changed the password"
+    )
+
+
+async def test_a_session_revoked_mid_flight_cannot_revoke_others(client, user, store):
+    other = _other_session(store, user)
+    async with client:
+        await _login(client)
+        store.revoke_between_dependency_and_handler = True
+        r = await client.post(f"/api/auth/sessions/{other.id}/revoke")
+
+    assert r.status_code == 401
+    assert other.revoked_at is None, "a revoked session revoked another on its way out"
+
+
+# ── ordering ─────────────────────────────────────────────────────────────────
+
+async def test_sessions_are_listed_newest_first(client, user, store):
+    """Asserted with DISTINCT timestamps and an order-honouring stand-in.
+
+    Both halves matter: a stand-in that returns insertion order agrees with
+    "newest first" by accident, and identical timestamps make any order
+    correct. Copilot raised this on #70.
+    """
+    old = _other_session(store, user, ua="Oldest")
+    old.created_at = datetime.now(timezone.utc) - timedelta(days=3)
+    middle = _other_session(store, user, ua="Middle")
+    middle.token_hash = "b" * 64
+    middle.created_at = datetime.now(timezone.utc) - timedelta(days=1)
+
+    async with client:
+        await _login(client)          # newest — created now
+        r = await client.get("/api/auth/sessions")
+
+    agents = [s["user_agent"] for s in r.json()["sessions"]]
+    assert agents[-2:] == ["Middle", "Oldest"], f"not newest-first: {agents}"
+    assert r.json()["sessions"][0]["current"] is True
+
+
+# ── the stand-in itself ──────────────────────────────────────────────────────
+
+def test_the_stand_in_rejects_a_string_where_a_uuid_belongs():
+    """Guards the guard that caught a real bug.
+
+    The original stand-in compared str(a) == str(b), so a handler passing the
+    session's str(user.id) into a UUID predicate passed here while asyncpg
+    would have rejected it. A permissive fake does not merely miss that class —
+    it certifies the broken code as working. If this assertion ever stops
+    firing, the fake has gone permissive again.
+    """
+    import uuid as _uuid
+    with pytest.raises(AssertionError, match="UUID"):
+        _require_uuid("User.id", str(_uuid.uuid4()))
+    _require_uuid("User.id", _uuid.uuid4())     # the typed value is accepted
+
+
+def test_the_password_change_locks_the_user_row():
+    r"""Structural, and weaker than the rest of this file — say so plainly.
+
+    Two simultaneous password changes from different sessions each read the
+    same active set, each skip their own token hash, and each revoke the
+    other: both succeed and the user is logged out of both, breaking the
+    guarantee the route makes. Sourcery raised it on #70 and the fix is
+    with_for_update() on the user row.
+
+    An in-memory stand-in has no concurrency and no row locks, so it CANNOT
+    demonstrate that. What this asserts is only that the lock is still
+    requested — enough to catch someone deleting it while tidying, not enough
+    to prove it works. The real proof would be two concurrent requests against
+    Postgres, which this suite has no way to run.
+    """
+    import inspect
+
+    from app.api.routes import auth as auth_mod
+
+    # COMMENTS STRIPPED, and the parentheses matter. The first version of this
+    # test searched the raw source for "with_for_update" — which also appears
+    # in the comment explaining why the lock is there. Deleting the call left
+    # the comment, the test passed, and the guard proved nothing. Found by
+    # mutating the call away and checking whether the mutation applied.
+    source = "\n".join(
+        line for line in inspect.getsource(auth_mod.change_password).splitlines()
+        if not line.lstrip().startswith("#")
+    )
+    assert ".with_for_update()" in source, (
+        "the password-change route no longer locks the user row. Two "
+        "concurrent changes can then revoke each other's session and log the "
+        "user out of both. If this moved to an explicit transaction or an "
+        "advisory lock, point this test at that instead of deleting it."
     )

@@ -19,8 +19,8 @@ from app.api.rate_limit import client_ip, login_rate_limit
 from app.core.config import settings
 from app.services.auth_service import (
     MAX_PASSWORD_LEN, MIN_PASSWORD_LEN, SESSION_COOKIE_NAME, hash_password,
-    hash_token, new_session_token, normalize_email, session_expiry,
-    verify_password,
+    hash_token, is_session_valid, new_session_token, normalize_email,
+    session_expiry, verify_password,
 )
 from app.utils.logger import get_logger
 
@@ -229,6 +229,31 @@ from app.services.auth_service import hash_password as _hash_password  # noqa: E
 _DUMMY_HASH = _hash_password("not-a-real-password-timing-equaliser")
 
 
+def _authenticated_user_id(request: Request) -> "uuid.UUID":
+    """The signed-in user's id, AS A UUID.
+
+    resolve_session_user stores it as `str(user.id)` (auth_deps.py:150) while
+    User.id is UUID(as_uuid=True). Passing that string straight into a UUID
+    predicate fails asyncpg binding before the query runs — a 500 against real
+    Postgres, invisible to any test whose stand-in compares strings.
+
+    Parsed once here rather than at three call sites, so the next handler
+    cannot reintroduce it by forgetting. A value that does not parse means the
+    session carries something that is not an id, which is not a request to
+    serve: 401, failing closed.
+    """
+    import uuid as _uuid
+
+    raw = (current_user(request) or {}).get("id")
+    if not raw:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    try:
+        return _uuid.UUID(str(raw))
+    except (ValueError, AttributeError, TypeError):
+        logger.error("Session carries an unparseable user id: %r", raw)
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+
 @router.post("/password")
 async def change_password(
     body: PasswordChangeRequest,
@@ -264,19 +289,44 @@ async def change_password(
     if not settings.auth_enabled:
         raise HTTPException(status_code=404, detail="Authentication is not enabled")
 
-    user_id = (current_user(request) or {}).get("id")
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Authentication required")
+    user_id = _authenticated_user_id(request)
 
     token = request.cookies.get(SESSION_COOKIE_NAME)
     current_hash = hash_token(token) if token else None
 
     async with AsyncSessionLocal() as db:
+        # with_for_update serialises concurrent password changes for this user.
+        # Without it, two simultaneous changes from different sessions each
+        # read the same active set, each skip their own token hash, and each
+        # revoke the other — both succeed and the user is logged out of both,
+        # which is precisely the guarantee this route makes. Caught by Sourcery
+        # on #70.
         user = (await db.execute(
-            select(User).where(User.id == user_id).limit(1)
+            select(User).where(User.id == user_id).limit(1).with_for_update()
         )).scalar_one_or_none()
         if user is None or not user.is_active:
             raise HTTPException(status_code=401, detail="Authentication required")
+
+        # REVALIDATE THE SESSION INSIDE THIS TRANSACTION.
+        #
+        # require_session checked it before the handler ran. A session revoked
+        # in that window — by "log out my other devices" on another tab, or by
+        # expiry — would otherwise still change the password here. Caught by
+        # Sourcery on #70.
+        #
+        # The practical exposure was small, because this route also demands the
+        # current password and anyone holding that can simply log in again. It
+        # is fixed anyway: the guarantee "a revoked session cannot act" is
+        # worth having hold exactly rather than nearly, and the check is one
+        # query on a path that already makes several.
+        if current_hash is not None:
+            live = (await db.execute(
+                select(UserSession).where(
+                    UserSession.token_hash == current_hash
+                ).limit(1)
+            )).scalar_one_or_none()
+            if not is_session_valid(live):
+                raise HTTPException(status_code=401, detail="Authentication required")
 
         if not verify_password(body.current_password, user.password_hash):
             logger.warning("Password change refused for %s — wrong current password",
@@ -332,9 +382,7 @@ async def list_sessions(request: Request) -> dict:
     if not settings.auth_enabled:
         raise HTTPException(status_code=404, detail="Authentication is not enabled")
 
-    user_id = (current_user(request) or {}).get("id")
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Authentication required")
+    user_id = _authenticated_user_id(request)
 
     token = request.cookies.get(SESSION_COOKIE_NAME)
     current_hash = hash_token(token) if token else None
@@ -393,9 +441,7 @@ async def revoke_session(session_id: str, request: Request) -> dict:
     if not settings.auth_enabled:
         raise HTTPException(status_code=404, detail="Authentication is not enabled")
 
-    user_id = (current_user(request) or {}).get("id")
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Authentication required")
+    user_id = _authenticated_user_id(request)
 
     try:
         target = _uuid.UUID(session_id)
@@ -403,7 +449,22 @@ async def revoke_session(session_id: str, request: Request) -> dict:
         # A malformed id is not a server error and must not reach the database.
         raise HTTPException(status_code=404, detail="No such session")
 
+    token = request.cookies.get(SESSION_COOKIE_NAME)
+    current_hash = hash_token(token) if token else None
+
     async with AsyncSessionLocal() as db:
+        # Same revalidation as the password route, same reason: a session
+        # revoked between require_session and here must not be able to revoke
+        # anything else on its way out.
+        if current_hash is not None:
+            live = (await db.execute(
+                select(UserSession).where(
+                    UserSession.token_hash == current_hash
+                ).limit(1)
+            )).scalar_one_or_none()
+            if not is_session_valid(live):
+                raise HTTPException(status_code=401, detail="Authentication required")
+
         session = (await db.execute(
             select(UserSession).where(
                 UserSession.id == target,
