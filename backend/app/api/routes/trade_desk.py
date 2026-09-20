@@ -16,6 +16,7 @@ from pydantic import BaseModel
 from decimal import Decimal
 
 from app.api.deps import require_api_key
+from app.api.tier_deps import require_broker_access
 from app.api.rate_limit import rate_limit
 from app.broker.ibkr_coordinator import Priority, ibkr_coordinator
 from app.services.execution_mode import ExecutionMode, execution_mode_manager
@@ -459,7 +460,7 @@ async def get_execution_mode():
     return execution_mode_manager.summary()
 
 
-@router.post("/execution-mode", dependencies=[Depends(require_api_key), Depends(rate_limit)])
+@router.post("/execution-mode", dependencies=[Depends(require_api_key), Depends(rate_limit), Depends(require_broker_access)])
 async def set_execution_mode(body: SetExecutionModeRequest):
     try:
         mode = ExecutionMode(body.mode)
@@ -757,7 +758,7 @@ async def evaluate_options(req: OptionsEvaluateRequest):
     }
 
 
-@router.post("/approve/{signal_id}", dependencies=[Depends(require_api_key), Depends(rate_limit)])
+@router.post("/approve/{signal_id}", dependencies=[Depends(require_api_key), Depends(rate_limit), Depends(require_broker_access)])
 async def approve_signal(signal_id: str):
     """User approves a pending signal → executes order."""
     signal = await _resolve_pending_approval(signal_id, "approved")
@@ -818,7 +819,7 @@ async def _resolve_rotation_review(review_id: str, resolution: str) -> Optional[
 
 
 @router.post("/rotation-review/{review_id}/approve",
-             dependencies=[Depends(require_api_key), Depends(rate_limit)])
+             dependencies=[Depends(require_api_key), Depends(rate_limit), Depends(require_broker_access)])
 async def approve_rotation_review(review_id: str):
     """Approve a replacement: close the incumbent, then enter the challenger.
 
@@ -892,7 +893,7 @@ async def approve_rotation_review(review_id: str):
 
 
 @router.post("/rotation-review/{review_id}/reject",
-             dependencies=[Depends(require_api_key), Depends(rate_limit)])
+             dependencies=[Depends(require_api_key), Depends(rate_limit), Depends(require_broker_access)])
 async def reject_rotation_review(review_id: str):
     """Decline a replacement. Nothing is closed and nothing is entered."""
     review = await _resolve_rotation_review(review_id, "rejected")
@@ -907,7 +908,7 @@ async def reject_rotation_review(review_id: str):
     return out
 
 
-@router.post("/reject/{signal_id}", dependencies=[Depends(require_api_key), Depends(rate_limit)])
+@router.post("/reject/{signal_id}", dependencies=[Depends(require_api_key), Depends(rate_limit), Depends(require_broker_access)])
 async def reject_signal(signal_id: str):
     """User rejects a pending signal — no order sent."""
     signal = await _resolve_pending_approval(signal_id, "rejected")
@@ -929,7 +930,7 @@ async def reject_signal(signal_id: str):
 
 # ── Manual trade ──────────────────────────────────────────────────────────────
 
-@router.post("/manual-trade", dependencies=[Depends(require_api_key), Depends(rate_limit)])
+@router.post("/manual-trade", dependencies=[Depends(require_api_key), Depends(rate_limit), Depends(require_broker_access)])
 async def manual_trade(req: ManualTradeRequest):
     """
     Force a manual equity order — bypasses signal scoring and IV filters
@@ -962,7 +963,7 @@ class ClosePositionRequest(BaseModel):
     limit_price: Optional[float] = None
 
 
-@router.post("/close-position", dependencies=[Depends(require_api_key), Depends(rate_limit)])
+@router.post("/close-position", dependencies=[Depends(require_api_key), Depends(rate_limit), Depends(require_broker_access)])
 async def close_position(req: ClosePositionRequest):
     """
     Manually close an open position — the operator's own "I want out now"
@@ -1041,7 +1042,7 @@ class CloseUntrackedPositionRequest(BaseModel):
     limit_price: Optional[float] = None
 
 
-@router.post("/close-untracked-position", dependencies=[Depends(require_api_key), Depends(rate_limit)])
+@router.post("/close-untracked-position", dependencies=[Depends(require_api_key), Depends(rate_limit), Depends(require_broker_access)])
 async def close_untracked_position(req: CloseUntrackedPositionRequest):
     """
     Close a live broker equity position that has no matching DB Trade row —
@@ -2002,7 +2003,7 @@ def _require_options_spread(req: "ScanSignalRequest") -> dict:
     return spread
 
 
-@router.post("/signal", dependencies=[Depends(require_api_key), Depends(rate_limit)])
+@router.post("/signal", dependencies=[Depends(require_api_key), Depends(rate_limit), Depends(require_broker_access)])
 async def submit_scan_signal(req: ScanSignalRequest):
     """
     Submit a signal from scan panel / Equity Desk for execution routing.

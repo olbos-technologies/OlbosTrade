@@ -69,7 +69,11 @@ type Plan = {
 //
 // Tier is still assigned by the operator — there is no billing in this
 // repository — so all three cards lead to the same queue. The limits below
-// remain marked as planned until the tier gate ships.
+// ARE enforced now: backend/app/services/tier_limits.py is the table the
+// API reads, and test_tier_limits_match_the_landing_page parses this file
+// and fails if the two disagree. Editing a number here without editing it
+// there breaks the build, which is the point — a pricing card that
+// overstates what the API grants is a product defect, not a typo.
 const PLANS: Plan[] = [
   {
     name: "Free",
@@ -84,9 +88,9 @@ const PLANS: Plan[] = [
       { label: "Connect your broker (Copilot execution)", included: false },
     ],
     limits: [
-      { feature: "Watchlist coverage", limit: "1 ticker (planned)" },
-      { feature: "Signal delay", limit: "End of day (planned)" },
-      { feature: "Historical data", limit: "1 year (planned)" },
+      { feature: "Watchlist coverage", limit: "1 ticker" },
+      { feature: "Signal delay", limit: "End of day" },
+      { feature: "Historical data", limit: "1 year" },
       { feature: "Broker connections", limit: "None" },
     ],
     cta: { label: "Request access", href: "/request-access", internal: true },
@@ -104,9 +108,9 @@ const PLANS: Plan[] = [
       { label: "Connect your broker (Copilot execution)", included: false },
     ],
     limits: [
-      { feature: "Watchlist coverage", limit: "Full watchlist (planned)" },
-      { feature: "Signal delay", limit: "Live (planned)" },
-      { feature: "Historical data", limit: "5 years (planned)" },
+      { feature: "Watchlist coverage", limit: "Full watchlist" },
+      { feature: "Signal delay", limit: "Live" },
+      { feature: "Historical data", limit: "5 years" },
       { feature: "Broker connections", limit: "None" },
     ],
     cta: { label: "Request access", href: "/request-access", internal: true },
@@ -124,10 +128,10 @@ const PLANS: Plan[] = [
       { label: "Fully unattended Autopilot execution", included: false },
     ],
     limits: [
-      { feature: "Watchlist coverage", limit: "Full watchlist (planned)" },
-      { feature: "Signal delay", limit: "Live (planned)" },
-      { feature: "Historical data", limit: "5 years (planned)" },
-      { feature: "Broker connections", limit: "1 (planned)" },
+      { feature: "Watchlist coverage", limit: "Full watchlist" },
+      { feature: "Signal delay", limit: "Live" },
+      { feature: "Historical data", limit: "5 years" },
+      { feature: "Broker connections", limit: "Your own broker" },
     ],
     cta: { label: "Request access", href: "/request-access", internal: true },
   },
@@ -292,10 +296,10 @@ export default function Landing() {
             <div className="landing-eyebrow">Pricing</div>
             <h2 className="landing-h2">Free to explore. Pro and Elite when billing ships.</h2>
             <p className="landing-lede">
-              There is no signup or billing system wired up yet — every plan opens the same
-              paper terminal today, including Manual, Copilot, and Autopilot controls. The
-              Pro ($29) and Elite ($99) prices and limits below are the intended future tiers,
-              shown honestly and marked as planned / not enforced.
+              The limits below are enforced by the API today. What is not wired up is
+              billing: there is no card to enter, and your tier is set by hand when your
+              access request is approved. The Pro ($29) and Elite ($99) prices are the
+              intended future pricing, and nothing charges you for anything yet.
             </p>
             <div className="pricing-grid">
               {PLANS.map((plan) => (

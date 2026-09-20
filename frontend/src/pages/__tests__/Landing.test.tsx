@@ -55,7 +55,12 @@ describe("Landing", () => {
     const bodyText = document.body.textContent || "";
     expect(bodyText).not.toMatch(/mailto:/i);
     expect(bodyText).not.toMatch(/mangpijasuan@/i);
-    expect(bodyText).toMatch(/not enforced/i);
+    // Was /not enforced/i. The tier gate ships in this change, so the page
+    // saying otherwise would now be the inaccurate claim — but billing still
+    // does not exist, and that hedge has to stay honest.
+    expect(bodyText).toMatch(/billing/i);
+    expect(bodyText).not.toMatch(/not enforced/i);
+    expect(bodyText).not.toMatch(/\(planned\)/i);
   });
 
   it("never sends a signup CTA back to the terminal", () => {
