@@ -19,6 +19,34 @@ import pytest
 from app.api.auth_deps import PUBLIC_EXACT, PUBLIC_PREFIXES, is_public_path
 
 
+def _walk(routes, prefix: str = ""):
+    """Yield every route path, descending into included routers.
+
+    TWO SHAPES, because FastAPI changed one. Through 0.111 — the version
+    requirements.txt pins — include_router() FLATTENED the child's routes into
+    app.routes, so every path was a direct member. From ~0.135 it appends a
+    lazy `_IncludedRouter` wrapper instead, holding the child router and the
+    prefix it was mounted at, and resolves it at request time.
+
+    That difference is not cosmetic here. Under the newer shape app.routes
+    holds ten real routes and thirty-one wrappers, so the coverage assertion
+    below found nothing to object to and PASSED — a security test reporting
+    green because it could no longer see the thing it audits. The one signal
+    was test_websocket_routes_are_enumerated failing, which is exactly why
+    that canary exists. Handle both shapes rather than pinning a version,
+    since the pin is what would silently rot next time.
+    """
+    for r in routes:
+        original = getattr(r, "original_router", None)
+        if original is not None:
+            ctx = getattr(r, "include_context", None)
+            yield from _walk(original.routes, prefix + getattr(ctx, "prefix", ""))
+            continue
+        path = getattr(r, "path", None)
+        if path:
+            yield prefix + path
+
+
 def _registered_paths() -> list[str]:
     """
     Every route, HTTP and WebSocket alike.
@@ -32,9 +60,25 @@ def _registered_paths() -> list[str]:
     """
     import app.main as main_mod
     return sorted({
-        r.path for r in main_mod.app.routes
-        if getattr(r, "path", "").startswith(("/api", "/health", "/ws"))
+        p for p in _walk(main_mod.app.routes)
+        if p.startswith(("/api", "/health", "/ws"))
     })
+
+
+def test_enough_routes_are_visible_to_audit():
+    """A floor, so "sees nothing" can never again read as "nothing wrong".
+
+    Every other assertion in this file is of the form "no path is X". All of
+    them hold vacuously against an empty list, which is precisely what a
+    FastAPI upgrade produced. This is the one assertion that fails when the
+    enumeration breaks rather than when the app does.
+    """
+    paths = _registered_paths()
+    assert len(paths) > 100, (
+        f"only {len(paths)} routes visible, but this app registers ~160. The "
+        "enumeration is broken, not the app — every coverage assertion below "
+        "is passing vacuously. See _walk()."
+    )
 
 
 def test_websocket_routes_are_enumerated():
@@ -78,6 +122,16 @@ def test_every_registered_route_is_protected_or_explicitly_public():
         # container unhealthy and restarts it in a loop.
         "/api/health",
         "/health",
+        # Asking for an account and redeeming an approved one. The caller has
+        # no account yet, which is the entire point of both routes.
+        #
+        # The operator's review queue is NOT here, and not on this prefix. It
+        # is a GET on /api/admin/access-requests, because this allowlist
+        # matches on PATH and not on METHOD: had the queue been a GET on
+        # /api/access-requests, the entry below would have published every
+        # pending email address to anyone who asked.
+        "/api/access-requests",
+        "/api/access-requests/claim",
     }
     surprising = set(unprotected) - expected_public
     assert not surprising, (

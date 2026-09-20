@@ -1,0 +1,141 @@
+"""
+The AccessRequest model and migration 0032 must describe the same schema.
+
+Same motivation as test_auth_model_schema.py: model/migration drift is
+invisible until an autogenerate run proposes something alarming, or until the
+constraint you thought you had turns out not to exist.
+
+One check here is doing more work than it looks. The partial unique index is
+the ONLY thing making "one live request per address" true — the route's read
+before write is a convenience, not a guarantee, because two requests can
+interleave between the SELECT and the INSERT. And that index is defined by a
+raw SQL predicate, `status = 'pending'`, which no Python reference reaches. So
+if STATUS_PENDING were ever renamed, the model would keep compiling, every
+route test would keep passing, and the index would quietly cover zero rows.
+test_the_partial_index_predicate_matches_the_constant is what fails instead.
+"""
+
+from __future__ import annotations
+
+import pathlib
+import re
+
+import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
+from sqlalchemy.schema import CreateIndex
+
+from app.models.access_request import STATUS_PENDING, STATUSES, AccessRequest
+
+MIGRATION = (pathlib.Path(__file__).parent.parent
+             / "alembic/versions/0032_add_access_requests.py")
+
+
+def _index(name):
+    return next(ix for ix in AccessRequest.__table__.indexes if ix.name == name)
+
+
+def _rendered(name) -> str:
+    return str(CreateIndex(_index(name)).compile(dialect=postgresql.dialect()))
+
+
+def test_the_email_index_is_partial_not_global():
+    """A plain unique index on email would make every denial permanent.
+
+    Asserted on the COMPILED DDL rather than on the postgresql_where kwarg,
+    because a kwarg that a dialect silently ignores is indistinguishable from
+    one that works when you only inspect the Python.
+    """
+    ddl = " ".join(_rendered("idx_access_requests_email_pending").split())
+    assert "UNIQUE INDEX" in ddl
+    assert "WHERE status = 'pending'" in ddl, (
+        f"the email index is not partial — it renders as: {ddl}"
+    )
+
+
+def test_the_partial_index_predicate_matches_the_constant():
+    """The index's predicate is a raw string no refactor will follow.
+
+    Rename STATUS_PENDING and this file is the only thing that notices; the
+    index would keep existing, keep being unique, and keep matching nothing.
+    """
+    ddl = _rendered("idx_access_requests_email_pending")
+    assert f"= '{STATUS_PENDING}'" in ddl, (
+        f"the index filters on a status literal that is not STATUS_PENDING "
+        f"({STATUS_PENDING!r}): {ddl}"
+    )
+
+
+def test_the_migration_creates_the_same_partial_index():
+    """The model describes the table; the migration is what Postgres runs."""
+    sql = MIGRATION.read_text()
+    assert f"status = '{STATUS_PENDING}'" in sql, (
+        "migration 0032 does not create the index partial on STATUS_PENDING — "
+        "the model's guarantee would not exist in a real database"
+    )
+
+
+def test_model_indexes_match_the_migration():
+    sql = MIGRATION.read_text()
+    declared = {ix.name for ix in AccessRequest.__table__.indexes}
+    created = set(re.findall(r'op\.create_index\(\s*"([^"]+)"', sql))
+    assert declared == created, (
+        f"model indexes {sorted(declared)} != migration indexes {sorted(created)}"
+    )
+
+
+def test_every_created_index_is_dropped_again():
+    """A downgrade that leaves indexes behind fails on the next upgrade."""
+    sql = MIGRATION.read_text()
+    created = set(re.findall(r'op\.create_index\(\s*"([^"]+)"', sql))
+    dropped = set(re.findall(r'op\.drop_index\(\s*"([^"]+)"', sql))
+    assert created == dropped, f"created {sorted(created)}, dropped {sorted(dropped)}"
+
+
+def test_model_columns_match_the_migration():
+    sql = MIGRATION.read_text()
+    declared = {c.name for c in AccessRequest.__table__.columns}
+    created = set(re.findall(r'sa\.Column\(\s*"([^"]+)"', sql))
+    assert declared == created, (
+        f"model columns {sorted(declared)} != migration columns {sorted(created)}"
+    )
+
+
+def test_uniqueness_is_declared_exactly_once():
+    """One mechanism per column. Both is not twice as unique, just ambiguous —
+    and it is what made metadata-based creation diverge from 0030."""
+    constraints = {
+        c.name or "<unnamed>"
+        for c in AccessRequest.__table__.constraints
+        if isinstance(c, sa.UniqueConstraint)
+    }
+    assert constraints == set(), (
+        f"AccessRequest declares UNIQUE constraints {sorted(constraints)} as "
+        "well as a unique index; migration 0032 creates only the index"
+    )
+
+
+def test_the_token_column_holds_a_sha256_digest_not_a_token():
+    """64 hex characters. A column wide enough for the plaintext token is the
+    first sign someone stored one."""
+    col = AccessRequest.__table__.c.setup_token_hash
+    assert col.type.length == 64
+    assert col.nullable, "the hash exists only between approval and redemption"
+
+
+def test_the_statuses_a_request_can_hold_fit_the_column():
+    col = AccessRequest.__table__.c.status
+    assert all(len(s) <= col.type.length for s in STATUSES)
+
+
+def test_the_migration_chains_from_the_current_head():
+    """Two migrations sharing a down_revision give alembic two heads, and
+    `alembic upgrade head` then refuses to run at all."""
+    versions = MIGRATION.parent
+    downs = []
+    for f in versions.glob("*.py"):
+        m = re.search(r'^down_revision(?:\s*:[^=]+)?\s*=\s*["\']([^"\']+)',
+                      f.read_text(), re.M)
+        if m:
+            downs.append((m.group(1), f.name))
+    duplicated = {r for r, _ in downs if sum(1 for d, _ in downs if d == r) > 1}
+    assert not duplicated, f"branched revision chain at {sorted(duplicated)}"

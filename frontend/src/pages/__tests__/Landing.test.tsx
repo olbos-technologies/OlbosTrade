@@ -29,24 +29,45 @@ describe("Landing", () => {
     expect(screen.getAllByRole("link", { name: /start paper trading/i }).length).toBeGreaterThan(0);
   });
 
-  it("routes the CTA and Sign In to the existing terminal, not a fabricated auth flow", () => {
+  it("sends every signup CTA to the access queue and Sign In to the terminal", () => {
+    // These used to all point at /terminal, which was honest while the
+    // terminal was open to anyone. With AUTH_ENABLED on it became a dead end
+    // dressed as a call to action: a sign-in screen for an account the visitor
+    // has no way to obtain. Sign In still goes to /terminal — that one is for
+    // people who already have an account.
     renderLanding();
     const ctas = screen.getAllByRole("link", { name: /start paper trading/i });
-    ctas.forEach((cta) => expect(cta).toHaveAttribute("href", "/terminal"));
+    expect(ctas.length).toBeGreaterThan(0);
+    ctas.forEach((cta) => expect(cta).toHaveAttribute("href", "/request-access"));
     const signInLinks = screen.getAllByRole("link", { name: /^sign in$/i });
     expect(signInLinks.length).toBeGreaterThan(0);
     signInLinks.forEach((link) => expect(link).toHaveAttribute("href", "/terminal"));
   });
 
-  it("sends Free, Pro, and Elite plan CTAs to the same paper terminal without a personal mailto", () => {
+  it("sends Free, Pro, and Elite plan CTAs to the same queue without a personal mailto", () => {
+    // One queue for all three, because tier is assigned by the operator and
+    // there is no billing here. A card that implied otherwise would be selling
+    // something this repository cannot deliver.
     renderLanding();
-    const planCtas = screen.getAllByRole("link", { name: /open paper terminal/i });
+    const planCtas = screen.getAllByRole("link", { name: /request access/i });
     expect(planCtas.length).toBe(3);
-    planCtas.forEach((cta) => expect(cta).toHaveAttribute("href", "/terminal"));
+    planCtas.forEach((cta) => expect(cta).toHaveAttribute("href", "/request-access"));
     const bodyText = document.body.textContent || "";
     expect(bodyText).not.toMatch(/mailto:/i);
     expect(bodyText).not.toMatch(/mangpijasuan@/i);
     expect(bodyText).toMatch(/not enforced/i);
+  });
+
+  it("never sends a signup CTA back to the terminal", () => {
+    // The pin that matters. Retargeting three cards and three buttons by hand
+    // is exactly the edit where one gets missed, and the one that is missed
+    // looks fine until someone clicks it.
+    renderLanding();
+    const stragglers = screen
+      .getAllByRole("link")
+      .filter((a) => /start paper trading|start free|request access/i.test(a.textContent || ""))
+      .filter((a) => a.getAttribute("href") !== "/request-access");
+    expect(stragglers.map((a) => a.textContent)).toEqual([]);
   });
 
   it("labels every performance metric as unpublished/placeholder instead of fabricating numbers", () => {

@@ -166,6 +166,44 @@ def login_rate_limit(request: Request) -> None:
     _login_log[key] = recent
 
 
+SIGNUP_WINDOW_S = 3600.0
+SIGNUP_MAX_REQUESTS = 5
+
+_signup_log: dict[str, list[float]] = {}
+
+
+def signup_rate_limit(request: Request) -> None:
+    """
+    Throttle access-request submissions by source IP.
+
+    Keyed on client_ip() and NOT on any header the caller controls, for the
+    same reason login_rate_limit is — read that function's history before
+    changing anything here. A public form is the one endpoint on this app an
+    unauthenticated stranger is invited to POST to, so the only identity
+    available is one they cannot choose.
+
+    Five an hour, which is tighter than login's ten per five minutes and
+    deliberately so: a human asks for an account once. The cost of a false
+    positive is that someone waits and retries; the cost of no limit is a
+    table filling with whatever a script feels like sending, and an operator
+    review queue that is useless precisely when it matters.
+
+    Not a substitute for the enumeration protection in the route itself. This
+    limits VOLUME; the route's identical response for "already has an account"
+    and "does not" is what stops the form answering questions.
+    """
+    key = client_ip(request)
+    now = time.monotonic()
+    recent = [t for t in _signup_log.get(key, []) if now - t < SIGNUP_WINDOW_S]
+    if len(recent) >= SIGNUP_MAX_REQUESTS:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many requests — try again later",
+        )
+    recent.append(now)
+    _signup_log[key] = recent
+
+
 def rate_limit(request: Request, x_api_key: str = Header(default="", alias="X-Api-Key")) -> None:
     """20 requests / 60s per client on order-placement/kill-switch-adjacent
     routes — generous for a human operator clicking approve/manual-trade/

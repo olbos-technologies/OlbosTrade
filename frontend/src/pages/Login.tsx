@@ -2,10 +2,14 @@
  * Sign-in screen.
  *
  * Deliberately plain. There is no "forgot password" (no reset flow exists yet
- * — Phase 4), no "create account" (invite-only, accounts come from
- * scripts/create_user.py), and no "remember me" (session length is an operator
- * setting, not a per-login choice). Offering any of them would be a link to
- * nowhere.
+ * — Phase 4) and no "remember me" (session length is an operator setting, not
+ * a per-login choice); offering either would be a link to nowhere.
+ *
+ * There IS now a "request access" link, because that one goes somewhere: the
+ * waitlist at /request-access. It is a plain <a>, not a router <Link> — this
+ * component renders inside AuthGate, below the route that mounts the terminal,
+ * and a client-side navigation out of that subtree would leave the gate
+ * mounted around a page that is not the terminal.
  */
 
 import React, { useEffect, useRef, useState } from "react";
@@ -146,7 +150,8 @@ export default function Login() {
           fontSize: 11, lineHeight: 1.5, color: "var(--ink-faint)",
           textAlign: "center", margin: 0,
         }}>
-          Accounts are issued by the operator. There is no self-service signup.
+          Accounts are issued by the operator — there is no self-service signup.{" "}
+          <a href="/request-access" style={{ color: "var(--brand)" }}>Request access</a>.
         </p>
       </form>
     </div>
