@@ -12,7 +12,8 @@
  *
  * It does not promise a timeline or an email. There is no mail server in this
  * stack; an operator reads the queue and gets in touch. Saying "check your
- * inbox" would be a lie the system cannot make true.
+ * inbox" would be a lie the system cannot make true, and the person would
+ * wait for nothing.
  */
 
 import React, { useEffect, useRef, useState } from "react";
@@ -22,11 +23,26 @@ import {
   AccessError, AccountsDisabledError, requestAccess,
 } from "../auth/accessApi";
 import {
-  AMBER, Field, FormShell, GREEN, RED, SubmitButton, footnoteStyle,
-  inputStyle, noticeStyle, textAreaStyle,
+  AMBER, AuthPage, Field, GREEN, Notice, Pitch, RED, SubmitButton,
 } from "./authShell";
 
 const MAX_REASON = 2000;                 // matches MAX_REASON_LEN on the server
+
+const PITCH = (
+  <Pitch
+    eyebrow="Invite only"
+    title="Request access to Olbos Trade."
+    lede={
+      "Accounts are reviewed by a person before they are issued. Tell us how "
+      + "you trade, and what you want the system to do for you."
+    }
+    points={[
+      "Every account opens in paper trading — no live order until you switch it",
+      "Reviewed by the operator, not by an automated filter",
+      "No card, no billing: tiers are assigned by hand while pricing is unsettled",
+    ]}
+  />
+);
 
 export default function RequestAccess() {
   const [email, setEmail] = useState("");
@@ -64,44 +80,49 @@ export default function RequestAccess() {
   // is open to them.
   if (disabled) {
     return (
-      <FormShell caption="Access" onSubmit={e => e.preventDefault()}>
-        <div role="status" style={noticeStyle(AMBER)}>
+      <AuthPage
+        pitch={PITCH}
+        cardTitle="Access"
+        onSubmit={e => e.preventDefault()}
+      >
+        <Notice tone={AMBER}>
           This instance does not use accounts. The terminal is reachable directly.
-        </div>
-        <Link to="/terminal" style={{ ...footnoteStyle, color: "var(--brand)" }}>
+        </Notice>
+        <Link to="/terminal" className="auth-note auth-link">
           Open the terminal →
         </Link>
-      </FormShell>
+      </AuthPage>
     );
   }
 
   if (sent) {
     return (
-      <FormShell caption="Access" onSubmit={e => e.preventDefault()}>
-        <div role="status" style={noticeStyle(GREEN)}>
+      <AuthPage
+        pitch={PITCH}
+        cardTitle="Access"
+        onSubmit={e => e.preventDefault()}
+        navAction={{ to: "/", label: "Back to olbostrade" }}
+      >
+        <Notice tone={GREEN}>
           Request recorded. If it is approved, the operator will send you a
           one-time setup link.
-        </div>
-        <p style={footnoteStyle}>
-          Nothing is sent automatically — a person reads these.
-        </p>
-        <Link to="/" style={{ ...footnoteStyle, color: "var(--brand)" }}>
-          ← Back to olbostrade
-        </Link>
-      </FormShell>
+        </Notice>
+        <p className="auth-note">Nothing is sent automatically — a person reads these.</p>
+      </AuthPage>
     );
   }
 
   return (
-    <FormShell caption="Request access" onSubmit={onSubmit}>
-      <p style={{ ...footnoteStyle, textAlign: "left" }}>
-        Olbos Trade is invite-only. Tell us how you trade and the operator will
-        review it.
-      </p>
-
+    <AuthPage
+      pitch={PITCH}
+      cardTitle="Request access"
+      onSubmit={onSubmit}
+      navAction={{ to: "/terminal", label: "Sign in", external: true }}
+    >
       <Field label="Email">
         <input
           ref={emailRef}
+          className="auth-input"
           type="email"
           value={email}
           onChange={e => setEmail(e.target.value)}
@@ -112,25 +133,24 @@ export default function RequestAccess() {
           inputMode="email"
           required
           disabled={busy}
-          style={inputStyle}
         />
       </Field>
 
       <Field label="Why (optional)">
         <textarea
+          className="auth-textarea"
           value={reason}
           onChange={e => setReason(e.target.value.slice(0, MAX_REASON))}
           maxLength={MAX_REASON}
           disabled={busy}
           placeholder="What you trade, and what you want out of it."
-          style={textAreaStyle}
         />
       </Field>
 
       {/* aria-live so a screen reader announces a failure that appears after
           submit, rather than leaving the user waiting on a silent form. */}
-      <div aria-live="polite" style={{ minHeight: error ? undefined : 0 }}>
-        {error && <div role="alert" style={noticeStyle(RED)}>{error}</div>}
+      <div aria-live="polite">
+        {error && <Notice tone={RED} role="alert">{error}</Notice>}
       </div>
 
       <SubmitButton
@@ -140,9 +160,10 @@ export default function RequestAccess() {
         busyLabel="Sending…"
       />
 
-      <p style={footnoteStyle}>
-        Already have an account? <Link to="/terminal" style={{ color: "var(--brand)" }}>Sign in</Link>
+      <p className="auth-note">
+        Already have an account?{" "}
+        <a href="/terminal" className="auth-link">Sign in</a>
       </p>
-    </FormShell>
+    </AuthPage>
   );
 }

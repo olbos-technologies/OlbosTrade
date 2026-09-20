@@ -18,12 +18,11 @@
  */
 
 import React, { useEffect, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 
 import { AccessError, AccountsDisabledError, claimAccess } from "../auth/accessApi";
 import {
-  AMBER, Field, FormShell, GREEN, RED, SubmitButton, footnoteStyle,
-  inputStyle, noticeStyle,
+  AMBER, AuthPage, Field, GREEN, Notice, Pitch, RED, SubmitButton,
 } from "./authShell";
 
 /** Matches MIN_PASSWORD_LEN in backend/app/services/auth_service.py. */
@@ -42,6 +41,22 @@ export function tokenFromHash(hash: string): string {
   if (!raw.includes("=")) return decodeURIComponent(raw);
   return new URLSearchParams(raw).get("token") || "";
 }
+
+const PITCH = (
+  <Pitch
+    eyebrow="Approved"
+    title="Set your password."
+    lede={
+      "Your request was approved. Choose a password — it is never sent to the "
+      + "operator, and nobody but you ever sees it."
+    }
+    points={[
+      "The setup link works once, and expires seven days after approval",
+      "Your account opens in paper trading",
+      "You can change this password, and end other sessions, from the terminal",
+    ]}
+  />
+);
 
 export default function Claim() {
   const navigate = useNavigate();
@@ -99,38 +114,36 @@ export default function Claim() {
 
   if (disabled) {
     return (
-      <FormShell caption="Set up" onSubmit={e => e.preventDefault()}>
-        <div role="status" style={noticeStyle(AMBER)}>
+      <AuthPage pitch={PITCH} cardTitle="Set up" onSubmit={e => e.preventDefault()}>
+        <Notice tone={AMBER}>
           This instance does not use accounts. The terminal is reachable directly.
-        </div>
-        <Link to="/terminal" style={{ ...footnoteStyle, color: "var(--brand)" }}>
-          Open the terminal →
-        </Link>
-      </FormShell>
+        </Notice>
+        <a href="/terminal" className="auth-note auth-link">Open the terminal →</a>
+      </AuthPage>
     );
   }
 
   if (done) {
     return (
-      <FormShell caption="Set up" onSubmit={e => e.preventDefault()}>
-        <div role="status" style={noticeStyle(GREEN)}>
-          Account created. You can sign in now.
-        </div>
-        <SubmitButtonLike onClick={() => navigate("/terminal")} />
-      </FormShell>
+      <AuthPage pitch={PITCH} cardTitle="Set up" onSubmit={e => e.preventDefault()}>
+        <Notice tone={GREEN}>Account created. You can sign in now.</Notice>
+        <button
+          type="button"
+          className="auth-submit"
+          onClick={() => navigate("/terminal")}
+        >
+          Sign in
+        </button>
+      </AuthPage>
     );
   }
 
   return (
-    <FormShell caption="Set your password" onSubmit={onSubmit}>
-      <p style={{ ...footnoteStyle, textAlign: "left" }}>
-        Your request was approved. Choose a password — nobody else, the
-        operator included, ever sees it.
-      </p>
-
+    <AuthPage pitch={PITCH} cardTitle="Set your password" onSubmit={onSubmit}>
       <Field label="Setup token">
         <input
           ref={firstRef}
+          className="auth-input mono"
           type="text"
           value={token}
           onChange={e => setToken(e.target.value)}
@@ -140,12 +153,12 @@ export default function Claim() {
           spellCheck={false}
           required
           disabled={busy}
-          style={{ ...inputStyle, fontFamily: "var(--mono)", fontSize: 13 }}
         />
       </Field>
 
       <Field label={`Password (${MIN_PASSWORD}+ characters)`}>
         <input
+          className="auth-input"
           type="password"
           value={password}
           onChange={e => setPassword(e.target.value)}
@@ -153,31 +166,28 @@ export default function Claim() {
           minLength={MIN_PASSWORD}
           required
           disabled={busy}
-          style={inputStyle}
         />
       </Field>
 
       <Field label="Confirm password">
         <input
+          className="auth-input"
           type="password"
           value={confirm}
           onChange={e => setConfirm(e.target.value)}
           autoComplete="new-password"
           required
           disabled={busy}
-          style={inputStyle}
         />
       </Field>
 
-      <div aria-live="polite" style={{ minHeight: error || mismatch || tooShort ? undefined : 0 }}>
-        {error && <div role="alert" style={noticeStyle(RED)}>{error}</div>}
+      <div aria-live="polite">
+        {error && <Notice tone={RED} role="alert">{error}</Notice>}
         {!error && mismatch && (
-          <div role="alert" style={noticeStyle(AMBER)}>The two passwords do not match.</div>
+          <Notice tone={AMBER} role="alert">The two passwords do not match.</Notice>
         )}
         {!error && !mismatch && tooShort && (
-          <div role="alert" style={noticeStyle(AMBER)}>
-            At least {MIN_PASSWORD} characters.
-          </div>
+          <Notice tone={AMBER} role="alert">At least {MIN_PASSWORD} characters.</Notice>
         )}
       </div>
 
@@ -187,28 +197,6 @@ export default function Claim() {
         idleLabel="Create account"
         busyLabel="Creating…"
       />
-    </FormShell>
-  );
-}
-
-/** A button shaped like SubmitButton but navigating instead of submitting. */
-function SubmitButtonLike({ onClick }: { onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        height: 44,
-        borderRadius: "var(--radius-control)",
-        border: "1px solid var(--line)",
-        background: "var(--fill-active)",
-        color: "var(--ink)",
-        fontFamily: "var(--mono)", fontSize: 12, letterSpacing: "0.08em",
-        textTransform: "uppercase",
-        cursor: "pointer",
-      }}
-    >
-      Sign in
-    </button>
+    </AuthPage>
   );
 }
