@@ -101,11 +101,22 @@ ${REAL_IP_BLOCK}
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection "upgrade";
     }
-    # Hashed build assets (filename changes every build) can cache forever;
-    # index.html can't — it's what points browsers at the current hash, so a
-    # cached copy silently keeps a tab on an old build after every deploy.
-    location ~* \.(js|css|woff2?|png|jpg|jpeg|gif|svg|ico)\$ {
-        add_header Cache-Control "public, max-age=31536000, immutable" always;
+    # Vite's HASHED output only. The filename changes every build, so a copy
+    # cached forever can never be the wrong one.
+    #
+    # ^~ so this wins over the regex below without depending on their order.
+    location ^~ /assets/ {
+        add_header Cache-Control "public, max-age=31536000, immutable";
+        try_files \$uri =404;
+    }
+
+    # Files copied verbatim out of public/ — the favicons and the hero image.
+    # These keep the SAME NAME across builds, so `immutable` pins whatever was
+    # cached first for a year: replace the hero image and nobody sees the new
+    # one until 2027. The old rule matched them with the hashed assets and the
+    # comment above only ever described /assets/.
+    location ~* \.(png|jpg|jpeg|gif|svg|ico|woff2?)\$ {
+        add_header Cache-Control "public, max-age=3600, must-revalidate";
         try_files \$uri =404;
     }
     location / {
