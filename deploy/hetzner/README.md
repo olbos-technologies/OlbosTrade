@@ -117,7 +117,48 @@ Set one of these first:
 
 * `DASH_USER`/`DASH_PASS` put nginx Basic Auth in front of everything,
   including `/api` (see `frontend/docker-entrypoint.sh`). Simplest.
-* `AUTH_ENABLED=true` uses real accounts from `scripts/create_user.py`.
+* `AUTH_ENABLED=true` uses real accounts from `scripts/create_user.py` or the
+  access-request queue, with sessions and Free/Pro/Elite tier limits.
+
+`AUTH_ENABLED` has no default in `docker-compose.hetzner.yml` — the stack
+refuses to start without it, and that is on purpose. The application's own
+default is `false`, so an absent or misspelled line is indistinguishable from
+deliberately turning auth off: containers come up healthy, the site serves
+normally, and nothing is guarding it. That is exactly the state in which
+someone removes Basic Auth believing app auth is up.
+
+If a deploy stops with
+
+```
+required variable AUTH_ENABLED is missing a value
+```
+
+add `AUTH_ENABLED=true` or `AUTH_ENABLED=false` to `backend/.env.prod`. That
+is the fix, not a workaround.
+
+### Confirming which mode is actually live
+
+Do not trust the env file — read it back from the running app:
+
+```bash
+curl -s https://trade.olbos.us/api/auth/status
+```
+
+`{"auth_enabled": true, ...}` is the only proof that accounts are on.
+`/api/auth/status` is public by design precisely so this check works without
+credentials. The backend also states its posture on every boot:
+
+```bash
+docker logs olbostrade-backend 2>&1 | grep "^.*AUTH:"
+```
+
+`AUTH: application authentication is OFF` is logged at WARNING, because on a
+service that can reach a broker that is not routine information.
+
+**Sequence the rollout.** Turn `AUTH_ENABLED=true` on while Basic Auth is
+still in front, sign in successfully, and only then remove `DASH_USER` /
+`DASH_PASS`. Removing the outer wall first makes app auth the only thing
+between the internet and a trading API on its first day in production.
 
 These are not interchangeable with `SECRET_KEY`. That one guards *mutating*
 API routes and is entered per-session in the browser; it does nothing to stop

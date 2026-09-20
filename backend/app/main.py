@@ -257,9 +257,47 @@ app.include_router(signal_research.router, prefix="/api/signal-research", tags=[
 
 
 # ── Startup ─────────────────────────────────────────────────────────────────
+
+def _log_auth_posture() -> None:
+    """Report the resolved authentication mode, once, at startup."""
+    if settings.auth_enabled:
+        logger.info(
+            "AUTH: application authentication is ON — sessions required, "
+            "tier limits enforced. SECRET_KEY is %s.",
+            "set" if settings.secret_key else "NOT SET (operator routes are open)",
+        )
+        if not settings.secret_key:
+            logger.warning(
+                "AUTH_ENABLED=true but SECRET_KEY is empty — operator-key "
+                "routes fall open. Set SECRET_KEY in backend/.env.prod."
+            )
+        return
+
+    logger.warning(
+        "AUTH: application authentication is OFF (AUTH_ENABLED is false or "
+        "unset). This instance relies entirely on whatever sits in front of "
+        "it — nginx Basic Auth and the X-Api-Key operator key. Access "
+        "requests and /claim return 404, and every caller resolves to "
+        "unlimited tier limits. Do not remove Basic Auth while this reads OFF."
+    )
+
 @app.on_event("startup")
 async def on_startup() -> None:
     global _current_regime, _greeks_tracker
+
+    # 0. Say out loud whether this instance is guarded.
+    #
+    # Belt and braces for the same problem docker-compose.hetzner.yml guards:
+    # auth_enabled defaults to False, so an absent or misspelled AUTH_ENABLED
+    # is indistinguishable from choosing to turn it off — the app starts
+    # healthy and serves normally either way. Compose now refuses to start
+    # without an explicit value, but compose is not the only way this runs,
+    # and a log line is readable after the fact when a shell history is not.
+    #
+    # Logged at WARNING when off, because "no application authentication" is
+    # not routine information on a service that can reach a broker, and INFO
+    # scrolls past.
+    _log_auth_posture()
 
     # 1. Initialize broker and connect
     try:
