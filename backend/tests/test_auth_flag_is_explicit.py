@@ -33,13 +33,51 @@ ENV_EXAMPLE = ROOT / "deploy/hetzner/.env.example"
 
 
 def _backend_environment() -> dict:
-    import yaml
+    """The backend service's `environment:` block, parsed without PyYAML.
 
-    doc = yaml.safe_load(COMPOSE.read_text())
-    env = doc["services"]["backend"].get("environment") or {}
-    if isinstance(env, list):
-        env = dict(e.split("=", 1) for e in env)
-    return env
+    PyYAML is NOT declared in backend/requirements.txt and CI installs only
+    that file. It happens to be importable today because uvicorn and
+    pydantic-settings pull it in, which is precisely the kind of undeclared
+    dependency that disappears on an unrelated version bump — and then these
+    assertions raise ModuleNotFoundError instead of checking the deployment
+    guard. Raised in review on #74.
+
+    Hand-parsing YAML is its own trap, so this stays deliberately narrow: find
+    the backend service block by indentation, then its environment block, then
+    the `KEY: value` lines directly inside it. test_the_required_vars_use_one_
+    pattern is the vacuity guard — if this returns an empty dict because the
+    file's shape changed, that test fails rather than everything passing.
+    """
+    lines = COMPOSE.read_text().splitlines()
+
+    # The `backend:` service, up to the next service at the same indent.
+    start = next(i for i, l in enumerate(lines) if l.startswith("  backend:"))
+    end = next(
+        (i for i in range(start + 1, len(lines))
+         if lines[i].startswith("  ") and not lines[i].startswith("   ")
+         and lines[i].strip().endswith(":")),
+        len(lines),
+    )
+    block = lines[start:end]
+
+    env_at = next((i for i, l in enumerate(block)
+                   if l.strip() == "environment:"), None)
+    if env_at is None:
+        return {}
+
+    indent = len(block[env_at]) - len(block[env_at].lstrip())
+    out: dict[str, str] = {}
+    for line in block[env_at + 1:]:
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        depth = len(line) - len(line.lstrip())
+        if depth <= indent:
+            break                      # left the environment block
+        if ":" not in line:
+            continue
+        key, _, value = line.strip().partition(":")
+        out[key.strip()] = value.strip().strip('"')
+    return out
 
 
 def test_compose_requires_an_explicit_auth_enabled():
