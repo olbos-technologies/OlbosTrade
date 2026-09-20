@@ -38,8 +38,16 @@ import re
 
 import pytest
 
-ENTRYPOINT = (pathlib.Path(__file__).parent.parent.parent
-              / "frontend/docker-entrypoint.sh")
+ROOT = pathlib.Path(__file__).parent.parent.parent
+ENTRYPOINT = ROOT / "frontend/docker-entrypoint.sh"
+
+#: The OTHER production nginx config. docker-compose.prod.yml mounts
+#: deploy/nginx/olbostrade.conf, and it carried the same unhashed-asset
+#: pinning — `expires 30d; Cache-Control "public, immutable"` over the same
+#: extension list. Fixing the entrypoint alone would have left that path
+#: serving a year-stale hero image, which is the fourth time in this session
+#: that a fix landed on one instance while an identical sibling survived.
+PROXY_CONF = ROOT / "deploy/nginx/olbostrade.conf"
 
 
 def _nginx_config() -> str:
@@ -50,16 +58,51 @@ def _nginx_config() -> str:
     return body[: body.index("\nEOF")]
 
 
-def _location_blocks() -> dict:
-    """Map each location's matcher to the directives inside it.
+def _parse_locations(text: str) -> dict:
+    """Map each location matcher to the directives DIRECTLY inside it.
 
-    Deliberately simple: these blocks are one level deep and never nested.
+    Brace-matched rather than regex-bounded, and nested blocks are stripped
+    from their parent's body. Both matter: deploy/nginx/olbostrade.conf puts
+    its static rules inside `location /`, and a flat `[^}]*` body stops at the
+    first closing brace — which swallowed the whole `^~ /assets/` block into
+    the parent and reported `location /` as the one carrying `immutable`.
+
+    My first version of this claimed in its own docstring that one level of
+    nesting was fine for a flat regex. It is not, and the proxy tests below
+    failed against a correct config until this was fixed.
     """
-    config = _nginx_config()
     blocks: dict = {}
-    for match in re.finditer(r"location\s+([^\{]+?)\s*\{([^}]*)\}", config, re.S):
-        blocks[match.group(1).strip()] = match.group(2)
+    for match in re.finditer(r"location\s+([^\{\n]+?)\s*\{", text):
+        depth, i = 1, match.end()
+        while i < len(text) and depth:
+            if text[i] == "{":
+                depth += 1
+            elif text[i] == "}":
+                depth -= 1
+            i += 1
+        body = text[match.end():i - 1]
+        # Drop nested location blocks so a parent is not credited with a
+        # child's directives.
+        inner = re.sub(r"location\s+[^\{\n]+?\s*\{[^{}]*\}", "", body, flags=re.S)
+        # COMMENTS TOO. The comments explaining these rules necessarily use the
+        # words the assertions look for — "so `immutable` pins whatever was
+        # cached first" sits right next to the block it describes — and a
+        # parent block keeps its children's comments after the strip above.
+        # That reported `location /` as carrying an immutable directive it
+        # does not have. Same shape as the #70 lock test that matched
+        # `.with_for_update()` inside a comment and proved nothing.
+        inner = "\n".join(l for l in inner.splitlines()
+                          if not l.strip().startswith("#"))
+        # Two server blocks means two `location /`; keep the richer one rather
+        # than letting the last silently win.
+        matcher = match.group(1).strip()
+        if len(inner) > len(blocks.get(matcher, "")):
+            blocks[matcher] = inner
     return blocks
+
+
+def _location_blocks() -> dict:
+    return _parse_locations(_nginx_config())
 
 
 def test_the_config_was_actually_extracted():
@@ -71,20 +114,26 @@ def test_the_config_was_actually_extracted():
     assert len(_location_blocks()) >= 4, sorted(_location_blocks())
 
 
-def test_no_immutable_cache_header_is_forced_onto_error_responses():
+def test_no_public_cache_header_is_forced_onto_error_responses():
     """`always` is what let a 401 be cached for a year.
 
-    Without it, add_header applies only to 2xx/3xx — which is the whole point
-    of a cache directive. `location /` keeps its `always` deliberately:
-    no-store SHOULD apply to errors too.
+    Scoped to any PUBLIC directive, not just `immutable`. The first version
+    of this guard only inspected locations containing `immutable`, so adding
+    `always` back to the new one-hour header would have re-cached a 401 for
+    /olbos-hero.png — shorter, but the same bug — and this test would have
+    passed. Raised in review on #76.
+
+    `location /` keeps its `always` deliberately: no-store SHOULD apply to
+    errors too, which is why the check is on `public` rather than on
+    Cache-Control generally.
     """
     offenders = [
         matcher for matcher, body in _location_blocks().items()
-        if "immutable" in body and re.search(r"add_header[^;]*always", body)
+        if re.search(r'add_header\s+Cache-Control\s+"[^"]*public[^"]*"[^;]*always', body)
     ]
     assert not offenders, (
-        f"these locations force an immutable cache header onto error "
-        f"responses, so a 401 gets cached: {offenders}")
+        f"these locations force a public cache header onto error responses, "
+        f"so a 401 gets cached: {offenders}")
 
 
 def test_only_hashed_build_output_is_immutable():
@@ -99,6 +148,15 @@ def test_only_hashed_build_output_is_immutable():
             f"location {matcher!r} is immutable but is not scoped to Vite's "
             "hashed output; unhashed files keep their name across builds and "
             "would be pinned for a year")
+        # ^~ is load-bearing, not decoration. nginx gives regex locations
+        # precedence over plain prefixes, so a bare `location /assets/` loses
+        # to the image regex below — and .js/.css, which that regex no longer
+        # matches, would fall through to `location /` and become no-store.
+        # The hashed bundle would stop being cached at all. Checking only for
+        # the "/assets/" substring missed this; raised in review on #76.
+        assert matcher.startswith("^~"), (
+            f"location {matcher!r} must use ^~ or the regex below overrides "
+            "it and the hashed bundle loses its cache policy")
 
 
 @pytest.mark.parametrize("ext", ["png", "ico", "svg", "jpg"])
@@ -143,3 +201,58 @@ def test_the_entrypoint_still_parse_checks_before_starting():
     assert "nginx -t" in text
     assert re.search(r"if\s*!\s*nginx -t", text), (
         "nginx -t runs but its result is not acted on")
+
+
+# ── the second production config ────────────────────────────────────────────
+#
+# docker-compose.prod.yml mounts deploy/nginx/olbostrade.conf. It carried the
+# same unhashed-asset pinning as the entrypoint did, and fixing one without
+# the other would leave that path serving a stale hero image for 30 days.
+
+def _proxy_location_blocks() -> dict:
+    """Location blocks in the standalone proxy config.
+
+    Its static rules are nested inside `location /`, which is precisely the
+    shape that broke the first parser — see _parse_locations.
+    """
+    return _parse_locations(PROXY_CONF.read_text())
+
+
+def test_the_proxy_config_was_actually_extracted():
+    """Vacuity guard, same reason as the entrypoint's."""
+    assert PROXY_CONF.exists(), f"{PROXY_CONF} is gone — retire these tests too"
+    blocks = _proxy_location_blocks()
+    assert blocks, "no location blocks parsed from the proxy config"
+    assert any("Cache-Control" in b for b in blocks.values())
+
+
+def test_the_proxy_does_not_pin_unhashed_assets_either():
+    """The defect this PR fixes, in the other production path."""
+    for matcher, body in _proxy_location_blocks().items():
+        if "immutable" not in body:
+            continue
+        assert "/assets/" in matcher, (
+            f"proxy location {matcher!r} is immutable but not scoped to Vite's "
+            "hashed output — unhashed files would be pinned")
+        assert matcher.startswith("^~"), (
+            f"proxy location {matcher!r} must use ^~ or the regex overrides it")
+
+
+def test_the_proxy_does_not_force_public_caching_onto_errors():
+    """It has no `always` today. Pinned so adding one is a test failure rather
+    than a year of cached 401s discovered from a screenshot."""
+    offenders = [
+        matcher for matcher, body in _proxy_location_blocks().items()
+        if re.search(r'add_header\s+Cache-Control\s+"[^"]*public[^"]*"[^;]*always', body)
+    ]
+    assert not offenders, offenders
+
+
+@pytest.mark.parametrize("ext", ["png", "ico", "svg"])
+def test_proxy_unhashed_images_are_revalidated(ext):
+    matched = [(m, b) for m, b in _proxy_location_blocks().items()
+               if m.startswith("~") and ext in m]
+    assert matched, f".{ext} is not matched by any proxy location block"
+    for matcher, body in matched:
+        assert "immutable" not in body, (
+            f".{ext} is immutable under proxy location {matcher!r}")
