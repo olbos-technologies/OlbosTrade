@@ -87,7 +87,11 @@ echo "      ✅ Containers started"
 # ── 2. Wait for backend to be healthy ─────────────────────────────────────────
 echo "[2/4] Waiting for backend to be ready (up to 90s)..."
 for i in $(seq 1 30); do
-  if docker exec olbostrade-backend curl -fsS http://127.0.0.1:8000/api/guardrails/status > /dev/null 2>&1; then
+  # /health, not /api/guardrails/status: the latter needs a session, so with
+  # AUTH_ENABLED=true this probe 401s and up.sh gives up after 90 seconds
+  # against a container that is perfectly healthy. Same bug as the compose
+  # healthcheck, in a second place. See test_healthchecks_probe_public_routes.
+  if docker exec olbostrade-backend curl -fsS http://127.0.0.1:8000/health > /dev/null 2>&1; then
     echo "      ✅ Backend healthy"
     break
   fi

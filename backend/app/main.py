@@ -2813,7 +2813,22 @@ async def _backfill_equity_stops() -> None:
 
 
 # ── Health check ────────────────────────────────────────────────────────────
+#
+# TWO PATHS, ONE HANDLER, and the second one is not redundant.
+#
+# The frontend proxy forwards /api to this service and nothing else, so
+# /health is reachable only from INSIDE the container — the docker healthcheck
+# can use it; an external monitor through the domain cannot. auth_deps'
+# allowlist has named /api/health since the default-deny work went in, but no
+# such route existed, so anything probing it got a 404 from an allowlist entry
+# that promised otherwise. scripts/paper_e2e_smoke.sh already hedged by
+# falling back to /health, which is a sign someone met this and worked around
+# it rather than fixing it.
+#
+# Both are in PUBLIC_EXACT: a health probe cannot hold a session, and a
+# healthcheck that 401s marks a working container unhealthy.
 @app.get("/health", tags=["System"])
+@app.get("/api/health", tags=["System"])
 async def health_check() -> dict[str, str]:
     """Returns 200 OK when the service is up."""
     return {"status": "ok", "broker": settings.broker}
