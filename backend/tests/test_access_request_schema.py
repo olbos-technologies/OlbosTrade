@@ -139,3 +139,77 @@ def test_the_migration_chains_from_the_current_head():
             downs.append((m.group(1), f.name))
     duplicated = {r for r, _ in downs if sum(1 for d, _ in downs if d == r) > 1}
     assert not duplicated, f"branched revision chain at {sorted(duplicated)}"
+
+
+#: Model modules alembic's environment cannot see TODAY. Thirteen tables,
+#: including signal_outcomes and watchlists.
+#:
+#: This is a pre-existing gap, not something this change introduced, and
+#: fixing it means touching the migration environment for eleven unrelated
+#: models — its own change, with its own review. It is recorded here rather
+#: than left implicit so the test below can fail on a NEW omission without
+#: either blocking on these or quietly passing over them.
+#:
+#: This set should only ever shrink. Removing a name from it is the fix.
+KNOWN_UNIMPORTED = {
+    "alert",
+    "daily_signal_snapshot",
+    "execution_event",
+    "options_scan_rejection",
+    "options_signal_history",
+    "reconciliation_snapshot",
+    "signal_outcome",
+    "strategy_preset",
+    "strategy_profile",
+    "strategy_snapshot",
+    "watchlist",
+}
+
+
+def _unimported_model_modules() -> set:
+    import re
+
+    env = (MIGRATION.parent.parent / "env.py").read_text()
+    block = re.search(r"from app\.models import \((.*?)\)", env, re.S)
+    assert block, "env.py no longer imports app.models by name — check this test"
+    imported = set(re.findall(r"[\w]+", block.group(1)))
+
+    models_dir = MIGRATION.parent.parent.parent / "app" / "models"
+    on_disk = {
+        f.stem for f in models_dir.glob("*.py")
+        if f.stem != "__init__" and "Base" in f.read_text()
+    }
+    return on_disk - imported
+
+
+def test_this_table_is_visible_to_the_migration_environment():
+    """alembic/env.py imports each model module by name, then hands
+    Base.metadata to alembic. A module missing from that list is a table
+    alembic cannot see — so `alembic revision --autogenerate` omits changes to
+    it and, worse, can propose DROPPING a live table because the metadata says
+    it should not exist. access_request was missing exactly this way: the
+    migration created the table and the environment could not see it."""
+    assert "access_request" not in _unimported_model_modules()
+
+
+def test_no_new_model_module_is_left_out_of_the_migration_environment():
+    """The baseline above may shrink, never grow.
+
+    Written against the whole directory rather than one name, because the next
+    model added will have this problem and a test naming access_request would
+    not notice.
+    """
+    missing = _unimported_model_modules()
+
+    newly_missing = sorted(missing - KNOWN_UNIMPORTED)
+    assert not newly_missing, (
+        f"these model modules define tables alembic cannot see: "
+        f"{newly_missing}. Autogenerate will ignore them, or propose dropping "
+        "their tables. Add them to the import list in alembic/env.py."
+    )
+
+    fixed = sorted(KNOWN_UNIMPORTED - missing)
+    assert not fixed, (
+        f"{fixed} are imported now — delete them from KNOWN_UNIMPORTED so the "
+        "baseline keeps shrinking instead of hiding the next regression."
+    )

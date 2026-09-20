@@ -158,6 +158,36 @@ describe("tokenFromHash", () => {
     expect(tokenFromHash("")).toBe("");
     expect(tokenFromHash("#")).toBe("");
   });
+
+  it.each(["#%zz", "#%", "#a%2"])(
+    "survives the malformed escape %s instead of throwing", (hash) => {
+      // decodeURIComponent throws a URIError on these, and this runs inside a
+      // useState initializer — so an unhandled throw takes the whole setup
+      // page down before it renders, leaving the person unable to even paste
+      // their token by hand. Which is the opposite of the "mangled links are
+      // tolerated" this function claims: mangling is what produces them.
+      expect(() => tokenFromHash(hash)).not.toThrow();
+      expect(tokenFromHash(hash)).toBe(hash.slice(1));
+    });
+
+  it("does not throw on a malformed escape inside a key=value fragment", () => {
+    // URLSearchParams does not throw on the same input, so this branch never
+    // needed the guard — pinned so a future "simplification" that routes both
+    // branches through decodeURIComponent reintroduces the crash loudly.
+    expect(() => tokenFromHash("#token=%zz")).not.toThrow();
+  });
+});
+
+describe("Claim, given a mangled setup link", () => {
+  it("still renders a form the token can be pasted into", async () => {
+    window.history.replaceState(null, "", "/claim#token=%zz");
+    mockFetch(() => ({ ok: true }));
+
+    renderAt(<Claim />);
+
+    expect(screen.getByLabelText(/setup token/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /create account/i })).toBeInTheDocument();
+  });
 });
 
 describe("Claim", () => {

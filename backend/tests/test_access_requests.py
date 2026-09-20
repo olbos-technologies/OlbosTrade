@@ -100,6 +100,10 @@ class _Store:
         #: Set to make the next commit raise, standing in for the partial
         #: unique index tripping on a duplicate that raced past the read.
         self.fail_on_commit = False
+        #: Same, but the users.email index and the real exception type, for
+        #: the claim route's race handling.
+        self.integrity_error_on_commit = False
+        self.rollbacks = 0
         #: Whether the row-returning lookups in claim/approve/deny asked for
         #: FOR UPDATE. Recorded from the compiled statement rather than by
         #: scanning the source, because a `.with_for_update()` in a COMMENT is
@@ -143,7 +147,15 @@ class _FakeSession:
             if "email_1" in params:
                 rows = [r for r in rows if r.email == params["email_1"]]
             if "status_1" in params:
-                rows = [r for r in rows if r.status == params["status_1"]]
+                # `status == x` binds a string; `status.in_([...])` binds the
+                # LIST itself under the same name (SQLAlchemy expands it at
+                # execution as __[POSTCOMPILE_status_1]). An earlier version of
+                # this branch compared r.status to the list and matched
+                # nothing, which would have made the submit route look
+                # correct while it silently found no open requests.
+                wanted = params["status_1"]
+                wanted = set(wanted) if isinstance(wanted, (list, tuple)) else {wanted}
+                rows = [r for r in rows if r.status in wanted]
             if "setup_token_hash_1" in params:
                 rows = [r for r in rows
                         if r.setup_token_hash == params["setup_token_hash_1"]]
@@ -198,7 +210,15 @@ class _FakeSession:
                 obj.is_active = True              # column default
         self._staged.append(obj)
 
+    async def rollback(self):
+        self.store.rollbacks += 1
+        self._staged.clear()
+
     async def commit(self):
+        if self.store.integrity_error_on_commit:
+            from sqlalchemy.exc import IntegrityError
+            raise IntegrityError("INSERT INTO users", {}, Exception(
+                'duplicate key value violates unique constraint "idx_users_email"'))
         if self.store.fail_on_commit:
             self._staged.clear()                  # as a rollback would
             raise RuntimeError("duplicate key value violates unique constraint")
@@ -700,4 +720,161 @@ async def test_the_public_routes_do_not_exist_while_auth_is_off(
 
     assert r.status_code == 404
     assert not store.requests
+    assert not store.users
+
+
+# ── review findings: ordering, live grants, races ───────────────────────────
+#
+# Every test below covers something the suite above already claimed to cover
+# and did not. They are grouped here rather than slotted in beside their
+# neighbours so the gap stays legible: each one names the weaker assertion it
+# replaces.
+
+async def test_disabled_routes_404_before_any_other_check(client, store, monkeypatch):
+    """404 must win over the rate limiter and over the key check.
+
+    test_the_public_routes_do_not_exist_while_auth_is_off asserted the same
+    thing and proved less: it made ONE call, and one call never reaches the
+    rate limit. The enabled check was a call in the handler body, and FastAPI
+    resolves dependencies before the body, so with auth disabled the real
+    behaviour was:
+
+        public POST, six calls: 404 404 404 404 404 429
+        admin GET, no key     : 403
+        admin GET, no SECRET  : 503
+
+    None of which is "these routes do not exist". The 429 is the sharpest of
+    the three — a route that is supposed not to exist was still spending a
+    caller's quota, so an anonymous stranger could be rate-limited out of an
+    endpoint that was never there.
+    """
+    monkeypatch.setattr(settings, "auth_enabled", False)
+
+    codes = []
+    for i in range(rate_limit_mod.SIGNUP_MAX_REQUESTS + 2):
+        r = await _submit(client, f"person{i}@example.com")
+        codes.append(r.status_code)
+
+    assert codes == [404] * len(codes), (
+        f"a disabled install answered {codes} — anything other than 404 means "
+        "a check in front of require_auth_enabled got there first"
+    )
+
+
+@pytest.mark.parametrize("headers", [
+    {},                                  # no key at all
+    {"X-Api-Key": "wrong"},              # a key, but not the right one
+])
+async def test_disabled_admin_routes_404_rather_than_discussing_the_key(
+    client, store, operator, monkeypatch, headers
+):
+    """A disabled install must not report on its own key configuration.
+
+    403 and 503 both confirm the endpoint exists and describe how it is
+    configured, to a caller holding nothing.
+    """
+    monkeypatch.setattr(settings, "auth_enabled", False)
+
+    r = await client.get("/api/admin/access-requests",
+                         headers=headers, cookies=operator["cookies"])
+
+    assert r.status_code == 404
+
+
+async def test_a_disabled_install_404s_even_with_no_secret_key(
+    client, store, operator, monkeypatch
+):
+    """The 503 path specifically: require_api_key_configured must not be
+    reached at all when there are no accounts to guard."""
+    monkeypatch.setattr(settings, "auth_enabled", False)
+    monkeypatch.setattr(settings, "secret_key", "")
+
+    r = await client.get("/api/admin/access-requests", **operator)
+
+    assert r.status_code == 404
+
+
+async def test_an_approved_grant_blocks_a_second_request(client, store):
+    """Otherwise one person ends up with two live tokens.
+
+    The partial unique index covers only PENDING rows — deliberately, so a
+    denial can be reapplied to. That also let an address whose request was
+    already approved queue a second row, which the operator could approve in
+    turn. is_reviewable() refuses to mint a second token for one request; this
+    is the same invariant broken one step earlier, by using two requests.
+    """
+    _token, req = _approved(store, "trader@example.com")
+
+    r = await _submit(client, "trader@example.com")
+
+    assert r.status_code == 200                  # same answer as always
+    assert len(store.requests) == 1, (
+        "a second row was queued while an approved grant was still live"
+    )
+    assert store.requests[0] is req
+
+
+@pytest.mark.parametrize("state", ["expired", "claimed"])
+async def test_a_dead_grant_does_not_block_a_new_request(client, store, state):
+    """The reissue path, and the reason the check above is not just a status
+    test. Someone whose link went stale must be able to ask again, or the
+    only remedy is the operator noticing unprompted."""
+    _token, req = _approved(store, "trader@example.com")
+    if state == "expired":
+        req.setup_token_expires_at = datetime.now(timezone.utc) - timedelta(minutes=1)
+    else:
+        req.status = STATUS_CLAIMED
+        req.claimed_at = datetime.now(timezone.utc)
+        store.users.append(User(id=uuid.uuid4(), email="someone-else@example.com",
+                                password_hash=hash_password("x" * 20),
+                                tier=TIER_FREE, is_active=True))
+
+    r = await _submit(client, "trader@example.com")
+
+    assert r.status_code == 200
+    assert len(store.requests) == 2, f"a {state} grant blocked a new request"
+
+
+async def test_the_queue_does_not_call_an_expired_grant_live(client, store, operator):
+    """has_live_token used to mean "has a hash and is not claimed", which is
+    true of an expired token. The operator was told a grant was good while
+    /claim returned 400 for it, with nothing pointing at the need to reissue.
+    """
+    _token, req = _approved(store)
+    req.setup_token_expires_at = datetime.now(timezone.utc) - timedelta(minutes=1)
+
+    r = await client.get("/api/admin/access-requests", **operator)
+
+    assert r.json()["requests"][0]["has_live_token"] is False
+
+
+async def test_a_denied_request_is_never_reported_as_live(client, store, operator):
+    """Same predicate, the other way in: denial clears the hash, but status
+    alone should settle it."""
+    req = _pending(store)
+    req.status = STATUS_DENIED
+
+    r = await client.get("/api/admin/access-requests", **operator)
+
+    assert r.json()["requests"][0]["has_live_token"] is False
+
+
+async def test_losing_the_race_on_an_email_is_a_400_not_a_500(client, store):
+    """users.email is unique, and the read before the insert is not a lock.
+
+    scripts/create_user.py — or another claim — can take the address between
+    the check and the commit. Then the INSERT is rejected and a VALID setup
+    link 500s, where the same situation a millisecond earlier returns the
+    generic 400. That is an enumeration difference as well as an ugly error:
+    500-versus-400 is measurable.
+    """
+    token, req = _approved(store)
+    store.integrity_error_on_commit = True
+
+    r = await client.post("/api/access-requests/claim",
+                          json={"token": token, "password": CHOSEN_PASSWORD})
+
+    assert r.status_code == 400
+    assert r.json() == {"detail": "That setup link is not valid"}
+    assert store.rollbacks == 1, "the failed transaction must be rolled back"
     assert not store.users

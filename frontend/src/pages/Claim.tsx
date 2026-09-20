@@ -38,7 +38,22 @@ const MIN_PASSWORD = 12;
 export function tokenFromHash(hash: string): string {
   const raw = (hash || "").replace(/^#/, "");
   if (!raw) return "";
-  if (!raw.includes("=")) return decodeURIComponent(raw);
+  if (!raw.includes("=")) {
+    // decodeURIComponent THROWS a URIError on a malformed percent escape —
+    // "%zz", a trailing "%", a truncated "a%2". This runs inside a useState
+    // initializer, so an unhandled throw here takes the whole setup page down
+    // before it renders and the person cannot even paste their token by hand.
+    // That also contradicted the line above about tolerating mangled links:
+    // mangling is precisely what produces these.
+    //
+    // URLSearchParams does not throw on the same input (it hands back the raw
+    // text, or a replacement character), so only this branch needs guarding.
+    try {
+      return decodeURIComponent(raw);
+    } catch {
+      return raw;                        // better a wrong token than no page
+    }
+  }
   return new URLSearchParams(raw).get("token") || "";
 }
 

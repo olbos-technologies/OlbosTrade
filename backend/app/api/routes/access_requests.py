@@ -35,6 +35,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
+from sqlalchemy.exc import IntegrityError
 
 from app.api.deps import require_api_key_configured
 from app.api.rate_limit import client_ip, signup_rate_limit
@@ -54,18 +55,50 @@ from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+def require_auth_enabled() -> None:
+    """These routes do not exist while auth is off.
+
+    An install running on nginx Basic Auth alone has no accounts to grant, so
+    a queue nobody can act on is worse than no queue — and a claim route that
+    creates users no login route will accept is worse still.
+
+    A DEPENDENCY, and first in each router's list, which is load-bearing.
+    This began as a call at the top of each handler body, and FastAPI resolves
+    every dependency before the body runs — so on a disabled install the
+    checks in front of it answered first and the routes did not 404 at all:
+
+        public POST, auth disabled, six calls: 404 404 404 404 404 429
+        admin GET,   auth disabled, no key   : 403
+        admin GET,   auth disabled, no SECRET: 503
+
+    The 429 is the worst of those: a route that is supposed not to exist was
+    still consuming a caller's rate-limit quota. Raised by review on #71 and
+    reproduced before fixing; test_disabled_routes_404_before_any_other_check
+    pins the ordering rather than the single-call case that hid it.
+    """
+    if not settings.auth_enabled:
+        raise HTTPException(status_code=404, detail="Authentication is not enabled")
+
+
 #: Public. Both paths here are named in auth_deps.PUBLIC_EXACT.
-router = APIRouter(prefix="/api/access-requests", tags=["Access"])
+router = APIRouter(
+    prefix="/api/access-requests",
+    tags=["Access"],
+    dependencies=[Depends(require_auth_enabled)],
+)
 
 #: Operator-only, and deliberately NOT under the public prefix. Guarded by
 #: require_api_key_configured rather than require_api_key: the permissive
 #: variant no-ops when SECRET_KEY is empty, and "mint a live account grant"
 #: is not a thing to leave open on a misconfigured install. With auth enabled
 #: these also sit behind the app-level session dependency.
+#:
+#: require_auth_enabled comes FIRST so a disabled install 404s rather than
+#: reporting on its own key configuration to an anonymous caller.
 admin_router = APIRouter(
     prefix="/api/admin/access-requests",
     tags=["Access"],
-    dependencies=[Depends(require_api_key_configured)],
+    dependencies=[Depends(require_auth_enabled), Depends(require_api_key_configured)],
 )
 
 #: One body for every outcome of a submission. Deliberately says "recorded"
@@ -92,17 +125,6 @@ class ClaimIn(BaseModel):
 
 class ReviewIn(BaseModel):
     request_id: str = Field(..., max_length=64)
-
-
-def _enabled_or_404() -> None:
-    """These routes do not exist while auth is off.
-
-    An install running on nginx Basic Auth alone has no accounts to grant, so
-    a queue nobody can act on is worse than no queue — and a claim route that
-    creates users no login route will accept is worse still.
-    """
-    if not settings.auth_enabled:
-        raise HTTPException(status_code=404, detail="Authentication is not enabled")
 
 
 def _request_uuid(raw: str) -> uuid.UUID:
@@ -132,8 +154,6 @@ async def submit_request(
     from app.models.access_request import AccessRequest
     from app.models.user import User
 
-    _enabled_or_404()
-
     email = normalize_email(body.email)
     if "@" not in email or email.startswith("@") or email.endswith("@"):
         # Shape only. This is not an existence check and says nothing about
@@ -145,14 +165,31 @@ async def submit_request(
             existing_user = (await db.execute(
                 select(User).where(User.email == email).limit(1)
             )).scalar_one_or_none()
-            pending = (await db.execute(
+            # Pending AND approved, not just pending.
+            #
+            # The partial unique index covers only pending rows, deliberately,
+            # so that a denial can be reapplied to. But that also means an
+            # address whose request is APPROVED and not yet redeemed can queue
+            # a second row, which the operator can approve in turn — minting a
+            # second live token for one person while the first still works.
+            # That is exactly the invariant is_reviewable() refuses to break
+            # on the approve route, undone one step earlier. Raised in review.
+            #
+            # An approved request that has EXPIRED or been claimed is not live,
+            # so it does not block a new one: that is the reissue path, and
+            # closing it would leave someone whose link went stale with no way
+            # to ask again.
+            open_requests = (await db.execute(
                 select(AccessRequest).where(
                     AccessRequest.email == email,
-                    AccessRequest.status == STATUS_PENDING,
-                ).limit(1)
-            )).scalar_one_or_none()
+                    AccessRequest.status.in_([STATUS_PENDING, STATUS_APPROVED]),
+                )
+            )).scalars().all()
+            live = any(
+                r.status == STATUS_PENDING or is_claimable(r) for r in open_requests
+            )
 
-            if existing_user is None and pending is None:
+            if existing_user is None and not live:
                 db.add(AccessRequest(
                     email=email,
                     reason=(body.reason or "").strip() or None,
@@ -196,8 +233,6 @@ async def claim_request(
     from app.models.access_request import AccessRequest
     from app.models.user import User
 
-    _enabled_or_404()
-
     generic = HTTPException(status_code=400,
                             detail="That setup link is not valid")
     token_hash = hash_token(body.token)
@@ -234,8 +269,23 @@ async def claim_request(
         # The hash is KEPT rather than cleared, so a replay finds this row and
         # is refused by is_claimable() instead of finding nothing — which would
         # be indistinguishable from a typo and much harder to diagnose.
-        await db.commit()
         email = req.email
+        try:
+            await db.commit()
+        except IntegrityError:
+            # The read above is not a lock on users.email — scripts/
+            # create_user.py, or another claim, can insert the same address
+            # between the check and this commit. Then idx_users_email rejects
+            # the INSERT and a VALID setup link 500s, where the very same
+            # situation a millisecond earlier returns the generic 400.
+            #
+            # Which makes this an enumeration leak as well as an ugly error:
+            # 500-versus-400 is a difference an observer can measure. The
+            # database is the arbiter of uniqueness; this just has to agree
+            # with whichever answer it gives.
+            await db.rollback()
+            logger.warning("Setup-token claim lost a race on %s", email)
+            raise generic
 
     logger.info("Account created from access request: %s", email)
     return {"ok": True, "detail": "Account created. You can sign in now."}
@@ -248,8 +298,6 @@ async def list_requests(status: str | None = None) -> dict:
 
     from app.core.database import AsyncSessionLocal
     from app.models.access_request import AccessRequest
-
-    _enabled_or_404()
 
     async with AsyncSessionLocal() as db:
         stmt = select(AccessRequest).order_by(AccessRequest.created_at.desc())
@@ -268,7 +316,13 @@ async def list_requests(status: str | None = None) -> dict:
             "claimed_at": r.claimed_at.isoformat() if r.claimed_at else None,
             # Never the hash, and never the token. Whether a grant is still
             # live is what the operator needs; the digest is not.
-            "has_live_token": bool(r.setup_token_hash) and r.claimed_at is None,
+            #
+            # is_claimable() rather than a hand-rolled "has a hash and is not
+            # claimed", which reported an EXPIRED token as live — so the queue
+            # said a grant was good while /claim returned 400 for it, and the
+            # operator had no way to see they needed to reissue. One predicate
+            # decides redemption, so one predicate should describe it.
+            "has_live_token": is_claimable(r),
         } for r in rows]
 
     return {"requests": out}
@@ -291,7 +345,6 @@ async def approve_request(body: ReviewIn) -> dict:
     from app.core.database import AsyncSessionLocal
     from app.models.access_request import AccessRequest
 
-    _enabled_or_404()
     target = _request_uuid(body.request_id)
     token, token_hash = new_setup_token()
 
@@ -344,7 +397,6 @@ async def deny_request(body: ReviewIn) -> dict:
     from app.core.database import AsyncSessionLocal
     from app.models.access_request import AccessRequest
 
-    _enabled_or_404()
     target = _request_uuid(body.request_id)
 
     async with AsyncSessionLocal() as db:
