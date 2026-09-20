@@ -30,6 +30,17 @@ logger = get_logger(__name__)
 _hasher = PasswordHasher()
 
 SESSION_COOKIE_NAME = "olbos_session"
+
+#: Password bounds, defined ONCE and imported everywhere.
+#:
+#: These used to live as a literal in LoginRequest and a copy in
+#: scripts/create_user.py, tied together only by a comment saying they must
+#: match. The failure that comment describes is real: provision an account
+#: with a password longer than the login route accepts and it is valid in the
+#: database and impossible to log in with, with no error explaining why. A
+#: comment cannot prevent that; an import can.
+MIN_PASSWORD_LEN = 12
+MAX_PASSWORD_LEN = 1024
 TOKEN_BYTES = 32
 
 
