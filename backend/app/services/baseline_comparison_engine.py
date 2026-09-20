@@ -208,6 +208,202 @@ def _ours_actions(df: pd.DataFrame, start_idx: int, end_idx: int) -> list[str]:
     return actions
 
 
+
+# ── Random-entry baseline ────────────────────────────────────────────────────
+#
+# WHY THIS EXISTS AND WHY THE OTHER FOUR DO NOT ANSWER IT.
+#
+# Buy & Hold, SMA Cross, RSI Threshold and MACD Cross are all STRATEGIES. Each
+# has its own edge or anti-edge, so beating them says "better than that rule",
+# not "better than nothing". The question that has to be settled before any
+# filter work is cruder: does the signal carry information at all, or would
+# entries thrown at the same tape have done as well?
+#
+# That question has a specific shape, and getting the shape wrong is the usual
+# way a random baseline ends up meaningless:
+#
+#   TRADE COUNT MUST MATCH. A random model that trades three times as often is
+#   being compared on frequency, not on selection. It takes the number of
+#   entries the reference model made.
+#
+#   HOLD DURATION MUST MATCH. If the reference holds forty days and random
+#   holds five, the comparison confounds duration with selection — on a
+#   drifting tape, time in the market is itself a return. Random draws its
+#   holds from the reference's own durations.
+#
+#   ONE DRAW PROVES NOTHING. A single random run is a coin flip, and reporting
+#   it as "the random baseline returned X" invites reading noise as a result.
+#   What answers the question is the DISTRIBUTION: where the real model's
+#   return falls among many draws. A model at the 50th percentile of random is
+#   indistinguishable from chance no matter how good its absolute return
+#   looks; one at the 4th percentile is actively losing to it.
+#
+# Seeded, so a reported percentile can be reproduced and argued with.
+
+RANDOM_BASELINE_DRAWS = 500
+RANDOM_BASELINE_SEED = 20260920
+
+
+def _random_entry_actions(
+    n: int, durations: list[int], rng: "np.random.Generator",
+) -> list[str]:
+    """Place len(durations) non-overlapping long positions at random.
+
+    The placement is UNIFORM over all valid layouts, not "pick a start for each
+    trade and retry on collision" — that biases toward the middle of the
+    window and quietly changes what is being measured. The standard bijection
+    is used instead: choose the gaps between trades, then lay the trades out
+    end to end. Sampling k sorted positions from the free space and expanding
+    is equivalent and cheaper.
+
+    Returns fewer trades than asked for only when they cannot fit, which the
+    caller reports rather than hides.
+    """
+    actions = ["HOLD"] * n
+    if n <= 1 or not durations:
+        return actions
+
+    # A trade needs a bar to enter and a later bar to exit, so a duration of d
+    # occupies d + 1 bars. Anything that cannot fit is dropped from the end.
+    usable = [max(1, int(d)) for d in durations if d]
+    while usable and sum(d + 1 for d in usable) > n:
+        usable.pop()
+    if not usable:
+        return actions
+
+    k = len(usable)
+    occupied = sum(d + 1 for d in usable)
+    free = n - occupied
+
+    # The bijection: k non-decreasing offsets in [0, free], each shifted by the
+    # space the EARLIER trades occupy. `consumed` therefore accumulates lengths
+    # only — never the gaps, which the offsets already carry. Adding the gaps
+    # here too double-counts them, which pushes later trades past the end of
+    # the window and silently drops them: the first version did exactly that
+    # and placed 3 of 7 trades, so the count matching this whole comparison
+    # rests on was quietly false.
+    #
+    # DISTINCT cuts, then subtract ranks — NOT `integers(size=k)` then sort.
+    # Sampling with replacement and sorting is not uniform over layouts: tied
+    # tuples arise one way while distinct ones arise k! ways, so sorting
+    # concentrates probability on the mixed layouts. Measured with k=2 and one
+    # free bar, where the three layouts should be 1/3 each:
+    #
+    #     integers + sort   0.249  0.502  0.249     ← biased
+    #     distinct cuts     0.335  0.333  0.332     ← uniform
+    #
+    # Choosing k distinct values from [0, free + k) and subtracting each one's
+    # rank is the standard bijection onto non-decreasing k-tuples in [0, free],
+    # and it is uniform because the subsets are. Raised in review on #73; the
+    # original uniformity test used a SINGLE trade, where sampling with
+    # replacement is uniform, so it could not see this.
+    offsets = (np.sort(rng.choice(free + k, size=k, replace=False))
+               - np.arange(k)) if free > 0 else np.zeros(k, int)
+    lengths = [usable[i] for i in rng.permutation(k)]
+
+    consumed = 0
+    for offset, d in zip(offsets, lengths):
+        entry = int(offset) + consumed
+        exit_i = entry + d
+        if exit_i >= n:
+            break
+        actions[entry] = "BUY"
+        actions[exit_i] = "SELL"
+        consumed += d + 1
+    return actions
+
+
+def random_baseline_distribution(
+    dates: list[str], closes: list[float], reference_trades: list,
+    starting_capital: float = STARTING_CAPITAL_DEFAULT,
+    draws: int = RANDOM_BASELINE_DRAWS,
+    seed: int = RANDOM_BASELINE_SEED,
+) -> Optional[dict]:
+    """Return where `reference_trades` sits among `draws` random layouts.
+
+    None when the reference made no trades: there is nothing to match the
+    count and duration of, and a baseline built from an empty reference would
+    be comparing against zero trades while looking like a real result.
+    """
+    if not reference_trades:
+        return None
+
+    # Zero-duration trades are EXCLUDED, not rounded up to one.
+    #
+    # simulate_positions force-closes a position still open at the last bar so
+    # Buy & Hold produces a realized trade. A BUY on that final bar therefore
+    # exits on the same bar: hold_days == 0, and pnl == 0 because entry and
+    # exit take the same price. Coercing that to a 1-day hold — which the
+    # first version did, via max(1, ...) — hands the random draws a day of
+    # exposure the reference never had, and an extra trade, so the matching
+    # this whole comparison rests on is off by one in both count and duration.
+    #
+    # Dropping them does not move the reference return: their P&L is exactly
+    # zero. Raised in review on #73.
+    matched = [t for t in reference_trades if int(t.hold_days) > 0]
+    if not matched:
+        return None
+    durations = [int(t.hold_days) for t in matched]
+    reference_return = sum(t.pnl for t in matched) / starting_capital * 100.0
+
+    rng = np.random.default_rng(seed)
+    returns: list[float] = []
+    trade_counts: list[int] = []
+    for _ in range(draws):
+        actions = _random_entry_actions(len(closes), durations, rng)
+        trades, _curve = simulate_positions(dates, closes, actions, starting_capital)
+        returns.append(sum(t.pnl for t in trades) / starting_capital * 100.0)
+        trade_counts.append(len(trades))
+
+    arr = np.array(returns, dtype=float)
+    # MID-RANK, the standard tie correction: ties count half.
+    #
+    # A strict `<` was wrong in the direction that matters most. On a flat tape
+    # a reference that ties every single draw scored 0 — the bottom of the
+    # distribution — and _verdict(0) called it "inverted or harmful". Tying
+    # every draw is the definition of indistinguishable, not of harmful, and
+    # that is exactly the verdict this tool exists to get right.
+    #
+    # Mid-rank gives that case 50 and still refuses to credit a tie as a win:
+    # tying everything lands mid-distribution, beating everything is 100,
+    # losing to everything is 0. Raised in review on #73.
+    below = float((arr < reference_return).sum())
+    equal = float((arr == reference_return).sum())
+    percentile = (below + 0.5 * equal) / len(arr) * 100.0
+
+    return {
+        "draws": draws,
+        "seed": seed,
+        "reference_return_pct": round(reference_return, 2),
+        "reference_trades": len(matched),
+        "excluded_zero_duration_trades": len(reference_trades) - len(matched),
+        "random_trades_median": int(np.median(trade_counts)),
+        "random_return_mean_pct": round(float(arr.mean()), 2),
+        "random_return_p05_pct": round(float(np.percentile(arr, 5)), 2),
+        "random_return_p50_pct": round(float(np.percentile(arr, 50)), 2),
+        "random_return_p95_pct": round(float(np.percentile(arr, 95)), 2),
+        "percentile_of_random": round(percentile, 1),
+        "verdict": _verdict(percentile),
+    }
+
+
+def _verdict(percentile: float) -> str:
+    """Plain words, because a percentile alone gets read as a score.
+
+    The bands are deliberately wide. With 500 draws the sampling error on a
+    percentile is a couple of points, and a narrower band would invite
+    treating 57 and 63 as different findings when they are the same one.
+    """
+    if percentile >= 95.0:
+        return "beats random entries at the 5% level"
+    if percentile >= 75.0:
+        return "better than most random entries, not conclusively"
+    if percentile > 25.0:
+        return "indistinguishable from random entries"
+    if percentile > 5.0:
+        return "worse than most random entries"
+    return "loses to random entries at the 5% level — the signal is inverted or harmful"
+
 MODEL_NAMES = ("Buy & Hold", "SMA Cross", "RSI Threshold", "MACD Cross", "Ours")
 
 
@@ -254,9 +450,12 @@ def generate_comparison(
     closes = full_df["close"].iloc[start_idx:end_idx + 1].tolist()
 
     models = []
+    ours_trades: list[Trade] = []
     for name in MODEL_NAMES:
         actions = _model_actions(name, full_df, start_idx, end_idx)
         trades, equity_curve = simulate_positions(dates, closes, actions, starting_capital)
+        if name == "Ours":
+            ours_trades = trades
 
         pnl_series = [t.pnl for t in trades]
         hold_days = [t.hold_days for t in trades]
@@ -292,5 +491,10 @@ def generate_comparison(
         "starting_capital": starting_capital,
         "bars": [{"date": d, "close": c} for d, c in zip(dates, closes)],
         "models": models,
+        # The question the other four models cannot answer: does the signal
+        # beat entries thrown at the same tape? None when "Ours" made no
+        # trades — see random_baseline_distribution.
+        "random_baseline": random_baseline_distribution(
+            dates, closes, ours_trades, starting_capital),
         "disclaimer": "Research only — no execution path. Long/flat simulation, no commissions or slippage modeled.",
     }
