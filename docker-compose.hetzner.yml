@@ -96,7 +96,19 @@ services:
       - olbostrade_internal
       - olbos_default        # joins existing Caddy network
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/api/guardrails/status || exit 1"]
+      # /health, NOT /api/guardrails/status.
+      #
+      # guardrails/status is not in auth_deps.PUBLIC_EXACT, so with
+      # AUTH_ENABLED=true every probe got a 401, curl -fsS failed, and the
+      # container could never become healthy — which then blocked the
+      # frontend, whose depends_on requires a healthy backend. The site went
+      # down on deploy for that reason and nothing else; the backend itself
+      # was serving fine.
+      #
+      # It survived this long because a container already running does not
+      # re-evaluate depends_on: the breakage only surfaced when the stack was
+      # recreated. test_healthchecks_probe_public_routes.py now pins it.
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
