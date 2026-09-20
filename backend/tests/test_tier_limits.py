@@ -23,7 +23,7 @@ import pytest
 
 from app.api.tier_deps import (
     cap_symbols, caller_limits, caller_tier, clamp_history_years,
-    require_broker_access,
+    clamp_start_date, earliest_start, require_broker_access,
 )
 from app.core.config import settings
 from app.models.user import TIER_ELITE, TIER_FREE, TIER_PRO
@@ -168,8 +168,19 @@ def test_history_is_clamped_not_refused(monkeypatch, tier, asked, expected):
 
 
 def test_history_is_unclamped_with_auth_off(monkeypatch):
+    """An install with no accounts keeps every year it already had.
+
+    UNLIMITED.history_years used to be ELITE.history_years, which reads as
+    "the most any tier gets" and is not the same thing as "no limit": it
+    clamped an auth-disabled install to five years of history it had always
+    been able to reach. Found by checking the clamp's actual output rather
+    than by reading it.
+    """
     monkeypatch.setattr(settings, "auth_enabled", False)
-    assert clamp_history_years(_Conn(), 20) == UNLIMITED.history_years
+
+    assert UNLIMITED.history_years is None
+    assert clamp_history_years(_Conn(), 20) == 20
+    assert clamp_start_date(_Conn(), "1990-01-01") == "1990-01-01"
 
 
 def test_symbols_are_capped_in_the_callers_order(monkeypatch):
@@ -262,3 +273,118 @@ def test_tier_limits_match_the_landing_page(plan, tier):
     else:
         assert "none" in broker, (
             f"{plan} has no broker access but advertises {broker!r}")
+
+
+# ── watchlist capping ───────────────────────────────────────────────────────
+
+from app.api.tier_deps import cap_watchlist, cap_watchlists  # noqa: E402
+
+_WL = {"slug": "mega", "name": "Mega Cap", "description": "", "is_system": True,
+       "symbols": [{"symbol": s, "asset_class": "equity"}
+                   for s in ("NVDA", "AAPL", "MSFT")]}
+
+
+def test_a_capped_watchlist_says_it_was_capped(monkeypatch):
+    """A truncated list that does not admit it is indistinguishable from a
+    short one. The UI has to be able to say "upgrade to see the other 2"
+    rather than silently showing a one-name watchlist as if that were all
+    there is."""
+    monkeypatch.setattr(settings, "auth_enabled", True)
+
+    out = cap_watchlist(_Conn({"tier": TIER_FREE}), _WL)
+
+    assert [s["symbol"] for s in out["symbols"]] == ["NVDA"]
+    assert out["capped"] is True
+    assert out["total_symbols"] == 3
+
+
+def test_an_uncapped_watchlist_is_not_labelled_capped(monkeypatch):
+    """Pro and Elite must not get a `capped` flag they would have to explain."""
+    monkeypatch.setattr(settings, "auth_enabled", True)
+
+    out = cap_watchlist(_Conn({"tier": TIER_PRO}), _WL)
+
+    assert out is _WL
+    assert "capped" not in out
+
+
+def test_capping_never_mutates_the_payload(monkeypatch):
+    """These dicts come from watchlist_service._serialize and on some paths
+    are shared. Editing in place would let one Free caller's cap leak into
+    what every other caller sees — a data bug that looks like a tier bug."""
+    monkeypatch.setattr(settings, "auth_enabled", True)
+    before = [s["symbol"] for s in _WL["symbols"]]
+
+    cap_watchlist(_Conn({"tier": TIER_FREE}), _WL)
+
+    assert [s["symbol"] for s in _WL["symbols"]] == before
+    assert "capped" not in _WL
+
+
+def test_the_cap_is_per_watchlist_not_shared_across_them(monkeypatch):
+    """One symbol from EACH list, not one symbol in total. A shared budget
+    would render the second and later lists empty, which reads as a broken
+    response rather than as a plan limit."""
+    monkeypatch.setattr(settings, "auth_enabled", True)
+    second = {**_WL, "slug": "semis"}
+
+    out = cap_watchlists(_Conn({"tier": TIER_FREE}), [_WL, second])
+
+    assert [len(w["symbols"]) for w in out] == [1, 1]
+
+
+def test_watchlists_are_whole_with_auth_off(monkeypatch):
+    monkeypatch.setattr(settings, "auth_enabled", False)
+    assert cap_watchlist(_Conn(), _WL) is _WL
+
+
+# ── history windows as dates ────────────────────────────────────────────────
+
+_NOW = __import__("datetime").date(2026, 9, 20)
+
+
+@pytest.mark.parametrize("tier,expected", [
+    (TIER_FREE, "2025-09-20"),
+    (TIER_PRO, "2021-09-20"),
+    (TIER_ELITE, "2021-09-20"),
+])
+def test_a_too_early_start_date_is_moved_forward(monkeypatch, tier, expected):
+    monkeypatch.setattr(settings, "auth_enabled", True)
+    conn = _Conn({"tier": tier})
+
+    assert clamp_start_date(conn, "2010-01-01", _NOW) == expected
+    assert earliest_start(conn, _NOW).isoformat() == expected
+
+
+def test_a_start_date_inside_the_window_is_left_alone(monkeypatch):
+    """Clamping must not move a date the caller is entitled to."""
+    monkeypatch.setattr(settings, "auth_enabled", True)
+
+    assert clamp_start_date(_Conn({"tier": TIER_FREE}), "2026-08-01", _NOW) \
+        == "2026-08-01"
+
+
+def test_a_malformed_date_is_not_silently_clamped(monkeypatch):
+    """This is a tier control, not a validator. The route's own parsing
+    rejects a bad date with a message about the date; turning "2024-13-01"
+    into a silent clamp here would replace that with a confusing success."""
+    monkeypatch.setattr(settings, "auth_enabled", True)
+    conn = _Conn({"tier": TIER_FREE})
+
+    for bad in ("2024-13-01", "not-a-date", "", None):
+        assert clamp_start_date(conn, bad, _NOW) == bad
+
+
+def test_the_year_length_does_not_drift_across_leap_years(monkeypatch):
+    """365.25, not 365. A five-year window built from 365-day years reaches
+    about a day further back each leap year, quietly widening what Pro can
+    see — the kind of drift nobody notices until the numbers stop matching
+    the pricing page."""
+    monkeypatch.setattr(settings, "auth_enabled", True)
+    import datetime as _dt
+
+    conn = _Conn({"tier": TIER_PRO})
+    span = (_NOW - earliest_start(conn, _NOW)).days
+    assert span == round(5 * 365.25)
+    assert span > 5 * 365, "a plain 365-day year loses the leap days"
+    assert isinstance(earliest_start(conn, _NOW), _dt.date)

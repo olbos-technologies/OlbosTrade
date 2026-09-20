@@ -11,7 +11,8 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from app.api.tier_deps import clamp_start_date
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import select, desc
 
@@ -166,8 +167,12 @@ async def _execute_backtest(run_id: str, req: BacktestRunRequest) -> None:
 
 
 @router.post("/run")
-async def run_backtest(req: BacktestRunRequest):
+async def run_backtest(req: BacktestRunRequest, request: Request):
     """Kick off a backtest run. Poll GET /{run_id}/results for status."""
+    # Clamped to the caller's tier before anything reads it, so the run
+    # record, the engine call and the echoed start_date cannot disagree.
+    req = req.model_copy(update={
+        "start_date": clamp_start_date(request, req.start_date)})
     valid = {"bull_put_spread", "bear_call_spread", "iron_condor", "bull_call_debit_spread"}
     if req.strategy not in valid:
         raise HTTPException(400, f"Unknown strategy. Valid: {sorted(valid)}")
@@ -265,7 +270,7 @@ async def _execute_equity_backtest(run_id: str, req: EquityBacktestRunRequest) -
 
 
 @router.post("/run-equity")
-async def run_equity_backtest(req: EquityBacktestRunRequest):
+async def run_equity_backtest(req: EquityBacktestRunRequest, request: Request):
     """
     Kick off a walk-forward equity backtest for any ticker — reuses the
     live equity_signal_engine scoring + GuardrailEngine, not a parallel
@@ -273,6 +278,10 @@ async def run_equity_backtest(req: EquityBacktestRunRequest):
     GET /history since it's persisted through the same BacktestRun model
     (strategy column stores "equity:{TICKER}").
     """
+    # Clamped to the caller's tier before anything reads it, so the run
+    # record, the engine call and the echoed start_date cannot disagree.
+    req = req.model_copy(update={
+        "start_date": clamp_start_date(request, req.start_date)})
     if not req.ticker or not req.ticker.strip():
         raise HTTPException(400, "ticker is required")
 
@@ -371,8 +380,12 @@ async def get_backtest_history(limit: int = 20):
 
 
 @router.post("/compare")
-async def compare_strategies(req: BacktestCompareRequest):
+async def compare_strategies(req: BacktestCompareRequest, request: Request):
     """Run all 4 strategies on the same date range in parallel."""
+    # Clamped to the caller's tier before anything reads it, so the run
+    # record, the engine call and the echoed start_date cannot disagree.
+    req = req.model_copy(update={
+        "start_date": clamp_start_date(request, req.start_date)})
     strategies = ["bull_put_spread", "bear_call_spread", "iron_condor", "bull_call_debit_spread"]
     run_ids = []
     for strategy in strategies:

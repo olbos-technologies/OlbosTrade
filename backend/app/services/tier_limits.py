@@ -45,8 +45,13 @@ class TierLimits:
     watchlist_symbols: Optional[int]
     #: DELAY_LIVE or DELAY_EOD.
     signal_delay: str
-    #: How far back history and backtests may reach.
-    history_years: int
+    #: How far back history and backtests may reach. None = no limit, and
+    #: that is not a tier — it is the auth-disabled install below. Using
+    #: Elite's number for "unlimited" looked harmless and was not: an install
+    #: with no accounts would have been clamped to five years of history it
+    #: already had unrestricted, which is the exact regression UNLIMITED
+    #: exists to prevent. Caught by sanity-checking the clamp's output.
+    history_years: Optional[int]
     #: Whether the caller may reach broker-connected routes at all.
     #:
     #: NOT a count, and the landing page's "1 (planned)" cannot become one
@@ -89,7 +94,7 @@ ELITE = TierLimits(
 UNLIMITED = TierLimits(
     watchlist_symbols=UNCAPPED,
     signal_delay=DELAY_LIVE,
-    history_years=ELITE.history_years,
+    history_years=UNCAPPED,
     broker_access=True,
 )
 

@@ -10,10 +10,11 @@ from __future__ import annotations
 
 import asyncio
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from app.services.event_risk_service import _days_to_next_earnings
+from app.api.tier_deps import cap_watchlist, cap_watchlists
 from app.services.intel import watchlist_service as wl
 from app.services.intel.catalyst_calendar import get_calendar
 from app.services.intel.provider_registry import registry
@@ -44,16 +45,20 @@ class AddSymbol(BaseModel):
 
 
 @router.get("/watchlists")
-async def watchlists():
-    return {"watchlists": await wl.list_watchlists()}
+async def watchlists(request: Request):
+    # Capped on the way OUT, not filtered in the query. Watchlists are shared
+    # (they carry no user_id — see the hybrid tenancy note in config.py), so
+    # there is no per-user row to restrict; what a tier buys is how much of
+    # the shared list you can see.
+    return {"watchlists": cap_watchlists(request, await wl.list_watchlists())}
 
 
 @router.get("/watchlists/{slug}")
-async def watchlist_detail(slug: str):
+async def watchlist_detail(slug: str, request: Request):
     w = await wl.get_watchlist(slug)
     if not w:
         raise HTTPException(404, "Watchlist not found")
-    return w
+    return cap_watchlist(request, w)
 
 
 @router.post("/watchlists")

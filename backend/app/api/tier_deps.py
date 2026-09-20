@@ -21,6 +21,8 @@ explicit because they look alike:
 
 from __future__ import annotations
 
+from datetime import date, datetime, timedelta, timezone
+
 from fastapi import HTTPException
 from starlette.requests import HTTPConnection
 
@@ -70,6 +72,10 @@ def clamp_history_years(conn: HTTPConnection, requested: int | None) -> int:
     the `history_years` field the callers attach.
     """
     allowed = caller_limits(conn).history_years
+    if allowed is None:
+        # No cap. An unspecified request still needs a number, and the only
+        # honest one is what was asked for.
+        return requested if requested and requested > 0 else 0
     if requested is None or requested <= 0:
         return allowed
     return min(requested, allowed)
@@ -86,3 +92,73 @@ def cap_symbols(conn: HTTPConnection, symbols: list) -> list:
     if cap is None:
         return symbols
     return symbols[:cap]
+
+
+def cap_watchlist(conn: HTTPConnection, payload: dict) -> dict:
+    """Trim one serialised watchlist's symbols to the tier's allowance.
+
+    A COPY, never a mutation. These dicts come straight from
+    watchlist_service._serialize and in some call paths are the same objects a
+    cache or a later request could hand out again; editing in place would let
+    one Free caller's cap leak into what everyone else sees.
+
+    `total_symbols` and `capped` are added rather than left implicit, because
+    a truncated list that does not say it was truncated is indistinguishable
+    from a short watchlist — and the UI has to be able to say "upgrade to see
+    the other 41" rather than silently showing one name.
+    """
+    symbols = payload.get("symbols") or []
+    kept = cap_symbols(conn, symbols)
+    if len(kept) == len(symbols):
+        return payload
+    return {**payload, "symbols": kept,
+            "total_symbols": len(symbols), "capped": True}
+
+
+def cap_watchlists(conn: HTTPConnection, payloads: list) -> list:
+    """cap_watchlist across a collection.
+
+    The cap is PER WATCHLIST, not shared across them: a Free caller sees one
+    symbol from each list rather than one symbol in total. Capping the total
+    would make the second and subsequent lists render as empty, which reads as
+    a broken response rather than as a plan limit.
+    """
+    return [cap_watchlist(conn, p) for p in payloads]
+
+
+#: Days per year used to turn a tier's history allowance into a date.
+#: 365.25 rather than 365, so a five-year window does not drift a day earlier
+#: each leap year and quietly widen what Pro can reach.
+_DAYS_PER_YEAR = 365.25
+
+
+def earliest_start(conn: HTTPConnection, now: date | None = None) -> date:
+    """The oldest date this caller's tier may reach back to."""
+    today = now or datetime.now(timezone.utc).date()
+    years = caller_limits(conn).history_years
+    if years is None:
+        return date.min                  # no floor at all
+    return today - timedelta(days=round(years * _DAYS_PER_YEAR))
+
+
+def clamp_start_date(conn: HTTPConnection, requested: str,
+                     now: date | None = None) -> str:
+    """Move a requested ISO start date forward to the tier's earliest.
+
+    Clamps rather than refusing, for the same reason clamp_history_years does:
+    a Free caller who asks for ten years should get their one year back, not
+    an error that makes every default date picker look broken.
+
+    An unparseable date is returned UNTOUCHED. This is a tier control, not a
+    validator — the route's own parsing already rejects malformed input with a
+    message about the date, and swallowing it here would turn "2024-13-01" into
+    a silent, confusing clamp instead.
+    """
+    if not requested:
+        return requested
+    try:
+        asked = datetime.fromisoformat(requested).date()
+    except (ValueError, TypeError):
+        return requested
+    floor = earliest_start(conn, now)
+    return floor.isoformat() if asked < floor else requested

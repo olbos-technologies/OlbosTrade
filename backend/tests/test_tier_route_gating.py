@@ -14,6 +14,8 @@ not asking the source what it appears to say.
 
 from __future__ import annotations
 
+import pytest
+
 from app.api.tier_deps import require_broker_access
 
 
@@ -111,3 +113,66 @@ def test_live_market_data_is_not_elite_gated():
     refuse it. Both reasons point the same way.
     """
     assert "/api/ibkr/live" not in _routes_with(require_broker_access)
+
+
+# ── history clamping ────────────────────────────────────────────────────────
+
+def test_the_backtest_entry_points_clamp_their_start_date():
+    """Wired at the top of the handler, not at the engine call.
+
+    Clamping where the engine is invoked would leave the run record and the
+    echoed `start_date` claiming a range the run did not use — the response
+    would say ten years and the result would be one. One rewrite at the top
+    means every downstream reader sees the same value.
+    """
+    import inspect
+
+    from app.api.routes import backtest
+
+    for name in ("run_backtest", "run_equity_backtest", "compare_strategies"):
+        fn = getattr(backtest, name)
+        src = inspect.getsource(fn)
+        # Comments stripped: an equivalent assertion on #70 matched the call
+        # it was looking for inside a COMMENT and proved nothing.
+        code = "\n".join(l for l in src.splitlines()
+                         if not l.strip().startswith("#"))
+        assert "clamp_start_date(" in code, f"{name} does not clamp start_date"
+        assert "request" in inspect.signature(fn).parameters, (
+            f"{name} cannot clamp — it never receives the connection")
+
+
+async def test_the_handler_passes_the_callers_date_to_the_clamp(monkeypatch):
+    """The wiring, verified by watching the call rather than by reading it.
+
+    The source check above proves clamp_start_date is MENTIONED in each
+    handler. This proves one of them actually calls it, with the request's own
+    start_date, and carries the clamped value forward — which is the part that
+    would break if someone rebound the wrong field or dropped the result.
+    """
+    import app.api.routes.backtest as bt
+    from app.api.routes.backtest import EquityBacktestRunRequest
+
+    calls = []
+
+    def _fake_clamp(conn, value, *a, **k):
+        calls.append(value)
+        return "2025-09-20"                  # as a Free tier would answer
+
+    monkeypatch.setattr(bt, "clamp_start_date", _fake_clamp)
+
+    class _FreeRequest:
+        def __init__(self):
+            self.state = type("S", (), {"user": {"tier": "free"}})()
+
+    req = EquityBacktestRunRequest(ticker="   ",   # blank: rejected right after
+                                   start_date="2010-01-01", end_date="2026-06-30")
+    with pytest.raises(Exception):
+        await bt.run_equity_backtest(req, _FreeRequest())
+
+    assert calls == ["2010-01-01"], (
+        f"the handler passed {calls} to the clamp, not the caller's start_date"
+    )
+    assert req.start_date == "2010-01-01", (
+        "the caller's request object must not be mutated — model_copy returns "
+        "a new one, and mutating in place would surprise anything holding it"
+    )
