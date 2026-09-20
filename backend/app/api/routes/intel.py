@@ -61,25 +61,38 @@ async def watchlist_detail(slug: str, request: Request):
     return cap_watchlist(request, w)
 
 
+# EVERY route that returns a watchlist caps it, writes included.
+#
+# The first version capped only the two GETs, which is not a cap at all: these
+# three hand back the same serialised payload, so a Free caller could POST a
+# symbol — or DELETE one — and read every symbol out of the response. The
+# limit was one request away from being decorative. Raised by review.
+#
+# The cap therefore belongs to the PAYLOAD, not to the verb. test_intel.py's
+# test_every_watchlist_route_caps_its_payload enumerates the registered routes
+# so the next one added cannot quietly skip it.
+
+
 @router.post("/watchlists")
-async def create_watchlist(body: CreateWatchlist):
-    return await wl.create_watchlist(body.name, body.description, body.symbols)
+async def create_watchlist(body: CreateWatchlist, request: Request):
+    return cap_watchlist(
+        request, await wl.create_watchlist(body.name, body.description, body.symbols))
 
 
 @router.post("/watchlists/{slug}/symbols")
-async def add_symbol(slug: str, body: AddSymbol):
+async def add_symbol(slug: str, body: AddSymbol, request: Request):
     w = await wl.add_symbol(slug, body.symbol, body.asset_class)
     if not w:
         raise HTTPException(404, "Watchlist not found")
-    return w
+    return cap_watchlist(request, w)
 
 
 @router.delete("/watchlists/{slug}/symbols/{symbol}")
-async def remove_symbol(slug: str, symbol: str):
+async def remove_symbol(slug: str, symbol: str, request: Request):
     w = await wl.remove_symbol(slug, symbol)
     if not w:
         raise HTTPException(404, "Watchlist not found")
-    return w
+    return cap_watchlist(request, w)
 
 
 @router.delete("/watchlists/{slug}")

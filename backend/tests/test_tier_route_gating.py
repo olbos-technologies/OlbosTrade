@@ -176,3 +176,81 @@ async def test_the_handler_passes_the_callers_date_to_the_clamp(monkeypatch):
         "the caller's request object must not be mutated — model_copy returns "
         "a new one, and mutating in place would surprise anything holding it"
     )
+
+
+# ── watchlist capping, everywhere a watchlist is returned ───────────────────
+
+def _watchlist_routes():
+    """Every registered route under the watchlists prefix, with its handler."""
+    import app.main as main_mod
+
+    out = []
+
+    def walk(routes, prefix=""):
+        for r in routes:
+            original = getattr(r, "original_router", None)
+            if original is not None:
+                ctx = getattr(r, "include_context", None)
+                walk(original.routes, prefix + getattr(ctx, "prefix", ""))
+                continue
+            path = getattr(r, "path", None)
+            if path and (prefix + path).startswith("/api/intel/watchlists"):
+                out.append((prefix + path, r))
+
+    walk(main_mod.app.routes)
+    return out
+
+
+def test_the_watchlist_routes_are_found_at_all():
+    """Guards the enumeration: every assertion below is a loop over this, and
+    a loop over nothing passes."""
+    paths = {p for p, _ in _watchlist_routes()}
+    assert len(paths) >= 4, paths
+
+
+def test_every_watchlist_route_caps_its_payload():
+    """Writes included, which is the whole point.
+
+    The first version of this feature capped the two GETs only. That is not a
+    cap: create, add-symbol and remove-symbol return the same serialised
+    payload, so a Free caller could POST a symbol and read every symbol out of
+    the response. The limit was one request away from being decorative.
+
+    Enumerated from the registered app rather than from the source file, so a
+    watchlist route added in another module is still covered.
+    """
+    import inspect
+
+    uncapped = []
+    for path, route in _watchlist_routes():
+        fn = getattr(route, "endpoint", None)
+        if fn is None:
+            continue
+        src = inspect.getsource(fn)
+        # Comments stripped — an equivalent check on #70 matched the call it
+        # was looking for inside a comment and proved nothing.
+        code = "\n".join(l for l in src.splitlines()
+                         if not l.strip().startswith("#"))
+        returns_watchlist = "wl." in code and "cap_watchlist" not in code
+        # delete_watchlist returns {"deleted": True} and carries no symbols,
+        # so it has nothing to cap.
+        if returns_watchlist and "deleted" not in code:
+            uncapped.append(path)
+
+    assert not uncapped, (
+        f"these watchlist routes return an uncapped payload: {sorted(set(uncapped))}"
+    )
+
+
+def test_a_capping_route_receives_the_connection():
+    """A handler cannot cap what it cannot see the caller of. Catches the
+    half-applied fix where cap_watchlist is called but `request` was never
+    added to the signature."""
+    import inspect
+
+    for path, route in _watchlist_routes():
+        fn = getattr(route, "endpoint", None)
+        if fn is None or "cap_watchlist" not in inspect.getsource(fn):
+            continue
+        assert "request" in inspect.signature(fn).parameters, (
+            f"{path} calls cap_watchlist but never receives the connection")

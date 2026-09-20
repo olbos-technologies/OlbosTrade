@@ -141,15 +141,16 @@ def earliest_start(conn: HTTPConnection, now: date | None = None) -> date:
     return today - timedelta(days=round(years * _DAYS_PER_YEAR))
 
 
-def clamp_start_date(conn: HTTPConnection, requested: str,
-                     now: date | None = None) -> str:
+def clamp_start_date(conn: HTTPConnection, requested: str | None,
+                     now: date | None = None) -> str | None:
     """Move a requested ISO start date forward to the tier's earliest.
 
     Clamps rather than refusing, for the same reason clamp_history_years does:
     a Free caller who asks for ten years should get their one year back, not
     an error that makes every default date picker look broken.
 
-    An unparseable date is returned UNTOUCHED. This is a tier control, not a
+    An unparseable date — including None and "" — is returned UNTOUCHED, which
+    is why the annotation admits None. This is a tier control, not a
     validator — the route's own parsing already rejects malformed input with a
     message about the date, and swallowing it here would turn "2024-13-01" into
     a silent, confusing clamp instead.
