@@ -27,7 +27,26 @@ import re
 
 import pytest
 
-COMPOSE = pathlib.Path(__file__).parent.parent.parent / "docker-compose.hetzner.yml"
+ROOT = pathlib.Path(__file__).parent.parent.parent
+COMPOSE = ROOT / "docker-compose.hetzner.yml"
+
+#: EVERY file that probes the backend, not just the compose healthcheck.
+#:
+#: The first version of this scanned docker-compose.hetzner.yml alone, and
+#: review immediately found two more copies of the same bug it was written to
+#: catch: up.sh ran its own readiness probe against /api/guardrails/status, so
+#: a fresh install would time out after 90 seconds against a healthy
+#: container, and the README told operators to curl it as a post-deploy check.
+#:
+#: Fixing the instance in front of you and leaving its siblings is the shape
+#: of defect this whole file exists to stop, so the scan covers the
+#: deployment surface rather than one file of it.
+PROBE_SOURCES = (
+    COMPOSE,
+    ROOT / "deploy/hetzner/up.sh",
+    ROOT / "deploy/hetzner/update.sh",
+    ROOT / "deploy/hetzner/README.md",
+)
 
 
 def _registered_paths() -> set:
@@ -47,28 +66,50 @@ def _registered_paths() -> set:
     return set(walk(main_mod.app.routes))
 
 
-def _backend_healthcheck_urls() -> list:
-    """Every localhost URL the compose healthchecks curl against.
+def _backend_probe_paths() -> list:
+    """Every backend path any deployment file curls, across PROBE_SOURCES.
 
     Text-scanned rather than YAML-parsed: PyYAML is not a declared dependency
-    (see test_auth_flag_is_explicit.py), and the shape here is a one-line
-    CMD-SHELL string.
+    (see test_auth_flag_is_explicit.py), and these are all one-line shell
+    commands anyway. Matches both the in-container form (127.0.0.1:8000) and
+    the public form the README documents, since a 401 is a 401 either way.
+
+    Lines whose first non-space character is # or comment markers are skipped
+    — the fixes left explanatory comments naming the old path, and matching
+    those would fail the test against correct code.
     """
-    text = COMPOSE.read_text()
-    return re.findall(r"curl[^\"']*?http://127\.0\.0\.1:8000(/[^\s\"'|]*)", text)
+    found: list = []
+    for path in PROBE_SOURCES:
+        if not path.exists():
+            continue
+        for line in path.read_text().splitlines():
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                continue
+            found += re.findall(
+                r"curl[^\"']*?(?:http://127\.0\.0\.1:8000|https://[^/\s]+)"
+                r"(/[^\s\"'|>]*)",
+                line,
+            )
+    return sorted(set(found))
 
 
-def test_a_backend_healthcheck_is_actually_configured():
+def test_backend_probes_are_actually_found():
     """Vacuity guard. Every assertion below loops over this list, and a loop
     over nothing passes — which is a comfortable way to stop checking the
-    thing that took the site down."""
-    urls = _backend_healthcheck_urls()
-    assert urls, (
-        "no backend healthcheck curl found in docker-compose.hetzner.yml — "
-        "either it was removed or this scan no longer matches its shape")
+    thing that took the site down.
+
+    Two or more: the compose healthcheck and up.sh's readiness probe. If this
+    drops to one, a probe stopped being visible to the scan rather than
+    stopping existing.
+    """
+    paths = _backend_probe_paths()
+    assert len(paths) >= 2, (
+        f"only found {paths} — the scan no longer matches the shape of the "
+        "deployment probes in PROBE_SOURCES")
 
 
-@pytest.mark.parametrize("path", _backend_healthcheck_urls() or ["<none found>"])
+@pytest.mark.parametrize("path", _backend_probe_paths() or ["<none found>"])
 def test_the_healthcheck_path_is_registered(path):
     """A 404 fails `curl -fsS` exactly like a 401 does.
 
@@ -80,7 +121,7 @@ def test_the_healthcheck_path_is_registered(path):
         f"curl -fsS would get a 404 and mark the container unhealthy")
 
 
-@pytest.mark.parametrize("path", _backend_healthcheck_urls() or ["<none found>"])
+@pytest.mark.parametrize("path", _backend_probe_paths() or ["<none found>"])
 def test_the_healthcheck_path_is_public(path):
     """With AUTH_ENABLED=true a non-allowlisted path returns 401, and a
     healthcheck that 401s marks a working container unhealthy — then blocks

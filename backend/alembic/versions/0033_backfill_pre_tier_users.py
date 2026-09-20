@@ -33,6 +33,20 @@ depends_on = None
 
 
 def upgrade() -> None:
+    # LOCK FIRST. One statement is not enough on READ COMMITTED, which is
+    # PostgreSQL's default: the UPDATE evaluates its NOT EXISTS against the
+    # snapshot taken when the statement began, so a `pro` or `elite` user
+    # committed by another connection after that instant is invisible — and
+    # every `free` row gets elevated anyway, which is the exact outcome the
+    # guard exists to prevent.
+    #
+    # The window is real rather than theoretical: up.sh and update.sh start
+    # the backend BEFORE running alembic, so the API is live and able to
+    # create users while this migration runs.
+    #
+    # EXCLUSIVE blocks writes and still allows reads, held until the
+    # migration's transaction commits. Raised in review on #75.
+    op.execute("LOCK TABLE users IN EXCLUSIVE MODE")
     op.execute(
         """
         UPDATE users

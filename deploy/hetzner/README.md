@@ -281,7 +281,7 @@ Nothing on this host depends on it after the cutover — but verify with
 
 ### 7. Verify
 ```bash
-curl -s https://trade.olbos.us/api/guardrails/status
+curl -s https://trade.olbos.us/api/health
 # → {"trading_allowed":true,"trading_mode":"normal",...}
 ```
 

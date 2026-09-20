@@ -85,29 +85,43 @@ def test_an_empty_users_table_is_fine():
     assert _tiers_after([]) == []
 
 
-def test_the_condition_is_in_the_sql_not_in_python():
-    """One statement, no Python branching.
+def test_the_table_is_locked_before_the_update():
+    """One statement is NOT enough on READ COMMITTED.
 
-    Reading the tiers, deciding in Python, then writing would be a race
-    against any account created in between — and on this table that race
-    hands out broker access. Checked structurally rather than by string
-    matching, because my first version of this test was unreadable regex
-    guesswork that failed against correct code.
+    PostgreSQL's default isolation evaluates the UPDATE's NOT EXISTS against
+    the snapshot taken when the statement began, so a `pro` or `elite` user
+    committed by another connection an instant later is invisible — and every
+    `free` row is elevated regardless, which is exactly what the guard is for.
+
+    The window is not theoretical: up.sh and update.sh start the backend
+    BEFORE running alembic, so the API is live and creating users while this
+    migration runs. Raised in review on #75; my own reasoning had stopped at
+    "it is a single statement, so it cannot race".
+    """
+    body = MIGRATION.read_text()
+    upgrade = body[body.index("def upgrade()"):body.index("def downgrade()")]
+
+    assert "LOCK TABLE users" in upgrade, (
+        "no table lock — the NOT EXISTS guard races any concurrent user write")
+    assert upgrade.index("LOCK TABLE users") < upgrade.index("UPDATE users"), (
+        "the lock must be taken BEFORE the update, or it guards nothing")
+    assert "EXCLUSIVE" in upgrade, (
+        "the lock mode must block concurrent writes")
+
+
+def test_the_condition_is_in_the_sql_not_in_python():
+    """The guard belongs in the UPDATE, not in a Python branch.
+
+    Reading the tiers, deciding in Python, then writing would race in a second
+    way that the table lock alone would not obviously cover. Checked
+    structurally rather than by string matching, because my first version of
+    this test was unreadable regex guesswork that failed against correct code.
     """
     import ast
 
     tree = ast.parse(MIGRATION.read_text())
     upgrade = next(n for n in tree.body
                    if isinstance(n, ast.FunctionDef) and n.name == "upgrade")
-
-    executes = [
-        n for n in ast.walk(upgrade)
-        if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
-        and n.func.attr == "execute"
-    ]
-    assert len(executes) == 1, (
-        f"upgrade() issues {len(executes)} statements; the guard and the "
-        "write must be one, or they race")
 
     branches = [n for n in ast.walk(upgrade)
                 if isinstance(n, (ast.If, ast.For, ast.While))]
