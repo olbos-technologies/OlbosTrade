@@ -60,11 +60,16 @@ type Plan = {
   featured?: boolean;
 };
 
-// All plans currently open the same unauthenticated /terminal — there is no
-// billing or Free/Pro/Elite gate in this repository yet. Capability lists
-// below describe the intended tier split (signals-only vs. broker-connected
-// execution), shown honestly and marked as planned / not enforced until
-// auth + billing ship.
+// Every plan CTA points at /request-access, not at /terminal.
+//
+// They used to open the terminal directly, which was the honest thing while
+// the terminal was open to anyone. With AUTH_ENABLED on it stopped being
+// honest: the button sent a visitor to a sign-in screen for an account they
+// have no way to obtain, which is a dead end dressed as a call to action.
+//
+// Tier is still assigned by the operator — there is no billing in this
+// repository — so all three cards lead to the same queue. The limits below
+// remain marked as planned until the tier gate ships.
 const PLANS: Plan[] = [
   {
     name: "Free",
@@ -84,7 +89,7 @@ const PLANS: Plan[] = [
       { feature: "Historical data", limit: "1 year (planned)" },
       { feature: "Broker connections", limit: "None" },
     ],
-    cta: { label: "Open paper terminal", href: "/terminal", internal: true },
+    cta: { label: "Request access", href: "/request-access", internal: true },
   },
   {
     name: "Pro",
@@ -104,7 +109,7 @@ const PLANS: Plan[] = [
       { feature: "Historical data", limit: "5 years (planned)" },
       { feature: "Broker connections", limit: "None" },
     ],
-    cta: { label: "Open paper terminal", href: "/terminal", internal: true },
+    cta: { label: "Request access", href: "/request-access", internal: true },
     featured: true,
   },
   {
@@ -124,7 +129,7 @@ const PLANS: Plan[] = [
       { feature: "Historical data", limit: "5 years (planned)" },
       { feature: "Broker connections", limit: "1 (planned)" },
     ],
-    cta: { label: "Open paper terminal", href: "/terminal", internal: true },
+    cta: { label: "Request access", href: "/request-access", internal: true },
   },
 ];
 
@@ -155,7 +160,7 @@ export default function Landing() {
             {/* Two labels, one shown at a time by CSS. The full label measures
                 173px — most of the phone nav row's budget. See the
                 .landing-nav-actions note in landing.css. */}
-            <Link className="landing-cta-btn landing-nav-cta" to="/terminal">
+            <Link className="landing-cta-btn landing-nav-cta" to="/request-access">
               <span className="landing-cta-full">Start Paper Trading</span>
               <span className="landing-cta-compact">Start Free</span>
             </Link>
@@ -196,7 +201,7 @@ export default function Landing() {
               validated track record first.
             </p>
             <div className="landing-hero-ctas">
-              <Link className="landing-cta-btn" to="/terminal">Start Paper Trading</Link>
+              <Link className="landing-cta-btn" to="/request-access">Start Paper Trading</Link>
               <a className="landing-cta-btn secondary" href="#risk">See risk controls</a>
             </div>
 
@@ -374,10 +379,11 @@ export default function Landing() {
           <div className="landing-container">
             <h2 className="landing-h2">Start in paper. Prove the edge before it's live.</h2>
             <p className="landing-lede" style={{ margin: "0 auto 28px" }}>
-              The terminal opens directly into paper trading — no live order can be placed until
-              the account and environment are explicitly switched to live.
+              Accounts open in paper trading — no live order can be placed until the account and
+              environment are explicitly switched to live. Access is invite-only; a person reviews
+              every request.
             </p>
-            <Link className="landing-cta-btn" to="/terminal">Start Paper Trading</Link>
+            <Link className="landing-cta-btn" to="/request-access">Start Paper Trading</Link>
           </div>
         </section>
       </main>

@@ -219,6 +219,13 @@ SIGNAL_OUTCOMES_GUARD_S = 600
 from app.api.routes import auth as auth_routes  # noqa: E402
 app.include_router(auth_routes.router)
 
+# Two routers, on two prefixes. The public one is allowlisted in auth_deps;
+# the operator one must not be, and lives under /api/admin/ so that it cannot
+# be reached by a path-based allowlist entry. See the module docstring.
+from app.api.routes import access_requests as access_request_routes  # noqa: E402
+app.include_router(access_request_routes.router)
+app.include_router(access_request_routes.admin_router)
+
 app.include_router(backtest.router,    prefix="/api/backtest",    tags=["Backtest"])
 app.include_router(strategy.router,    prefix="/api/strategy",    tags=["Strategy"])
 app.include_router(alpha_edge.router,  prefix="/api/alpha-edge",  tags=["Alpha Edge"])

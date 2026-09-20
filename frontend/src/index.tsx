@@ -10,6 +10,8 @@ import AuthGate from "./auth/AuthGate";
 // load, so each is only fetched when its route is actually visited.
 const App = lazy(() => import("./App"));
 const Landing = lazy(() => import("./pages/Landing"));
+const RequestAccess = lazy(() => import("./pages/RequestAccess"));
+const Claim = lazy(() => import("./pages/Claim"));
 
 function RouteFallback() {
   return (
@@ -35,6 +37,14 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
       <Suspense fallback={<RouteFallback />}>
         <Routes>
           <Route path="/" element={<Landing />} />
+          {/* Both public, and deliberately OUTSIDE AuthProvider. Someone
+              asking for an account has no session to resolve, and someone
+              redeeming a setup token has no account yet — mounting the
+              provider would fire /api/auth/status and install the 401
+              interceptor on two screens whose whole premise is not being
+              signed in. The backend allowlists exactly these two paths. */}
+          <Route path="/request-access" element={<RequestAccess />} />
+          <Route path="/claim" element={<Claim />} />
           {/* AuthProvider sits INSIDE this route, not above the switch. Above
               it, its mount effect called /api/auth/status and installed the
               fetch interceptor on every visit to the public landing page,

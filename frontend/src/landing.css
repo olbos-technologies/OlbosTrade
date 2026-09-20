@@ -53,8 +53,14 @@
 .landing-nav-actions { display: flex; align-items: center; gap: 14px; flex-shrink: 0; }
 /* The nav CTA carries both labels; only one is displayed at a time. */
 .landing-cta-compact { display: none; }
-.landing-signin { font-family: var(--sans); font-size: 13px; color: var(--ink-dim); }
-.landing-signin:hover { color: var(--ink); }
+/* Element + class, because the `.landing a { color: inherit }` reset above
+   is (0,1,1) and a bare `.landing-signin` at (0,1,0) loses to it — so this
+   rendered at --ink and its hover state was a no-op. The nav links beside
+   it are unaffected: they take their colour from .landing-nav-links on the
+   container, which the reset does not override. */
+.landing-signin { font-family: var(--sans); font-size: 13px; }
+a.landing-signin { color: var(--ink-dim); }
+a.landing-signin:hover { color: var(--ink); }
 
 .landing-nav-toggle {
   display: none;
