@@ -796,3 +796,154 @@ async def test_verifying_your_own_connection_records_the_check(client, store, mo
     assert r.json()["verified"] is True
     assert row.last_verified_at is not None
     assert ALPACA_KEY not in r.text
+
+# ── what a validation failure is allowed to say ─────────────────────────────
+
+async def test_an_oversized_credential_is_never_echoed_back(client, store):
+    """The leak this PR shipped with, and the reason ConnectIn has no
+    max_length on its credential fields.
+
+    A Pydantic constraint is enforced before the handler and raises a 422 whose
+    detail carries `input` — the offending value, which here is the whole
+    secret. The frontend JSON.stringifies a non-string detail into the message
+    and renders it in an alert, so an over-long key landed in the DOM.
+    Reproduced before fixing: a 300-character secret came back in the response
+    body verbatim.
+    """
+    huge = "SUPERSECRET-" + "Z" * 400
+    async with client as c:
+        r = await c.post("/api/brokers/connections",
+                         json=_connect_body(secret_key=huge))
+
+    assert r.status_code == 400, (
+        f"expected our own 400, got {r.status_code} — a 422 here means "
+        f"Pydantic rejected it first and echoed the value"
+    )
+    assert huge not in r.text, "the response echoed the credential back"
+    assert "Z" * 40 not in r.text, "part of the credential survived in the body"
+    assert store.connections == []
+
+
+async def test_the_same_holds_for_an_oversized_api_key(client, store):
+    huge = "PK" + "Q" * 400
+    async with client as c:
+        r = await c.post("/api/brokers/connections", json=_connect_body(api_key=huge))
+    assert r.status_code == 400
+    assert huge not in r.text
+    assert "Q" * 40 not in r.text
+
+
+async def test_an_absurd_credential_never_reaches_the_broker(client, store, monkeypatch):
+    """Why the length check sits in the HANDLER and not only in the service.
+
+    The service checks too, and on its own that already yields a safe 400 —
+    so removing the handler check changes no status code and no message. What
+    it changes is ORDER: the service check runs after verify_alpaca(), so
+    without the handler check a 400-character value is first packed into an
+    outbound request header and sent to Alpaca.
+
+    Found by mutation: deleting the handler check failed nothing until this
+    test existed.
+    """
+    called = []
+
+    def handler(url, headers):
+        called.append(url)
+        return _FakeResponse(200, {"status": "ACTIVE"})
+
+    _patch_http(monkeypatch, handler)
+    async with client as c:
+        r = await c.post("/api/brokers/connections",
+                         json=_connect_body(secret_key="Z" * 400))
+
+    assert r.status_code == 400
+    assert called == [], (
+        "an over-long credential was sent to the broker before being "
+        "rejected — the length check must run before verification"
+    )
+
+
+async def test_a_long_label_is_still_rejected_by_the_schema(client, store):
+    """label KEEPS its max_length, deliberately: it is the user's own words,
+    not a secret, so echoing it in a 422 is harmless — and a schema
+    constraint is the better guard when there is nothing to hide."""
+    async with client as c:
+        r = await c.post("/api/brokers/connections",
+                         json=_connect_body(label="L" * 200))
+    assert r.status_code == 422
+    assert store.connections == []
+
+
+# ── the feature switch reaches every route ──────────────────────────────────
+
+async def test_listing_refuses_when_the_deployment_cannot_encrypt(client, store, monkeypatch):
+    """MyBrokers decides whether to render the credential form from THIS call.
+
+    Without the guard an unconfigured deployment answered 200 with an empty
+    list, the form appeared, and a user typed a live brokerage secret into a
+    screen that could not store it — finding out only when the POST came back
+    503. Raised in review on #78.
+    """
+    monkeypatch.setattr(settings, "broker_encryption_key", "", raising=False)
+    async with client as c:
+        r = await c.get("/api/brokers/connections")
+    assert r.status_code == 503, (
+        "the list route answered without an encryption key, so the UI will "
+        "show a form that cannot store what is typed into it"
+    )
+
+
+# ── the first connection for a slot is a race ───────────────────────────────
+
+async def test_two_simultaneous_first_connections_do_not_500(store, cipher_key):
+    """FOR UPDATE locks the rows it FINDS, and on a first connect it finds
+    none — so both requests insert and the partial unique index turns one into
+    an IntegrityError. The retry re-reads after the winner committed and takes
+    the ordinary replace path.
+
+    The race is simulated by making the first commit raise IntegrityError, the
+    way Postgres would report the index violation.
+    """
+    from sqlalchemy.exc import IntegrityError
+
+    db = _FakeSession(store)
+    calls = {"n": 0}
+    real_commit = db.commit
+
+    async def flaky_commit():
+        calls["n"] += 1
+        if calls["n"] == 1:
+            # As the loser of the race sees it.
+            raise IntegrityError("INSERT INTO broker_connections", {}, Exception(
+                'duplicate key value violates unique constraint '
+                '"idx_broker_connections_active"'))
+        await real_commit()
+
+    db.commit = flaky_commit
+    conn = await svc.connect(db, USER_A, broker="alpaca", environment=ENV_PAPER,
+                             api_key=ALPACA_KEY, secret_key=ALPACA_SECRET)
+
+    assert calls["n"] == 2, "the conflict was not retried"
+    assert conn.status == STATUS_ACTIVE
+    assert credential_cipher.decrypt(conn.api_key_enc) == ALPACA_KEY
+
+
+async def test_a_persistent_conflict_still_raises_rather_than_spinning(store, cipher_key):
+    """Two attempts, not a loop. A second conflict means a third concurrent
+    writer for one user's single slot, which is not worth spinning on — and an
+    unbounded retry would turn a stuck index into a hung request."""
+    from sqlalchemy.exc import IntegrityError
+
+    db = _FakeSession(store)
+    calls = {"n": 0}
+
+    async def always_conflict():
+        calls["n"] += 1
+        raise IntegrityError("INSERT INTO broker_connections", {}, Exception("dup"))
+
+    db.commit = always_conflict
+    with pytest.raises(IntegrityError):
+        await svc.connect(db, USER_A, broker="alpaca", environment=ENV_PAPER,
+                          api_key=ALPACA_KEY, secret_key=ALPACA_SECRET)
+    assert calls["n"] == 2, f"expected exactly 2 attempts, got {calls['n']}"
+

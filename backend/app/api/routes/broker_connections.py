@@ -52,11 +52,23 @@ router = APIRouter(
 class ConnectIn(BaseModel):
     broker: str = Field(default="alpaca", max_length=20)
     environment: str = Field(default="paper", max_length=10)
-    # The bounds match the service's. Pydantic rejects the absurd before any
-    # of it reaches encryption; the service re-checks because it is also
-    # callable from outside a request.
-    api_key: str = Field(..., max_length=svc.MAX_CREDENTIAL_LEN)
-    secret_key: str = Field(..., max_length=svc.MAX_CREDENTIAL_LEN)
+
+    # NO max_length ON THE CREDENTIAL FIELDS, and that absence is the fix for
+    # a real leak rather than an oversight.
+    #
+    # A Pydantic constraint is enforced before the handler runs and raises a
+    # 422 whose detail carries `input` — the offending value. That is the
+    # whole credential. The frontend's apiError() JSON.stringifies a non-string
+    # detail into the message, and MyBrokers renders the message in its alert,
+    # so an over-long key ended up in the DOM. Reproduced on #78 before fixing:
+    # a 300-character secret came back in the response body and in the text the
+    # user would have seen.
+    #
+    # The length is checked in the handler instead, where the error message is
+    # ours to write and names no value. `label` keeps its constraint: it is
+    # the user's own words, not a secret, and echoing it back is harmless.
+    api_key: str
+    secret_key: str
     label: str = Field(default="", max_length=svc.MAX_LABEL_LEN)
 
 
@@ -78,9 +90,17 @@ def _require_cipher() -> None:
 
 @router.get("/connections")
 async def list_connections(request: Request) -> dict:
-    """Every connection this user has made. Never decrypts anything."""
+    """Every connection this user has made. Never decrypts anything.
+
+    GUARDED TOO, though it stores nothing. MyBrokers decides whether to render
+    the credential form from THIS call: without the guard an unconfigured
+    deployment answered 200 with an empty list, the form appeared, and a user
+    typed a live brokerage secret into a screen that could not store it,
+    finding out only when the POST came back 503. Raised in review on #78.
+    """
     from app.core.database import AsyncSessionLocal
 
+    _require_cipher()
     user = current_user(request)
     async with AsyncSessionLocal() as db:
         connections = await svc.list_for_user(db, user["id"])
@@ -129,6 +149,16 @@ async def create_connection(
     if not api_key or not secret_key:
         raise HTTPException(
             status_code=400, detail="Both the API key and the secret are required."
+        )
+    # The bound Pydantic no longer enforces — see ConnectIn. Checked BEFORE
+    # verification, so an absurd value never reaches an outbound request, and
+    # the message quotes nothing.
+    if (len(api_key) > svc.MAX_CREDENTIAL_LEN
+            or len(secret_key) > svc.MAX_CREDENTIAL_LEN):
+        raise HTTPException(
+            status_code=400,
+            detail=("That does not look like an Alpaca key pair — both values "
+                    f"must be at most {svc.MAX_CREDENTIAL_LEN} characters."),
         )
 
     verified_at = None

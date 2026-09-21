@@ -173,6 +173,20 @@ describe("MyBrokers", () => {
     expect(screen.queryByPlaceholderText(/never shown again/i)).not.toBeInTheDocument();
   });
 
+  it("shows the blocked state when the deployment has no encryption key", async () => {
+    // The backend's list route answers 503 when BROKER_ENCRYPTION_KEY is
+    // unset. It did not, until review on #78 — it returned 200 with an empty
+    // list, so this form rendered and a user could type a live brokerage
+    // secret into a screen that could not store it. This pins the UI half of
+    // that fix: a 503 must blank the form, not just show an error above it.
+    listBrokerConnections.mockRejectedValue(
+      new FakeApiError(503, "503: Broker connections are not available on this deployment yet."));
+    render(<MyBrokers />);
+    expect(await screen.findByText(/not available on this deployment/i)).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(/never shown again/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^connect$/i })).not.toBeInTheDocument();
+  });
+
   it("refuses to submit an empty field without calling the API", async () => {
     render(<MyBrokers />);
     await waitFor(() => expect(listBrokerConnections).toHaveBeenCalled());

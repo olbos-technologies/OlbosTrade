@@ -30,6 +30,7 @@ from typing import Optional
 
 import httpx
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.models.broker_connection import (
     BROKER_ALPACA, BROKERS, ENV_LIVE, ENV_PAPER, ENVIRONMENTS,
@@ -215,6 +216,42 @@ async def connect(db, user_id, *, broker: str, environment: str,
         raise BrokerConnectionError("That does not look like an Alpaca key pair.")
 
     uid = _as_uuid(user_id)
+
+    # Two attempts, because the lock below cannot cover the FIRST connection
+    # for a slot. SELECT ... FOR UPDATE locks the rows it finds, and on a
+    # first connect it finds none — so two concurrent requests both see "no
+    # active row", both insert, and the partial unique index turns one of them
+    # into an unhandled IntegrityError. A 500, where the documented behaviour
+    # is a replacement. Raised in review on #78; the comment on the lock used
+    # to claim it covered this case and it never did.
+    #
+    # The retry is enough rather than a stopgap: whichever request loses the
+    # race re-reads AFTER the winner has committed, so the second pass finds a
+    # real row, locks it, revokes it and inserts — exactly the path a
+    # sequential reconnect takes. A second conflict would mean a third
+    # concurrent writer for one user's single slot, which is not a case worth
+    # spinning on.
+    for attempt in (1, 2):
+        try:
+            return await _connect_once(
+                db, uid, broker=broker, environment=environment,
+                api_key=api_key, secret_key=secret_key,
+                label=label, verified_at=verified_at,
+            )
+        except IntegrityError:
+            await db.rollback()
+            if attempt == 2:
+                raise
+            logger.info(
+                "Broker connect raced another request for user=%s %s/%s — retrying",
+                uid, broker, environment,
+            )
+
+
+async def _connect_once(db, uid, *, broker: str, environment: str,
+                        api_key: str, secret_key: str, label: str,
+                        verified_at: Optional[datetime]) -> BrokerConnection:
+    """One attempt at the revoke-then-insert. See connect() for the retry."""
     now = datetime.now(timezone.utc)
 
     existing = (await db.execute(
@@ -225,10 +262,10 @@ async def connect(db, user_id, *, broker: str, environment: str,
             BrokerConnection.environment == environment,
             BrokerConnection.status == STATUS_ACTIVE,
         )
-        # Locked for the same reason the claim route locks: two connect calls
-        # arriving together would both read "no active row" and both insert.
-        # The unique index would catch that, but as a 500 on a race rather
-        # than the second one simply replacing the first.
+        # Locks an EXISTING active row so two reconnects cannot both revoke
+        # it and both insert. It does not — cannot — cover the first connect
+        # for a slot, where there is no row to lock; connect()'s retry handles
+        # that case.
         .with_for_update()
     )).scalars().all()
     for row in existing:
