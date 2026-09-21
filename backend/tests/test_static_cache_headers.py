@@ -256,3 +256,65 @@ def test_proxy_unhashed_images_are_revalidated(ext):
     for matcher, body in matched:
         assert "immutable" not in body, (
             f".{ext} is immutable under proxy location {matcher!r}")
+
+
+# ── the heredoc is executed, not quoted ─────────────────────────────────────
+
+def _heredoc_body() -> str:
+    """The raw text between `<<EOF` and `EOF`, exactly as the shell sees it."""
+    text = ENTRYPOINT.read_text()
+    start = text.index("cat > /etc/nginx/conf.d/default.conf")
+    start = text.index("\n", start) + 1
+    return text[start: text.index("\nEOF", start)]
+
+
+def test_the_heredoc_contains_no_command_substitution():
+    """Backticks in this heredoc RUN. Including in comments.
+
+    The delimiter is an unquoted <<EOF, which it has to be — the config
+    interpolates ${AUTH_BLOCK}, ${SECRET_HEADER} and ${REAL_IP_BLOCK}. That
+    also means backticks and $(...) are command substitutions wherever they
+    appear, and a `#` comment does not protect them: the shell expands the
+    heredoc before anything sees it as nginx config.
+
+    I shipped exactly this to production. A comment reading "so `immutable`
+    pins whatever was cached first" made every container start print
+
+        /docker-entrypoint-olbos.sh: line 75: immutable: not found
+
+    Harmless as it happened — the word vanished from a comment — but the same
+    mistake with a word that IS a command executes it at container start, as
+    root, on every deploy.
+    """
+    body = _heredoc_body()
+
+    assert "`" not in body, (
+        "backticks in the nginx heredoc are command substitutions, comments "
+        "included; use plain words instead")
+    assert "$(" not in body, (
+        "$(...) in the nginx heredoc is a command substitution")
+
+
+def test_variables_the_config_needs_are_still_interpolated():
+    """The flip side: this heredoc is unquoted ON PURPOSE. Quoting the
+    delimiter to dodge the rule above would stop ${AUTH_BLOCK} expanding and
+    silently disable Basic Auth."""
+    body = _heredoc_body()
+    for var in ("${AUTH_BLOCK}", "${SECRET_HEADER}"):
+        assert var in body, f"{var} is no longer interpolated into the config"
+
+    text = ENTRYPOINT.read_text()
+    assert "<<EOF" in text and "<<'EOF'" not in text, (
+        "the heredoc delimiter is quoted — ${AUTH_BLOCK} would be written "
+        "literally and Basic Auth would never be applied")
+
+
+def test_nginx_variables_are_escaped_so_the_shell_leaves_them_alone():
+    """$uri and $host belong to nginx, not the shell, so they must be \\$ in
+    an unquoted heredoc or they expand to empty at container start."""
+    body = _heredoc_body()
+    for var in ("uri", "host", "http_upgrade"):
+        bare = re.findall(rf"(?<!\\)\${var}\b", body)
+        assert not bare, (
+            f"${var} is unescaped in the heredoc — the shell would expand it "
+            f"to nothing before nginx ever sees it")
