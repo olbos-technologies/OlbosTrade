@@ -300,7 +300,13 @@ def test_variables_the_config_needs_are_still_interpolated():
     delimiter to dodge the rule above would stop ${AUTH_BLOCK} expanding and
     silently disable Basic Auth."""
     body = _heredoc_body()
-    for var in ("${AUTH_BLOCK}", "${SECRET_HEADER}"):
+    # ALL THREE the docstring names, not two of them. Raised in review on #77:
+    # this loop checked AUTH_BLOCK and SECRET_HEADER only, so deleting
+    # ${REAL_IP_BLOCK} would have passed the guard while dropping the
+    # set_real_ip_from directives — and with those gone every request appears
+    # to come from the proxy, which collapses the login rate limiter into one
+    # shared bucket where ten failed logins lock out everybody.
+    for var in ("${AUTH_BLOCK}", "${SECRET_HEADER}", "${REAL_IP_BLOCK}"):
         assert var in body, f"{var} is no longer interpolated into the config"
 
     text = ENTRYPOINT.read_text()
