@@ -161,12 +161,14 @@ export default function Landing() {
           </nav>
           <div className="landing-nav-actions">
             <Link className="landing-signin" to="/terminal">Sign In</Link>
-            {/* Two labels, one shown at a time by CSS. The full label measures
-                173px — most of the phone nav row's budget. See the
-                .landing-nav-actions note in landing.css. */}
+            {/* One label now. This carried two — "Start Paper Trading" and a
+                compact "Start Free" swapped by CSS — because the full label
+                measures 173px, most of the phone nav row's budget. "Sign Up"
+                is about a third of that, so the swap has nothing left to do
+                and the markup, the CSS and three tests that existed only to
+                keep it working all go away with it. */}
             <Link className="landing-cta-btn landing-nav-cta" to="/request-access">
-              <span className="landing-cta-full">Start Paper Trading</span>
-              <span className="landing-cta-compact">Start Free</span>
+              Sign Up
             </Link>
             <button
               type="button"
@@ -193,16 +195,21 @@ export default function Landing() {
               width={1024}
               height={559}
             />
-            <div className="landing-eyebrow">Systematic Options Execution</div>
+            <div className="landing-eyebrow">Systematic Options &amp; Equity Execution</div>
             <h1 className="landing-h1">
-              Systematic options execution with risk controls built into every decision.
+              Systematic options and equity execution with risk controls built into every decision.
             </h1>
+            {/* Crypto is named as a ROADMAP item and nowhere else. There is no
+                crypto support in this codebase — no venue, no data feed, no
+                instrument model — so anything that reads as a current
+                capability would be false. The same rule the track-record
+                numbers follow: say what exists, label what does not. */}
             <p className="landing-lede">
               Olbos Trading System runs a rules-based options and equity workflow — regime
               detection, a trained signal model, and a fail-closed risk gate — in front of every
               trade decision. Nothing executes without passing guardrails, and every signal shows
-              where it came from. Currently in paper-trading evaluation; live capital requires a
-              validated track record first.
+              where it came from. Crypto is planned and not yet supported. Currently in
+              paper-trading evaluation; live capital requires a validated track record first.
             </p>
             <div className="landing-hero-ctas">
               <Link className="landing-cta-btn" to="/request-access">Start Paper Trading</Link>

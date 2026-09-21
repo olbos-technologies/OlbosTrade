@@ -51,8 +51,6 @@
 }
 .landing-nav-links a:hover { color: var(--ink); }
 .landing-nav-actions { display: flex; align-items: center; gap: 14px; flex-shrink: 0; }
-/* The nav CTA carries both labels; only one is displayed at a time. */
-.landing-cta-compact { display: none; }
 /* Element + class, because the `.landing a { color: inherit }` reset above
    is (0,1,1) and a bare `.landing-signin` at (0,1,0) loses to it — so this
    rendered at --ink and its hover state was a no-op. The nav links beside
@@ -365,8 +363,6 @@ a.landing-signin:hover { color: var(--ink); }
        2. Real shrinkability, so no future label length can push the
           document wide again — the row runs out of space before the
           viewport does. */
-  .landing-nav-cta .landing-cta-full { display: none; }
-  .landing-nav-cta .landing-cta-compact { display: inline; }
 
   .landing-nav-row { min-width: 0; }
   .landing-nav-actions { flex-shrink: 1; }
