@@ -83,6 +83,27 @@ class Settings(BaseSettings):
     # requires it rather than defaulting it.
     trusted_proxy_secret: str = Field(default="")
 
+    # ── Broker credential encryption ──────────────────────────────────
+    # A Fernet key used to encrypt users' broker API credentials at rest.
+    # Generate with:
+    #     python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    #
+    # DELIBERATELY SEPARATE FROM SECRET_KEY. That one is the operator API key
+    # and gets rotated — routinely, and urgently after any suspected exposure.
+    # Deriving this from it would mean a rotation silently renders every
+    # stored broker credential undecryptable, with the first symptom being
+    # orders failing during market hours. Incident response must not destroy
+    # data as a side effect.
+    #
+    # Empty = this deployment cannot store broker credentials, and the routes
+    # that would store them answer 503 rather than falling back to plaintext.
+    # Defaulting to empty is deliberate, and the opposite of the call made for
+    # AUTH_ENABLED in #74: that one is required because a missing value is
+    # indistinguishable from "off" on a security control that was meant to be
+    # on. This one has a safe empty meaning — the feature is unavailable, and
+    # everything else on the install works exactly as it did before.
+    broker_encryption_key: str = Field(default="")
+
     # ── Equity signal geometry ────────────────────────────────────────
     # stop = entry ∓ ATR×stop_mult, target = entry ± ATR×target_mult.
     #

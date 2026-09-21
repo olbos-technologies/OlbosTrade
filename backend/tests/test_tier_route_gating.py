@@ -54,7 +54,16 @@ def _routes_with(dependency):
 
 
 #: Every route that can reach a broker. Elite alone.
+#:
+#: The /api/brokers/* entries are where a user stores their OWN Alpaca keys.
+#: They place no orders, but the gate belongs on them all the same: the plan
+#: boundary is "can this account trade through a broker at all", and a Free
+#: user filing credentials for a connection they may not use would be an
+#: invitation to a support ticket, not a feature.
 EXPECTED_ELITE_ONLY = {
+    "/api/brokers/connections",
+    "/api/brokers/connections/{connection_id}",
+    "/api/brokers/connections/{connection_id}/verify",
     "/api/trade-desk/execution-mode",
     "/api/trade-desk/approve/{signal_id}",
     "/api/trade-desk/reject/{signal_id}",
@@ -81,7 +90,7 @@ def test_the_enumeration_is_not_silently_empty():
     this says so out loud, because the equivalent check in
     test_auth_route_coverage.py DID go blind on a FastAPI upgrade and every
     assertion downstream of it passed anyway."""
-    assert len(_routes_with(require_broker_access)) >= 9
+    assert len(_routes_with(require_broker_access)) >= 12
 
 
 def test_the_kill_switch_is_never_tier_gated():

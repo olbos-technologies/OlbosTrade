@@ -71,6 +71,24 @@ Fill in these required values:
 | `OLBOS_API_KEY` | `python3 -c "import secrets; print(secrets.token_hex(32))"` |
 | `TRUSTED_PROXY_SECRET` | `openssl rand -hex 32` |
 
+Optional, but set it now if you want users connecting their own brokers:
+
+| Variable | How to get it |
+|----------|--------------|
+| `BROKER_ENCRYPTION_KEY` | `python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` |
+
+`BROKER_ENCRYPTION_KEY` encrypts each user's own Alpaca API keys at rest
+(System → My Brokers, Elite). Unlike the three above, the stack starts without
+it: an empty value means that one feature is unavailable and its routes answer
+503, which is a safe meaning, where a missing `AUTH_ENABLED` or
+`TRUSTED_PROXY_SECRET` would be indistinguishable from a security control
+silently switched off. It never falls back to storing plaintext.
+
+Once set, keep it. Rotating it makes every stored broker credential
+undecryptable and every connected user has to reconnect — which is exactly
+why it is a separate variable from `SECRET_KEY`, the operator key that gets
+rotated routinely and urgently after any suspected exposure.
+
 `TRUSTED_PROXY_SECRET` is a shared secret between nginx and the backend, and
 the stack will not start without it — `docker-compose.hetzner.yml` declares it
 `${TRUSTED_PROXY_SECRET:?...}`, so Compose aborts rather than booting into a

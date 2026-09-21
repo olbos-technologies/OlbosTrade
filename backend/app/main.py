@@ -226,6 +226,12 @@ from app.api.routes import access_requests as access_request_routes  # noqa: E40
 app.include_router(access_request_routes.router)
 app.include_router(access_request_routes.admin_router)
 
+# Per-user broker credentials. Own prefix, and deliberately NOT under
+# /api/ibkr or any broker-specific path: it is where a user connects any
+# broker, and today that is Alpaca.
+from app.api.routes import broker_connections as broker_connection_routes  # noqa: E402
+app.include_router(broker_connection_routes.router)
+
 app.include_router(backtest.router,    prefix="/api/backtest",    tags=["Backtest"])
 app.include_router(strategy.router,    prefix="/api/strategy",    tags=["Strategy"])
 app.include_router(alpha_edge.router,  prefix="/api/alpha-edge",  tags=["Alpha Edge"])

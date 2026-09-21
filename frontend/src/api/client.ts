@@ -347,7 +347,62 @@ export const api = {
     return request<{ count: number; results: any[] }>(`/api/options-flow${q}`);
   },
   getOptionsFlowSummary: () => request<any>("/api/options-flow/summary"),
+
+  // ── Broker connections (a user's OWN broker account) ────────────────────────
+  // Note what these never carry back: the API key and secret go UP and are
+  // never returned. The list shows key_last4, which the server stores in the
+  // clear precisely so that a read-only screen never has to decrypt anything.
+  listBrokerConnections: () =>
+    request<BrokerConnectionList>("/api/brokers/connections"),
+  connectBroker: (body: ConnectBrokerRequest) =>
+    request<ConnectBrokerResponse>("/api/brokers/connections", {
+      method: "POST", body: JSON.stringify(body),
+    }),
+  verifyBrokerConnection: (id: string) =>
+    request<{ ok: boolean; verified: boolean; detail?: string }>(
+      `/api/brokers/connections/${encodeURIComponent(id)}/verify`, { method: "POST" }),
+  disconnectBroker: (id: string) =>
+    request<{ ok: boolean; detail: string }>(
+      `/api/brokers/connections/${encodeURIComponent(id)}`, { method: "DELETE" }),
 };
+
+export interface BrokerConnection {
+  id: string;
+  broker: string;
+  environment: "paper" | "live";
+  label: string;
+  key_last4: string;
+  status: "active" | "revoked";
+  created_at: string | null;
+  last_verified_at: string | null;
+  verified: boolean;
+}
+
+export interface BrokerConnectionList {
+  connections: BrokerConnection[];
+  /** False until per-user order routing ships. The UI says so rather than
+   *  letting a user assume their orders already go to their own account. */
+  execution_routing_enabled: boolean;
+  note?: string;
+}
+
+export interface ConnectBrokerRequest {
+  broker: string;
+  environment: string;
+  api_key: string;
+  secret_key: string;
+  label?: string;
+}
+
+export interface ConnectBrokerResponse {
+  ok: boolean;
+  connection: BrokerConnection;
+  verification: Record<string, unknown> | null;
+  /** Set when the broker could not be REACHED — not when it said no. A
+   *  rejected key never reaches the database, so it never reaches here. */
+  unverified_reason: string | null;
+  execution_routing_enabled: boolean;
+}
 
 /** Build the absolute WebSocket URL for the options-flow live stream. */
 export function optionsFlowWsUrl(params?: Record<string, string | number | undefined>): string {

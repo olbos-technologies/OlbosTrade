@@ -82,6 +82,22 @@ services:
       # TRUSTED_PROXY_SECRET above; the app's own default is unchanged for
       # anyone running outside this compose file.
       AUTH_ENABLED: "${AUTH_ENABLED:?set AUTH_ENABLED=true or AUTH_ENABLED=false in backend/.env.prod — it must be an explicit choice, see deploy/hetzner/README.md}"
+
+      # Encrypts users' own broker API credentials at rest. Passed through
+      # WITHOUT the :? guard that AUTH_ENABLED carries, and the difference is
+      # deliberate: a missing AUTH_ENABLED is indistinguishable from "security
+      # off", so the stack must refuse to start. A missing key here just means
+      # broker connections are unavailable — the routes answer 503 and every
+      # other feature is untouched. Requiring it would take an install down
+      # over a feature it may not use.
+      #
+      # Generate with:
+      #   docker exec olbostrade-backend python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+      #
+      # Rotating it makes every STORED broker credential undecryptable — users
+      # must reconnect. That is why it is its own variable and not derived
+      # from SECRET_KEY, which is rotated routinely.
+      BROKER_ENCRYPTION_KEY: "${BROKER_ENCRYPTION_KEY:-}"
     volumes:
       # Trained models are not committed (see .gitignore) and the build context
       # is ./backend, so nothing puts a .pkl inside the image. Mounting the
