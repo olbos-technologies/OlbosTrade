@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pandas as pd
 import pytest
+from sqlalchemy.exc import InvalidRequestError
 
 from app.services.equity_signal_engine import EQUITY_SCORING_VERSION
 from app.services.signal_outcome_tracker import (
@@ -47,18 +48,51 @@ def _mock_session(existing_id=None):
 
     `existing_id` is what the dedup lookup finds: None means no signal has been
     recorded for this (ticker, action, day) yet, so the insert should proceed.
+
+    THIS FAKE AUTOBEGINS, and that is the whole point of it.
+
+    The previous version handed back an unconditional MagicMock for begin(),
+    which never raised no matter how many times it was called. A real
+    AsyncSession does not behave that way: the first operation — including a
+    SELECT — implicitly begins the transaction, and calling begin() after that
+    raises InvalidRequestError.
+
+    record_signal did exactly that, so in production it failed on EVERY
+    routable BUY/SELL signal with "A transaction is already begun on this
+    Session" and nothing was written to signal_outcomes from #45 onward. Every
+    test here passed throughout, because the fake was more permissive than the
+    database. A fake that cannot reproduce the failure certifies the bug.
     """
     session = AsyncMock()
     session.__aenter__ = AsyncMock(return_value=session)
     session.__aexit__ = AsyncMock(return_value=False)
-    begin = AsyncMock()
-    begin.__aenter__ = AsyncMock(return_value=session)
-    begin.__aexit__ = AsyncMock(return_value=False)
-    session.begin = MagicMock(return_value=begin)
+
+    state = {"in_transaction": False}
+
+    def _begin():
+        if state["in_transaction"]:
+            raise InvalidRequestError(
+                "A transaction is already begun on this Session."
+            )
+        state["in_transaction"] = True
+        ctx = AsyncMock()
+        ctx.__aenter__ = AsyncMock(return_value=session)
+        ctx.__aexit__ = AsyncMock(return_value=False)
+        return ctx
+
+    async def _execute(*_a, **_k):
+        state["in_transaction"] = True        # autobegin, as SQLAlchemy does
+        lookup = MagicMock()
+        lookup.scalar_one_or_none = MagicMock(return_value=existing_id)
+        return lookup
+
+    async def _commit(*_a, **_k):
+        state["in_transaction"] = False
+
+    session.begin = MagicMock(side_effect=_begin)
+    session.execute = AsyncMock(side_effect=_execute)
+    session.commit = AsyncMock(side_effect=_commit)
     session.add = MagicMock()
-    lookup = MagicMock()
-    lookup.scalar_one_or_none = MagicMock(return_value=existing_id)
-    session.execute = AsyncMock(return_value=lookup)
     return session
 
 
@@ -523,3 +557,83 @@ def test_compute_stats_ticker_breakdown_sorted_by_volume():
     assert stats["by_ticker"][0]["ticker"] == "A"
     assert stats["by_ticker"][0]["total"] == 3
     assert stats["by_ticker"][0]["hit_rate"] == pytest.approx(2 / 3, abs=0.001)
+
+
+# ── the transaction bug that ate every equity signal ─────────────────────────
+
+@pytest.mark.asyncio
+async def test_record_signal_does_not_begin_a_second_transaction():
+    """The bug this file's fake was rewritten to be able to see.
+
+    record_signal ran `async with session.begin()` AFTER the dedup SELECT had
+    already autobegun the transaction. A real AsyncSession raises
+    InvalidRequestError on that second begin, so every routable BUY/SELL
+    signal failed and signal_outcomes took no rows from #45 until this fix.
+
+    Nothing surfaced it: the failure is swallowed into a logger.warning
+    (correct — a tracking failure must not break the scan), and the old fake's
+    begin() never raised. Asserted here explicitly, rather than left implicit
+    in the other tests, so the reason is written down where the next person
+    changing this function will read it.
+    """
+    session = _mock_session()
+    signal = {
+        "id": "sig-tx", "ticker": "AMD", "action": "BUY", "confidence": 0.6,
+        "generated_at": "2026-01-05T14:30:00+00:00",
+        "trade_plan": {"entry_price": 100.0, "stop_price": 96.0,
+                       "target_price": 108.0, "target_move_pct": 8.0},
+    }
+    with patch("app.core.database.AsyncSessionLocal", return_value=session):
+        result = await record_signal(signal)
+
+    assert result is not None, (
+        "record_signal returned None — the insert raised and was swallowed, "
+        "which is exactly how this went unnoticed in production"
+    )
+    assert session.begin.call_count == 0, (
+        "record_signal called session.begin() after the dedup SELECT had "
+        "already autobegun the transaction; a real AsyncSession raises there"
+    )
+
+
+@pytest.mark.asyncio
+async def test_record_signal_actually_commits_the_row():
+    """add() without commit() writes nothing.
+
+    Removing the `async with session.begin()` block also removed the implicit
+    commit its context manager performed, so the commit has to be explicit. A
+    test that only checks session.add was called would pass on a function that
+    stages a row and then drops it.
+    """
+    session = _mock_session()
+    signal = {
+        "id": "sig-commit", "ticker": "INTC", "action": "SELL", "confidence": 0.5,
+        "generated_at": "2026-01-05T14:30:00+00:00",
+        "trade_plan": {"entry_price": 50.0, "stop_price": 52.0,
+                       "target_price": 46.0, "target_move_pct": 8.0},
+    }
+    with patch("app.core.database.AsyncSessionLocal", return_value=session):
+        await record_signal(signal)
+
+    assert session.add.call_count == 1
+    assert session.commit.await_count == 1, (
+        "the row was staged but never committed — nothing reaches the database"
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_duplicate_is_still_skipped_without_writing():
+    """The dedup path must not have been broken by the transaction change."""
+    session = _mock_session(existing_id="already-there")
+    signal = {
+        "id": "sig-dup", "ticker": "AMD", "action": "BUY", "confidence": 0.6,
+        "generated_at": "2026-01-05T14:30:00+00:00",
+        "trade_plan": {"entry_price": 100.0, "stop_price": 96.0,
+                       "target_price": 108.0, "target_move_pct": 8.0},
+    }
+    with patch("app.core.database.AsyncSessionLocal", return_value=session):
+        result = await record_signal(signal)
+
+    assert result == "already-there"
+    assert session.add.call_count == 0
+    assert session.commit.await_count == 0

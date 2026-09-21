@@ -56,20 +56,46 @@ class _NoDuplicate:
 
 
 class _Session:
-    """Captures the SignalOutcome handed to session.add()."""
+    """Captures the SignalOutcome handed to session.add().
+
+    IT IMPLEMENTS commit(), and that is not decoration. record_signal calls
+    it, and a fake without one raised AttributeError that record_signal
+    swallowed into a logger.warning — so the function FAILED and returned
+    None while every test here passed, because they read `added`, which add()
+    had already set before the failure. Raised in review on #80 and
+    reproduced before fixing.
+
+    That is the same shape as the bug this PR exists to fix: a fake more
+    permissive than the real object certifies a broken function.
+    """
     added = None
+    commits = 0
 
     async def __aenter__(self): return self
     async def __aexit__(self, *a): return False
     def begin(self): return self
     def add(self, obj): type(self).added = obj
     async def execute(self, *a, **k): return _NoDuplicate()
+    async def commit(self): type(self).commits += 1
 
 
 async def _record(sig):
+    """Run record_signal against the fake and return the staged row.
+
+    ASSERTS THE CALL SUCCEEDED rather than trusting `added`. record_signal
+    never raises by design, so without this every caller here would go green
+    on a function that failed — which is exactly what happened. The return
+    value is the only signal that the whole path ran.
+    """
     _Session.added = None
+    _Session.commits = 0
     with patch("app.core.database.AsyncSessionLocal", _Session):
-        await record_signal(sig)
+        result = await record_signal(sig)
+    assert result is not None, (
+        "record_signal returned None — it raised and swallowed the error. "
+        "Reading `added` alone would have hidden that, since add() runs first."
+    )
+    assert _Session.commits == 1, "the row was staged but never committed"
     return _Session.added
 
 

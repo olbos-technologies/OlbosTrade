@@ -5,6 +5,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from sqlalchemy.exc import InvalidRequestError
 
 from app.services.options_signal_history import record_options_signal
 
@@ -35,18 +36,47 @@ def _session(existing_id=None):
 
     `existing_id` is what the dedup lookup finds: None means nothing has been
     recorded yet for this (ticker, strategy, action, day), so the insert runs.
+
+    THIS FAKE AUTOBEGINS. The previous version returned an unconditional
+    MagicMock from begin(), which never raised however many times it was
+    called — so record_options_signal's `async with session.begin()` after the
+    dedup SELECT looked fine here while a real AsyncSession raised
+    InvalidRequestError on it, every single time. Nothing was ever written to
+    options_signal_history, and these tests passed throughout.
+
+    Same bug, same cause and same fix as signal_outcome_tracker; a fake more
+    permissive than the database certifies the bug instead of catching it.
     """
     session = AsyncMock()
     session.__aenter__ = AsyncMock(return_value=session)
     session.__aexit__ = AsyncMock(return_value=False)
-    begin = AsyncMock()
-    begin.__aenter__ = AsyncMock(return_value=session)
-    begin.__aexit__ = AsyncMock(return_value=False)
-    session.begin = MagicMock(return_value=begin)
+
+    state = {"in_transaction": False}
+
+    def _begin():
+        if state["in_transaction"]:
+            raise InvalidRequestError(
+                "A transaction is already begun on this Session."
+            )
+        state["in_transaction"] = True
+        ctx = AsyncMock()
+        ctx.__aenter__ = AsyncMock(return_value=session)
+        ctx.__aexit__ = AsyncMock(return_value=False)
+        return ctx
+
+    async def _execute(*_a, **_k):
+        state["in_transaction"] = True        # autobegin, as SQLAlchemy does
+        lookup = MagicMock()
+        lookup.scalar_one_or_none = MagicMock(return_value=existing_id)
+        return lookup
+
+    async def _commit(*_a, **_k):
+        state["in_transaction"] = False
+
+    session.begin = MagicMock(side_effect=_begin)
+    session.execute = AsyncMock(side_effect=_execute)
+    session.commit = AsyncMock(side_effect=_commit)
     session.add = MagicMock()
-    lookup = MagicMock()
-    lookup.scalar_one_or_none = MagicMock(return_value=existing_id)
-    session.execute = AsyncMock(return_value=lookup)
     return session
 
 
@@ -173,3 +203,40 @@ async def test_record_options_signal_nulls_unparseable_pop():
     assert result is not None
     inserted = session.add.call_args.args[0]
     assert inserted.pop is None
+
+
+# ── the commit the fix made load-bearing ─────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_record_options_signal_commits_the_inserted_row():
+    """add() without commit() writes nothing.
+
+    Removing the nested `async with session.begin()` also removed the implicit
+    commit its context manager performed, so the commit is now explicit and
+    load-bearing. Every other test here asserts only that session.add was
+    called, and session.commit is an AsyncMock — so deleting the commit line
+    would leave them all green on a function that stages a row and drops it.
+    Raised in review on #80.
+    """
+    session = _session()
+    with patch("app.core.database.AsyncSessionLocal", return_value=session):
+        result = await record_options_signal(_signal())
+
+    assert result is not None
+    assert session.add.call_count == 1
+    assert session.commit.await_count == 1, (
+        "the options row was staged but never committed — nothing reaches "
+        "the database"
+    )
+
+
+@pytest.mark.asyncio
+async def test_record_options_signal_does_not_commit_a_duplicate():
+    """The dedup path returns early, so it must write and commit nothing."""
+    session = _session(existing_id="already-there")
+    with patch("app.core.database.AsyncSessionLocal", return_value=session):
+        result = await record_options_signal(_signal())
+
+    assert result == "already-there"
+    assert session.add.call_count == 0
+    assert session.commit.await_count == 0
