@@ -122,35 +122,45 @@ async def record_options_signal(signal: dict) -> Optional[str]:
                 )
                 return str(existing_id)
 
-            async with session.begin():
-                session.add(OptionsSignalHistory(
-                    id=row_id,
-                    signal_id=signal.get("id"),
-                    ticker=ticker,
-                    strategy=strategy,
-                    action=action,
-                    confidence=Decimal(str(round(signal.get("confidence", 0.0), 4))),
-                    pop=_dec_or_none(signal.get("pop")),
-                    kelly_fraction=_dec_or_none(signal.get("kelly_fraction")),
-                    signal_score=Decimal(str(round(signal.get("signal_score", 0.0), 4))),
-                    quantity=int(signal.get("quantity", 0)),
-                    iv_rank=Decimal(str(round(signal.get("iv_rank", 0.0), 2))),
-                    regime=signal.get("regime", "unknown"),
-                    option_type=spread.get("option_type", ""),
-                    short_strike=Decimal(str(spread.get("short_strike", 0))),
-                    long_strike=Decimal(str(spread.get("long_strike", 0))),
-                    expiration=expiration,
-                    dte=int(spread.get("dte", 0)),
-                    net_credit=Decimal(str(spread.get("net_credit", 0))),
-                    max_loss=Decimal(str(spread.get("max_loss", 0))),
-                    breakeven=Decimal(str(spread.get("breakeven", 0))),
-                    sigma=Decimal(str(round(signal.get("sigma", 0.0), 4))),
-                    vix_used=Decimal(str(round(signal.get("vix_used", 0.0), 2))),
-                    credit_source=signal.get("credit_source", "unknown"),
-                    evidence=signal.get("evidence"),
-                    intelligence=signal.get("intelligence"),
-                    generated_at=generated_at,
-                ))
+            # NO `async with session.begin()` HERE — the dedup SELECT above has
+            # already autobegun this session's transaction, and a second begin
+            # raises InvalidRequestError. Identical to the bug fixed in
+            # signal_outcome_tracker.record_signal in this commit, and it cost
+            # the same thing: every options signal failed to record, silently,
+            # because the failure is swallowed into a logger.warning.
+            #
+            # Found by scanning for the pattern rather than by noticing it —
+            # nothing in the options history logs stood out, and its tests
+            # passed throughout for the same reason the tracker's did.
+            session.add(OptionsSignalHistory(
+                id=row_id,
+                signal_id=signal.get("id"),
+                ticker=ticker,
+                strategy=strategy,
+                action=action,
+                confidence=Decimal(str(round(signal.get("confidence", 0.0), 4))),
+                pop=_dec_or_none(signal.get("pop")),
+                kelly_fraction=_dec_or_none(signal.get("kelly_fraction")),
+                signal_score=Decimal(str(round(signal.get("signal_score", 0.0), 4))),
+                quantity=int(signal.get("quantity", 0)),
+                iv_rank=Decimal(str(round(signal.get("iv_rank", 0.0), 2))),
+                regime=signal.get("regime", "unknown"),
+                option_type=spread.get("option_type", ""),
+                short_strike=Decimal(str(spread.get("short_strike", 0))),
+                long_strike=Decimal(str(spread.get("long_strike", 0))),
+                expiration=expiration,
+                dte=int(spread.get("dte", 0)),
+                net_credit=Decimal(str(spread.get("net_credit", 0))),
+                max_loss=Decimal(str(spread.get("max_loss", 0))),
+                breakeven=Decimal(str(spread.get("breakeven", 0))),
+                sigma=Decimal(str(round(signal.get("sigma", 0.0), 4))),
+                vix_used=Decimal(str(round(signal.get("vix_used", 0.0), 2))),
+                credit_source=signal.get("credit_source", "unknown"),
+                evidence=signal.get("evidence"),
+                intelligence=signal.get("intelligence"),
+                generated_at=generated_at,
+            ))
+            await session.commit()
         return str(row_id)
     except Exception as exc:
         logger.warning("record_options_signal failed for %s: %s", signal.get("ticker"), exc)

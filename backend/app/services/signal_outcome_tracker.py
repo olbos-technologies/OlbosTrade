@@ -190,31 +190,50 @@ async def record_signal(signal: dict) -> Optional[str]:
                 )
                 return str(existing_id)
 
-            async with session.begin():
-                session.add(SignalOutcome(
-                    id=row_id,
-                    signal_id=signal.get("id"),
-                    ticker=ticker,
-                    asset_type="equity",
-                    action=action,
-                    confidence=Decimal(str(round(signal.get("confidence", 0.0), 4))),
-                    entry_price=Decimal(str(round(float(entry), 4))),
-                    stop_price=Decimal(str(round(float(stop), 4))),
-                    target_price=Decimal(str(round(float(target), 4))),
-                    target_move_pct=_dec_or_none(trade_plan.get("target_move_pct")),
-                    generated_at=generated_at,
-                    status="pending",
-                    rsi=_dec_or_none(indicators.get("rsi")),
-                    macd=_dec_or_none(indicators.get("macd")),
-                    bb_pct_b=_dec_or_none(indicators.get("bb_pct_b")),
-                    volume_ratio=_dec_or_none(indicators.get("volume_ratio")),
-                    atr=_dec_or_none(indicators.get("atr")),
-                    regime=signal.get("regime"),
-                    signal_engine_version=EQUITY_SCORING_VERSION,
-                    opportunity_score=oppty_score,
-                    oppty_liquidity=_dec_or_none(oppty_components.get("liquidity")),
-                    oppty_regime=_dec_or_none(oppty_components.get("regime")),
-                ))
+            # NO `async with session.begin()` HERE, and that absence is the fix.
+            #
+            # The dedup SELECT above has already begun this session's
+            # transaction — SQLAlchemy autobegins on the first operation — so
+            # an explicit begin() is the SECOND one and raises
+            # InvalidRequestError: "A transaction is already begun on this
+            # Session." That is not an edge case: it fired on EVERY routable
+            # BUY/SELL signal, so nothing has been written to signal_outcomes
+            # since the dedup lookup landed in #45.
+            #
+            # It stayed invisible because record_signal swallows everything
+            # into a logger.warning — correct, since a tracking failure must
+            # not break the scan that produced the signal — and because the
+            # test fake's begin() was an unconditional MagicMock that never
+            # raised. The fake is now faithful; see _mock_session.
+            #
+            # The SELECT and the INSERT still share one transaction, which is
+            # what the dedup check needs: autobegin opened it, commit closes
+            # it.
+            session.add(SignalOutcome(
+                id=row_id,
+                signal_id=signal.get("id"),
+                ticker=ticker,
+                asset_type="equity",
+                action=action,
+                confidence=Decimal(str(round(signal.get("confidence", 0.0), 4))),
+                entry_price=Decimal(str(round(float(entry), 4))),
+                stop_price=Decimal(str(round(float(stop), 4))),
+                target_price=Decimal(str(round(float(target), 4))),
+                target_move_pct=_dec_or_none(trade_plan.get("target_move_pct")),
+                generated_at=generated_at,
+                status="pending",
+                rsi=_dec_or_none(indicators.get("rsi")),
+                macd=_dec_or_none(indicators.get("macd")),
+                bb_pct_b=_dec_or_none(indicators.get("bb_pct_b")),
+                volume_ratio=_dec_or_none(indicators.get("volume_ratio")),
+                atr=_dec_or_none(indicators.get("atr")),
+                regime=signal.get("regime"),
+                signal_engine_version=EQUITY_SCORING_VERSION,
+                opportunity_score=oppty_score,
+                oppty_liquidity=_dec_or_none(oppty_components.get("liquidity")),
+                oppty_regime=_dec_or_none(oppty_components.get("regime")),
+            ))
+            await session.commit()
         return str(row_id)
     except Exception as exc:
         logger.warning("record_signal failed for %s: %s", signal.get("ticker"), exc)
