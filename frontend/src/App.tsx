@@ -20,6 +20,7 @@ import OptionsFlow     from "./pages/OptionsFlow";           // Options flow (gr
 import OptionsChain    from "./pages/options/OptionsChain";  // Live calls/puts for a symbol
 import IncomeStrategiesCenter from "./pages/options/IncomeStrategiesCenter";
 import SystemCenter    from "./pages/SystemCenter";
+import AccountCenter   from "./pages/AccountCenter";
 import StrategyBuilder from "./pages/strategies/StrategyBuilder"; // Configure + register a strategy experiment
 import Alerts          from "./pages/strategies/Alerts";     // Smart Alert rules + notifications
 // Markets module
@@ -110,7 +111,10 @@ export const BASE_PAGES: Record<string, React.ComponentType> = {
   "markets:sector-rotation": SectorRotation,
 
   "system:broker":  () => <SystemCenter initialTab="broker" />,
-  "system:connections": () => <SystemCenter initialTab="connections" />,
+  "account:profile":  () => <AccountCenter initialTab="profile" />,
+  "account:password": () => <AccountCenter initialTab="password" />,
+  "account:sessions": () => <AccountCenter initialTab="sessions" />,
+  "account:brokers":  () => <AccountCenter initialTab="brokers" />,
   "system:market":  () => <SystemCenter initialTab="market" />,
   "system:quality": () => <SystemCenter initialTab="quality" />,
 };

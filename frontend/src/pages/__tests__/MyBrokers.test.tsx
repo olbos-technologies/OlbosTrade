@@ -52,7 +52,7 @@ vi.mock("../../api/client", () => ({
   ApiError: FakeApiError,
 }));
 
-import MyBrokers from "../data/MyBrokers";
+import MyBrokers from "../account/MyBrokers";
 
 const SECRET = "s3cr3t-alpaca-secret-value-0000";
 const KEY = "PKTEST0000EXAMPLEKEY";

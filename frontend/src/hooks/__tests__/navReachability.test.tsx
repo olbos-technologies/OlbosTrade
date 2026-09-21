@@ -1,0 +1,101 @@
+/**
+ * Every hub tab must be reachable from the sidebar.
+ *
+ * This guards a bug that shipped in #78. My Brokers was added to
+ * SystemCenter's TABS, to TAB_PAGE_KEYS and to the page registry in App.tsx —
+ * three of the four places — and not to navModels.ts. Everything resolved, the
+ * URL worked, tabRouteTable.test.tsx passed, and the page was reachable only
+ * by typing its address or by finding the tab strip inside another page. It
+ * was invisible in the nav for the entire life of that PR.
+ *
+ * tabRouteTable checks tab -> page key -> registry. Nothing checked
+ * page key -> NAV. That asymmetry is the hole, and it is exactly the shape of
+ * miss this codebase keeps repeating: the mechanism is covered thoroughly and
+ * one of the places it must be applied is left out.
+ *
+ * THE CHECK RUNS AGAINST BOTH NAV MODELS. navModels.ts exports
+ * NAV_MODEL_LEGACY and NAV_MODEL_V2 and the trade_desk_v2 flag decides which
+ * renders, so a key present in one and missing from the other is the same bug
+ * with a longer fuse — it appears only once someone flips a flag.
+ */
+
+import { describe, it, expect } from "vitest";
+
+import { NAV_MODEL_LEGACY, NAV_MODEL_V2 } from "../../utils/navModels";
+
+import { TAB_PAGE_KEYS as RISK_KEYS }     from "../../pages/RiskCenter";
+import { TAB_PAGE_KEYS as SYSTEM_KEYS }   from "../../pages/SystemCenter";
+import { TAB_PAGE_KEYS as RESEARCH_KEYS } from "../../pages/ResearchCenter";
+import { TAB_PAGE_KEYS as SIGNALS_KEYS }  from "../../pages/SignalsCenter";
+import { TAB_PAGE_KEYS as ACCOUNT_KEYS }  from "../../pages/AccountCenter";
+
+/** Every page key named in a nav model, at any depth. */
+function navKeys(model: Array<{ key?: string; children?: Array<{ key: string }> }>): Set<string> {
+  const out = new Set<string>();
+  for (const group of model) {
+    if (group.key) out.add(group.key);
+    for (const child of group.children || []) out.add(child.key);
+  }
+  return out;
+}
+
+const HUBS: Array<[string, Readonly<Record<string, string>>]> = [
+  ["RiskCenter", RISK_KEYS],
+  ["SystemCenter", SYSTEM_KEYS],
+  ["ResearchCenter", RESEARCH_KEYS],
+  ["SignalsCenter", SIGNALS_KEYS],
+  ["AccountCenter", ACCOUNT_KEYS],
+];
+
+/**
+ * Keys a hub exposes that deliberately have no nav entry of their own.
+ *
+ * Empty on purpose. An exception belongs here only with a reason, so that
+ * "it is not in the nav" is always either a stated decision or a failure —
+ * never an oversight nobody notices.
+ */
+const INTENTIONALLY_NOT_IN_NAV = new Set<string>([]);
+
+describe("every hub tab is reachable from the sidebar", () => {
+  for (const [modelName, model] of [
+    ["NAV_MODEL_LEGACY", NAV_MODEL_LEGACY],
+    ["NAV_MODEL_V2", NAV_MODEL_V2],
+  ] as const) {
+    const keys = navKeys(model as never);
+
+    for (const [hubName, tabKeys] of HUBS) {
+      it(`${hubName}: every tab appears in ${modelName}`, () => {
+        const missing = Object.values(tabKeys)
+          .filter(k => !keys.has(k) && !INTENTIONALLY_NOT_IN_NAV.has(k));
+        expect(
+          missing,
+          `${hubName} exposes ${missing.join(", ")} but ${modelName} never names ` +
+          `it, so the page is reachable only by URL — the #78 bug. Add it to ` +
+          `navModels.ts, or to INTENTIONALLY_NOT_IN_NAV with a reason.`
+        ).toEqual([]);
+      });
+    }
+  }
+
+  it("the account group is in both models, not just one", () => {
+    // The specific trap this file's docstring describes: adding a group to the
+    // model you happened to be looking at.
+    for (const key of Object.values(ACCOUNT_KEYS)) {
+      expect(navKeys(NAV_MODEL_LEGACY as never).has(key), `${key} missing from LEGACY`).toBe(true);
+      expect(navKeys(NAV_MODEL_V2 as never).has(key), `${key} missing from V2`).toBe(true);
+    }
+  });
+
+  it("would actually catch the regression", () => {
+    // A guard that cannot fail is decoration. Strip the account group from a
+    // copy and confirm the reachability check notices.
+    const stripped = NAV_MODEL_V2.filter(g => g.id !== "account");
+    const keys = navKeys(stripped as never);
+    const missing = Object.values(ACCOUNT_KEYS).filter(k => !keys.has(k));
+    expect(missing.length).toBe(Object.values(ACCOUNT_KEYS).length);
+
+    // ...and that it is not vacuous: the real model does contain them.
+    const real = navKeys(NAV_MODEL_V2 as never);
+    expect(Object.values(ACCOUNT_KEYS).filter(k => !real.has(k))).toEqual([]);
+  });
+});
