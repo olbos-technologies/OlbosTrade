@@ -19,6 +19,7 @@ import ErrorBoundary from "./ErrorBoundary";
 import KillSwitchButton from "./KillSwitchButton";
 import { api } from "../api/client";
 import { statusLabelForPage, filterNavForDisplay, type NavGroup } from "../utils/navLabels";
+import { useAuthOptional } from "../auth/AuthContext";
 import { NAV_MODEL_LEGACY, NAV_MODEL_V2, groupIdForKey } from "../utils/navModels";
 import BottomSheet from "./BottomSheet";
 import MobileBottomNav from "./MobileBottomNav";
@@ -726,7 +727,14 @@ function Sidebar({ active, onNav, expanded, isMobile = false }: {
     });
   };
 
-  const visibleNav = filterNavForDisplay(navModel, showAdvanced, active);
+  // Account is hidden unless somebody is actually signed in. Same predicate
+  // UserMenu uses to hide itself, so the two cannot disagree about whether
+  // this install has accounts at all.
+  const navAuth = useAuthOptional();
+  const visibleNav = filterNavForDisplay(
+    navModel, showAdvanced, active,
+    navAuth?.phase === "signed-in" && !!navAuth?.user,
+  );
 
   // On mobile, labels always show (it's a full overlay panel); on desktop they
   // appear only when expanded (icon rail otherwise).

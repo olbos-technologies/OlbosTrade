@@ -9,32 +9,29 @@
  */
 import React, { useEffect, useState } from "react";
 import { api, ApiError, type AccountUser } from "../../api/client";
+import { PLANS } from "../Landing";
 
 const MONO = "var(--mono)";
 
-/** Mirrors backend services/tier_limits.py. Kept as copy rather than fetched:
- *  these are the published pricing-page numbers, and a screen that showed
- *  something different from the marketing page would be the worse bug. */
-const PLAN_SUMMARY: Record<string, string[]> = {
-  free: [
-    "1 watchlist symbol",
-    "1 year of history",
-    "End-of-day signals",
-    "No broker connection",
-  ],
-  pro: [
-    "25 watchlist symbols",
-    "5 years of history",
-    "Live equity and options signals",
-    "No broker connection",
-  ],
-  elite: [
-    "Unlimited watchlist symbols",
-    "Full history",
-    "Live signals",
-    "Connect your own broker",
-  ],
-};
+/**
+ * The published plan table, imported rather than copied.
+ *
+ * This screen originally carried its own hand-written summary with a comment
+ * claiming it mirrored tier_limits.py. It did not: it told Pro users they had
+ * 25 watchlist symbols when the real limit is uncapped, and Elite users they
+ * had full history when the real limit is 5 years. Both wrong, in the one
+ * screen whose job is to say what you are paying for, and the comment made it
+ * look checked.
+ *
+ * Reading Landing.tsx's PLANS closes that for good: backend
+ * test_tier_limits.py parses that same array and fails if it disagrees with
+ * tier_limits.py, so the chain is enforced end to end — API, marketing page
+ * and this screen cannot drift apart without a red build.
+ */
+function limitsForTier(tier: string): Array<{ feature: string; limit: string }> {
+  const plan = PLANS.find(p => p.name.toLowerCase() === tier);
+  return plan ? plan.limits : [];
+}
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -64,7 +61,7 @@ export default function AccountProfile() {
   }, []);
 
   const tier = (user?.tier || "").toLowerCase();
-  const plan = PLAN_SUMMARY[tier];
+  const limits = limitsForTier(tier);
 
   return (
     <div style={{ padding: 16, height: "100%", overflowY: "auto" }}>
@@ -85,15 +82,12 @@ export default function AccountProfile() {
             </Row>
           </div>
 
-          {plan && (
+          {limits.length > 0 && (
             <div style={{ maxWidth: 520, marginTop: 16 }}>
               <div className="panel-title" style={{ marginBottom: 8 }}>Your plan includes</div>
-              <div className="instrument-card" style={{ padding: "10px 16px" }}>
-                {plan.map(line => (
-                  <div key={line} style={{ fontFamily: MONO, fontSize: 11.5,
-                                           color: "var(--ink-dim)", padding: "5px 0" }}>
-                    {line}
-                  </div>
+              <div className="instrument-card" style={{ padding: "2px 16px" }}>
+                {limits.map(row => (
+                  <Row key={row.feature} label={row.feature}>{row.limit}</Row>
                 ))}
               </div>
               <div style={{ marginTop: 10, fontFamily: MONO, fontSize: 10.5,

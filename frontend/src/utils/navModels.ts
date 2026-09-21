@@ -76,7 +76,7 @@ export const NAV_MODEL_LEGACY: NavGroup[] = [
   // a group added to one alone disappears when the flag flips. #78 missed the
   // nav model entirely and shipped My Brokers reachable only by URL; adding it
   // to one model would be the same bug with a longer fuse.
-  { id: "account", label: "Account", icon: "data", children: [
+  { id: "account", label: "Account", icon: "data", requiresAuth: true, children: [
     { key: "account:profile",  label: "Profile" },
     { key: "account:password", label: "Password" },
     { key: "account:sessions", label: "Sessions" },
@@ -155,7 +155,7 @@ export const NAV_MODEL_V2: NavGroup[] = [
   // a group added to one alone disappears when the flag flips. #78 missed the
   // nav model entirely and shipped My Brokers reachable only by URL; adding it
   // to one model would be the same bug with a longer fuse.
-  { id: "account", label: "Account", icon: "data", children: [
+  { id: "account", label: "Account", icon: "data", requiresAuth: true, children: [
     { key: "account:profile",  label: "Profile" },
     { key: "account:password", label: "Password" },
     { key: "account:sessions", label: "Sessions" },

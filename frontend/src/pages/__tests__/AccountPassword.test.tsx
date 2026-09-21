@@ -150,3 +150,32 @@ describe("AccountPassword", () => {
     }
   });
 });
+
+describe("AccountPassword length is measured the way the server measures it", () => {
+  it("counts code points, not UTF-16 units", async () => {
+    // Six emoji: .length is 12 (surrogate pairs) but Python len() is 6, so a
+    // naive check passes this to a server that rejects it — and the user is
+    // told by the backend, in different words, about a rule the form claimed
+    // to have already checked.
+    const sixEmoji = "🙂🙃🙂🙃🙂🙃";
+    expect(sixEmoji.length).toBe(12);
+    expect([...sixEmoji].length).toBe(6);
+
+    render(<AccountPassword />);
+    fill("current-password-here", sixEmoji, sixEmoji);
+    submit();
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(/at least 12 characters/i);
+    expect(changePassword).not.toHaveBeenCalled();
+  });
+
+  it("accepts twelve code points made of astral characters", async () => {
+    changePassword.mockResolvedValue({ ok: true, other_sessions_revoked: 0 });
+    const twelve = "🙂".repeat(12);          // 24 UTF-16 units, 12 code points
+    render(<AccountPassword />);
+    fill("current-password-here", twelve, twelve);
+    submit();
+    await waitFor(() => expect(changePassword).toHaveBeenCalled());
+  });
+});

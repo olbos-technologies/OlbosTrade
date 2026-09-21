@@ -22,6 +22,7 @@
 import { describe, it, expect } from "vitest";
 
 import { NAV_MODEL_LEGACY, NAV_MODEL_V2 } from "../../utils/navModels";
+import { filterNavForDisplay } from "../../utils/navLabels";
 
 import { TAB_PAGE_KEYS as RISK_KEYS }     from "../../pages/RiskCenter";
 import { TAB_PAGE_KEYS as SYSTEM_KEYS }   from "../../pages/SystemCenter";
@@ -97,5 +98,54 @@ describe("every hub tab is reachable from the sidebar", () => {
     // ...and that it is not vacuous: the real model does contain them.
     const real = navKeys(NAV_MODEL_V2 as never);
     expect(Object.values(ACCOUNT_KEYS).filter(k => !real.has(k))).toEqual([]);
+  });
+});
+
+describe("the Account group only exists for a signed-in user", () => {
+  /**
+   * AUTH_ENABLED=false renders the whole terminal with no identity at all —
+   * AuthGate's "disabled" phase, the original single-operator install. Every
+   * account route 401s there because there is no user to be. Shipping the
+   * group unconditionally added four dead sidebar destinations to exactly the
+   * deployments that never had accounts. Raised in review on #79.
+   */
+  it("is marked requiresAuth in both models", () => {
+    for (const model of [NAV_MODEL_LEGACY, NAV_MODEL_V2]) {
+      const account = (model as Array<{ id: string; requiresAuth?: boolean }>)
+        .find(g => g.id === "account");
+      expect(account, "the account group is missing").toBeDefined();
+      expect(account!.requiresAuth, "the account group is not gated").toBe(true);
+    }
+  });
+
+  it("is filtered out when nobody is signed in, and kept when someone is", () => {
+    const signedOut = filterNavForDisplay(NAV_MODEL_V2, true, "dashboard", false);
+    expect(signedOut.some(g => g.id === "account")).toBe(false);
+
+    const signedIn = filterNavForDisplay(NAV_MODEL_V2, true, "dashboard", true);
+    expect(signedIn.some(g => g.id === "account")).toBe(true);
+  });
+
+  it("stays hidden even when an account page is somehow the active one", () => {
+    // The deep-link escape hatch keeps the active page's group visible. That
+    // must not resurrect a group whose every route 401s — the page is a dead
+    // end either way, and showing it makes the dead end look navigable.
+    const signedOut = filterNavForDisplay(NAV_MODEL_V2, true, "account:profile", false);
+    expect(signedOut.some(g => g.id === "account")).toBe(false);
+  });
+
+  it("does not hide anything else", () => {
+    // The gate must be narrow: only groups that opt in.
+    const signedOut = filterNavForDisplay(NAV_MODEL_V2, true, "dashboard", false);
+    const signedIn = filterNavForDisplay(NAV_MODEL_V2, true, "dashboard", true);
+    const lost = signedIn.filter(g => !signedOut.some(x => x.id === g.id)).map(g => g.id);
+    expect(lost).toEqual(["account"]);
+  });
+
+  it("defaults to showing the group, so existing callers are unaffected", () => {
+    // The parameter is optional; every pre-existing call site passes three
+    // arguments and must keep its behaviour.
+    const legacyCall = filterNavForDisplay(NAV_MODEL_V2, true, "dashboard");
+    expect(legacyCall.some(g => g.id === "account")).toBe(true);
   });
 });

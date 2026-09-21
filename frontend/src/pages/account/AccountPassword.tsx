@@ -57,11 +57,17 @@ export default function AccountPassword() {
       setError("The new passwords do not match.");
       return;
     }
-    if (next.length < MIN_PASSWORD_LEN) {
+    // CODE POINTS, not UTF-16 units. JavaScript's .length counts surrogate
+    // pairs twice while the backend's Python len() counts characters, so an
+    // emoji or any astral character makes the two disagree: a six-emoji
+    // password measures 12 here and 6 there, and this check would wave through
+    // something the server then rejects with a message the user cannot act on.
+    const nextLength = [...next].length;
+    if (nextLength < MIN_PASSWORD_LEN) {
       setError(`Use at least ${MIN_PASSWORD_LEN} characters.`);
       return;
     }
-    if (next.length > MAX_PASSWORD_LEN) {
+    if (nextLength > MAX_PASSWORD_LEN) {
       setError(`Use at most ${MAX_PASSWORD_LEN} characters.`);
       return;
     }
