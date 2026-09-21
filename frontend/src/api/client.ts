@@ -364,7 +364,42 @@ export const api = {
   disconnectBroker: (id: string) =>
     request<{ ok: boolean; detail: string }>(
       `/api/brokers/connections/${encodeURIComponent(id)}`, { method: "DELETE" }),
+
+  // ── Account (the signed-in person, not the platform) ───────────────────────
+  // These routes shipped in #70/#72 with no UI at all: until now the only
+  // account surface in the app was the status-bar menu, so there was no way
+  // to change a password without a shell on the server.
+  getMe: () => request<{ user: AccountUser }>("/api/auth/me"),
+  changePassword: (body: { current_password: string; new_password: string }) =>
+    request<{ ok: boolean; other_sessions_revoked: number }>(
+      "/api/auth/password", { method: "POST", body: JSON.stringify(body) }),
+  listSessions: () => request<{ sessions: AccountSession[] }>("/api/auth/sessions"),
+  revokeSession: (id: string) =>
+    request<{ ok: boolean }>(
+      `/api/auth/sessions/${encodeURIComponent(id)}/revoke`, { method: "POST" }),
 };
+
+export interface AccountUser {
+  id: string;
+  email: string;
+  tier: string;
+}
+
+export interface AccountSession {
+  id: string;
+  created_at: string;
+  last_seen_at: string | null;
+  user_agent: string | null;
+  ip: string | null;
+  /** The session making this request. Never offered a revoke button — use
+   *  Sign out for that, which also clears the cookie. */
+  current: boolean;
+}
+
+/** Mirrors backend auth_service. A shorter cap here would reject a password
+ *  the server would have accepted, with a message blaming the user. */
+export const MIN_PASSWORD_LEN = 12;
+export const MAX_PASSWORD_LEN = 1024;
 
 export interface BrokerConnection {
   id: string;

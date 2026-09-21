@@ -49,7 +49,7 @@ function Metric({ label, value, placeholder = true }: { label: string; value: st
   );
 }
 
-type Plan = {
+export type Plan = {
   name: string;
   price: string;
   period: string;
@@ -74,7 +74,16 @@ type Plan = {
 // and fails if the two disagree. Editing a number here without editing it
 // there breaks the build, which is the point — a pricing card that
 // overstates what the API grants is a product defect, not a typo.
-const PLANS: Plan[] = [
+// EXPORTED so the account Profile screen renders these same rows rather than a
+// copy of them. A copy is what drifted: #79 shipped a hand-written summary
+// claiming Pro gets 25 watchlist symbols and Elite gets full history, when the
+// table below says Full watchlist and 5 years for both. Wrong about what
+// someone is paying for, in the one screen that exists to tell them.
+//
+// Keep the array HERE. backend/tests/test_tier_limits.py parses this file by
+// path and fails if these numbers disagree with tier_limits.py, so this stays
+// the single verified source and Profile inherits that guarantee.
+export const PLANS: Plan[] = [
   {
     name: "Free",
     price: "$0",

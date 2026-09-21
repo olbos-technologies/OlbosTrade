@@ -41,6 +41,9 @@ export const NAV_MODEL_LEGACY: NavGroup[] = [
     { key: "strat:cards",   label: "Strategy Cards", advanced: true },
     { key: "strat:health",  label: "Strategy Health", advanced: true },
     { key: "strat:calendar", label: "Signal Calendar" },
+    // Was in SignalsCenter TABS and the page registry but in neither nav
+    // model, so it was reachable only from the tab strip or by URL.
+    { key: "strat:signal-history", label: "Signal History", advanced: true },
     { key: "strat:builder", label: "Strategy Builder", advanced: true },
     { key: "strat:alerts",  label: "Alerts", advanced: true },
   ]},
@@ -62,6 +65,22 @@ export const NAV_MODEL_LEGACY: NavGroup[] = [
     { key: "system:broker",  label: "Broker" },
     { key: "system:market",  label: "Market Data", advanced: true },
     { key: "system:quality", label: "Data Quality", advanced: true },
+  ]},
+  // Everything belonging to the signed-in person, as opposed to the platform.
+  // Last in the list because it is visited rarely, unlike the trading surfaces
+  // above it. The group above is what the PLATFORM connects to; this is what
+  // you own, which is why My Brokers moved out of it.
+  //
+  // ADDED TO BOTH MODELS deliberately. This file defines NAV_MODEL_LEGACY and
+  // NAV_MODEL_V2, and which one renders depends on the trade_desk_v2 flag, so
+  // a group added to one alone disappears when the flag flips. #78 missed the
+  // nav model entirely and shipped My Brokers reachable only by URL; adding it
+  // to one model would be the same bug with a longer fuse.
+  { id: "account", label: "Account", icon: "data", requiresAuth: true, children: [
+    { key: "account:profile",  label: "Profile" },
+    { key: "account:password", label: "Password" },
+    { key: "account:sessions", label: "Sessions" },
+    { key: "account:brokers",  label: "My Brokers" },
   ]},
 ];
 
@@ -97,6 +116,9 @@ export const NAV_MODEL_V2: NavGroup[] = [
     { key: "strat:cards",   label: "Strategy Cards", advanced: true },
     { key: "strat:health",  label: "Strategy Health", advanced: true },
     { key: "strat:calendar", label: "Signal Calendar" },
+    // Was in SignalsCenter TABS and the page registry but in neither nav
+    // model, so it was reachable only from the tab strip or by URL.
+    { key: "strat:signal-history", label: "Signal History", advanced: true },
     { key: "strat:builder", label: "Strategy Builder", advanced: true },
     { key: "strat:alerts",  label: "Alerts", advanced: true },
     { key: "options:chain",  label: "Options Chain", advanced: true },
@@ -122,6 +144,22 @@ export const NAV_MODEL_V2: NavGroup[] = [
     { key: "system:broker",  label: "Broker Connections" },
     { key: "system:market",  label: "Market Data", advanced: true },
     { key: "system:quality", label: "Data Quality", advanced: true },
+  ]},
+  // Everything belonging to the signed-in person, as opposed to the platform.
+  // Last in the list because it is visited rarely, unlike the trading surfaces
+  // above it. The group above is what the PLATFORM connects to; this is what
+  // you own, which is why My Brokers moved out of it.
+  //
+  // ADDED TO BOTH MODELS deliberately. This file defines NAV_MODEL_LEGACY and
+  // NAV_MODEL_V2, and which one renders depends on the trade_desk_v2 flag, so
+  // a group added to one alone disappears when the flag flips. #78 missed the
+  // nav model entirely and shipped My Brokers reachable only by URL; adding it
+  // to one model would be the same bug with a longer fuse.
+  { id: "account", label: "Account", icon: "data", requiresAuth: true, children: [
+    { key: "account:profile",  label: "Profile" },
+    { key: "account:password", label: "Password" },
+    { key: "account:sessions", label: "Sessions" },
+    { key: "account:brokers",  label: "My Brokers" },
   ]},
 ];
 
