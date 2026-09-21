@@ -110,6 +110,7 @@ export const BASE_PAGES: Record<string, React.ComponentType> = {
   "markets:sector-rotation": SectorRotation,
 
   "system:broker":  () => <SystemCenter initialTab="broker" />,
+  "system:connections": () => <SystemCenter initialTab="connections" />,
   "system:market":  () => <SystemCenter initialTab="market" />,
   "system:quality": () => <SystemCenter initialTab="quality" />,
 };

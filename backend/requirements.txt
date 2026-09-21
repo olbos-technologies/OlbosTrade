@@ -38,6 +38,9 @@ greenlet==3.5.5
 
 # Auth — Argon2id password hashing (Phase 1 identity)
 argon2-cffi==23.1.0
+# Broker credential encryption (Fernet). Argon2 above is one-way and cannot
+# serve here: a stored API key has to be decryptable to be used.
+cryptography==41.0.7
 
 # AI Research Assistant (provider-agnostic — Gemini default/free tier, Claude optional)
 google-genai==1.2.0

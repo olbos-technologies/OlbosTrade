@@ -13,6 +13,7 @@ from app.core.database import Base  # noqa: F401
 from app.models import (  # noqa: F401
     access_request,
     backtest_result,
+    broker_connection,
     journal_entry,
     position,
     research_experiment,
