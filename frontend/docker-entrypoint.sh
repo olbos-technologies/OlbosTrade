@@ -111,8 +111,8 @@ ${REAL_IP_BLOCK}
     }
 
     # Files copied verbatim out of public/ — the favicons and the hero image.
-    # These keep the SAME NAME across builds, so `immutable` pins whatever was
-    # cached first for a year: replace the hero image and nobody sees the new
+    # These keep the SAME NAME across builds, so immutable would pin whatever
+    # was cached first for a year: replace the hero image and nobody sees the new
     # one until 2027. The old rule matched them with the hashed assets and the
     # comment above only ever described /assets/.
     location ~* \.(png|jpg|jpeg|gif|svg|ico|woff2?)\$ {

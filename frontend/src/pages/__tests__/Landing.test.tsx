@@ -70,7 +70,7 @@ describe("Landing", () => {
     renderLanding();
     const stragglers = screen
       .getAllByRole("link")
-      .filter((a) => /start paper trading|start free|request access/i.test(a.textContent || ""))
+      .filter((a) => /start paper trading|start free|request access|sign up/i.test(a.textContent || ""))
       .filter((a) => a.getAttribute("href") !== "/request-access");
     expect(stragglers.map((a) => a.textContent)).toEqual([]);
   });
