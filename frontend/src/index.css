@@ -1431,3 +1431,131 @@ summary span[aria-hidden="true"] { display: inline-block; transition: transform 
   .instrument-status > div[style*="flex: 1"] { display: none; }
   .instrument-status::-webkit-scrollbar { display: none; }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   PHONE: reclaim the screen for content.
+   ══════════════════════════════════════════════════════════════════════════
+
+   Measured on Positions at 390x844 before this block existed:
+
+     header 48 · ticker 26 · risk chips ~40 · desk rail 124 ·
+     execution row ~70 · tab strip 36 · status bar 28 · bottom nav 53
+
+   Nine bands of chrome, and the positions table itself got 133px — 16% of
+   the screen. Worse, the same two facts were repeated: paper/live appeared
+   three times and execution mode four, across the risk chips, the desk rail
+   and the status bar.
+
+   So this is mostly subtraction. Nothing here changes the desktop layout:
+   every rule is inside the phone breakpoint.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.instrument-rail-toggle {
+  display: none;             /* phone only — see the media query below */
+  align-items: center;
+  padding: 0 10px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  background: transparent;
+  border: none;
+  border-left: 1px solid var(--line-dim);
+  cursor: pointer;
+}
+
+.instrument-rail-kill {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  gap: 4px;
+  padding: 4px 8px;
+  min-width: 168px;
+  max-width: 200px;
+  flex: 0 1 200px;
+}
+
+@media (max-width: 760px) {
+  /* ── The desk rail: three facts, a toggle, and the kill switch ───────── */
+  .instrument-rail {
+    align-items: center;
+    gap: 0;
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+  }
+  .instrument-rail .instrument-chip[data-priority="expand"] { display: none; }
+  .instrument-rail--expanded .instrument-chip[data-priority="expand"] {
+    display: flex;
+    flex: 1 1 45%;
+  }
+  .instrument-rail .instrument-chip {
+    flex: 1 1 0;
+    padding: 7px 10px;
+    border-right: 1px solid var(--line-dim);
+  }
+  /* Session gets double share. It carries three facts at once — environment,
+     risk style and execution mode — so an even split truncated the most
+     informative chip on the rail to "UNKN…" while a single number sat beside
+     it with room to spare. */
+  .instrument-rail .instrument-chip[data-priority="always"]:first-child {
+    flex: 2 1 0;
+  }
+  .instrument-rail-toggle {
+    display: inline-flex;
+    min-height: 44px;        /* a real touch target, not a 22px hit box */
+  }
+  /* The kill switch stops being a 200px column and becomes a compact
+     control that still reads as the emergency stop. */
+  /* The kill switch was a 200px column on a 390px screen — over half the
+     rail for one control, which is what squeezed Session down to nothing.
+     It stays fully visible and fully tappable, just no longer reserving
+     desktop-sized real estate. */
+  .instrument-rail-kill {
+    min-width: 0;
+    max-width: none;
+    flex: 0 0 auto;
+    padding: 4px 6px 4px 0;
+  }
+  .instrument-rail-kill button {
+    min-height: 40px;
+    width: auto;
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+  /* The words go, the meaning stays: a red stop icon plus the Halt/Active
+     badge. Squeezing the full "Kill switch" label into the space left on a
+     390px rail truncated it to "Ki…", which is worse than no label at all on
+     the control that stops trading.
+
+     Nothing is lost to a screen reader — the button carries its own
+     aria-label ("Engage kill switch" / "Kill switch engaged") independently
+     of this text, and the badge still distinguishes armed from clear. */
+  .instrument-rail-kill .instrument-halt__label { display: none; }
+
+  /* ── Strips that were clipped mid-word ──────────────────────────────────
+     The ticker, the tab strip and the execution switcher all overflowed and
+     cut off — "TLT 8", "AUTOPI", "COPILO". They are scrollable by nature, so
+     the fix is to let them scroll properly and stop the scrollbar eating a
+     row of height, rather than to shrink the text until it fits. */
+  .desk-tablist,
+  .trade-desk-mobile-tabs,
+  .ticker-strip-marquee {
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .desk-tablist::-webkit-scrollbar,
+  .trade-desk-mobile-tabs::-webkit-scrollbar { display: none; }
+
+  /* ── Touch targets ──────────────────────────────────────────────────────
+     44px is the smallest reliably tappable height. Several of these were
+     nearer 28px, which is a miss-and-try-again on a moving train. */
+  .desk-tablist [role="tab"],
+  .trade-desk-mobile-tabs [role="tab"] {
+    min-height: 44px;
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+}
