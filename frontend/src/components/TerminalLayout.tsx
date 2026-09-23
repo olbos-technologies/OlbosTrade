@@ -992,10 +992,14 @@ function StatusLamp({
   on,
   warn,
   unknown,
+  className,
 }: {
   label: string;
   on: boolean;
   warn?: boolean;
+  /** Lets a caller mark a lamp as duplicated elsewhere on the page, so the
+   *  stylesheet can drop it in that one context. See app-shell--desk. */
+  className?: string;
   /** The read failed or returned nothing. Rendered as amber "?" rather than
    *  as "off": a dim lamp is indistinguishable from a successful read saying
    *  the thing is off, which is the one reading this row must never imply
@@ -1006,6 +1010,7 @@ function StatusLamp({
   const color = unknown ? "var(--amber)" : warn ? "var(--amber)" : on ? "var(--green)" : "var(--ink-faint)";
   return (
     <span
+      className={className}
       title={`${label}: ${unknown ? "could not be read" : warn ? "warn" : on ? "on" : "off"}`}
       style={{
         display: "inline-flex",
@@ -1094,6 +1099,7 @@ function StatusBar({ page }: { page: string }) {
     }}>
       <span style={{ color: "var(--brand)", textTransform: "uppercase" }}>{label}</span>
       <span
+        className="status-dup"
         style={{
           color: paper === null ? "var(--amber)" : paper ? "var(--green)" : "var(--red)",
           fontWeight: 700,
@@ -1107,17 +1113,20 @@ function StatusBar({ page }: { page: string }) {
       >
         {paper === null ? "ENV ?" : paper ? "PAPER" : "LIVE"}
       </span>
-      <StatusLamp label="Kill" on={killOn === true} warn={killOn === true} unknown={killOn === null} />
+      {/* status-dup: repeated by the Trade Desk rail, hidden there on phones
+          only. See app-shell--desk. */}
+      <StatusLamp className="status-dup" label="Kill" on={killOn === true} warn={killOn === true} unknown={killOn === null} />
       <StatusLamp
+        className="status-dup"
         label={execMode ? `Exec ${execMode}` : "Exec"}
         on={execMode !== null && execMode !== "manual"}
         warn={execMode === "autopilot"}
         unknown={execMode === null}
       />
-      <StatusLamp label={`Style ${styleMode}`} on />
+      <StatusLamp className="status-dup" label={`Style ${styleMode}`} on />
       <StatusLamp label="Rotation" on={rotationOn} />
       <div style={{ flex: 1 }} />
-      <span id="broker-status-bar">IBKR GATEWAY</span>
+      <span id="broker-status-bar" className="status-dup">IBKR GATEWAY</span>
       {/* Renders nothing when auth is disabled — see UserMenu. */}
       <UserMenu />
       <span style={{ color: "var(--brand)", fontWeight: 700 }}>Olbos v5.0</span>
@@ -1146,7 +1155,22 @@ export default function TerminalLayout({ children, activePage, onNav }: {
     <TerminalNavProvider onNav={handleNav}>
     {/* .app-shell carries the height: 100dvh fallback — 100vh on mobile
         Safari counts the URL bar, which pushes the status bar off screen. */}
-    <div className="app-shell" style={{ display: "flex", flexDirection: "column", overflow: "hidden" }}>
+    <div
+      /*
+        app-shell--desk marks the pages where TradeDeskHeader renders its own
+        status rail. On a phone the rail already states environment, risk
+        style, execution mode and the kill switch, so the risk-chip strip and
+        half the status bar were saying it a second and third time — measured
+        at roughly 70px of a 844px screen to repeat what was directly above.
+
+        Scoped to the desk and to phones on purpose. Everywhere else those
+        bands are the ONLY place this state appears, and the kill lamp in
+        particular is a safety display: it is hidden here only because the
+        HALT button sits a few pixels above it, not because it is noise.
+      */
+      className={`app-shell${activePage.startsWith("trade:") ? " app-shell--desk" : ""}`}
+      style={{ display: "flex", flexDirection: "column", overflow: "hidden" }}
+    >
       <ErrorBoundary label="Ticker strip">
         <TickerStrip onToggle={() => setSidebarExpanded(p => !p)} sidebarExpanded={sidebarExpanded} isMobile={isMobile} />
       </ErrorBoundary>

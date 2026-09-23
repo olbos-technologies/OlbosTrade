@@ -1535,6 +1535,24 @@ summary span[aria-hidden="true"] { display: inline-block; transition: transform 
      of this text, and the badge still distinguishes armed from clear. */
   .instrument-rail-kill .instrument-halt__label { display: none; }
 
+  /* ── Saying each thing once ─────────────────────────────────────────────
+     On the Trade Desk the rail above already states environment, risk style,
+     execution mode, broker and the kill switch. The risk-chip strip and five
+     lamps in the status bar repeated all of it — paper/live appeared three
+     times on one screen and execution mode four.
+
+     Hidden on the DESK and on PHONES only. Everywhere else these are the one
+     place that state is shown, and the kill lamp is a safety display: it goes
+     here solely because the HALT button is a few pixels above it. */
+  .app-shell--desk .global-risk-status { display: none; }
+  /* !important is load-bearing here, not laziness. StatusLamp sets
+     display: inline-flex as an INLINE style, and an inline style beats any
+     selector — so the plain rule hid the ENV span (no inline display) and
+     left the Kill, Exec and Style lamps on screen. The programmatic check
+     missed it too, because querySelector returns the first match and the
+     first match was the one that worked; the screenshot is what caught it. */
+  .app-shell--desk .status-dup { display: none !important; }
+
   /* ── Strips that were clipped mid-word ──────────────────────────────────
      The ticker, the tab strip and the execution switcher all overflowed and
      cut off — "TLT 8", "AUTOPI", "COPILO". They are scrollable by nature, so
