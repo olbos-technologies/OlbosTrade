@@ -1567,6 +1567,99 @@ summary span[aria-hidden="true"] { display: inline-block; transition: transform 
   .desk-tablist::-webkit-scrollbar,
   .trade-desk-mobile-tabs::-webkit-scrollbar { display: none; }
 
+  /* ── The positions table becomes a list of cards ───────────────────────
+     Eleven columns at 390px is ~35px each: every number wrapped or clipped
+     and the list was unusable. This reflows the SAME DOM into a card per
+     position, so no close-position logic moved.
+
+     Laid out by data-col rather than nth-child, for the reason the desk rail
+     uses data-priority: an nth-child map silently relabels every cell the
+     moment a column is inserted. */
+  .t-table--cards thead { display: none; }
+  /* min-width: 0 undoes the `.t-table { min-width: 680px }` rule above, which
+     makes ordinary tables scroll sideways on a phone. That is the right
+     answer for a table and the wrong one for a card list: it was forcing each
+     card to 680px inside a 390px column, so half of every card — P&L, MFE,
+     MAE, mode, status — sat off-screen to the right, present in the DOM and
+     invisible. */
+  .t-table--cards,
+  .t-table--cards tbody {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .t-table--cards tbody tr {
+    display: grid;
+    /* minmax(0, 1fr), NOT 1fr. A grid track's automatic minimum is its
+       min-content width, so "MOMENTUM BREAKOUT" spanning the row pushed the
+       card to 680px inside a 390px parent — the cells were all present and
+       simply off-screen to the right. Same defect, and the same fix, as the
+       landing nav's min-width: 0. */
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    width: 100%;
+    box-sizing: border-box;
+    grid-template-areas:
+      "symbol   type   pnl"
+      "strategy strategy strategy"
+      "credit   mfe    mae"
+      "hold     mode   status"
+      "action   action action";
+    gap: 6px 10px;
+    align-items: center;
+    padding: 12px 14px;
+    margin: 0 0 10px;
+    background: var(--bg-2);
+    border: 1px solid var(--line-dim);
+    border-radius: var(--radius-card);
+  }
+  /* The empty-state row keeps its single centred cell. */
+  .t-table--cards tbody tr:has(td[colspan]) {
+    display: block;
+    background: transparent;
+    border: none;
+  }
+
+  .t-table--cards tbody td {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0;
+    border: none;
+    min-width: 0;          /* so a long value shrinks rather than widening the card */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .t-table--cards td[data-col="symbol"]   { grid-area: symbol; font-size: 16px; font-weight: 700; }
+  .t-table--cards td[data-col="type"]     { grid-area: type; }
+  .t-table--cards td[data-col="pnl"]      { grid-area: pnl; font-size: 15px; font-weight: 700; justify-content: flex-end; }
+  .t-table--cards td[data-col="strategy"] { grid-area: strategy; color: var(--ink-faint); }
+  .t-table--cards td[data-col="credit"]   { grid-area: credit; }
+  .t-table--cards td[data-col="mfe"]      { grid-area: mfe; }
+  .t-table--cards td[data-col="mae"]      { grid-area: mae; }
+  .t-table--cards td[data-col="hold"]     { grid-area: hold; }
+  .t-table--cards td[data-col="mode"]     { grid-area: mode; }
+  .t-table--cards td[data-col="status"]   { grid-area: status; justify-content: flex-end; }
+  .t-table--cards td[data-col="action"]   { grid-area: action; margin-top: 4px; }
+
+  /* The header row is gone, so the numeric cells carry their own label —
+     otherwise "$4.20  +$300  -$120" is three unexplained figures. */
+  .t-table--cards td[data-label]::before {
+    content: attr(data-label);
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  /* Closing a position is the one destructive control on the card, and it
+     was a 90px cell. Full width and properly tappable. */
+  .t-table--cards td[data-col="action"] > * { width: 100%; }
+  .t-table--cards td[data-col="action"] button { width: 100%; min-height: 44px; }
+
   /* ── Touch targets ──────────────────────────────────────────────────────
      44px is the smallest reliably tappable height. Several of these were
      nearer 28px, which is a miss-and-try-again on a moving train. */
