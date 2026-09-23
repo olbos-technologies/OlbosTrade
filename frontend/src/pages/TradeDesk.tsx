@@ -74,7 +74,12 @@ function ExecModeBar() {
   ];
 
   return (
-    <div style={{
+    /* exec-mode-row: this is a no-wrap flex row whose content measures 446px.
+       At 390px it just fits; at 360px — a very common Android viewport — and
+       at 320px the AUTOPILOT button is clipped mid-word, which is what the
+       phone screenshot showed. On phones it becomes a full-width segmented
+       control instead (index.css, the 760px block). */
+    <div className="exec-mode-row" style={{
       display: "flex", alignItems: "center", gap: 8,
       padding: "6px 16px", background: "var(--bg-3)",
       borderBottom: "1px solid var(--line-dim)",

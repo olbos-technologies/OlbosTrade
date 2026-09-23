@@ -1660,6 +1660,40 @@ summary span[aria-hidden="true"] { display: inline-block; transition: transform 
   .t-table--cards td[data-col="action"] > * { width: 100%; }
   .t-table--cards td[data-col="action"] button { width: 100%; min-height: 44px; }
 
+  /* ── The execution mode switcher ────────────────────────────────────────
+     Label + three buttons + a status pill in a no-wrap row measures 446px.
+     It survives 390px by 13px and clips at 360px and 320px, cutting
+     AUTOPILOT mid-word — and this is the control that decides whether the
+     system trades by itself, so a button you cannot fully read is the wrong
+     one to leave clipped.
+
+     Wrapped into a full-width segmented control: the kicker takes its own
+     line, the three buttons share the width equally, and the status pill
+     drops below rather than pushing them off the edge. */
+  .exec-mode-row {
+    flex-wrap: wrap;
+    padding: 8px 12px;
+    gap: 6px;
+  }
+  .exec-mode-row .kicker {
+    flex: 0 0 100%;
+    margin: 0 0 2px !important;
+  }
+  .exec-mode-row button {
+    flex: 1 1 0;
+    min-width: 0;            /* shrink below the label instead of overflowing */
+    min-height: 44px;
+    justify-content: center;
+  }
+  /* The status pill carries an inline margin-left, which an ordinary rule
+     cannot beat — same inline-style precedence that the status-bar lamps
+     needed !important for. */
+  .exec-mode-row > span:not(.kicker) {
+    flex: 0 0 100%;
+    margin-left: 0 !important;
+    text-align: center;
+  }
+
   /* ── Touch targets ──────────────────────────────────────────────────────
      44px is the smallest reliably tappable height. Several of these were
      nearer 28px, which is a miss-and-try-again on a moving train. */
