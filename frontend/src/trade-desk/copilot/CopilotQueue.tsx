@@ -245,6 +245,7 @@ export default function CopilotQueue() {
             NO AUDIT HISTORY
           </div>
         ) : (
+          <div className="copilot-audit-table">
           <table className="t-table">
             <thead>
               <tr>
@@ -285,6 +286,7 @@ export default function CopilotQueue() {
               })}
             </tbody>
           </table>
+          </div>
         )}
       </div>
     </div>

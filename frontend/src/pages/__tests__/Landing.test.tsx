@@ -46,7 +46,7 @@ describe("Landing", () => {
     const bodyText = document.body.textContent || "";
     expect(bodyText).not.toMatch(/mailto:/i);
     expect(bodyText).not.toMatch(/mangpijasuan@/i);
-    expect(bodyText).toMatch(/not enforced/i);
+    expect(bodyText).toMatch(/tier enforcement are not available/i);
   });
 
   it("labels every performance metric as unpublished/placeholder instead of fabricating numbers", () => {
@@ -69,11 +69,17 @@ describe("Landing", () => {
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
   });
 
-  it("footer is honest — no disabled legal stubs pretending to be links", () => {
+  it("links to a scoped disclosure center instead of a placeholder legal stub", () => {
     renderLanding();
-    expect(screen.getByText(/disclosures coming soon/i)).toBeInTheDocument();
-    expect(screen.queryByText("Privacy")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /^disclosures$/i })).toHaveAttribute("href", "#disclosures");
+    expect(screen.getByText(/legal review required/i)).toBeInTheDocument();
     expect(screen.queryByTitle("Not published")).not.toBeInTheDocument();
+  });
+
+  it("makes the product workflow visible without fabricating a live signal", () => {
+    renderLanding();
+    expect(screen.getByLabelText(/illustrative paper-trading terminal preview/i)).toBeInTheDocument();
+    expect(screen.getByText(/not a live market signal/i)).toBeInTheDocument();
   });
 
   it("mobile nav toggle is keyboard accessible and reports its expanded state", () => {

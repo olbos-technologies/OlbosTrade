@@ -6,6 +6,7 @@ from app.models.watchlist import Watchlist, WatchlistSymbol
 from app.models.alert import AlertRule, Notification
 from app.models.execution_event import ExecutionEvent
 from app.models.options_signal_history import OptionsSignalHistory
+from app.models.tenant import AuditEvent, BrokerCredential, Organization, OrganizationMembership, Subscription, User
 
 __all__ = [
     "StrategyProfile",
@@ -18,4 +19,5 @@ __all__ = [
     "Notification",
     "ExecutionEvent",
     "OptionsSignalHistory",
+    "Organization", "User", "OrganizationMembership", "Subscription", "BrokerCredential", "AuditEvent",
 ]

@@ -49,6 +49,22 @@ function Metric({ label, value, placeholder = true }: { label: string; value: st
   );
 }
 
+function TerminalPreview() {
+  return (
+    <div className="landing-terminal-preview" aria-label="Illustrative paper-trading terminal preview">
+      <div className="landing-terminal-preview__bar"><span>OLBOS TERMINAL</span><span>PAPER · MANUAL</span></div>
+      <div className="landing-terminal-preview__body">
+        <div className="landing-terminal-preview__status"><span>ENV&nbsp; PAPER</span><span>KILL&nbsp; NOT ARMED</span><span>RISK&nbsp; AVAILABLE</span></div>
+        <div className="landing-terminal-preview__main">
+          <div><div className="landing-terminal-preview__label">SIGNAL DECISION</div><strong>SPY&nbsp; · &nbsp;BUY SPREAD</strong><p>Source, confidence, freshness, and risk context are visible before a decision.</p></div>
+          <div className="landing-terminal-preview__score"><span>POP</span><strong>72%</strong><small>within guardrails</small></div>
+        </div>
+        <div className="landing-terminal-preview__footer"><span>01&nbsp; Market inputs</span><span>02&nbsp; Regime</span><span>03&nbsp; Guardrails</span><span>04&nbsp; Human approval</span></div>
+      </div>
+    </div>
+  );
+}
+
 type Plan = {
   name: string;
   price: string;
@@ -142,10 +158,10 @@ export default function Landing() {
             aria-label="Primary"
           >
             <NavLink href="#product">Product</NavLink>
-            <NavLink href="#how">How It Works</NavLink>
-            <NavLink href="#risk">Risk Controls</NavLink>
-            <NavLink href="#track-record">Track Record</NavLink>
-            <NavLink href="#pricing">Pricing</NavLink>
+            <NavLink href="#how">How it decides</NavLink>
+            <NavLink href="#risk">Controls</NavLink>
+            <NavLink href="#track-record">Verification</NavLink>
+            <NavLink href="#pricing">Access</NavLink>
           </nav>
           <div className="landing-nav-actions">
             <Link className="landing-signin" to="/terminal">Sign In</Link>
@@ -168,23 +184,22 @@ export default function Landing() {
         {/* ── Hero ──────────────────────────────────────────────────────── */}
         <section className="landing-section landing-hero" id="product">
           <div className="landing-container">
-            <div className="landing-eyebrow">Systematic Options Execution</div>
+            <div className="landing-eyebrow">Paper-trading evaluation · options &amp; equities</div>
             <h1 className="landing-h1">
-              Systematic options execution with risk controls built into every decision.
+              Make every trade decision explainable, risk-gated, and reviewable.
             </h1>
             <p className="landing-lede">
-              Olbos Trading System runs a rules-based options and equity workflow — regime
-              detection, a trained signal model, and a fail-closed risk gate — in front of every
-              trade decision. Nothing executes without passing guardrails, and every signal shows
-              where it came from. Currently in paper-trading evaluation; live capital requires a
-              validated track record first.
+              Olbos is an operator terminal for systematic options and equity workflows. It keeps
+              signal provenance, paper/live environment, guardrails, and human approval in view
+              before execution. It is currently in paper-trading evaluation; no verified live
+              performance is presented here.
             </p>
             <div className="landing-hero-ctas">
               <Link className="landing-cta-btn" to="/terminal">Start Paper Trading</Link>
-              <a className="landing-cta-btn secondary" href="#risk">See risk controls</a>
+              <a className="landing-cta-btn secondary" href="#how">See how decisions are gated</a>
             </div>
-
-            <div className="pipeline" role="img" aria-label="Execution pipeline: market inputs, regime detection, risk-gated evaluation, controlled execution and audit">
+            <div className="landing-hero-layout">
+              <div className="pipeline" role="img" aria-label="Execution pipeline: market inputs, regime detection, risk-gated evaluation, controlled execution and audit">
               <PipelineStage
                 n="01"
                 title="Market inputs"
@@ -206,23 +221,26 @@ export default function Landing() {
                 detail="Manual, Copilot, or Autopilot dispatch, with every decision written to a trade journal and execution log."
               />
             </div>
+              <TerminalPreview />
+            </div>
+            <p className="landing-hero-note">Illustrative workflow preview — not a live market signal or performance report.</p>
           </div>
         </section>
 
         {/* ── How it works ─────────────────────────────────────────────── */}
         <section className="landing-section" id="how">
           <div className="landing-container">
-            <div className="landing-eyebrow">How It Works</div>
-            <h2 className="landing-h2">From market data to a gated decision</h2>
+            <div className="landing-eyebrow">Decision workflow</div>
+            <h2 className="landing-h2">One visible path from data to decision.</h2>
             <p className="landing-lede">
-              Every step below exists in the running system today — described at the level the
-              codebase actually implements it, not aspirationally.
+              The terminal is designed so an operator can understand what changed, what is
+              allowed, and who must approve the next step without reconstructing it from logs.
             </p>
             <div className="landing-grid-4">
-              <Cell title="1. Market inputs" body="SPY/QQQ/IWM and related market data feed the scanners and regime classifier, independent of the broker connection used for order execution." />
-              <Cell title="2. Regime detection" body="A VIX/ADX-based classifier buckets the market into four regimes every scan cycle; each regime allows or restricts specific strategies." />
-              <Cell title="3. Risk-gated evaluation" body="A trained scoring model ranks candidates; guardrails (daily/weekly/monthly loss limits, position caps, cooling-off periods) and Kelly-informed sizing run before anything is eligible." />
-              <Cell title="4. Controlled execution" body="Manual mode only generates signals. Copilot queues them for human approval. Autopilot executes only signals that clear every gate above — and a kill switch halts new orders at any time." />
+              <Cell title="Understand the setup" body="Signals identify their source, timeframe, confidence, and freshness instead of presenting a bare directional label." />
+              <Cell title="Check the regime" body="Regime classification determines which strategies can be considered before a trade is eligible." />
+              <Cell title="Apply the guardrails" body="Loss limits, position caps, cooling-off periods, and sizing controls gate the decision before execution." />
+              <Cell title="Choose the authority" body="Manual, Copilot, and Autopilot make the approval boundary explicit. The kill switch takes priority." />
             </div>
           </div>
         </section>
@@ -238,10 +256,9 @@ export default function Landing() {
               <Cell title="Kill switch" body="One control halts new order submission immediately and asks the broker layer to cancel open orders and flatten positions." />
               <Cell title="Live vs. paper visibility" body="The operator terminal always shows which broker and environment (paper or live) is active — never inferred silently." />
               <Cell title="Signal attribution" body="Every directional signal in the terminal shows its source, timeframe, confidence, and freshness — a bare BUY/SELL label is treated as a defect." />
-              <Cell title="Divergence disclosure" body="On the equity scan panel, when the scan engine and the background scanner disagree for the same symbol, the terminal shows the disagreement explicitly instead of resolving it visually." />
-              <Cell title="Manual oversight" body="Autopilot can be turned off at any time; Manual and Copilot modes keep a human in the approval loop." />
-              <Cell title="Explainability" body="The signal model's training pipeline runs a SHAP-based economic-direction check at train time and on live signals, to catch backwards feature logic." />
-              <Cell title="No validated track record yet" body="Olbos Trading System has not completed a validated paper-trading evaluation period. We say so plainly instead of implying otherwise." />
+              <Cell title="Decision trace" body="The terminal records the decision path and makes source disagreements visible rather than silently resolving them." />
+              <Cell title="Human authority" body="Manual and Copilot modes keep an operator in the approval loop; Autopilot can be disabled at any time." />
+              <Cell title="Operational visibility" body="Broker connection, environment, risk state, scanner heartbeat, and kill-switch state stay visible in the workspace." />
             </div>
           </div>
         </section>
@@ -268,13 +285,11 @@ export default function Landing() {
         {/* ── Pricing ───────────────────────────────────────────────────── */}
         <section className="landing-section" id="pricing">
           <div className="landing-container">
-            <div className="landing-eyebrow">Pricing</div>
-            <h2 className="landing-h2">Free to explore. Pro and Elite when billing ships.</h2>
+            <div className="landing-eyebrow">Planned access tiers</div>
+            <h2 className="landing-h2">Explore the paper terminal today. Paid access is not available yet.</h2>
             <p className="landing-lede">
-              There is no signup or billing system wired up yet — every plan opens the same
-              paper terminal today, including Manual, Copilot, and Autopilot controls. The
-              Pro ($29) and Elite ($99) prices and limits below are the intended future tiers,
-              shown honestly and marked as planned / not enforced.
+              Billing and tier enforcement are not available. The future tiers below are product
+              planning, not an offer to sell access. Every button opens the same paper terminal.
             </p>
             <div className="pricing-grid">
               {PLANS.map((plan) => (
@@ -319,36 +334,48 @@ export default function Landing() {
           </div>
         </section>
 
-        {/* ── Trust & transparency ──────────────────────────────────────── */}
+        {/* ── Proof without performance claims ───────────────────────────── */}
         <section className="landing-section">
           <div className="landing-container">
-            <div className="landing-eyebrow">Trust &amp; Transparency</div>
-            <h2 className="landing-h2">What the terminal always shows you</h2>
+            <div className="landing-eyebrow">Built for review</div>
+            <h2 className="landing-h2">Verify the workflow without relying on performance claims.</h2>
             <div className="landing-trust-list">
               <div className="landing-trust-item">
                 <span className="landing-trust-mark">&rarr;</span>
-                <span className="landing-cell-body">Every signal's source system, timeframe, and confidence — or an explicit "unknown" if the frontend can't verify it.</span>
+                <span className="landing-cell-body">Signal provenance, timeframe, confidence, and freshness are presented with every directional decision.</span>
               </div>
               <div className="landing-trust-item">
                 <span className="landing-trust-mark">&rarr;</span>
-                <span className="landing-cell-body">On the equity scan results, when the scan engine and the background scanner disagree for the same symbol, that disagreement is surfaced — never silently resolved.</span>
+                <span className="landing-cell-body">The paper/live environment, broker status, execution mode, kill-switch state, and risk availability are persistent workspace context.</span>
               </div>
               <div className="landing-trust-item">
                 <span className="landing-trust-mark">&rarr;</span>
-                <span className="landing-cell-body">Live vs. paper environment, broker connection, AUTOPILOT state, kill-switch state, and drawdown — visible from any screen in the terminal.</span>
+                <span className="landing-cell-body">Manual mode, Copilot approval, and guarded Autopilot make the level of automation explicit before execution.</span>
               </div>
               <div className="landing-trust-item">
                 <span className="landing-trust-mark">&rarr;</span>
-                <span className="landing-cell-body">Unknown risk state is shown as unknown. It is never replaced with a default that looks safe.</span>
+                <span className="landing-cell-body">Unknown and stale states are called out as unavailable; the interface does not replace them with safe-looking defaults.</span>
               </div>
               <div className="landing-trust-item">
                 <span className="landing-trust-mark">&rarr;</span>
-                <span className="landing-cell-body">Performance is only published once it is verified and clearly sourced — backtest, paper, and live results are never mixed.</span>
+                <span className="landing-cell-body">Paper, backtest, and live results are intentionally separated. No verified live track record is currently published.</span>
               </div>
               <div className="landing-trust-item">
                 <span className="landing-trust-mark">&rarr;</span>
-                <span className="landing-cell-body">Automation can be turned off at any time — Manual mode and the kill switch always take priority over Autopilot.</span>
+                <span className="landing-cell-body">The Operations view exposes service health, scanner heartbeat, and data freshness in one compact status surface.</span>
               </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="landing-section landing-disclosure-center" id="disclosures">
+          <div className="landing-container">
+            <div className="landing-eyebrow">Disclosures &amp; methodology</div>
+            <h2 className="landing-h2">Clear scope before you enter the terminal.</h2>
+            <div className="landing-grid-3">
+              <Cell title="Evaluation status" body="Olbos is currently operated in paper-trading evaluation. The site does not present verified live results or imply that a live record exists." />
+              <Cell title="Not investment advice" body="The terminal provides software workflows and market analysis. It does not provide individualized investment advice or a recommendation for any person." />
+              <Cell title="Legal review required" body="This public disclosure center is product-facing context, not a substitute for jurisdiction-specific terms, privacy, or regulatory disclosures. Those materials require legal review before public distribution." />
             </div>
           </div>
         </section>
@@ -378,9 +405,7 @@ export default function Landing() {
               }}>TRADING SYSTEM</span>
             </div>
             <div className="landing-footer-links">
-              <span className="landing-cell-body" style={{ fontSize: 12, color: "var(--ink-faint)" }}>
-                Disclosures coming soon
-              </span>
+              <a href="#disclosures">Disclosures</a>
               <Link to="/terminal">Sign In</Link>
             </div>
           </div>

@@ -1,33 +1,33 @@
-import React, { useState } from "react";
+import React, { lazy, Suspense, useState } from "react";
 import "./index.css";
 import TerminalLayout  from "./components/TerminalLayout";
-import Dashboard       from "./pages/Dashboard";
-import TradeDesk       from "./pages/TradeDesk";
-import TradeDeskV2     from "./pages/TradeDeskV2";
-import Journal         from "./pages/Journal";
-import ModeAnalytics   from "./pages/ModeAnalytics";
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const TradeDesk = lazy(() => import("./pages/TradeDesk"));
+const TradeDeskV2 = lazy(() => import("./pages/TradeDeskV2"));
+const Journal = lazy(() => import("./pages/Journal"));
+const ModeAnalytics = lazy(() => import("./pages/ModeAnalytics"));
 // Consolidated hubs (each folds two former pages behind tabs)
-import RiskCenter      from "./pages/RiskCenter";          // Risk Monitor + Guardrails
-import SignalsCenter   from "./pages/SignalsCenter";       // Equity Signals + Strategy
-import OptionsSignals  from "./pages/OptionsSignals";       // Live options spread signal feed
-import SignalResearch  from "./pages/SignalResearch";       // Forward-return study over tracked signals
-import ResearchCenter  from "./pages/ResearchCenter";      // Research Lab: Strategy Lab + Market/Regime + Chart + Intel
-import BacktestCenter  from "./pages/BacktestCenter";      // Backtest + Symphony
-import ScanCenter      from "./pages/ScanCenter";           // Options + Equity EV scan engines
-import OptionsFlow     from "./pages/OptionsFlow";           // Options flow (grouped-nav sub-item)
-import OptionsChain    from "./pages/options/OptionsChain";  // Live calls/puts for a symbol
-import IncomeStrategiesCenter from "./pages/options/IncomeStrategiesCenter";
-import SystemCenter    from "./pages/SystemCenter";
-import StrategyBuilder from "./pages/strategies/StrategyBuilder"; // Configure + register a strategy experiment
-import Alerts          from "./pages/strategies/Alerts";     // Smart Alert rules + notifications
+const RiskCenter = lazy(() => import("./pages/RiskCenter"));
+const SignalsCenter = lazy(() => import("./pages/SignalsCenter"));
+const OptionsSignals = lazy(() => import("./pages/OptionsSignals"));
+const SignalResearch = lazy(() => import("./pages/SignalResearch"));
+const ResearchCenter = lazy(() => import("./pages/ResearchCenter"));
+const BacktestCenter = lazy(() => import("./pages/BacktestCenter"));
+const ScanCenter = lazy(() => import("./pages/ScanCenter"));
+const OptionsFlow = lazy(() => import("./pages/OptionsFlow"));
+const OptionsChain = lazy(() => import("./pages/options/OptionsChain"));
+const IncomeStrategiesCenter = lazy(() => import("./pages/options/IncomeStrategiesCenter"));
+const SystemCenter = lazy(() => import("./pages/SystemCenter"));
+const StrategyBuilder = lazy(() => import("./pages/strategies/StrategyBuilder"));
+const Alerts = lazy(() => import("./pages/strategies/Alerts"));
 // Markets module
-import Heatmap         from "./pages/markets/Heatmap";
-import Watchlists      from "./pages/markets/Watchlists";
-import SectorRotation  from "./pages/markets/SectorRotation";
-import ChartWorkstation from "./pages/ChartWorkstation";     // Price-action / market-structure chart
-import NewsEventsCenter from "./pages/markets/NewsEventsCenter";
+const Heatmap = lazy(() => import("./pages/markets/Heatmap"));
+const Watchlists = lazy(() => import("./pages/markets/Watchlists"));
+const SectorRotation = lazy(() => import("./pages/markets/SectorRotation"));
+const ChartWorkstation = lazy(() => import("./pages/ChartWorkstation"));
+const NewsEventsCenter = lazy(() => import("./pages/markets/NewsEventsCenter"));
 import { isTradeDeskV2Enabled } from "./trade-desk/featureFlags";
-import SignalCalendar from "./components/SignalCalendar";
+const SignalCalendar = lazy(() => import("./components/SignalCalendar"));
 
 function UnknownPage() {
   return (
@@ -120,7 +120,9 @@ export default function App() {
 
   return (
     <TerminalLayout activePage={page} onNav={setPage}>
-      <Page />
+      <Suspense fallback={<div className="workspace-state"><strong>Loading workspace</strong><span>Preparing the requested terminal view…</span></div>}>
+        <Page />
+      </Suspense>
     </TerminalLayout>
   );
 }

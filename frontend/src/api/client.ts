@@ -48,12 +48,22 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     headers: apiAuthHeaders(options?.headers),
   });
   if (!res.ok) throw new Error(`API error ${res.status}: ${res.statusText}`);
-  return res.json();
+  // A proxy or restarting backend can occasionally return an empty 200
+  // response. Surface a useful operational error instead of leaking the
+  // browser's JSON parser exception into a trading workflow.
+  const text = await res.text();
+  if (!text.trim()) throw new Error("Service returned an empty response. Check the connection and retry.");
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new Error("Service returned an invalid response. Check the connection and retry.");
+  }
 }
 
 // ── Health ────────────────────────────────────────────────────────────────────
 export const api = {
   health: () => request<{ status: string }>("/health"),
+  getHealthDetail: () => request("/api/health/detail"),
 
   // ── Backtest ──────────────────────────────────────────────────────────────
   runBacktest: (body: object) => request("/api/backtest/run", { method: "POST", body: JSON.stringify(body) }),

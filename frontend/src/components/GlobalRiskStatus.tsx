@@ -135,6 +135,7 @@ function pct(v: number | undefined): string | null {
 export default function GlobalRiskStatus() {
   const isMobile = useIsMobile();
   const [expanded, setExpanded] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const execAvail = useAvailability<ExecMode>(() => api.getExecutionMode() as Promise<ExecMode>);
   const brokerAvail = useAvailability<BrokerInfo>(() =>
     fetch("/api/market/broker").then((r) => {
@@ -244,6 +245,7 @@ export default function GlobalRiskStatus() {
 
   // ── 6. Connection / freshness ────────────────────────────────────────
   const anyError = [execAvail, brokerAvail, killAvail, riskAvail].some((a) => a.status === "error");
+  const failedChecks = [execAvail, brokerAvail, killAvail, riskAvail].filter((a) => a.status === "error").length;
   const connChip = anyError ? (
     <Chip label="DATA" value="PARTIAL" tone="var(--amber)" order={6} title="One or more risk-status fields failed to load; see individual chips." />
   ) : (
@@ -267,6 +269,11 @@ export default function GlobalRiskStatus() {
   const alerts = chips.filter(isAlertChip);
   const nominal = chips.filter((c) => !isAlertChip(c));
   const collapsed = isMobile && !expanded && nominal.length > 0;
+  // A partial read previously rendered several UNKNOWN/UNAVAILABLE chips in a
+  // row. On a phone that makes an outage feel louder than the work surface and
+  // repeats the same fact. Start with one explicit, truthful summary; details
+  // stay one tap away and no status is silently treated as nominal.
+  const showHealthSummary = isMobile && anyError && !detailsOpen;
 
   return (
     <div
@@ -286,8 +293,46 @@ export default function GlobalRiskStatus() {
         flexShrink: 0,
       }}
     >
-      {collapsed ? alerts : chips}
-      {isMobile && nominal.length > 0 && (
+      {showHealthSummary ? (
+        <button
+          type="button"
+          className="system-health-summary"
+          onClick={() => setDetailsOpen(true)}
+          aria-expanded="false"
+          aria-label={`Live status unavailable. Show details for ${failedChecks} failed checks`}
+        >
+          <span aria-hidden="true">!</span>
+          <span>LIVE STATUS UNAVAILABLE</span>
+          <span className="system-health-summary__detail">
+            {failedChecks} {failedChecks === 1 ? "check" : "checks"} · DETAILS
+          </span>
+        </button>
+      ) : (
+        <>
+          {collapsed ? alerts : chips}
+          {isMobile && anyError && (
+            <button
+              type="button"
+              className="system-health-details"
+              onClick={() => setDetailsOpen(false)}
+              aria-label="Hide live status details"
+            >
+              HIDE DETAILS
+            </button>
+          )}
+          {isMobile && anyError && (
+            <button
+              type="button"
+              className="system-health-details"
+              onClick={() => window.location.reload()}
+              aria-label="Retry live status checks"
+            >
+              RETRY
+            </button>
+          )}
+        </>
+      )}
+      {isMobile && !showHealthSummary && nominal.length > 0 && (
         <button
           type="button"
           onClick={() => setExpanded((p) => !p)}

@@ -236,6 +236,13 @@ class Settings(BaseSettings):
 
     # ── Security ─────────────────────────────────────────────────────────
     secret_key: str = Field(default="", description="API secret key for admin endpoints")
+    # ── Multi-tenant integrations (disabled until configured) ───────────
+    clerk_publishable_key: str = Field(default="")
+    clerk_secret_key: str = Field(default="")
+    clerk_jwt_key: str = Field(default="")
+    stripe_secret_key: str = Field(default="")
+    stripe_webhook_secret: str = Field(default="")
+    credential_encryption_key: str = Field(default="", description="Fernet key from a managed secret store; never expose to clients")
     # Kill-switch reset authorization. Empty = reset disabled until configured.
     # Never ship a default that is also hardcoded in the frontend bundle.
     kill_switch_reset_code: str = Field(

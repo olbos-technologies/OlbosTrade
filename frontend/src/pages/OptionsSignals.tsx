@@ -8,8 +8,9 @@ import { api } from "../api/client";
 import SignalAttribution from "../components/SignalAttribution";
 import SignalDirectionBadge from "../components/SignalDirectionBadge";
 import AlphaEdgeInline, { OpportunityScorePill } from "../components/AlphaEdgeInline";
-import MissionCard from "../components/MissionCard";
+import SignalDecisionCard from "../components/SignalDecisionCard";
 import BacktestButtons from "../components/BacktestButtons";
+import ScanButton from "../components/ScanButton";
 import { StatTile } from "../components/ui";
 import type { SignalAttributionData } from "../types/signal";
 
@@ -183,7 +184,7 @@ function OptionsSignalCard({ sig }: { sig: OptionsSignal }) {
   ].filter(Boolean).join(" · ");
 
   return (
-    <MissionCard
+    <SignalDecisionCard
       className={directionClass}
       reward={reward}
       title={(
@@ -210,7 +211,7 @@ function OptionsSignalCard({ sig }: { sig: OptionsSignal }) {
         label: `${sig.ticker} probability`,
       }}
     >
-      <div className="mission-card__details">
+      <>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
           {sig.opportunity_score != null && (
             <OpportunityScorePill value={sig.opportunity_score.score} />
@@ -270,8 +271,8 @@ function OptionsSignalCard({ sig }: { sig: OptionsSignal }) {
         <div style={{ display: "flex", justifyContent: "flex-end" }}>
           <BacktestButtons ticker={sig.ticker} assetType="options" strategy={sig.strategy} />
         </div>
-      </div>
-    </MissionCard>
+      </>
+    </SignalDecisionCard>
   );
 }
 
@@ -303,14 +304,15 @@ export default function OptionsSignals() {
   const [signals, setSignals] = useState<OptionsSignal[]>([]);
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [showReasons, setShowReasons] = useState(false);
 
   const loadSignals = () => {
     // Explicit limit — see EquitySignals.tsx's loadSignals for why (same
     // watchlist-size vs. implicit-default truncation issue).
     (api.getOptionsSignals(150) as Promise<{ signals?: OptionsSignal[] }>)
-      .then(d => setSignals(d.signals || []))
-      .catch(e => setError(String(e)));
+      .then(d => { setSignals(d.signals || []); setLastUpdated(new Date()); setError(null); })
+      .catch(() => setError("Signal feed unavailable. Check the service connection, then retry."));
   };
 
   useEffect(() => {
@@ -345,7 +347,7 @@ export default function OptionsSignals() {
       <div className="instrument-card page-header">
         <div>
           <div className="page-header__title">Options Signals</div>
-          <p className="page-header__sub">Spread scanner · POP, credit, and eligibility</p>
+          <p className="page-header__sub">{lastUpdated ? `Updated ${lastUpdated.toLocaleTimeString()} · stale after 60s` : "Awaiting first verified update"} · POP, credit, and eligibility</p>
         </div>
         <span style={{ flex: 1 }} />
         {notQualified.length > 0 && (
@@ -353,9 +355,7 @@ export default function OptionsSignals() {
             {showReasons ? "Hide reasons" : "Show reasons"} ({notQualified.length})
           </button>
         )}
-        <button onClick={runScan} disabled={scanning} className="btn-primary">
-          {scanning ? "SCANNING…" : "RUN SCAN"}
-        </button>
+        <ScanButton scanning={scanning} onScan={runScan} />
       </div>
 
       <div className="instrument-stat-strip" style={{ gridTemplateColumns: "repeat(5, minmax(0, 1fr))" }}>
@@ -367,19 +367,16 @@ export default function OptionsSignals() {
       </div>
 
       {error && (
-        <div style={{
-          background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)",
-          borderRadius: "var(--radius-control)", padding: "10px 14px",
-          fontFamily: "var(--mono)", fontSize: 11, color: "var(--red)",
-        }}>
-          {error}
+        <div className="signal-feed-error" role="alert">
+          <span>{error}</span>
+          <button type="button" className="btn-ghost" onClick={loadSignals}>Retry</button>
         </div>
       )}
 
       {signals.length === 0 ? (
         <div className="instrument-card instrument-card--flat empty-chassis">
-          <p className="empty-chassis__title">No options signals yet</p>
-          <p className="empty-chassis__hint">Click <strong style={{ color: "var(--ink)" }}>RUN SCAN</strong> to score spreads across the watchlist.</p>
+          <p className="empty-chassis__title">{scanning ? "Options scan in progress" : error ? "Signal feed is unavailable" : "No options signals yet"}</p>
+          <p className="empty-chassis__hint">{scanning ? "The watchlist is being scored. This view will update when the scan completes." : error ? "Retry after restoring the service connection." : "Run a scan to score spreads across the watchlist, or wait for the scheduled scanner."}</p>
         </div>
       ) : (
         <>

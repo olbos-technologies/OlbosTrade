@@ -12,13 +12,15 @@ import SignalDirectionBadge from "../components/SignalDirectionBadge";
 import ConfidenceFloorLabel from "../components/ConfidenceFloorLabel";
 import WhyBlockedChip from "../components/WhyBlockedChip";
 import AlphaEdgeInline, { OpportunityScorePill } from "../components/AlphaEdgeInline";
-import MissionCard from "../components/MissionCard";
+import SignalDecisionCard from "../components/SignalDecisionCard";
 import BacktestButtons from "../components/BacktestButtons";
 import { StatTile } from "../components/ui";
 import type { SignalAttributionData } from "../types/signal";
 import { useDeskBlockContext } from "../hooks/useDeskBlockContext";
 import { deriveSignalBlockReason } from "../utils/signalBlockReason";
 import OptionsSignals from "./OptionsSignals";
+import { api } from "../api/client";
+import ScanButton from "../components/ScanButton";
 
 export type AssetTab = "equities" | "options";
 
@@ -191,7 +193,7 @@ function SignalCard({
   ].filter(Boolean);
 
   return (
-    <MissionCard
+    <SignalDecisionCard
       className={directionClass}
       reward={reward}
       title={(
@@ -223,7 +225,7 @@ function SignalCard({
         label: `${sig.ticker} confidence`,
       } : undefined}
     >
-      <div className="mission-card__details">
+      <>
         {sig.action !== "HOLD" && (
           <ConfidenceFloorLabel confidence={sig.confidence} minConfidence={minConfidence} />
         )}
@@ -265,8 +267,8 @@ function SignalCard({
         <div style={{ display: "flex", justifyContent: "flex-end" }}>
           <BacktestButtons ticker={sig.ticker} assetType="equity" />
         </div>
-      </div>
-    </MissionCard>
+      </>
+    </SignalDecisionCard>
   );
 }
 
@@ -486,6 +488,7 @@ function EquitySignalsGrid() {
   const [signals, setSignals] = useState<Signal[]>([]);
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [minMovePct, setMinMovePct] = useState(0);
   const blockCtx = useDeskBlockContext();
   const { minConfidence } = blockCtx;
@@ -496,10 +499,9 @@ function EquitySignalsGrid() {
     // ticker; relying on the backend's implicit default silently truncated
     // a full cycle in the past. 150 covers the current watchlist with room
     // to grow.
-    fetch("/api/equity/signals?limit=150")
-      .then(r => r.json())
-      .then(d => setSignals(d.signals || []))
-      .catch(e => setError(String(e)));
+    (api.getEquitySignals(150) as Promise<{ signals?: Signal[] }>)
+      .then(d => { setSignals(d.signals || []); setLastUpdated(new Date()); setError(null); })
+      .catch(() => setError("Signal feed unavailable. Check the service connection, then retry."));
   };
 
   useEffect(() => {
@@ -512,7 +514,7 @@ function EquitySignalsGrid() {
     setScanning(true);
     setError(null);
     try {
-      await fetch("/api/equity/scan", { method: "POST" });
+      await api.scanEquitySignals();
       loadSignals();
     } catch (e) {
       setError(String(e));
@@ -548,7 +550,7 @@ function EquitySignalsGrid() {
         <div>
           <div className="page-header__title">Equity Signals</div>
           <p className="page-header__sub">
-            Live scanner feed · confidence vs trading-style floor
+            {lastUpdated ? `Updated ${lastUpdated.toLocaleTimeString()} · stale after 60s` : "Awaiting first verified update"} · confidence vs trading-style floor
           </p>
         </div>
         <span style={{ flex: 1 }} />
@@ -566,9 +568,7 @@ function EquitySignalsGrid() {
             style={{ width: 56 }}
           />
         </label>
-        <button onClick={runScan} disabled={scanning} className="btn-primary">
-          {scanning ? "SCANNING…" : "RUN SCAN"}
-        </button>
+        <ScanButton scanning={scanning} onScan={runScan} />
       </div>
 
       <div className="instrument-stat-strip" style={{ gridTemplateColumns: "repeat(4, minmax(0, 1fr))" }}>
@@ -579,19 +579,16 @@ function EquitySignalsGrid() {
       </div>
 
       {error && (
-        <div style={{
-          background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)",
-          borderRadius: "var(--radius-control)", padding: "10px 14px",
-          fontFamily: "var(--mono)", fontSize: 11, color: "var(--red)",
-        }}>
-          {error}
+        <div className="signal-feed-error" role="alert">
+          <span>{error}</span>
+          <button type="button" className="btn-ghost" onClick={loadSignals}>Retry</button>
         </div>
       )}
 
       {signals.length === 0 ? (
         <div className="instrument-card instrument-card--flat empty-chassis">
-          <p className="empty-chassis__title">No equity signals yet</p>
-          <p className="empty-chassis__hint">Click <strong style={{ color: "var(--ink)" }}>RUN SCAN</strong> to score the watchlist.</p>
+          <p className="empty-chassis__title">{scanning ? "Equity scan in progress" : error ? "Signal feed is unavailable" : "No equity signals yet"}</p>
+          <p className="empty-chassis__hint">{scanning ? "The watchlist is being scored. This view will update when the scan completes." : error ? "Retry after restoring the service connection." : <>Run a scan to score the watchlist, or wait for the scheduled scanner.</>}</p>
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>

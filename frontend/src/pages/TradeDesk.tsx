@@ -17,6 +17,7 @@ import { useTerminalNav } from "../components/TerminalNavContext";
 import HoldToConfirmButton from "../components/HoldToConfirmButton";
 import { Button } from "../components/ui";
 import ManualTradePanel from "../trade-desk/orders/ManualTradePanel";
+import { useIsMobile } from "../hooks/useIsMobile";
 
 function HintedTh({ label }: { label: string }) {
   return (
@@ -42,10 +43,55 @@ const fmtDollars = (value: number | null | undefined, digits = 0) =>
 const fmtCapture = (value: number | null | undefined) =>
   value == null ? "—" : `${(value * 100).toFixed(0)}%`;
 
+function MobileDeskPositionCard({
+  position,
+  closing,
+  onClose,
+}: {
+  position: any;
+  closing: boolean;
+  onClose?: () => void;
+}) {
+  const pnl: number | null | undefined = position.unrealized_pnl;
+  const isEquity = position.spread_type === "equity_long" || position.spread_type === "equity_short";
+  const isUntrackedEquity = position.tracked === false && !position.id && position.asset_type === "equity";
+  const closeLabel = position.id ? "Hold to close" : isUntrackedEquity ? "Hold to close" : null;
+  return (
+    <details className={`mobile-position-card${position.tracked === false ? " is-untracked" : ""}`}>
+      <summary>
+        <span className="mobile-position-card__identity">
+          <strong>{position.symbol || position.underlying || "—"}</strong>
+          <small>{position.asset_type?.toUpperCase() || "OPTIONS"} · {position.strategy?.replace(/_/g, " ").toUpperCase() || "—"}</small>
+        </span>
+        <span className="mobile-position-card__value" style={{ color: pnl == null ? "var(--ink-faint)" : pnl >= 0 ? "var(--green)" : "var(--red)" }}>
+          {fmtDollars(pnl)}
+          <small>{position.tracked === false ? "UNTRACKED" : "OPEN"}</small>
+        </span>
+        <span className="mobile-position-card__chevron" aria-hidden="true">›</span>
+      </summary>
+      <div className="mobile-position-card__details">
+        <div><span>Entry credit</span><strong>${(position.credit_received ?? position.entry_credit ?? position.avg_cost ?? 0).toFixed(2)}</strong></div>
+        <div><span>Hold time</span><strong>{position.hold_days != null ? `${position.hold_days}d` : "—"}</strong></div>
+        <div><span>Best / worst</span><strong><span className="pos">{fmtDollars(position.mfe_pnl)}</span> / <span className="neg">{fmtDollars(position.mae_pnl)}</span></strong></div>
+        <div><span>Trading style</span><strong>{position.trading_mode || "balanced"}</strong></div>
+      </div>
+      <div className="mobile-position-card__action">
+        {closeLabel && onClose ? (
+          <HoldToConfirmButton label={closeLabel} confirmingLabel="Closing" holdMs={1200} disabled={closing} onConfirm={onClose} />
+        ) : (
+          <span>{isEquity ? "No trade ID available" : "Close through broker"}</span>
+        )}
+      </div>
+    </details>
+  );
+}
+
 // ── Execution Mode Selector ───────────────────────────────────────────────────
 function ExecModeBar() {
   const [mode, setMode]     = useState<ExecMode>("manual");
   const [saving, setSaving] = useState(false);
+  const [confirmAutopilot, setConfirmAutopilot] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     (api.getExecutionMode() as any)
@@ -56,9 +102,16 @@ function ExecModeBar() {
   const select = async (m: ExecMode) => {
     if (m === mode) return;
     setSaving(true);
+    setError(null);
     try {
-      await (api.setExecutionMode(m) as any);
-      setMode(m);
+      const result = await (api.setExecutionMode(m) as any);
+      if (result?.mode === m) {
+        setMode(m);
+      } else {
+        setError("Mode change returned without a confirmed state. Current mode is unchanged until the next server read.");
+      }
+    } catch (err: any) {
+      setError(`Mode change failed — still ${mode.toUpperCase()}. ${err?.message || "Try again after checking the Operator API Key."}`);
     } finally {
       setSaving(false);
     }
@@ -70,7 +123,7 @@ function ExecModeBar() {
     { key: "autopilot", label: "Autopilot", desc: "Fully automatic — executes within guardrail limits",  color: "var(--orange)" },
   ];
 
-  return (
+  return (<>
     <div style={{
       display: "flex", alignItems: "center", gap: 8,
       padding: "6px 16px", background: "var(--bg-3)",
@@ -85,7 +138,7 @@ function ExecModeBar() {
             fontSize: 12,
             ...(mode === m.key ? { borderColor: m.color, color: m.color, background: `${m.color}15` } : {}),
           }}
-          onClick={() => select(m.key)}
+          onClick={() => m.key === "autopilot" && mode !== "autopilot" ? setConfirmAutopilot(true) : select(m.key)}
           disabled={saving}
           title={m.desc}
         >
@@ -118,8 +171,29 @@ function ExecModeBar() {
       )}
       <div style={{ flex: 1 }} />
       {saving && <span className="kicker">Saving…</span>}
+      {error && <span role="alert" style={{ color: "var(--red)", fontSize: 11 }}>{error}</span>}
     </div>
-  );
+    {confirmAutopilot && (
+      <div className="execution-confirm-overlay" role="dialog" aria-modal="true" aria-labelledby="autopilot-confirm-title">
+        <div className="execution-confirm-card">
+          <div className="kicker">Execution safety check</div>
+          <h2 id="autopilot-confirm-title">Enable Autopilot?</h2>
+          <p>Autopilot can submit only server-approved signals within guardrails. Confirm the broker environment, kill switch, and risk status in the persistent status bar before continuing.</p>
+          <p className="execution-confirm-card__state">Current confirmed mode: <strong>{mode.toUpperCase()}</strong></p>
+          <div className="execution-confirm-card__actions">
+            <Button onClick={() => setConfirmAutopilot(false)}>Cancel</Button>
+            <Button
+              danger
+              disabled={saving}
+              onClick={async () => { await select("autopilot"); setConfirmAutopilot(false); }}
+            >
+              Confirm Autopilot
+            </Button>
+          </div>
+        </div>
+      </div>
+    )}
+  </>);
 }
 
 // ── Approvals Queue (Copilot mode) ────────────────────────────────────────────
@@ -439,6 +513,7 @@ function PnLBreakdown() {
 
 // ── Main Trade Desk ────────────────────────────────────────────────────────────
 export default function TradeDesk({ initialTab = "overview" }: { initialTab?: Tab }) {
+  const isMobile = useIsMobile();
   const { positions, lastSignal, cycleLog, loading, runCycle, refresh } = usePaperTrade();
   const [tab, setTab] = useState<Tab>(initialTab);
   const onNav = useTerminalNav();
@@ -632,6 +707,32 @@ export default function TradeDesk({ initialTab = "overview" }: { initialTab?: Ta
                 {closeMsg}
               </div>
             )}
+          {isMobile ? (
+            (positions || []).length === 0 ? (
+              <div className="dashboard-positions-empty">No open positions. Review attributed signals before creating a new trade.</div>
+            ) : (
+              <div className="mobile-position-list">
+                {(positions || []).map((p: any, i: number) => {
+                  const isEquity = p.spread_type === "equity_long" || p.spread_type === "equity_short";
+                  const canClose = isEquity && !!p.id;
+                  const canCloseUntracked = p.tracked === false && !p.id && p.asset_type === "equity";
+                  const key = p.id || p.symbol || p.underlying || i;
+                  return (
+                    <MobileDeskPositionCard
+                      key={key}
+                      position={p}
+                      closing={closingId === (p.id || p.symbol || p.underlying)}
+                      onClose={canClose
+                        ? () => closePosition(p.id, p.symbol || p.underlying || "?")
+                        : canCloseUntracked
+                          ? () => closeUntrackedPosition(p.symbol || p.underlying)
+                          : undefined}
+                    />
+                  );
+                })}
+              </div>
+            )
+          ) : (
           <table className="t-table">
             <thead><tr>
               {["Symbol","Type","Strategy","Entry Credit","Unreal P&L","MFE","MAE","Hold Days","Status","Mode","Action"].map(h => (
@@ -701,6 +802,7 @@ export default function TradeDesk({ initialTab = "overview" }: { initialTab?: Ta
               })}
             </tbody>
           </table>
+          )}
           </div>
         )}
 

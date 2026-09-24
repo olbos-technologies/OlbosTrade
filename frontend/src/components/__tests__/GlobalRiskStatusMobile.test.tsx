@@ -97,11 +97,12 @@ describe("GlobalRiskStatus — mobile collapse", () => {
   });
 
   it("never folds away a status it could not read", async () => {
-    // Unknown counts as attention: a field this row cannot read is exactly
-    // the case where hiding it would be worst.
+    // A failed read is summarised, never painted as a nominal/safe value.
     mockAllNominal();
     mockedApi.getExecutionMode.mockRejectedValue(new Error("boom"));
     render(<GlobalRiskStatus />);
+    expect(await screen.findByText("LIVE STATUS UNAVAILABLE")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /show details/i }));
     expect(await screen.findByText("AUTOPILOT UNKNOWN")).toBeInTheDocument();
   });
 
@@ -114,7 +115,7 @@ describe("GlobalRiskStatus — mobile collapse", () => {
     mockBroker({}, false);
     render(<GlobalRiskStatus />);
 
-    await screen.findByText("UNKNOWN");
+    await screen.findByText("LIVE STATUS UNAVAILABLE");
     expect(screen.queryByRole("button", { name: /nominal/i })).not.toBeInTheDocument();
   });
 });

@@ -23,10 +23,7 @@ export default function TabBar({ tabs, active, onChange, label }: {
     buttons[next].click();
   };
   return (
-    <div role="tablist" aria-label={label || "Workspace views"} style={{
-      display: "flex", gap: 0, borderBottom: "1px solid var(--line-dim)",
-      background: "var(--bg-2)", flexWrap: "wrap",
-    }}>
+    <div className="terminal-tabbar" role="tablist" aria-label={label || "Workspace views"}>
       {tabs.map((t, index) => {
         const on = t.key === active;
         return (
@@ -38,14 +35,7 @@ export default function TabBar({ tabs, active, onChange, label }: {
             onKeyDown={event => moveFocus(event, index)}
             key={t.key}
             onClick={() => onChange(t.key)}
-            className="mono"
-            style={{
-              padding: "10px 18px", fontSize: 11, letterSpacing: "0.1em",
-              textTransform: "uppercase", cursor: "pointer", background: "transparent",
-              border: "none",
-              borderBottom: on ? "2px solid var(--cyan)" : "2px solid transparent",
-              color: on ? "var(--cyan)" : "var(--ink-dim)",
-            }}
+            className={`mono terminal-tabbar__tab${on ? " is-active" : ""}`}
           >
             {t.label}
           </button>

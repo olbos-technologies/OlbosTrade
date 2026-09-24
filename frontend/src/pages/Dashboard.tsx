@@ -26,6 +26,29 @@ function hintFor(label: string): React.ReactNode {
   return resolveMetricHint(label) ? <MetricHint id={label} /> : label;
 }
 
+function NextAction({
+  label,
+  detail,
+  action,
+  onClick,
+}: {
+  label: string;
+  detail: string;
+  action: string;
+  onClick: () => void;
+}) {
+  return (
+    <section className="dashboard-next-action" aria-label="Next action">
+      <div>
+        <div className="kicker">Next action</div>
+        <div className="dashboard-next-action__label">{label}</div>
+        <p>{detail}</p>
+      </div>
+      <Button onClick={onClick}>{action}</Button>
+    </section>
+  );
+}
+
 // ── Equity chart canvas ───────────────────────────────────────────────────────
 interface ChartPoint { date: string; value: number; }
 
@@ -169,6 +192,40 @@ function PositionRow({ pos }: { pos: any }) {
         </Badge>
       </td>
     </tr>
+  );
+}
+
+/** Phone-first counterpart to the desktop positions table. The summary carries
+ *  the decision information; the remaining fields are disclosed without
+ *  horizontal scrolling or deleting information available on desktop. */
+function MobilePositionCard({ pos }: { pos: any }) {
+  const untracked = pos.tracked === false;
+  const pnlKnown = pos.unrealized_pnl != null;
+  const pnl = pos.unrealized_pnl ?? 0;
+  const type = pos.option_type?.toUpperCase() || pos.strategy?.toUpperCase() || "EQUITY";
+  const pnlText = pnlKnown
+    ? `${pnl >= 0 ? "+" : "−"}$${Math.abs(pnl).toLocaleString("en-US", { maximumFractionDigits: 0 })}`
+    : "P&L unavailable";
+  return (
+    <details className={`mobile-position-card${untracked ? " is-untracked" : ""}`}>
+      <summary>
+        <span className="mobile-position-card__identity">
+          <strong>{pos.symbol || "—"}</strong>
+          <small>{type} · {pos.quantity ?? 1} contracts</small>
+        </span>
+        <span className="mobile-position-card__value" style={{ color: !pnlKnown ? "var(--ink-faint)" : pnl >= 0 ? "var(--green)" : "var(--red)" }}>
+          {pnlText}
+          <small>{untracked ? "UNTRACKED" : "OPEN"}</small>
+        </span>
+        <span className="mobile-position-card__chevron" aria-hidden="true">›</span>
+      </summary>
+      <div className="mobile-position-card__details">
+        <div><span>Strike / average</span><strong>{pos.strike || pos.avg_cost?.toFixed(2) || "—"}</strong></div>
+        <div><span>Expiry / entry</span><strong>{pos.expiration || pos.entry_date || "—"}</strong></div>
+        <div><span>Quantity</span><strong>{pos.quantity ?? 1}</strong></div>
+        <div><span>Status</span><strong>{untracked ? "Untracked broker holding" : "Managed by Olbos"}</strong></div>
+      </div>
+    </details>
   );
 }
 
@@ -344,6 +401,37 @@ export default function Dashboard() {
     setShowWelcome(false);
   };
 
+  // One deterministic action keeps Command Center operational rather than a
+  // collection of equally weighted panels. Safety and live review take
+  // precedence; the default takes an operator to signals, not an order form.
+  const nextAction = guardrailStatus?.trading_allowed === false
+    ? {
+        label: "Review trading restrictions",
+        detail: "Guardrails currently prevent new trading. Review the active restriction before scanning or approving a signal.",
+        action: "Review risk",
+        onClick: () => nav("risk:heat"),
+      }
+    : portfolioError
+      ? {
+          label: "Confirm broker and portfolio data",
+          detail: "Portfolio data is unavailable. Confirm the paper broker connection before relying on account metrics.",
+          action: "Open broker",
+          onClick: () => nav("system:broker"),
+        }
+      : pending.length > 0
+        ? {
+            label: `${pending.length} signal${pending.length === 1 ? "" : "s"} ready for review`,
+            detail: "Review queued signals and their risk attribution before approving any execution.",
+            action: "Review queue",
+            onClick: () => nav("trade:copilot"),
+          }
+        : {
+            label: "Review the latest signals",
+            detail: "Start with an attributed signal; Manual mode does not place an order.",
+            action: "Open signals",
+            onClick: () => nav("equity"),
+          };
+
   return (
     <div style={{ display: "grid", gridTemplateRows: "auto auto auto 1fr auto", height: "100%", overflow: "auto", gap: 0 }}>
 
@@ -352,6 +440,8 @@ export default function Dashboard() {
           <WelcomeBanner onDismiss={dismissWelcome} />
         </ErrorBoundary>
       )}
+
+      <NextAction {...nextAction} />
 
       {/* Executive summary header */}
       <ErrorBoundary label="Executive Summary">
@@ -456,26 +546,28 @@ export default function Dashboard() {
                 ⚠ {untrackedPositions.length} broker holding{untrackedPositions.length > 1 ? "s" : ""} not opened by Olbos — review/reconcile in the paper account.
               </div>
             )}
-            <table className="t-table">
-              <thead>
-                <tr>
-                  {["Symbol","Type","Strike / Avg","Expiry / Entry","Qty","Unreal P&L","Status"].map(h => (
-                    <th key={h}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {positions.length === 0 ? (
+            {positions.length === 0 ? (
+              <div className="dashboard-positions-empty">
+                No open positions. Review attributed signals before creating a new trade.
+              </div>
+            ) : isMobile ? (
+              <div className="mobile-position-list">
+                {[...managedPositions, ...untrackedPositions].map((p: any, i: number) => <MobilePositionCard key={i} pos={p} />)}
+              </div>
+            ) : (
+              <table className="t-table">
+                <thead>
                   <tr>
-                    <td colSpan={7} style={{ textAlign: "center", color: "var(--ink-faint)", padding: 24 }}>
-                      NO OPEN POSITIONS
-                    </td>
+                    {["Symbol","Type","Strike / Avg","Expiry / Entry","Qty","Unreal P&L","Status"].map(h => (
+                      <th key={h}>{h}</th>
+                    ))}
                   </tr>
-                ) : (
-                  [...managedPositions, ...untrackedPositions].map((p: any, i: number) => <PositionRow key={i} pos={p} />)
-                )}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {[...managedPositions, ...untrackedPositions].map((p: any, i: number) => <PositionRow key={i} pos={p} />)}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
 

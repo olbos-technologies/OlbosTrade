@@ -119,6 +119,7 @@ function ExecutionModeControl({
   busy = false,
   error = null,
   pending = null,
+  compact = false,
 }: {
   mode: "manual" | "copilot" | "autopilot";
   onChange: (m: "manual" | "copilot" | "autopilot") => void;
@@ -128,13 +129,74 @@ function ExecutionModeControl({
    *  from `mode` — never as selected — so an in-flight request can never be
    *  mistaken for an applied one. */
   pending?: "manual" | "copilot" | "autopilot" | null;
+  /** Phones expose the full selector on demand so the header stays readable
+   *  and the safety-critical choices retain finger-sized targets. */
+  compact?: boolean;
 }) {
+  const [confirmAutopilot, setConfirmAutopilot] = useState(false);
   const options: { key: "manual" | "copilot" | "autopilot"; label: string; onColor: string }[] = [
     { key: "manual", label: "MANUAL", onColor: "var(--ink-dim)" },
     { key: "copilot", label: "COPILOT", onColor: "var(--cyan)" },
     { key: "autopilot", label: "AUTOPILOT", onColor: "var(--amber)" },
   ];
-  return (
+  const requestChange = (next: "manual" | "copilot" | "autopilot") => {
+    if (next === "autopilot" && mode !== "autopilot") {
+      setConfirmAutopilot(true);
+      return;
+    }
+    onChange(next);
+  };
+  const confirmation = confirmAutopilot ? (
+    <div className="execution-confirm-overlay" role="dialog" aria-modal="true" aria-labelledby="header-autopilot-confirm-title">
+      <div className="execution-confirm-card">
+        <div className="kicker">Execution safety check</div>
+        <h2 id="header-autopilot-confirm-title">Enable Autopilot?</h2>
+        <p>Confirm the paper/live environment, kill-switch state, and risk availability in the status strip before enabling unattended execution.</p>
+        <p className="execution-confirm-card__state">Current server-confirmed mode: <strong>{mode.toUpperCase()}</strong></p>
+        <div className="execution-confirm-card__actions">
+          <button type="button" className="btn-t" onClick={() => setConfirmAutopilot(false)}>Cancel</button>
+          <button type="button" className="btn-t danger" disabled={busy} onClick={() => { setConfirmAutopilot(false); onChange("autopilot"); }}>Confirm Autopilot</button>
+        </div>
+      </div>
+    </div>
+  ) : null;
+  if (compact) {
+    return (
+      <>
+      <details className="execution-mode-menu">
+        <summary aria-label={`Execution mode: ${mode}. Open mode controls`}>
+          <span className={`dot ${mode === "manual" ? "dead" : "live"}`} />
+          <span>EXEC</span>
+          <strong>{mode}</strong>
+          <span aria-hidden="true">⌄</span>
+        </summary>
+        <div className="execution-mode-menu__panel" role="group" aria-label="Execution mode">
+          <span className="execution-mode-menu__label">Execution mode</span>
+          {options.map((opt) => {
+            const on = mode === opt.key;
+            const isPending = pending === opt.key;
+            return (
+              <button
+                key={opt.key}
+                type="button"
+                onClick={() => requestChange(opt.key)}
+                aria-pressed={on}
+                aria-busy={isPending || undefined}
+                disabled={busy}
+                className={on ? "is-active" : ""}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+          {error && <p role="alert">{error}</p>}
+        </div>
+      </details>
+      {confirmation}
+      </>
+    );
+  }
+  return (<>
     <div style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
       <div
         role="group"
@@ -204,7 +266,8 @@ function ExecutionModeControl({
         </div>
       )}
     </div>
-  );
+    {confirmation}
+  </>);
 }
 
 function TickerStrip({ onToggle, sidebarExpanded, isMobile }: {
@@ -438,7 +501,7 @@ function TickerStrip({ onToggle, sidebarExpanded, isMobile }: {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", flexShrink: 0 }}>
-    <div className="instrument-ticker" style={{
+    <div className="instrument-ticker terminal-ticker" style={{
       display: "flex",
       alignItems: "center",
       height: 38,
@@ -492,22 +555,22 @@ function TickerStrip({ onToggle, sidebarExpanded, isMobile }: {
       </div>
 
       {/* Marquee strip — scrolls continuously */}
-      <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
+      <div className="terminal-ticker__marquee" style={{ flex: 1, overflow: "hidden", position: "relative" }}>
         <div className="ticker-strip-marquee" style={{ display: "inline-flex", animation: "ticker-scroll 55s linear infinite" }}>
           {marqueeContent}{marqueeContent}
         </div>
       </div>
 
       {/* Execution mode (trading style lives in Desk Settings) */}
-      <div style={{
+      <div className="terminal-ticker__execution" style={{
         display: "flex", alignItems: "center", gap: 8, flexShrink: 0,
         padding: "0 12px", borderLeft: "1px solid var(--line-dim)",
       }}>
-        <ExecutionModeControl mode={execMode} onChange={setExec} busy={execBusy} error={execError} pending={execPending} />
+        <ExecutionModeControl mode={execMode} onChange={setExec} busy={execBusy} error={execError} pending={execPending} compact={isMobile} />
       </div>
 
       {/* Market status + clock — pinned right */}
-      <div style={{
+      <div className="terminal-ticker__market-status" style={{
         display: "flex", alignItems: "center", gap: 10, flexShrink: 0,
         padding: "0 14px", borderLeft: "1px solid var(--line-dim)",
       }}>
@@ -625,7 +688,7 @@ function Sidebar({ active, onNav, expanded, isMobile = false }: {
             aria-label={g.label}
             aria-current={isActive ? "page" : undefined}
             style={{
-              width: "100%", height: 38, display: "flex", alignItems: "center",
+              width: "100%", height: isMobile ? 44 : 38, display: "flex", alignItems: "center",
               justifyContent: showLabels ? "flex-start" : "center",
               paddingLeft: showLabels ? 14 : 0, gap: showLabels ? 10 : 0,
               background: isActive ? "var(--cyan-dim)" : isHovered ? "var(--bg-3)" : "transparent",
@@ -677,7 +740,7 @@ function Sidebar({ active, onNav, expanded, isMobile = false }: {
               aria-label={c.label}
               aria-current={subActive ? "page" : undefined}
               style={{
-                width: "100%", height: 32, display: "flex", alignItems: "center",
+                width: "100%", height: isMobile ? 44 : 32, display: "flex", alignItems: "center",
                 paddingLeft: 40, gap: 0,
                 background: subActive ? "var(--cyan-dim)" : subHovered ? "var(--bg-3)" : "transparent",
                 border: "none",
@@ -709,7 +772,7 @@ function Sidebar({ active, onNav, expanded, isMobile = false }: {
           onClick={toggleAdvanced}
           aria-expanded={showAdvanced}
           style={{
-            width: "100%", height: 32, display: "flex", alignItems: "center",
+            width: "100%", height: isMobile ? 44 : 32, display: "flex", alignItems: "center",
             paddingLeft: 14, gap: 8, marginTop: 4,
             background: "transparent", border: "none",
             borderTop: "1px solid var(--line-dim)",
