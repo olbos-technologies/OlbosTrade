@@ -41,9 +41,9 @@ screener** runs the same watchlist via `/api/options/csp`.
 Bull put spread · bull call (debit) spread · bear call spread · bear put spread ·
 cash-secured put · covered call. **No** naked / unlimited / martingale.
 
-*Status:* bull-put, bear-call, iron-condor, bull-call-debit live. **Cash-secured
-put / covered call (wheel)** now live via the CSP module + `/api/options/csp` +
-CSP screener. **Bear-put spread** not yet implemented (roadmap).
+*Status:* bull-put, bear-call, iron-condor, bull-call-debit, **bear-put spread** all live.
+**Cash-secured put / covered call (wheel)** live via the CSP module + `/api/options/csp` +
+CSP screener.
 
 ## Trading modes
 - **Manual** — generate only, never execute.
