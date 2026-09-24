@@ -231,3 +231,16 @@ class UnifiedRiskEngine:
     @property
     def emotion_state(self) -> EmotionState:
         return self._emotion.state
+
+
+# ── Module-level singleton ────────────────────────────────────────────────────
+# Shared across all callers within a process. Rehydrate on startup; call
+# record_trade_result() after each close and check_emotion() before each order.
+# Fail-open everywhere: a DB error or import error must never halt trading.
+
+emotion_guard = EmotionGuard()
+
+
+def check_emotion() -> tuple[bool, str | None]:
+    """Thin wrapper so callers don't need to reference the internal field."""
+    return emotion_guard.check()

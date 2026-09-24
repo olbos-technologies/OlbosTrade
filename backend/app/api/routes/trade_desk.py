@@ -1197,6 +1197,17 @@ async def _execute_signal(signal: dict, approved_by: str = "autopilot") -> dict:
         logger.warning("Order blocked for %s — kill switch is engaged", ticker)
         return _blocked("kill_switch")
 
+    # ── Stage 1a: EmotionGuard (consecutive-loss pause / tilt) ─────────────────
+    # Fail-open: an import error or DB error must never halt trading here.
+    try:
+        from app.services.unified_risk import check_emotion as _check_emotion
+        _eg_allowed, _eg_reason = _check_emotion()
+        if not _eg_allowed:
+            logger.warning("EmotionGuard blocked %s: %s", ticker, _eg_reason)
+            return _blocked(f"emotion_guard: {_eg_reason}")
+    except Exception as _eg_exc:
+        logger.warning("EmotionGuard check error (fail-open): %s", _eg_exc)
+
     # ── Stage 1b: Market hours ─────────────────────────────────────────────────
     # Pause order submission outside US regular trading hours. The scanner keeps
     # generating signals 24/7; execution auto-resumes at the next open. Options
