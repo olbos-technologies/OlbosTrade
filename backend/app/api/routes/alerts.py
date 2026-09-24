@@ -10,9 +10,11 @@ Alerts create notifications or gated candidates only — never orders.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from app.api.deps import require_api_key
+from app.api.rate_limit import rate_limit
 from app.services.alerts import service as svc
 
 router = APIRouter()            # mounted at /api/alerts
@@ -44,7 +46,7 @@ async def list_rules():
     return {"rules": await svc.list_rules()}
 
 
-@router.post("/rules")
+@router.post("/rules", dependencies=[Depends(require_api_key), Depends(rate_limit)])
 async def create_rule(body: CreateRule):
     return await svc.create_rule(
         name=body.name, symbol=body.symbol,
@@ -53,13 +55,13 @@ async def create_rule(body: CreateRule):
     )
 
 
-@router.post("/rules/{rule_id}/toggle")
+@router.post("/rules/{rule_id}/toggle", dependencies=[Depends(require_api_key)])
 async def toggle_rule(rule_id: str, enabled: bool = True):
     await svc.toggle_rule(rule_id, enabled)
     return {"ok": True}
 
 
-@router.delete("/rules/{rule_id}")
+@router.delete("/rules/{rule_id}", dependencies=[Depends(require_api_key)])
 async def delete_rule(rule_id: str):
     if not await svc.delete_rule(rule_id):
         raise HTTPException(404, "Rule not found")
