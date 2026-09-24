@@ -1158,10 +1158,24 @@ export default function TerminalLayout({ children, activePage, onNav, isDeskV2Sh
         Safari counts the URL bar, which pushes the status bar off screen. */}
     <div
       /*
-        app-shell--desk marks only the V2 Trade Desk shell pages (including the
-        /terminal/paper alias). Legacy TradeDesk routes share the same keys but
-        do not render TradeDeskHeader, so deduping there would hide the only
-        risk/status bands.
+        app-shell--desk marks the pages where TradeDeskHeader renders its own
+        status rail. On a phone that rail already states environment, risk
+        style, execution mode and the kill switch, so the risk-chip strip and
+        half the status bar were saying it a second and third time — about
+        70px of an 844px screen repeating what sat directly above it.
+
+        WHICH PAGES, EXACTLY, is computed in App.tsx and passed in, because
+        the page key alone cannot answer it. `paper` is an alias that renders
+        the same desk shell and would have been missed; and with
+        trade_desk_v2 off the same trade:* keys render the LEGACY TradeDesk,
+        which has no TradeDeskHeader at all. Deduping there would have hidden
+        the kill, exec and paper/live indicators with nothing in their place.
+        Raised in review on #82 and pinned by mobile-desk-dedup.spec.ts.
+
+        Scoped to phones as well, in the stylesheet. Everywhere else these
+        bands are the ONLY place this state appears, and the kill lamp is a
+        safety display: it is hidden here solely because the HALT button sits
+        a few pixels above it, not because it stopped mattering.
       */
       className={`app-shell${isDeskV2Shell ? " app-shell--desk" : ""}`}
       style={{ display: "flex", flexDirection: "column", overflow: "hidden" }}
