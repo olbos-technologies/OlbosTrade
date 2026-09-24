@@ -76,6 +76,12 @@ describe("duplicated status bands are hidden on the desk, on phones only", () =>
       .toMatch(/display:\s*none\s*!important/);
   });
 
+  it("keeps !important on the risk-strip rule", () => {
+    const rule = phone.match(/\.app-shell--desk\s+\.global-risk-status\s*\{[^}]*\}/)?.[0] || "";
+    expect(rule, "global risk strip sets display inline; without !important it stays visible")
+      .toMatch(/display:\s*none\s*!important/);
+  });
+
   it("scopes both rules to the desk, never globally", () => {
     // A rule without .app-shell--desk would blank these bands on every page,
     // where they are the only place this state is shown.
@@ -96,5 +102,11 @@ describe("duplicated status bands are hidden on the desk, on phones only", () =>
     expect(stripped).not.toBe(phone);
     expect(stripped).not.toMatch(/\.app-shell--desk\s+\.status-dup/);
     expect(stripped).not.toMatch(/\.app-shell--desk\s+\.global-risk-status/);
+  });
+
+  it("keeps the mobile kill-switch button overrides that must beat inline styles", () => {
+    const rule = phone.match(/\.instrument-rail-kill\s+button\s*\{[^}]*\}/)?.[0] || "";
+    expect(rule).toMatch(/min-height:\s*44px\s*!important/);
+    expect(rule).toMatch(/width:\s*auto\s*!important/);
   });
 });

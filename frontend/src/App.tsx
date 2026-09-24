@@ -133,7 +133,9 @@ export default function App() {
 
   const page = pathToPageKey(location.pathname);
   const v2 = isTradeDeskV2Enabled();
-  const PAGES = { ...BASE_PAGES, ...tradeDeskPages(v2) };
+  const TRADE_PAGES = tradeDeskPages(v2);
+  const PAGES = { ...BASE_PAGES, ...TRADE_PAGES };
+  const isDeskV2Shell = v2 && Object.prototype.hasOwnProperty.call(TRADE_PAGES, page);
 
   // hasOwnProperty, not a bare PAGES[page]. The key comes straight from the
   // URL, so a plain lookup also finds everything on Object.prototype:
@@ -176,7 +178,7 @@ export default function App() {
   );
 
   return (
-    <TerminalLayout activePage={page} onNav={handleNav}>
+    <TerminalLayout activePage={page} onNav={handleNav} isDeskV2Shell={isDeskV2Shell}>
       <Page />
     </TerminalLayout>
   );

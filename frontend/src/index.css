@@ -1520,8 +1520,8 @@ summary span[aria-hidden="true"] { display: inline-block; transition: transform 
     padding: 4px 6px 4px 0;
   }
   .instrument-rail-kill button {
-    min-height: 40px;
-    width: auto;
+    min-height: 44px !important;
+    width: auto !important;
     padding-left: 10px;
     padding-right: 10px;
   }
@@ -1544,7 +1544,7 @@ summary span[aria-hidden="true"] { display: inline-block; transition: transform 
      Hidden on the DESK and on PHONES only. Everywhere else these are the one
      place that state is shown, and the kill lamp is a safety display: it goes
      here solely because the HALT button is a few pixels above it. */
-  .app-shell--desk .global-risk-status { display: none; }
+  .app-shell--desk .global-risk-status { display: none !important; }
   /* !important is load-bearing here, not laziness. StatusLamp sets
      display: inline-flex as an INLINE style, and an inline style beats any
      selector — so the plain rule hid the ENV span (no inline display) and

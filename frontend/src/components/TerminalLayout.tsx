@@ -1135,10 +1135,11 @@ function StatusBar({ page }: { page: string }) {
 }
 
 // ── Layout shell ──────────────────────────────────────────────────────────────
-export default function TerminalLayout({ children, activePage, onNav }: {
+export default function TerminalLayout({ children, activePage, onNav, isDeskV2Shell = false }: {
   children: React.ReactNode;
   activePage: string;
   onNav: (key: string) => void;
+  isDeskV2Shell?: boolean;
 }) {
   const isMobile = useIsMobile();
   // On desktop the sidebar starts collapsed (icon rail); on mobile it starts
@@ -1157,18 +1158,12 @@ export default function TerminalLayout({ children, activePage, onNav }: {
         Safari counts the URL bar, which pushes the status bar off screen. */}
     <div
       /*
-        app-shell--desk marks the pages where TradeDeskHeader renders its own
-        status rail. On a phone the rail already states environment, risk
-        style, execution mode and the kill switch, so the risk-chip strip and
-        half the status bar were saying it a second and third time — measured
-        at roughly 70px of a 844px screen to repeat what was directly above.
-
-        Scoped to the desk and to phones on purpose. Everywhere else those
-        bands are the ONLY place this state appears, and the kill lamp in
-        particular is a safety display: it is hidden here only because the
-        HALT button sits a few pixels above it, not because it is noise.
+        app-shell--desk marks only the V2 Trade Desk shell pages (including the
+        /terminal/paper alias). Legacy TradeDesk routes share the same keys but
+        do not render TradeDeskHeader, so deduping there would hide the only
+        risk/status bands.
       */
-      className={`app-shell${activePage.startsWith("trade:") ? " app-shell--desk" : ""}`}
+      className={`app-shell${isDeskV2Shell ? " app-shell--desk" : ""}`}
       style={{ display: "flex", flexDirection: "column", overflow: "hidden" }}
     >
       <ErrorBoundary label="Ticker strip">
