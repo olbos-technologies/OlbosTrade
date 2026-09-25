@@ -1,5 +1,5 @@
 /**
- * Trade Desk header — environment, mode, risk profile, broker, P&L, kill switch.
+ * Trade Desk header — environment, mode, trading style, broker, P&L, kill switch.
  * Read-only display + mode switch via existing APIs. Paper/Live always labeled (not color-only).
  */
 
