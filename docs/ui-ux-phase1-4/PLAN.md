@@ -32,9 +32,10 @@ it predates.** Audited against `main` on 2026-09-25, file by file:
 | 4.1 | Five `title="Not published"` footer stubs | **Not a defect.** One "Not published" remains as a track-record *value*, which this plan explicitly says to keep. |
 | 5.1–5.3 | Mobile shell, 44px targets, ≤760px card reflow, hide moving ticker | **Done in #82**, independently. This is why the branch could not simply be merged. |
 
-**Still genuinely open from this plan:** nothing in Phases 1–4. Phase 5's
-"execution-mode transition shows server-confirmed vs requested state separately"
-(Batch 5.4) is the one item not clearly covered.
+| 5.4 | Execution safety surface | **Done.** Server-confirmed vs requested state were already separated (no optimistic update; `execPending` rendered dashed, never selected). Added: an Autopilot confirmation gate, an acknowledgement of applied changes, a current-state sentence, and freshness — the poll's `.catch(() => {})` meant an unreachable backend and a confirmed MANUAL were pixel-identical for five minutes at a time. |
+
+**Still genuinely open from this plan:** nothing. Phases 1–4 were delivered by the
+commits this plan predates; Phase 5 by #82 and the 5.4 work above.
 
 ## Why the branch itself was not merged
 
