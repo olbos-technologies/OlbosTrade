@@ -74,7 +74,12 @@ function ExecModeBar() {
   ];
 
   return (
-    <div style={{
+    /* exec-mode-row: this is a no-wrap flex row whose content measures 446px.
+       At 390px it just fits; at 360px — a very common Android viewport — and
+       at 320px the AUTOPILOT button is clipped mid-word, which is what the
+       phone screenshot showed. On phones it becomes a full-width segmented
+       control instead (index.css, the 760px block). */
+    <div className="exec-mode-row" style={{
       display: "flex", alignItems: "center", gap: 8,
       padding: "6px 16px", background: "var(--bg-3)",
       borderBottom: "1px solid var(--line-dim)",
@@ -719,7 +724,19 @@ export default function TradeDesk({
                 {closeMsg}
               </div>
             )}
-          <table className="t-table">
+          {/*
+            t-table--cards: on a phone this eleven-column table gets about
+            35px per column at 390px, which is unreadable — the reason the
+            positions list could not be used on mobile at all.
+
+            The reflow is done in CSS (index.css, the 760px block) rather than
+            by rendering a different component. Every cell keeps its place in
+            the DOM and every piece of close-position logic — canClose,
+            canCloseUntracked, the hold-to-confirm buttons, the "not at
+            broker" fallbacks — is untouched, so a presentation change cannot
+            alter which positions can be closed or how.
+          */}
+          <table className="t-table t-table--cards">
             <thead><tr>
               {["Symbol","Type","Strategy","Entry Credit","Unreal P&L","MFE","MAE","Hold Days","Status","Mode","Action"].map(h => (
                 <HintedTh key={h} label={h} />
@@ -753,19 +770,19 @@ export default function TradeDesk({
                 const canCloseUntracked = p.tracked === false && !p.id && p.asset_type === "equity";
                 return (
                   <tr key={i}>
-                    <td className="mono" style={{ color: "var(--ink)" }}>{p.symbol || p.underlying || "—"}</td>
-                    <td><Badge text={p.asset_type?.toUpperCase() || "OPTIONS"} color="var(--ink-dim)" /></td>
-                    <td className="mono" style={{ fontSize: 10 }}>{p.strategy?.replace(/_/g," ").toUpperCase() || "—"}</td>
-                    <td className="mono">${(p.credit_received ?? p.entry_credit ?? p.avg_cost ?? 0).toFixed(2)}</td>
-                    <td className="mono" style={{ color: pnl == null ? "var(--ink-faint)" : pnl >= 0 ? "var(--green)" : "var(--red)" }}>
+                    <td data-col="symbol" className="mono" style={{ color: "var(--ink)" }}>{p.symbol || p.underlying || "—"}</td>
+                    <td data-col="type"><Badge text={p.asset_type?.toUpperCase() || "OPTIONS"} color="var(--ink-dim)" /></td>
+                    <td data-col="strategy" className="mono" style={{ fontSize: 10 }}>{p.strategy?.replace(/_/g," ").toUpperCase() || "—"}</td>
+                    <td data-col="credit" data-label="Entry" className="mono">${(p.credit_received ?? p.entry_credit ?? p.avg_cost ?? 0).toFixed(2)}</td>
+                    <td data-col="pnl" className="mono" style={{ color: pnl == null ? "var(--ink-faint)" : pnl >= 0 ? "var(--green)" : "var(--red)" }}>
                       {fmtDollars(pnl)}
                     </td>
-                    <td className="mono" style={{ color: "var(--green)" }}>{fmtDollars(p.mfe_pnl)}</td>
-                    <td className="mono" style={{ color: "var(--red)" }}>{fmtDollars(p.mae_pnl)}</td>
-                    <td className="mono">{p.hold_days != null ? `${p.hold_days}d` : "—"}</td>
-                    <td><Badge text="OPEN" color="var(--ink-dim)" /></td>
-                    <td><span className={`mode-badge ${p.trading_mode || "balanced"}`}>{p.trading_mode || "balanced"}</span></td>
-                    <td style={{ minWidth: 90 }}>
+                    <td data-col="mfe" data-label="MFE" className="mono" style={{ color: "var(--green)" }}>{fmtDollars(p.mfe_pnl)}</td>
+                    <td data-col="mae" data-label="MAE" className="mono" style={{ color: "var(--red)" }}>{fmtDollars(p.mae_pnl)}</td>
+                    <td data-col="hold" data-label="Held" className="mono">{p.hold_days != null ? `${p.hold_days}d` : "—"}</td>
+                    <td data-col="status"><Badge text="OPEN" color="var(--ink-dim)" /></td>
+                    <td data-col="mode"><span className={`mode-badge ${p.trading_mode || "balanced"}`}>{p.trading_mode || "balanced"}</span></td>
+                    <td data-col="action" style={{ minWidth: 90 }}>
                       {canClose ? (
                         <HoldToConfirmButton
                           label="Hold to close"

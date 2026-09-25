@@ -1431,3 +1431,276 @@ summary span[aria-hidden="true"] { display: inline-block; transition: transform 
   .instrument-status > div[style*="flex: 1"] { display: none; }
   .instrument-status::-webkit-scrollbar { display: none; }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   PHONE: reclaim the screen for content.
+   ══════════════════════════════════════════════════════════════════════════
+
+   Measured on Positions at 390x844 before this block existed:
+
+     header 48 · ticker 26 · risk chips ~40 · desk rail 124 ·
+     execution row ~70 · tab strip 36 · status bar 28 · bottom nav 53
+
+   Nine bands of chrome, and the positions table itself got 133px — 16% of
+   the screen. Worse, the same two facts were repeated: paper/live appeared
+   three times and execution mode four, across the risk chips, the desk rail
+   and the status bar.
+
+   So this is mostly subtraction. Nothing here changes the desktop layout:
+   every rule is inside the phone breakpoint.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.instrument-rail-toggle {
+  display: none;             /* phone only — see the media query below */
+  align-items: center;
+  padding: 0 10px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  background: transparent;
+  border: none;
+  border-left: 1px solid var(--line-dim);
+  cursor: pointer;
+}
+
+.instrument-rail-kill {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  gap: 4px;
+  padding: 4px 8px;
+  min-width: 168px;
+  max-width: 200px;
+  flex: 0 1 200px;
+}
+
+@media (max-width: 760px) {
+  /* ── The desk rail: three facts, a toggle, and the kill switch ───────── */
+  .instrument-rail {
+    align-items: center;
+    gap: 0;
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+  }
+  .instrument-rail .instrument-chip[data-priority="expand"] { display: none; }
+  .instrument-rail--expanded .instrument-chip[data-priority="expand"] {
+    display: flex;
+    flex: 1 1 45%;
+  }
+  .instrument-rail .instrument-chip {
+    flex: 1 1 0;
+    padding: 7px 10px;
+    border-right: 1px solid var(--line-dim);
+  }
+  /* Session gets double share. It carries three facts at once — environment,
+     risk style and execution mode — so an even split truncated the most
+     informative chip on the rail to "UNKN…" while a single number sat beside
+     it with room to spare. */
+  .instrument-rail .instrument-chip[data-priority="always"]:first-child {
+    flex: 2 1 0;
+  }
+  .instrument-rail-toggle {
+    display: inline-flex;
+    min-height: 44px;        /* a real touch target, not a 22px hit box */
+  }
+  /* The kill switch stops being a 200px column and becomes a compact
+     control that still reads as the emergency stop. */
+  /* The kill switch was a 200px column on a 390px screen — over half the
+     rail for one control, which is what squeezed Session down to nothing.
+     It stays fully visible and fully tappable, just no longer reserving
+     desktop-sized real estate. */
+  .instrument-rail-kill {
+    min-width: 0;
+    max-width: none;
+    flex: 0 0 auto;
+    padding: 4px 6px 4px 0;
+  }
+  .instrument-rail-kill button {
+    min-height: 44px !important;
+    width: auto !important;
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+  /* The words go, the meaning stays: a red stop icon plus the Halt/Active
+     badge. Squeezing the full "Kill switch" label into the space left on a
+     390px rail truncated it to "Ki…", which is worse than no label at all on
+     the control that stops trading.
+
+     Nothing is lost to a screen reader — the button carries its own
+     aria-label ("Engage kill switch" / "Kill switch engaged") independently
+     of this text, and the badge still distinguishes armed from clear. */
+  .instrument-rail-kill .instrument-halt__label { display: none; }
+
+  /* ── Saying each thing once ─────────────────────────────────────────────
+     On the Trade Desk the rail above already states environment, risk style,
+     execution mode, broker and the kill switch. The risk-chip strip and five
+     lamps in the status bar repeated all of it — paper/live appeared three
+     times on one screen and execution mode four.
+
+     Hidden on the DESK and on PHONES only. Everywhere else these are the one
+     place that state is shown, and the kill lamp is a safety display: it goes
+     here solely because the HALT button is a few pixels above it. */
+  .app-shell--desk .global-risk-status { display: none !important; }
+  /* !important is load-bearing here, not laziness. StatusLamp sets
+     display: inline-flex as an INLINE style, and an inline style beats any
+     selector — so the plain rule hid the ENV span (no inline display) and
+     left the Kill, Exec and Style lamps on screen. The programmatic check
+     missed it too, because querySelector returns the first match and the
+     first match was the one that worked; the screenshot is what caught it. */
+  .app-shell--desk .status-dup { display: none !important; }
+
+  /* ── Strips that were clipped mid-word ──────────────────────────────────
+     The ticker, the tab strip and the execution switcher all overflowed and
+     cut off — "TLT 8", "AUTOPI", "COPILO". They are scrollable by nature, so
+     the fix is to let them scroll properly and stop the scrollbar eating a
+     row of height, rather than to shrink the text until it fits. */
+  .desk-tablist,
+  .trade-desk-mobile-tabs,
+  .ticker-strip-marquee {
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .desk-tablist::-webkit-scrollbar,
+  .trade-desk-mobile-tabs::-webkit-scrollbar { display: none; }
+
+  /* ── The positions table becomes a list of cards ───────────────────────
+     Eleven columns at 390px is ~35px each: every number wrapped or clipped
+     and the list was unusable. This reflows the SAME DOM into a card per
+     position, so no close-position logic moved.
+
+     Laid out by data-col rather than nth-child, for the reason the desk rail
+     uses data-priority: an nth-child map silently relabels every cell the
+     moment a column is inserted. */
+  .t-table--cards thead { display: none; }
+  /* min-width: 0 undoes the `.t-table { min-width: 680px }` rule above, which
+     makes ordinary tables scroll sideways on a phone. That is the right
+     answer for a table and the wrong one for a card list: it was forcing each
+     card to 680px inside a 390px column, so half of every card — P&L, MFE,
+     MAE, mode, status — sat off-screen to the right, present in the DOM and
+     invisible. */
+  .t-table--cards,
+  .t-table--cards tbody {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .t-table--cards tbody tr {
+    display: grid;
+    /* minmax(0, 1fr), NOT 1fr. A grid track's automatic minimum is its
+       min-content width, so "MOMENTUM BREAKOUT" spanning the row pushed the
+       card to 680px inside a 390px parent — the cells were all present and
+       simply off-screen to the right. Same defect, and the same fix, as the
+       landing nav's min-width: 0. */
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    width: 100%;
+    box-sizing: border-box;
+    grid-template-areas:
+      "symbol   type   pnl"
+      "strategy strategy strategy"
+      "credit   mfe    mae"
+      "hold     mode   status"
+      "action   action action";
+    gap: 6px 10px;
+    align-items: center;
+    padding: 12px 14px;
+    margin: 0 0 10px;
+    background: var(--bg-2);
+    border: 1px solid var(--line-dim);
+    border-radius: var(--radius-card);
+  }
+  /* The empty-state row keeps its single centred cell. */
+  .t-table--cards tbody tr:has(td[colspan]) {
+    display: block;
+    background: transparent;
+    border: none;
+  }
+
+  .t-table--cards tbody td {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0;
+    border: none;
+    min-width: 0;          /* so a long value shrinks rather than widening the card */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .t-table--cards td[data-col="symbol"]   { grid-area: symbol; font-size: 16px; font-weight: 700; }
+  .t-table--cards td[data-col="type"]     { grid-area: type; }
+  .t-table--cards td[data-col="pnl"]      { grid-area: pnl; font-size: 15px; font-weight: 700; justify-content: flex-end; }
+  .t-table--cards td[data-col="strategy"] { grid-area: strategy; color: var(--ink-faint); }
+  .t-table--cards td[data-col="credit"]   { grid-area: credit; }
+  .t-table--cards td[data-col="mfe"]      { grid-area: mfe; }
+  .t-table--cards td[data-col="mae"]      { grid-area: mae; }
+  .t-table--cards td[data-col="hold"]     { grid-area: hold; }
+  .t-table--cards td[data-col="mode"]     { grid-area: mode; }
+  .t-table--cards td[data-col="status"]   { grid-area: status; justify-content: flex-end; }
+  .t-table--cards td[data-col="action"]   { grid-area: action; margin-top: 4px; }
+
+  /* The header row is gone, so the numeric cells carry their own label —
+     otherwise "$4.20  +$300  -$120" is three unexplained figures. */
+  .t-table--cards td[data-label]::before {
+    content: attr(data-label);
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  /* Closing a position is the one destructive control on the card, and it
+     was a 90px cell. Full width and properly tappable. */
+  .t-table--cards td[data-col="action"] > * { width: 100%; }
+  .t-table--cards td[data-col="action"] button { width: 100%; min-height: 44px; }
+
+  /* ── The execution mode switcher ────────────────────────────────────────
+     Label + three buttons + a status pill in a no-wrap row measures 446px.
+     It survives 390px by 13px and clips at 360px and 320px, cutting
+     AUTOPILOT mid-word — and this is the control that decides whether the
+     system trades by itself, so a button you cannot fully read is the wrong
+     one to leave clipped.
+
+     Wrapped into a full-width segmented control: the kicker takes its own
+     line, the three buttons share the width equally, and the status pill
+     drops below rather than pushing them off the edge. */
+  .exec-mode-row {
+    flex-wrap: wrap;
+    padding: 8px 12px;
+    gap: 6px;
+  }
+  .exec-mode-row .kicker {
+    flex: 0 0 100%;
+    margin: 0 0 2px !important;
+  }
+  .exec-mode-row button {
+    flex: 1 1 0;
+    min-width: 0;            /* shrink below the label instead of overflowing */
+    min-height: 44px;
+    justify-content: center;
+  }
+  /* The status pill carries an inline margin-left, which an ordinary rule
+     cannot beat — same inline-style precedence that the status-bar lamps
+     needed !important for. */
+  .exec-mode-row > span:not(.kicker) {
+    flex: 0 0 100%;
+    margin-left: 0 !important;
+    text-align: center;
+  }
+
+  /* ── Touch targets ──────────────────────────────────────────────────────
+     44px is the smallest reliably tappable height. Several of these were
+     nearer 28px, which is a miss-and-try-again on a moving train. */
+  .desk-tablist [role="tab"],
+  .trade-desk-mobile-tabs [role="tab"] {
+    min-height: 44px;
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+}

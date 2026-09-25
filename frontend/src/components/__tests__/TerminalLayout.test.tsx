@@ -142,6 +142,26 @@ describe("TerminalLayout ticker strip", () => {
     expect(screen.getByText(/engage kill switch\?/i)).toBeInTheDocument();
   });
 
+  it("applies desk-shell class when the V2 desk shell is active", async () => {
+    const { container } = render(
+      <TerminalLayout activePage="paper" onNav={() => {}} isDeskV2Shell>
+        <div>page content</div>
+      </TerminalLayout>
+    );
+    await waitFor(() => expect(screen.getByText("page content")).toBeInTheDocument());
+    expect(container.querySelector(".app-shell")?.className).toContain("app-shell--desk");
+  });
+
+  it("does not apply desk-shell class for non-V2 desk pages", async () => {
+    const { container } = render(
+      <TerminalLayout activePage="trade:overview" onNav={() => {}}>
+        <div>page content</div>
+      </TerminalLayout>
+    );
+    await waitFor(() => expect(screen.getByText("page content")).toBeInTheDocument());
+    expect(container.querySelector(".app-shell")?.className).toBe("app-shell");
+  });
+
   // ── Execution-mode toggle: a safety control must never show an unconfirmed
   // state ────────────────────────────────────────────────────────────────────
   // Found in production 2026-08-27: the route is api-key gated and the browser
