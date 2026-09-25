@@ -1,6 +1,15 @@
 """
-Signal outcome tracker — persists every routable equity signal and checks
-real forward price action against it.
+Signal outcome tracker — persists every routable signal and checks real
+forward price action against it.
+
+Equity and crypto both land here (main.py::_run_equity_scan and
+crypto_scan.py::run_crypto_scan), separated by the asset_type column. The
+resolver below is genuinely shared: it walks forward daily bars per ticker from
+yfinance, which serves crypto under the same DASH-form symbol the crypto
+watchlist uses, so no crypto-specific resolution path is needed. One caveat
+worth knowing when reading a crypto cohort: DEFAULT_MAX_HOLD_DAYS counts BARS,
+and crypto prints 7 a week against equities' 5, so the same 20 means ~20
+calendar days for crypto and ~28 for an equity.
 
 record_signal() is called at signal-generation time (inside the equity
 scanner's per-ticker loop, main.py::_run_equity_scan) so every BUY/SELL
@@ -94,7 +103,11 @@ def _dec_or_none(value) -> Optional[Decimal]:
 
 async def record_signal(signal: dict) -> Optional[str]:
     """
-    Persist a routable equity BUY/SELL signal for forward-outcome tracking.
+    Persist a routable BUY/SELL signal for forward-outcome tracking.
+
+    Asset-class agnostic: ``signal["asset_type"]`` selects the population the
+    row belongs to and the population the (ticker, action, day) dedup checks
+    against, defaulting to "equity" for the scanner that predates it.
 
     No-ops (returns None) for HOLD signals or signals without a usable
     trade_plan — there's nothing to track a target/stop against. Never
@@ -165,6 +178,26 @@ async def record_signal(signal: dict) -> Optional[str]:
             generated_at = generated_at.astimezone(timezone.utc)
 
         ticker = signal.get("ticker", "")
+
+        # asset_type comes FROM THE SIGNAL, and both the dedup filter and the
+        # insert below read this one variable rather than a literal.
+        #
+        # It was "equity" hardcoded in two places. Threading it through is what
+        # lets the crypto scan (crypto_scan.py) share this recorder instead of
+        # forking a second copy of it — but the dedup filter is the reason it
+        # has to be a variable in BOTH spots and not just the insert: a filter
+        # pinned to "equity" while the insert wrote "crypto" would find no
+        # existing row, so every scan tick would insert another one, rebuilding
+        # exactly the ~45x duplication this module's docstring exists to
+        # describe.
+        asset_type = signal.get("asset_type") or "equity"
+
+        # The scoring lineage of whatever produced this signal. Equity is the
+        # default because it is the only caller that omits the key; crypto
+        # passes CRYPTO_SCORING_VERSION, which is versioned separately so a
+        # retune of one asset class does not relabel the other's cohort.
+        engine_version = signal.get("signal_engine_version") or EQUITY_SCORING_VERSION
+
         row_id = uuid.uuid4()
         async with AsyncSessionLocal() as session:
             # One row per (ticker, action, UTC day) — see the module docstring.
@@ -176,7 +209,7 @@ async def record_signal(signal: dict) -> Optional[str]:
                 select(SignalOutcome.id)
                 .where(
                     SignalOutcome.ticker == ticker,
-                    SignalOutcome.asset_type == "equity",
+                    SignalOutcome.asset_type == asset_type,
                     SignalOutcome.action == action,
                     SignalOutcome.generated_at >= day_start,
                     SignalOutcome.generated_at < day_start + timedelta(days=1),
@@ -213,7 +246,7 @@ async def record_signal(signal: dict) -> Optional[str]:
                 id=row_id,
                 signal_id=signal.get("id"),
                 ticker=ticker,
-                asset_type="equity",
+                asset_type=asset_type,
                 action=action,
                 confidence=Decimal(str(round(signal.get("confidence", 0.0), 4))),
                 entry_price=Decimal(str(round(float(entry), 4))),
@@ -228,7 +261,7 @@ async def record_signal(signal: dict) -> Optional[str]:
                 volume_ratio=_dec_or_none(indicators.get("volume_ratio")),
                 atr=_dec_or_none(indicators.get("atr")),
                 regime=signal.get("regime"),
-                signal_engine_version=EQUITY_SCORING_VERSION,
+                signal_engine_version=engine_version,
                 opportunity_score=oppty_score,
                 oppty_liquidity=_dec_or_none(oppty_components.get("liquidity")),
                 oppty_regime=_dec_or_none(oppty_components.get("regime")),

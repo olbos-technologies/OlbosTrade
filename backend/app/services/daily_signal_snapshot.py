@@ -105,6 +105,12 @@ async def capture_daily_snapshot(
         start = datetime.combine(day, datetime.min.time(), tzinfo=timezone.utc)
         rows = (await session.execute(
             select(SignalOutcome).where(
+                # Equity only. The crypto scan writes to the same table now
+                # (crypto_scan.py), and without this filter the daily snapshot's
+                # top-N candidate ranking would quietly start competing crypto
+                # against equities — two populations whose confidence is not
+                # comparable, ranked against each other as though it were.
+                SignalOutcome.asset_type == "equity",
                 SignalOutcome.generated_at >= start,
                 SignalOutcome.generated_at < start + timedelta(days=2),
             )

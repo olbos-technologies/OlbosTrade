@@ -36,6 +36,11 @@ export const NAV_MODEL_LEGACY: NavGroup[] = [
   { id: "strat", label: "Strategies", icon: "strategy", children: [
     { key: "strat:alpha-edge", label: "Alpha Edge" },
     { key: "equity",           label: "Equity Signals" },
+    // ADDED TO BOTH MODELS, like the Account group below — see that comment for
+    // why one is never enough. Not marked advanced: phase 1 is read-only, and a
+    // feature whose whole purpose is to accumulate observations nobody looks at
+    // is not worth shipping behind a toggle.
+    { key: "crypto:signals",   label: "Crypto Signals" },
     { key: "options:signals",  label: "Options Signals" },
     { key: "strat:research",   label: "Signal Research" },
     { key: "strat:cards",   label: "Strategy Cards", advanced: true },
@@ -112,6 +117,7 @@ export const NAV_MODEL_V2: NavGroup[] = [
   { id: "strat", label: "Strategies", icon: "strategy", children: [
     { key: "strat:alpha-edge", label: "Alpha Edge" },
     { key: "equity",        label: "Signal Center" },
+    { key: "crypto:signals", label: "Crypto Signals" },
     { key: "strat:research", label: "Signal Research" },
     { key: "strat:cards",   label: "Strategy Cards", advanced: true },
     { key: "strat:health",  label: "Strategy Health", advanced: true },

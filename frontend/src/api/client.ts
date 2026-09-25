@@ -327,9 +327,23 @@ export const api = {
   getModeDetail:         (mode: string) => request(`/api/analytics/mode/${mode}`),
   getSignalScoreImpact:  ()             => request("/api/analytics/signal-score-impact"),
 
+  // ── Crypto (phase 1: read-only signals, no execution) ───────────────────────
+  getCryptoWatchlist: () => request<CryptoWatchlist>("/api/crypto/watchlist"),
+  getCryptoSignals:   (params?: { limit?: number; routable_only?: boolean }) => {
+    const q = new URLSearchParams();
+    if (params?.limit != null) q.set("limit", String(params.limit));
+    if (params?.routable_only) q.set("routable_only", "true");
+    const qs = q.toString();
+    return request<CryptoSignalList>(`/api/crypto/signals${qs ? `?${qs}` : ""}`);
+  },
+  runCryptoScan: () => request<CryptoScanSummary>("/api/crypto/scan", { method: "POST" }),
+
   // ── Signal Research (forward-outcome tracking) ──────────────────────────────
-  getSignalOutcomes:    () => request("/api/signal-research/outcomes"),
-  getSignalOutcomesRaw: (params?: { limit?: number; status?: string }) => {
+  // asset_type is passed explicitly rather than relying on the backend default,
+  // so which population these numbers describe is visible at the call site.
+  getSignalOutcomes:    (assetType: string = "equity") =>
+    request(`/api/signal-research/outcomes?asset_type=${encodeURIComponent(assetType)}`),
+  getSignalOutcomesRaw: (params?: { limit?: number; status?: string; asset_type?: string }) => {
     const q = params
       ? "?" + new URLSearchParams(
           Object.fromEntries(Object.entries(params).filter(([, v]) => v !== undefined)) as any
@@ -400,6 +414,66 @@ export interface AccountSession {
  *  the server would have accepted, with a message blaming the user. */
 export const MIN_PASSWORD_LEN = 12;
 export const MAX_PASSWORD_LEN = 1024;
+
+export interface CryptoWatchlist {
+  enabled: boolean;
+  /** Always "disabled" in phase 1 — the scan has no path to the order layer. */
+  execution: string;
+  phase: number;
+  symbols: { symbol: string; alpaca_symbol: string }[];
+  count: number;
+  min_confidence: number;
+  scan_interval_minutes: number;
+  max_position_pct: number;
+  engine_version: string;
+  data_source: string;
+}
+
+export interface CryptoSignal {
+  id: string;
+  ticker: string;
+  asset_type: "crypto";
+  action: "BUY" | "SELL" | "HOLD";
+  confidence: number;
+  generated_at: string;
+  routable: boolean;
+  regime: string;
+  reasons?: Record<string, unknown>;
+  trade_plan?: {
+    entry_price?: number;
+    stop_price?: number;
+    target_price?: number;
+    target_move_pct?: number;
+    risk_reward?: number;
+  };
+  indicators?: {
+    rsi?: number;
+    macd?: number;
+    bb_pct_b?: number;
+    atr?: number;
+    volume_ratio?: number;
+  };
+  opportunity_score?: { score: number; components: Record<string, number> } | null;
+  outcome_id?: string;
+}
+
+export interface CryptoSignalList {
+  enabled: boolean;
+  execution: string;
+  signals: CryptoSignal[];
+  total: number;
+}
+
+export interface CryptoScanSummary {
+  enabled: boolean;
+  scanned: number;
+  signals: number;
+  routable: number;
+  recorded: number;
+  skipped_insufficient_bars: number;
+  skipped_unrepresentable_price: number;
+  errors: number;
+}
 
 export interface BrokerConnection {
   id: string;
