@@ -197,22 +197,6 @@ export default function Landing() {
         {/* ── Hero ──────────────────────────────────────────────────────── */}
         <section className="landing-section landing-hero" id="product">
           <div className="landing-container">
-            {/* WebP, not PNG: the gold gradients band visibly under palette
-                quantisation (200 colours cost 270 KB and looked striped), while
-                WebP q90 is visually identical to the 688 KB PNG at 124 KB — less
-                than half the 274 KB this replaced. No PNG fallback: tsconfig
-                targets ES2020 and the app is React 18, so any browser that can
-                run this page has supported WebP with alpha for years.
-
-                width/height are the asset's true 2.27:1, not the old 1.83:1, so
-                the reserved box matches and the hero does not shift on load. */}
-            <img
-              className="landing-hero-banner"
-              src="/olbos-mark.webp"
-              alt="Olbos Trade — Algorithmic Trading System"
-              width={1400}
-              height={616}
-            />
             <div className="landing-eyebrow">Systematic Options &amp; Equity Execution</div>
             <h1 className="landing-h1">
               Systematic options and equity execution with risk controls built into every decision.
