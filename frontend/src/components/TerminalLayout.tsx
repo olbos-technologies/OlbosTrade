@@ -785,7 +785,7 @@ function TickerStrip({ onToggle, sidebarExpanded, isMobile }: {
             </svg>
           </button>
 
-          <img src="/favicon-32x32.png" alt="" width={20} height={20} style={{ flexShrink: 0 }} />
+          <img src="/olbos-mark-sm.webp" alt="" width={45} height={20} style={{ flexShrink: 0 }} />
           <span className="brand-wordmark" style={{ fontSize: 15, lineHeight: 1, whiteSpace: "nowrap" }}>
             OLBOS
           </span>
@@ -924,10 +924,13 @@ function TickerStrip({ onToggle, sidebarExpanded, isMobile }: {
 
         {showFullLogo && (
           <div style={{ display: "flex", alignItems: "center", gap: 7, overflow: "hidden", paddingRight: 12 }}>
+            {/* The mark is 2.27:1, so at 20px tall it takes 45px of the 232px
+                expanded block — leaving ~113px for the text column beside it,
+                which its own overflow:hidden already guards. */}
             <img
-              src="/favicon-32x32.png"
+              src="/olbos-mark-sm.webp"
               alt=""
-              width={20}
+              width={45}
               height={20}
               style={{ flexShrink: 0, filter: "drop-shadow(0 0 4px rgba(212,175,55,.35))" }}
             />

@@ -154,7 +154,7 @@ export default function Landing() {
       <header className="landing-nav">
         <div className="landing-container landing-nav-row">
           <span style={{ display: "inline-flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-            <img src="/favicon-32x32.png" alt="" width={24} height={24} />
+            <img src="/olbos-mark-sm.webp" alt="" width={55} height={24} />
             <span className="landing-wordmark">OLBOS</span>
           </span>
           <nav
@@ -197,12 +197,21 @@ export default function Landing() {
         {/* ── Hero ──────────────────────────────────────────────────────── */}
         <section className="landing-section landing-hero" id="product">
           <div className="landing-container">
+            {/* WebP, not PNG: the gold gradients band visibly under palette
+                quantisation (200 colours cost 270 KB and looked striped), while
+                WebP q90 is visually identical to the 688 KB PNG at 124 KB — less
+                than half the 274 KB this replaced. No PNG fallback: tsconfig
+                targets ES2020 and the app is React 18, so any browser that can
+                run this page has supported WebP with alpha for years.
+
+                width/height are the asset's true 2.27:1, not the old 1.83:1, so
+                the reserved box matches and the hero does not shift on load. */}
             <img
               className="landing-hero-banner"
-              src="/olbos-hero.png"
+              src="/olbos-mark.webp"
               alt="Olbos Trade — Algorithmic Trading System"
-              width={1024}
-              height={559}
+              width={1400}
+              height={616}
             />
             <div className="landing-eyebrow">Systematic Options &amp; Equity Execution</div>
             <h1 className="landing-h1">
@@ -412,7 +421,7 @@ export default function Landing() {
         <div className="landing-container">
           <div className="landing-footer-row">
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <img src="/favicon-32x32.png" alt="" width={18} height={18} />
+              <img src="/olbos-mark-sm.webp" alt="" width={41} height={18} />
               <span className="landing-wordmark" style={{ fontSize: 15 }}>OLBOS</span>
               <span style={{ width: 1, height: 12, background: "var(--line-dim)" }} />
               <span style={{
