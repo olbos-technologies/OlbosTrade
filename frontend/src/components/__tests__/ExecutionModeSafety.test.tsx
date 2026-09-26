@@ -198,6 +198,43 @@ describe("execution mode safety surface (PLAN 5.4)", () => {
     expect(stale).toHaveTextContent(/not a confirmation/i);
   });
 
+  it("a poll that resolves after a mode change does not overwrite it", async () => {
+    // Raised in review on #84. The 5-minute poll is a GET issued independently
+    // of the mode POST, so a read started BEFORE a change can land AFTER it.
+    // Without a generation guard the UI shows MANUAL as freshly confirmed while
+    // the server is already in AUTOPILOT — an optimistic claim arriving by the
+    // back door, which is the one failure this control must not have.
+    let releaseRead: () => void = () => {};
+    globalThis.fetch = vi.fn().mockImplementation((url: string) => {
+      if (url.includes("/api/trade-desk/execution-mode")) {
+        return new Promise((res) => {
+          releaseRead = () => res({ ok: true, json: () => Promise.resolve({ mode: "manual" }) });
+        });
+      }
+      if (url.includes("/api/mode/current")) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ mode: "balanced" }) });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+    }) as unknown as typeof fetch;
+
+    const { api } = await import("../../api/client");
+    (api.setExecutionMode as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({ mode: "copilot" });
+
+    await renderShell();
+
+    // The in-flight read started first; the change completes while it hangs.
+    fireEvent.click(chip(/^copilot$/i));
+    await waitFor(() => expect(chip(/^copilot$/i)).toHaveAttribute("aria-pressed", "true"));
+
+    // Now let the stale read land. It must be discarded.
+    releaseRead();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(chip(/^copilot$/i)).toHaveAttribute("aria-pressed", "true");
+    expect(chip(/^manual$/i)).toHaveAttribute("aria-pressed", "false");
+  });
+
   it("clears the unconfirmed warning once the server answers", async () => {
     await renderShell();
     await waitFor(() =>

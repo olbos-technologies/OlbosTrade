@@ -127,6 +127,7 @@ async def record_signal(signal: dict) -> Optional[str]:
 
     try:
         from sqlalchemy import select
+        from sqlalchemy.exc import IntegrityError
 
         from app.core.database import AsyncSessionLocal
         from app.models.signal_outcome import SignalOutcome
@@ -242,6 +243,21 @@ async def record_signal(signal: dict) -> Optional[str]:
             # The SELECT and the INSERT still share one transaction, which is
             # what the dedup check needs: autobegin opened it, commit closes
             # it.
+            # The INSERT can still lose a race the SELECT above could not see:
+            # the check and the write are not atomic, and phase 1 added a second
+            # way to overlap (POST /api/crypto/scan alongside the scheduler).
+            # For crypto that race is now decided by the database —
+            # idx_signal_outcomes_crypto_daily (migration 0035) is a partial
+            # unique index on (ticker, action, UTC day) — so a loser gets an
+            # IntegrityError instead of writing a duplicate.
+            #
+            # Losing is a dedup HIT, not an error: the other writer recorded the
+            # same signal, and this function's contract is "first one wins,
+            # return its id". So the conflict is caught, the transaction rolled
+            # back, and the winning row's id looked up and returned. Equity has
+            # no such index yet (~69k historical duplicates block a table-wide
+            # constraint — see the module docstring), so for equity this path
+            # simply never fires and behaviour is unchanged.
             session.add(SignalOutcome(
                 id=row_id,
                 signal_id=signal.get("id"),
@@ -266,7 +282,26 @@ async def record_signal(signal: dict) -> Optional[str]:
                 oppty_liquidity=_dec_or_none(oppty_components.get("liquidity")),
                 oppty_regime=_dec_or_none(oppty_components.get("regime")),
             ))
-            await session.commit()
+            try:
+                await session.commit()
+            except IntegrityError:
+                await session.rollback()
+                winner_id = (await session.execute(
+                    select(SignalOutcome.id)
+                    .where(
+                        SignalOutcome.ticker == ticker,
+                        SignalOutcome.asset_type == asset_type,
+                        SignalOutcome.action == action,
+                        SignalOutcome.generated_at >= day_start,
+                        SignalOutcome.generated_at < day_start + timedelta(days=1),
+                    )
+                    .limit(1)
+                )).scalar_one_or_none()
+                logger.debug(
+                    "record_signal: %s %s %s lost the insert race for %s — keeping the winner",
+                    asset_type, ticker, action, day_start.date(),
+                )
+                return str(winner_id) if winner_id is not None else None
         return str(row_id)
     except Exception as exc:
         logger.warning("record_signal failed for %s: %s", signal.get("ticker"), exc)

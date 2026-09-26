@@ -430,6 +430,17 @@ function TickerStrip({ onToggle, sidebarExpanded, isMobile }: {
   // autopilot is never gated: reducing autonomy must always be one click.
   const [autopilotConfirm, setAutopilotConfirm] = useState(false);
 
+  // Ordering guard between the 5-minute poll and a mode change.
+  //
+  // The poll is a GET issued independently of applyExec's POST, so a read that
+  // started BEFORE a change can resolve AFTER it and overwrite the freshly
+  // confirmed mode — showing MANUAL as newly confirmed while the server is
+  // already in AUTOPILOT, and clearing the stale flag on the way. Each mutation
+  // bumps this counter; a poll that started under an older value is discarded
+  // rather than applied. A ref, not state, because the poll closure has to read
+  // the current value at resolution time, not the one captured at render.
+  const execGenRef = React.useRef(0);
+
   const applyExec = (m: "manual" | "copilot" | "autopilot") => {
     if (m === execMode || execBusy) return;
 
@@ -441,6 +452,7 @@ function TickerStrip({ onToggle, sidebarExpanded, isMobile }: {
     // reasonably read that as "trading is paused" while autopilot kept
     // running. For a safety control, showing an unconfirmed state is the
     // worst available failure, so execMode only ever moves on a server answer.
+    execGenRef.current += 1;
     setExecPending(m);
     setExecBusy(true);
     setExecError(null);
@@ -559,10 +571,15 @@ function TickerStrip({ onToggle, sidebarExpanded, isMobile }: {
     // screen indistinguishable from a fresh one. `.catch(() => {})` here was
     // the bug: for five minutes at a time, an unreachable backend and a
     // confirmed MANUAL looked identical.
-    const fetchExec = () =>
-      fetch("/api/trade-desk/execution-mode")
+    const fetchExec = () => {
+      const gen = execGenRef.current;
+      // Superseded reads are dropped entirely — neither the mode nor the
+      // freshness flag may be written by a response a mode change has outrun.
+      const superseded = () => execGenRef.current !== gen;
+      return fetch("/api/trade-desk/execution-mode")
         .then(r => r.json())
         .then(d => {
+          if (superseded()) return;
           if (d.mode) {
             setExecMode(d.mode);
             setExecConfirmedAt(Date.now());
@@ -571,7 +588,8 @@ function TickerStrip({ onToggle, sidebarExpanded, isMobile }: {
             setExecStale(true);
           }
         })
-        .catch(() => { setExecStale(true); });
+        .catch(() => { if (!superseded()) setExecStale(true); });
+    };
     fetchExec();
 
     // Refresh every 5 minutes
@@ -754,19 +772,38 @@ function TickerStrip({ onToggle, sidebarExpanded, isMobile }: {
             onClick={() => setMobileSheetOpen(true)}
             aria-haspopup="dialog"
             aria-expanded={mobileSheetOpen}
+            data-testid="mobile-exec-trigger"
+            // Colour alone must never carry the state (PLAN product rule 3).
+            aria-label={
+              execStale
+                ? `Execution mode unconfirmed — last read said ${execMode.toUpperCase()}. Open execution mode.`
+                : `Execution mode ${execMode.toUpperCase()}. Open execution mode.`
+            }
             style={{
               display: "flex", alignItems: "center", gap: 6,
               height: 44, padding: "0 14px", marginRight: 2, borderRadius: 22,
               // tint(), not `${modeTone}66` — modeTone is a var() reference, and
               // concatenating an alpha onto one drops the whole declaration, so
               // this border has never rendered. See utils/tint.ts.
-              background: "var(--bg-3)", border: `1px solid ${tint(modeTone, 0.4)}`,
-              color: modeTone, fontFamily: "var(--mono)", fontSize: 10,
+              background: "var(--bg-3)",
+              border: `1px solid ${tint(execStale ? "var(--amber)" : modeTone, 0.4)}`,
+              color: execStale ? "var(--amber)" : modeTone,
+              fontFamily: "var(--mono)", fontSize: 10,
               letterSpacing: "0.08em", cursor: "pointer", whiteSpace: "nowrap",
             }}
           >
-            <span className={`dot ${mktOpen() ? "live" : "dead"}`} style={{ background: modeTone }} />
-            {execMode.toUpperCase()}
+            {/* When the mode is unconfirmed this trigger must not keep
+                presenting it confidently. It is the ONLY execution-state
+                indicator visible on a phone until the sheet is opened — the
+                freshness warning lives inside the sheet — so without this the
+                mobile surface quietly contradicted the desktop one after a
+                failed poll, which is the exact failure the staleness work
+                exists to prevent. */}
+            <span
+              className={`dot ${execStale ? "dead" : mktOpen() ? "live" : "dead"}`}
+              style={{ background: execStale ? "var(--amber)" : modeTone }}
+            />
+            {execStale ? `${execMode.toUpperCase()}?` : execMode.toUpperCase()}
           </button>
         </div>
 

@@ -16,12 +16,13 @@ Two things here are load-bearing beyond ordinary coverage:
 
 from __future__ import annotations
 
+import uuid
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from sqlalchemy.exc import InvalidRequestError
+from sqlalchemy.exc import IntegrityError, InvalidRequestError
 
 from app.broker.broker_interface import Bar
 from app.services.crypto_signal_engine import (
@@ -111,6 +112,25 @@ def test_get_crypto_watchlist_normalises_and_dedups(monkeypatch):
 
     monkeypatch.setattr(settings, "crypto_watchlist", "BTC/USD, btcusd ,ETH-USD,, eth/usd")
     assert settings.get_crypto_watchlist() == ["BTC-USD", "ETH-USD"]
+
+
+def test_watchlist_drops_non_crypto_symbols(monkeypatch):
+    """
+    Raised in review on #84. An override of CRYPTO_WATCHLIST=AAPL would fetch
+    equity bars, write them with asset_type="crypto", and contaminate the one
+    cohort this phase exists to keep clean — while looking like it worked.
+    """
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "crypto_watchlist", "BTC-USD,AAPL,ETH/USD,SPY,BRK-B")
+    assert settings.get_crypto_watchlist() == ["BTC-USD", "ETH-USD"]
+
+
+def test_watchlist_of_only_equities_is_empty_not_passthrough(monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "crypto_watchlist", "AAPL,MSFT")
+    assert settings.get_crypto_watchlist() == []
 
 
 # ── scan pipeline ────────────────────────────────────────────────────────────
@@ -469,3 +489,63 @@ async def test_record_signal_dedups_a_repeat_crypto_signal():
 
     assert row_id == "existing-row"
     session.add.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_record_signal_treats_a_lost_insert_race_as_a_dedup_hit():
+    """
+    Raised in review on #84: the SELECT-then-INSERT dedup is not atomic, and
+    phase 1 added a second way to overlap (POST /api/crypto/scan alongside the
+    scheduler). Migration 0035 adds a partial unique index for crypto, so the
+    loser of a race now gets an IntegrityError on commit.
+
+    Losing is a dedup HIT, not a failure: the other writer recorded the same
+    signal, and this function's contract is "first one wins, return its id".
+    Returning None here would make the scan log a phantom failure for a row that
+    exists, and returning the would-be id would hand back a row that does not.
+    """
+    session = _mock_session()
+    winner = uuid.uuid4()
+
+    calls = {"n": 0}
+
+    async def _execute(stmt, *_a, **_k):
+        calls["n"] += 1
+        session.statements.append(stmt)
+        lookup = MagicMock()
+        # First lookup: nothing yet (so the insert is attempted). Second: the
+        # race winner, found after the conflict.
+        lookup.scalar_one_or_none = MagicMock(
+            return_value=None if calls["n"] == 1 else winner
+        )
+        return lookup
+
+    session.execute = AsyncMock(side_effect=_execute)
+    session.commit = AsyncMock(side_effect=IntegrityError("dup", None, Exception()))
+    session.rollback = AsyncMock()
+
+    with patch("app.core.database.AsyncSessionLocal", return_value=session):
+        row_id = await record_signal(_crypto_signal())
+
+    assert row_id == str(winner)
+    session.rollback.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_record_signal_returns_none_if_the_race_winner_cannot_be_found():
+    """A conflict with no findable winner is a genuine anomaly — say nothing was
+    recorded rather than invent an id."""
+    session = _mock_session()
+
+    async def _execute(stmt, *_a, **_k):
+        session.statements.append(stmt)
+        lookup = MagicMock()
+        lookup.scalar_one_or_none = MagicMock(return_value=None)
+        return lookup
+
+    session.execute = AsyncMock(side_effect=_execute)
+    session.commit = AsyncMock(side_effect=IntegrityError("dup", None, Exception()))
+    session.rollback = AsyncMock()
+
+    with patch("app.core.database.AsyncSessionLocal", return_value=session):
+        assert await record_signal(_crypto_signal()) is None

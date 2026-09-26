@@ -12,7 +12,7 @@ a much larger, unbiased sample: every routable signal, traded or not.
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Query
 
@@ -80,7 +80,12 @@ async def _load_outcomes(asset_type: str = "equity") -> list[dict]:
 @router.get("/outcomes")
 async def get_signal_outcomes(
     regime: Optional[str] = Query(None),
-    asset_type: str = Query("equity", description="equity | crypto | all"),
+    # A Literal, not a bare str: an unvalidated value made a typo
+    # (asset_type=crypt) return a cheerful empty result that reads as "no
+    # signals tracked" — the worst possible answer from an endpoint whose whole
+    # job is to keep two populations apart. FastAPI now 422s instead.
+    asset_type: Literal["equity", "crypto", "all"] = Query(
+        "equity", description="equity | crypto | all"),
 ):
     """
     Hit rate / days-to-resolve breakdown across every tracked signal of one
@@ -113,7 +118,12 @@ async def get_signal_outcomes(
 async def get_signal_outcomes_raw(
     limit: int = Query(200, le=1000),
     status: Optional[str] = Query(None, description="pending | target_hit | stop_hit | expired"),
-    asset_type: str = Query("equity", description="equity | crypto | all"),
+    # A Literal, not a bare str: an unvalidated value made a typo
+    # (asset_type=crypt) return a cheerful empty result that reads as "no
+    # signals tracked" — the worst possible answer from an endpoint whose whole
+    # job is to keep two populations apart. FastAPI now 422s instead.
+    asset_type: Literal["equity", "crypto", "all"] = Query(
+        "equity", description="equity | crypto | all"),
 ):
     """Raw per-signal outcome rows, most recent first."""
     outcomes = await _load_outcomes(asset_type)

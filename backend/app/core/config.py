@@ -443,13 +443,17 @@ class Settings(BaseSettings):
         """
         Parse the crypto watchlist into canonical internal symbols.
 
+        Non-crypto entries are dropped — see the loop below.
+
         Normalised rather than merely upper-cased: an operator overriding
         CRYPTO_WATCHLIST is as likely to write ``BTC/USD`` or ``BTCUSD`` as
         ``BTC-USD``, and three shapes of one instrument would split into three
         populations that the (ticker, action, day) dedup cannot see across.
         Duplicates that collapse to the same symbol are dropped, order kept.
         """
-        from app.services.crypto_signal_engine import normalize_crypto_symbol
+        from app.services.crypto_signal_engine import (
+            is_crypto_symbol, normalize_crypto_symbol,
+        )
 
         seen: set[str] = set()
         out: list[str] = []
@@ -457,6 +461,13 @@ class Settings(BaseSettings):
             if not raw.strip():
                 continue
             symbol = normalize_crypto_symbol(raw)
+            # Anything that is not a crypto pair is DROPPED, not passed through.
+            # An override of CRYPTO_WATCHLIST=AAPL would otherwise fetch equity
+            # bars, write them with asset_type="crypto", and quietly contaminate
+            # the one cohort this phase exists to keep clean — and it would look
+            # like it was working the whole time.
+            if not is_crypto_symbol(symbol):
+                continue
             if symbol not in seen:
                 seen.add(symbol)
                 out.append(symbol)
