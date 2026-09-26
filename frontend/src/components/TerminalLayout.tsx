@@ -118,12 +118,21 @@ function AccountMenuItem({ icon, label, onClick, danger = false }: {
 
 // Header control for execution mode — single tri-state (Manual / Copilot / Autopilot).
 /**
- * How long an execution-mode read stays trustworthy. The poll runs every 5
- * minutes, so this is two missed cycles plus slack: long enough that a single
- * slow response is not alarming, short enough that a dead poll surfaces before
- * an operator has acted on a mode the server may no longer be in.
+ * How long an execution-mode read stays trustworthy.
+ *
+ * The poll runs every 15 SECONDS (`ei` below) — not every 5 minutes, which is
+ * the market-snapshot timer next to it. An earlier version of this constant was
+ * sized against that wrong number and sat at 11 minutes, roughly 44 missed
+ * polls, which for a control that decides whether the desk trades unattended is
+ * no guard at all.
+ *
+ * 2 minutes is eight missed cycles: long enough that one slow response or a
+ * brief hiccup is not alarming, short enough that a dead poll surfaces while it
+ * still matters. A read that FAILS marks itself stale immediately, so this
+ * threshold only governs the case where the poll stops firing without failing —
+ * a suspended tab, a cleared interval.
  */
-const EXEC_STALE_MS = 11 * 60 * 1000;
+const EXEC_STALE_MS = 2 * 60 * 1000;
 
 /**
  * What each mode actually does, in one sentence, in the operator's terms —
@@ -441,6 +450,16 @@ function TickerStrip({ onToggle, sidebarExpanded, isMobile }: {
   // the current value at resolution time, not the one captured at render.
   const execGenRef = React.useRef(0);
 
+  // True while a mode change is in flight. Raised in review on #84: bumping the
+  // generation only at the START of a mutation leaves a hole. A poll issued
+  // AFTER the bump but BEFORE the POST resolves captures the new generation, so
+  // when it lands — carrying the pre-change mode the server had not yet applied
+  // — its generation still matches and it overwrites the confirmed value and
+  // clears staleness. The window is small but the poll runs every 15s, so it is
+  // hit routinely, and the symptom is the exact thing this control must never
+  // do: show a mode the server is not in.
+  const execMutatingRef = React.useRef(false);
+
   const applyExec = (m: "manual" | "copilot" | "autopilot") => {
     if (m === execMode || execBusy) return;
 
@@ -453,6 +472,7 @@ function TickerStrip({ onToggle, sidebarExpanded, isMobile }: {
     // running. For a safety control, showing an unconfirmed state is the
     // worst available failure, so execMode only ever moves on a server answer.
     execGenRef.current += 1;
+    execMutatingRef.current = true;
     setExecPending(m);
     setExecBusy(true);
     setExecError(null);
@@ -494,6 +514,11 @@ function TickerStrip({ onToggle, sidebarExpanded, isMobile }: {
         );
       })
       .finally(() => {
+        // Bumped AGAIN on settle, which is the half that closes the hole: any
+        // read issued during the mutation window is invalidated now, whatever
+        // generation it captured on the way in.
+        execGenRef.current += 1;
+        execMutatingRef.current = false;
         setExecPending(null);
         setExecBusy(false);
       });
@@ -572,6 +597,9 @@ function TickerStrip({ onToggle, sidebarExpanded, isMobile }: {
     // the bug: for five minutes at a time, an unreachable backend and a
     // confirmed MANUAL looked identical.
     const fetchExec = () => {
+      // Don't even issue a read while a change is settling — the answer cannot
+      // be authoritative, and the POST's own response is what confirms the mode.
+      if (execMutatingRef.current) return Promise.resolve();
       const gen = execGenRef.current;
       // Superseded reads are dropped entirely — neither the mode nor the
       // freshness flag may be written by a response a mode change has outrun.

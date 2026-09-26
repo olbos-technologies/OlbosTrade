@@ -19,7 +19,7 @@
 
 import React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { act, render, screen, waitFor, fireEvent } from "@testing-library/react";
 
 import TerminalLayout from "../TerminalLayout";
 
@@ -233,6 +233,74 @@ describe("execution mode safety surface (PLAN 5.4)", () => {
 
     expect(chip(/^copilot$/i)).toHaveAttribute("aria-pressed", "true");
     expect(chip(/^manual$/i)).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("a poll issued DURING a mode change cannot overwrite the result", async () => {
+    // The hole in the first version of the guard, raised in review on #84.
+    // Bumping the generation only when a mutation STARTS leaves reads issued
+    // mid-flight carrying the new generation — so they pass the check and
+    // clobber the confirmed mode with the pre-change value the server had not
+    // applied yet. The poll runs every 15s, so this window is hit routinely.
+    //
+    // Distinct from the test above: there the read starts BEFORE the change,
+    // here it is issued AFTER the change begins.
+    //
+    // Fake timers only inside this test — it is the one case that has to drive
+    // the 15s interval — and `act` flushes instead of `waitFor`, which does not
+    // mix well with them.
+    vi.useFakeTimers();
+    try {
+      const pendingReads: Array<() => void> = [];
+      let issuedReads = 0;
+      globalThis.fetch = vi.fn().mockImplementation((url: string) => {
+        if (url.includes("/api/trade-desk/execution-mode")) {
+          issuedReads += 1;
+          return new Promise((res) => {
+            pendingReads.push(() =>
+              res({ ok: true, json: () => Promise.resolve({ mode: "manual" }) })
+            );
+          });
+        }
+        if (url.includes("/api/mode/current")) {
+          return Promise.resolve({ ok: true, json: () => Promise.resolve({ mode: "balanced" }) });
+        }
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+      }) as unknown as typeof fetch;
+
+      let releasePost: (v: unknown) => void = () => {};
+      const { api } = await import("../../api/client");
+      (api.setExecutionMode as ReturnType<typeof vi.fn>)
+        .mockImplementationOnce(() => new Promise((res) => { releasePost = res; }));
+
+      render(
+        <TerminalLayout activePage="dashboard" onNav={() => {}}>
+          <div>page content</div>
+        </TerminalLayout>
+      );
+      await act(async () => {});
+      const readsBeforeChange = issuedReads;
+
+      // The change starts and hangs unresolved.
+      fireEvent.click(chip(/^copilot$/i));
+      await act(async () => {});
+
+      // A poll tick fires while it is in flight — no read should be issued.
+      await act(async () => { vi.advanceTimersByTime(15_000); });
+      expect(issuedReads).toBe(readsBeforeChange);
+
+      // The change confirms.
+      await act(async () => { releasePost({ mode: "copilot" }); });
+      expect(chip(/^copilot$/i)).toHaveAttribute("aria-pressed", "true");
+
+      // Reads outstanding from before the change now land, carrying "manual".
+      // They must be discarded rather than overwrite the confirmed mode.
+      await act(async () => { pendingReads.forEach((r) => r()); });
+
+      expect(chip(/^copilot$/i)).toHaveAttribute("aria-pressed", "true");
+      expect(chip(/^manual$/i)).toHaveAttribute("aria-pressed", "false");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("clears the unconfirmed warning once the server answers", async () => {
