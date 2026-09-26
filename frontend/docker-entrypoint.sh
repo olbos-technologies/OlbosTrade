@@ -115,7 +115,7 @@ ${REAL_IP_BLOCK}
     # was cached first for a year: replace the hero image and nobody sees the new
     # one until 2027. The old rule matched them with the hashed assets and the
     # comment above only ever described /assets/.
-    location ~* \.(png|jpg|jpeg|gif|svg|ico|woff2?)\$ {
+    location ~* \.(png|jpg|jpeg|gif|svg|ico|webp|woff2?)\$ {
         add_header Cache-Control "public, max-age=3600, must-revalidate";
         try_files \$uri =404;
     }
