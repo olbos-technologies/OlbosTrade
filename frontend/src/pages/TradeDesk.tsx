@@ -821,7 +821,7 @@ export default function TradeDesk({
         {/* P&L BREAKDOWN */}
         {tab === "pnl" && <PnLBreakdown />}
 
-        {/* RISK PROFILE */}
+        {/* TRADING STYLE */}
         {tab === "mode" && (
           <div style={{ padding: 20, maxWidth: 720 }}>
             <div className="panel-title" style={{ marginBottom: 16 }}>Market Regime & Trading Style</div>
@@ -830,7 +830,7 @@ export default function TradeDesk({
               padding: "8px 12px", marginBottom: 20,
               lineHeight: 1.7,
             }}>
-              Risk Profile controls position sizing, strategy selection, and risk budget.<br />
+              Trading style controls position sizing, strategy selection, and risk budget.<br />
               Execution Mode (bar above) controls whether trades need your approval.<br />
               In AUTOPILOT, both must be set — the system will trade within your guardrail limits.
             </div>

@@ -96,6 +96,7 @@ from app.api.routes import alerts
 from app.api.routes import ibkr_live
 from app.api.routes import forecasts
 from app.api.routes import signal_research
+from app.api.routes import crypto as crypto_routes
 from app.core.config import settings
 
 logger = get_logger(__name__)
@@ -260,6 +261,7 @@ app.include_router(alerts.notif_router,prefix="/api/notifications",tags=["Notifi
 app.include_router(ibkr_live.router,   prefix="/api/ibkr",         tags=["IBKR Live Data"])
 app.include_router(forecasts.router,   prefix="/api/forecasts",    tags=["Probabilistic Intelligence"])
 app.include_router(signal_research.router, prefix="/api/signal-research", tags=["Signal Research"])
+app.include_router(crypto_routes.router, prefix="/api/crypto",    tags=["Crypto"])
 
 
 # ── Startup ─────────────────────────────────────────────────────────────────
@@ -433,6 +435,7 @@ async def _background_scheduler() -> None:
 
     equity_interval_s  = settings.equity_signal_interval_minutes * 60
     options_interval_s = 30 * 60   # 30 minutes
+    crypto_interval_s  = settings.crypto_signal_interval_minutes * 60
     regime_interval_s  = 30 * 60   # 30 minutes
     greeks_interval_s  = 60        # 1 minute
     fills_interval_s   = 30        # 30 seconds
@@ -462,6 +465,11 @@ async def _background_scheduler() -> None:
     # (startup already ran regime + equity scan)
     last_equity  = _now
     last_options = _now
+    # 0.0, not _now, unlike equity/options: there is no crypto counterpart to
+    # the startup equity scan, so waiting a full interval after boot would mean
+    # a restart silently costs a scan cycle of crypto coverage. The scan is
+    # read-only and cheap, so running it on the first tick is free.
+    last_crypto  = 0.0
     last_regime  = _now
     last_greeks  = 0.0   # Greeks update on first tick is fine (lightweight)
     last_fills   = 0.0
@@ -539,6 +547,18 @@ async def _background_scheduler() -> None:
                         getattr(_current_regime, "regime_type", "unknown"),
                     )
                 last_equity = now
+
+            # Crypto signal scan — READ-ONLY (phase 1). Deliberately NOT gated
+            # on _current_regime the way the equity branch above is: that regime
+            # is SPY/VIX-derived and says nothing about crypto, so gating on it
+            # would be borrowing an unrelated market's verdict. Nothing here can
+            # execute (see crypto_scan.py), so there is no risk for a regime
+            # gate to manage — it is a measurement job, and suppressing
+            # measurement during a stressed equity tape would throw away the
+            # most informative crypto observations in the sample.
+            if settings.crypto_enabled and now - last_crypto >= crypto_interval_s:
+                await _guarded(_run_crypto_scan(), "crypto_scan", 120)
+                last_crypto = now
 
             # Every 30 min: options spread signal scan across the whole
             # watchlist (if regime allows) — see _run_options_scan_watchlist's
@@ -916,6 +936,20 @@ async def _record_options_rejection(
         regime=regime_name,
         evidence=evidence,
     )
+
+
+async def _run_crypto_scan() -> None:
+    """
+    Scheduler entry point for the read-only crypto scan.
+
+    A thin wrapper rather than a direct call so the scan itself lives in a
+    service module that tests can import without pulling in main.py's app,
+    lifespan and 150-odd route imports — and so main.py keeps depending on
+    services rather than the reverse.
+    """
+    from app.services.crypto_scan import run_crypto_scan
+
+    await run_crypto_scan()
 
 
 async def _run_equity_scan() -> None:

@@ -496,7 +496,7 @@ export default function Dashboard() {
                 { label: "Daily Loss",    val: Math.max(0, -(guardrailStatus?.daily_loss_pct  || 0)) * 100, max: 2,  unit: "%" },
                 { label: "Weekly Loss",   val: Math.max(0, -(guardrailStatus?.weekly_loss_pct || 0)) * 100, max: 5, unit: "%" },
                 { label: "Trades Today",  val: guardrailStatus?.trades_today || 0, max: 3, unit: "" },
-                { label: "Consec. Loss",  val: guardrailStatus?.consecutive_losses || 0, max: 3, unit: "" },
+                { label: "Consecutive losses", val: guardrailStatus?.consecutive_losses || 0, max: 3, unit: "" },
               ].map(g => {
                 const pct = Math.min((g.val / g.max) * 100, 100);
                 const color = pct < 60 ? "var(--green)" : pct < 85 ? "var(--amber)" : "var(--red)";
@@ -519,10 +519,10 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Active risk profile */}
+          {/* Active trading style */}
           <div style={{ borderBottom: "1px solid var(--line-dim)" }}>
             <div className="panel-head">
-              <span className="panel-title">Active Risk Profile</span>
+              <span className="panel-title">Active Trading Style</span>
             </div>
             <div style={{ padding: "12px 14px" }}>
               <Badge

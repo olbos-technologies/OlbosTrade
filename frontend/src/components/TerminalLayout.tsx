@@ -25,7 +25,7 @@ import BottomSheet from "./BottomSheet";
 import MobileBottomNav from "./MobileBottomNav";
 import { isTradeDeskV2Enabled } from "../trade-desk/featureFlags";
 import { TerminalNavProvider } from "./TerminalNavContext";
-import { Badge } from "./ui";
+import { Badge, Button } from "./ui";
 
 // ── Icons (inline SVG — no dep) ───────────────────────────────────────────────
 const Icon = ({ d, size = 16 }: { d: string; size?: number }) => (
@@ -117,12 +117,103 @@ function AccountMenuItem({ icon, label, onClick, danger = false }: {
 }
 
 // Header control for execution mode — single tri-state (Manual / Copilot / Autopilot).
+/**
+ * How long an execution-mode read stays trustworthy.
+ *
+ * The poll runs every 15 SECONDS (`ei` below) — not every 5 minutes, which is
+ * the market-snapshot timer next to it. An earlier version of this constant was
+ * sized against that wrong number and sat at 11 minutes, roughly 44 missed
+ * polls, which for a control that decides whether the desk trades unattended is
+ * no guard at all.
+ *
+ * 2 minutes is eight missed cycles: long enough that one slow response or a
+ * brief hiccup is not alarming, short enough that a dead poll surfaces while it
+ * still matters. A read that FAILS marks itself stale immediately, so this
+ * threshold only governs the case where the poll stops firing without failing —
+ * a suspended tab, a cleared interval.
+ */
+const EXEC_STALE_MS = 2 * 60 * 1000;
+
+/**
+ * What each mode actually does, in one sentence, in the operator's terms —
+ * "will it trade without me?" is the only question this control has to answer.
+ */
+const EXEC_MODE_SENTENCE: Record<"manual" | "copilot" | "autopilot", string> = {
+  manual: "MANUAL in force — signals only. Nothing is submitted, and no approvals are queued.",
+  copilot: "COPILOT in force — every trade waits for your approval before it is submitted.",
+  autopilot: "AUTOPILOT in force — the desk submits trades unattended, within your guardrails and the kill switch.",
+};
+
+/**
+ * The deliberate second act required to enter AUTOPILOT.
+ *
+ * Mirrors KillConfirmModal rather than introducing a second dialog idiom: the
+ * two controls guard opposite ends of the same decision — one stops the desk,
+ * one lets it run unattended — so they should feel the same to use.
+ *
+ * It states the mode currently in force, because the operator is about to leave
+ * it, and names the guardrails that still apply. Naming them is the point: the
+ * honest claim is "unattended within these limits", not "unattended", and not
+ * "safe".
+ */
+function AutopilotConfirmModal({
+  currentMode,
+  busy,
+  onCancel,
+  onConfirm,
+}: {
+  currentMode: "manual" | "copilot" | "autopilot";
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="autopilot-confirm-title"
+      data-testid="autopilot-confirm"
+      style={{
+        position: "fixed", inset: 0, zIndex: 300,
+        background: "rgba(0,0,0,0.72)",
+        display: "flex", alignItems: "center", justifyContent: "center", padding: 24,
+      }}
+    >
+      <div className="glass-surface" style={{ width: "100%", maxWidth: 460, border: "1px solid rgba(245,158,11,0.5)", padding: 20 }}>
+        <div id="autopilot-confirm-title" style={{ fontFamily: "var(--sans)", fontSize: 15, color: "var(--amber)", fontWeight: 700, marginBottom: 10 }}>
+          Hand the desk unattended execution?
+        </div>
+        <div style={{ fontFamily: "var(--sans)", color: "var(--ink-dim)", fontSize: 12, lineHeight: 1.7, marginBottom: 14 }}>
+          Currently <strong style={{ color: "var(--ink)" }}>{currentMode.toUpperCase()}</strong>.
+          In AUTOPILOT the desk submits orders without asking you first.
+        </div>
+        <div style={{ fontFamily: "var(--sans)", color: "var(--ink-dim)", fontSize: 11.5, lineHeight: 1.7, marginBottom: 16 }}>
+          Still enforced: your trading style&rsquo;s sizing and daily trade cap, the
+          guardrail loss limits, and the kill switch. Not enforced by this
+          control: whether your broker connection and market data are healthy.
+        </div>
+        <div style={{ display: "flex", gap: 10 }}>
+          <Button onClick={onCancel} disabled={busy} style={{ flex: 1 }}>
+            Cancel
+          </Button>
+          <Button onClick={onConfirm} disabled={busy} style={{ flex: 1 }}>
+            {busy ? "Enabling…" : "Enable Autopilot"}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ExecutionModeControl({
   mode,
   onChange,
   busy = false,
   error = null,
   pending = null,
+  confirmedAt = null,
+  stale = false,
+  ack = null,
   size = "compact",
 }: {
   mode: "manual" | "copilot" | "autopilot";
@@ -138,6 +229,14 @@ function ExecutionModeControl({
    *  from `mode` — never as selected — so an in-flight request can never be
    *  mistaken for an applied one. */
   pending?: "manual" | "copilot" | "autopilot" | null;
+  /** When the server last confirmed `mode`. null = never successfully read. */
+  confirmedAt?: number | null;
+  /** True when the confirming read is older than EXEC_STALE_MS, or has failed
+   *  since. Rendered as an explicit warning rather than letting `mode` keep
+   *  presenting a confident value it can no longer vouch for. */
+  stale?: boolean;
+  /** Transient "the server applied this" acknowledgement. */
+  ack?: string | null;
 }) {
   const options: { key: "manual" | "copilot" | "autopilot"; label: string; onColor: string }[] = [
     { key: "manual", label: "MANUAL", onColor: "var(--ink-dim)" },
@@ -227,6 +326,59 @@ function ExecutionModeControl({
           {error}
         </div>
       )}
+
+      {/* An explicit current-state sentence, not only the tooltip. PLAN Batch
+          5.4: every transition states the mode in force and what it means, so
+          the operator never has to infer it from which chip looks lit. */}
+      <div
+        data-testid="exec-mode-state"
+        style={{
+          fontFamily: "var(--sans)", fontSize: touch ? 12 : 9.5,
+          lineHeight: 1.5, color: "var(--ink-faint)",
+          maxWidth: touch ? undefined : 340,
+          textAlign: touch ? "left" : "right",
+        }}
+      >
+        {pending
+          ? `Requesting ${pending.toUpperCase()} — not applied until the server confirms.`
+          : EXEC_MODE_SENTENCE[mode]}
+      </div>
+
+      {/* Freshness, stated separately from the mode itself. A failed or stale
+          read must not look like a confident answer — the same rule the kill
+          switch already follows, and the reason this is not folded into the
+          sentence above. */}
+      {stale && (
+        <div
+          role="status"
+          data-testid="exec-mode-stale"
+          style={{
+            fontFamily: "var(--sans)", fontSize: touch ? 11.5 : 9.5, fontWeight: 600,
+            color: "var(--amber)", background: "rgba(245,158,11,0.12)",
+            border: "1px solid rgba(245,158,11,0.5)", borderRadius: 4,
+            padding: "4px 7px", maxWidth: touch ? undefined : 340,
+            textAlign: "left", lineHeight: 1.4,
+          }}
+        >
+          {confirmedAt
+            ? `Unconfirmed for ${Math.round((Date.now() - confirmedAt) / 60000)} min — last read said ${mode.toUpperCase()}. This is not a confirmation of the current mode.`
+            : "Execution mode could not be read — the value shown is a default, not a confirmation."}
+        </div>
+      )}
+
+      {ack && (
+        <div
+          role="status"
+          data-testid="exec-mode-ack"
+          style={{
+            fontFamily: "var(--sans)", fontSize: touch ? 11.5 : 9.5, fontWeight: 600,
+            color: "var(--green)", maxWidth: touch ? undefined : 340,
+            textAlign: touch ? "left" : "right", lineHeight: 1.4,
+          }}
+        >
+          {ack}
+        </div>
+      )}
     </div>
   );
 }
@@ -268,7 +420,47 @@ function TickerStrip({ onToggle, sidebarExpanded, isMobile }: {
   // happened.
   const [execPending, setExecPending] = useState<"manual" | "copilot" | "autopilot" | null>(null);
 
-  const setExec = (m: "manual" | "copilot" | "autopilot") => {
+  // When the server last confirmed execMode, and whether that confirmation has
+  // gone stale. Tracked because the poll below used to swallow every failure:
+  // a dead endpoint left the last-known mode on screen looking exactly as
+  // confident as a fresh one. For the control that decides whether the desk
+  // trades unattended, "I could not check" must not render as "MANUAL".
+  const [execConfirmedAt, setExecConfirmedAt] = useState<number | null>(null);
+  const [execStale, setExecStale] = useState(true);
+
+  // Transient acknowledgement of an APPLIED change. PLAN Batch 5.4 asks for
+  // returning to Manual to be "clearly acknowledged"; before this, a successful
+  // change was entirely silent and only failures said anything.
+  const [execAck, setExecAck] = useState<string | null>(null);
+
+  // Autopilot is the one transition that is gated. Entering it hands the desk
+  // permission to submit orders with nobody watching, so it takes a second,
+  // deliberate act — the same treatment the kill switch already gets. Leaving
+  // autopilot is never gated: reducing autonomy must always be one click.
+  const [autopilotConfirm, setAutopilotConfirm] = useState(false);
+
+  // Ordering guard between the 5-minute poll and a mode change.
+  //
+  // The poll is a GET issued independently of applyExec's POST, so a read that
+  // started BEFORE a change can resolve AFTER it and overwrite the freshly
+  // confirmed mode — showing MANUAL as newly confirmed while the server is
+  // already in AUTOPILOT, and clearing the stale flag on the way. Each mutation
+  // bumps this counter; a poll that started under an older value is discarded
+  // rather than applied. A ref, not state, because the poll closure has to read
+  // the current value at resolution time, not the one captured at render.
+  const execGenRef = React.useRef(0);
+
+  // True while a mode change is in flight. Raised in review on #84: bumping the
+  // generation only at the START of a mutation leaves a hole. A poll issued
+  // AFTER the bump but BEFORE the POST resolves captures the new generation, so
+  // when it lands — carrying the pre-change mode the server had not yet applied
+  // — its generation still matches and it overwrites the confirmed value and
+  // clears staleness. The window is small but the poll runs every 15s, so it is
+  // hit routinely, and the symptom is the exact thing this control must never
+  // do: show a mode the server is not in.
+  const execMutatingRef = React.useRef(false);
+
+  const applyExec = (m: "manual" | "copilot" | "autopilot") => {
     if (m === execMode || execBusy) return;
 
     // No optimistic update. This control decides whether the desk trades on
@@ -279,6 +471,8 @@ function TickerStrip({ onToggle, sidebarExpanded, isMobile }: {
     // reasonably read that as "trading is paused" while autopilot kept
     // running. For a safety control, showing an unconfirmed state is the
     // worst available failure, so execMode only ever moves on a server answer.
+    execGenRef.current += 1;
+    execMutatingRef.current = true;
     setExecPending(m);
     setExecBusy(true);
     setExecError(null);
@@ -286,6 +480,13 @@ function TickerStrip({ onToggle, sidebarExpanded, isMobile }: {
       .then((d: any) => {
         if (d?.mode) {
           setExecMode(d.mode);
+          setExecConfirmedAt(Date.now());
+          setExecStale(false);
+          setExecAck(
+            d.mode === "manual"
+              ? "Server confirmed MANUAL — approvals stopped, nothing will be submitted."
+              : `Server confirmed ${String(d.mode).toUpperCase()}.`,
+          );
         } else {
           // 2xx with no mode in the body: the change may or may not have
           // applied. Say exactly that rather than assuming either way.
@@ -313,9 +514,47 @@ function TickerStrip({ onToggle, sidebarExpanded, isMobile }: {
         );
       })
       .finally(() => {
+        // Bumped AGAIN on settle, which is the half that closes the hole: any
+        // read issued during the mutation window is invalidated now, whatever
+        // generation it captured on the way in.
+        execGenRef.current += 1;
+        execMutatingRef.current = false;
         setExecPending(null);
         setExecBusy(false);
       });
+  };
+
+  // Staleness by AGE as well as by failure. A failed fetch sets the flag, but a
+  // poll that simply stops firing — a suspended tab, a cleared interval — never
+  // fails and so would never set it. Age is what catches that case.
+  useEffect(() => {
+    const tick = setInterval(() => {
+      setExecStale((prev) => {
+        if (execConfirmedAt == null) return true;
+        return prev || Date.now() - execConfirmedAt > EXEC_STALE_MS;
+      });
+    }, 30_000);
+    return () => clearInterval(tick);
+  }, [execConfirmedAt]);
+
+  // Acknowledgements are transient — a stale "confirmed MANUAL" sitting under
+  // the control hours later is its own small lie.
+  useEffect(() => {
+    if (!execAck) return;
+    const t = setTimeout(() => setExecAck(null), 8000);
+    return () => clearTimeout(t);
+  }, [execAck]);
+
+  const setExec = (m: "manual" | "copilot" | "autopilot") => {
+    if (m === execMode || execBusy) return;
+    setExecAck(null);
+    // Only the step INTO autopilot is confirmed. Everything else, including
+    // every step down, applies immediately.
+    if (m === "autopilot") {
+      setAutopilotConfirm(true);
+      return;
+    }
+    applyExec(m);
   };
   const [regime, setRegime] = useState<{regime: string; equity_allowed: boolean; options_allowed: boolean; equity_strategies: string[]; options_strategies: string[]} | null>(null);
 
@@ -353,11 +592,32 @@ function TickerStrip({ onToggle, sidebarExpanded, isMobile }: {
         .catch(() => {});
     fetchMode();
 
-    const fetchExec = () =>
-      fetch("/api/trade-desk/execution-mode")
+    // A failed read marks the mode stale rather than leaving the last value on
+    // screen indistinguishable from a fresh one. `.catch(() => {})` here was
+    // the bug: for five minutes at a time, an unreachable backend and a
+    // confirmed MANUAL looked identical.
+    const fetchExec = () => {
+      // Don't even issue a read while a change is settling — the answer cannot
+      // be authoritative, and the POST's own response is what confirms the mode.
+      if (execMutatingRef.current) return Promise.resolve();
+      const gen = execGenRef.current;
+      // Superseded reads are dropped entirely — neither the mode nor the
+      // freshness flag may be written by a response a mode change has outrun.
+      const superseded = () => execGenRef.current !== gen;
+      return fetch("/api/trade-desk/execution-mode")
         .then(r => r.json())
-        .then(d => { if (d.mode) setExecMode(d.mode); })
-        .catch(() => {});
+        .then(d => {
+          if (superseded()) return;
+          if (d.mode) {
+            setExecMode(d.mode);
+            setExecConfirmedAt(Date.now());
+            setExecStale(false);
+          } else {
+            setExecStale(true);
+          }
+        })
+        .catch(() => { if (!superseded()) setExecStale(true); });
+    };
     fetchExec();
 
     // Refresh every 5 minutes
@@ -482,6 +742,19 @@ function TickerStrip({ onToggle, sidebarExpanded, isMobile }: {
   // sheet at 44px where a mis-tap between MANUAL and AUTOPILOT is not one
   // stray thumb away. State stays here so there is still a single owner of
   // execMode — no parallel mobile component holding its own copy.
+  // Defined once and rendered by BOTH returns below. The shell forks into a
+  // mobile branch and a desktop branch, and a gate mounted in only one of them
+  // is a gate that does not exist on the other — which is how the first version
+  // of this shipped: the desktop chip opened nothing and silently did nothing.
+  const autopilotGate = autopilotConfirm ? (
+    <AutopilotConfirmModal
+      currentMode={execMode}
+      busy={execBusy}
+      onCancel={() => setAutopilotConfirm(false)}
+      onConfirm={() => { setAutopilotConfirm(false); applyExec("autopilot"); }}
+    />
+  ) : null;
+
   if (isMobile) {
     const modeTone =
       execMode === "autopilot" ? "var(--amber)"
@@ -527,19 +800,38 @@ function TickerStrip({ onToggle, sidebarExpanded, isMobile }: {
             onClick={() => setMobileSheetOpen(true)}
             aria-haspopup="dialog"
             aria-expanded={mobileSheetOpen}
+            data-testid="mobile-exec-trigger"
+            // Colour alone must never carry the state (PLAN product rule 3).
+            aria-label={
+              execStale
+                ? `Execution mode unconfirmed — last read said ${execMode.toUpperCase()}. Open execution mode.`
+                : `Execution mode ${execMode.toUpperCase()}. Open execution mode.`
+            }
             style={{
               display: "flex", alignItems: "center", gap: 6,
               height: 44, padding: "0 14px", marginRight: 2, borderRadius: 22,
               // tint(), not `${modeTone}66` — modeTone is a var() reference, and
               // concatenating an alpha onto one drops the whole declaration, so
               // this border has never rendered. See utils/tint.ts.
-              background: "var(--bg-3)", border: `1px solid ${tint(modeTone, 0.4)}`,
-              color: modeTone, fontFamily: "var(--mono)", fontSize: 10,
+              background: "var(--bg-3)",
+              border: `1px solid ${tint(execStale ? "var(--amber)" : modeTone, 0.4)}`,
+              color: execStale ? "var(--amber)" : modeTone,
+              fontFamily: "var(--mono)", fontSize: 10,
               letterSpacing: "0.08em", cursor: "pointer", whiteSpace: "nowrap",
             }}
           >
-            <span className={`dot ${mktOpen() ? "live" : "dead"}`} style={{ background: modeTone }} />
-            {execMode.toUpperCase()}
+            {/* When the mode is unconfirmed this trigger must not keep
+                presenting it confidently. It is the ONLY execution-state
+                indicator visible on a phone until the sheet is opened — the
+                freshness warning lives inside the sheet — so without this the
+                mobile surface quietly contradicted the desktop one after a
+                failed poll, which is the exact failure the staleness work
+                exists to prevent. */}
+            <span
+              className={`dot ${execStale ? "dead" : mktOpen() ? "live" : "dead"}`}
+              style={{ background: execStale ? "var(--amber)" : modeTone }}
+            />
+            {execStale ? `${execMode.toUpperCase()}?` : execMode.toUpperCase()}
           </button>
         </div>
 
@@ -568,6 +860,9 @@ function TickerStrip({ onToggle, sidebarExpanded, isMobile }: {
               busy={execBusy}
               error={execError}
               pending={execPending}
+              confirmedAt={execConfirmedAt}
+              stale={execStale}
+              ack={execAck}
               size="touch"
             />
             <p style={{
@@ -581,12 +876,15 @@ function TickerStrip({ onToggle, sidebarExpanded, isMobile }: {
             </p>
           </div>
         </BottomSheet>
+
+        {autopilotGate}
       </div>
     );
   }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", flexShrink: 0 }}>
+    {autopilotGate}
     <div className="instrument-ticker" style={{
       display: "flex",
       alignItems: "center",
@@ -661,7 +959,7 @@ function TickerStrip({ onToggle, sidebarExpanded, isMobile }: {
         display: "flex", alignItems: "center", gap: 8, flexShrink: 0,
         padding: "0 12px", borderLeft: "1px solid var(--line-dim)",
       }}>
-        <ExecutionModeControl mode={execMode} onChange={setExec} busy={execBusy} error={execError} pending={execPending} />
+        <ExecutionModeControl mode={execMode} onChange={setExec} busy={execBusy} error={execError} pending={execPending} confirmedAt={execConfirmedAt} stale={execStale} ack={execAck} />
       </div>
 
       {/* Market status + clock — pinned right */}

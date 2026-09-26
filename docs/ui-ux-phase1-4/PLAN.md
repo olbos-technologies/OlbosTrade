@@ -1,3 +1,65 @@
+# Status of this plan — read before implementing anything below
+
+This file has been on `main` for a while and is byte-identical to the copy on
+`codex/mobile-ux-and-tenant-foundation`, so the plan itself was adopted long ago.
+What was missing was any record of which of it is still true — that is what this
+preamble is. That branch's **code** was not merged; the reasons are at the bottom
+of this preamble and are worth reading before anyone tries again.
+
+The plan is kept because the product rules in it are good and worth holding to —
+in particular "truth before density", "failed data must never resemble a safe
+value", the semantic-colour restraint, and the 44px/320px verification matrix.
+
+**But almost every batch it specifies was already implemented by the 41 commits
+it predates.** Audited against `main` on 2026-09-25, file by file:
+
+| Batch | PLAN item | Actual state on `main` |
+|---|---|---|
+| 1.1 | ChartWorkstation says `AUTOPILOT READY` | **Done.** Uses `formatExecutionModeDisplay(execMode, killSwitch?.active)` reading the real mode. |
+| 1.1 | ENTRY and RESISTANCE share `#f4c64f` | **Done.** `chartLevelColors()` — entry `var(--amber)`, resistance `#a78bfa`, with a comment saying why. |
+| 1.1 | `mode-badge` misused for BUY/SELL | **Done.** `SignalAttribution` / `.signal-badge` classes in use. |
+| 1.2 | Sidebar kill switch navigates to Risk | **Done.** `<KillSwitchButton variant="sidebar" expanded={showLabels} />`. |
+| 1.2 | Status bar hardcodes `TRADE DESK` | **Done.** No such string remains. |
+| 1.3 | `trade:logs` label | **Done.** Nav leaf is "P&L Breakdown", with "Execution Monitor" as a separate leaf. |
+| 1.3 | "Risk profile" → **Trading style** | **WAS THE ONE REAL GAP.** Five user-facing occurrences plus four stale comments. Fixed, and locked by `src/utils/__tests__/vocabulary.test.ts`. |
+| 2.1 | ExecutiveSummary advanced collapse | **Done.** Persists to `olbos.execSummary.advanced`, exactly the key this plan specifies. |
+| 2.3 | Welcome empty state | **Done.** `WelcomeBanner.tsx`. |
+| 3.1 | MetricHint glossary | **Done.** `MetricHint.tsx` with `METRIC_HINTS` + alias map. |
+| 3.1 | `Consec. Loss` spelled out | **Done here.** Dashboard label is now "Consecutive losses"; the `consec. loss` alias is retained. |
+| 3.2 | Chart legend | **Done.** In `CandlestickChart.tsx` — SMA-20, VWAP (dashed), Volume, plus every level, `aria-label="Chart legend"`. |
+| 3.2 | Loading skeleton | **Done.** `skeleton-block` / `skeleton-shimmer` with `aria-busy`. |
+| 4.1 | Personal `mailto:` in Pro CTA | **Done.** No `mailto` on Landing; replaced by request-access. |
+| 4.1 | Five `title="Not published"` footer stubs | **Not a defect.** One "Not published" remains as a track-record *value*, which this plan explicitly says to keep. |
+| 5.1–5.3 | Mobile shell, 44px targets, ≤760px card reflow, hide moving ticker | **Done in #82**, independently. This is why the branch could not simply be merged. |
+
+| 5.4 | Execution safety surface | **Done.** Server-confirmed vs requested state were already separated (no optimistic update; `execPending` rendered dashed, never selected). Added: an Autopilot confirmation gate, an acknowledgement of applied changes, a current-state sentence, and freshness — the poll's `.catch(() => {})` meant an unreachable backend and a confirmed MANUAL were pixel-identical for five minutes at a time. |
+
+**Still genuinely open from this plan:** nothing. Phases 1–4 were delivered by the
+commits this plan predates; Phase 5 by #82 and the 5.4 work above.
+
+## Why the branch itself was not merged
+
+1. **Duplicate alembic revision.** Its `0029_add_multitenant_foundation.py`
+   declares `revision = "0029"`, `down_revision = "0028"` — identical to `main`'s
+   `0029_add_options_scan_rejections.py`. Two files with one revision id makes
+   `alembic upgrade head` fail, and `deploy/hetzner/update.sh` runs it. Merging
+   would have broken the deploy.
+2. **A second, incompatible auth/billing architecture.** It creates `users` keyed
+   on `clerk_user_id` (main's `0030` already creates `users` with email +
+   password hash), `broker_credentials` duplicating `broker_connections` from
+   `0034`, and `subscriptions` with Stripe ids — adding `stripe` and
+   `clerk-backend-api` as dependencies. That contradicts the shipped decisions:
+   own auth, request-access waitlist, manual tiers, no billing.
+3. **Phase 5 collided with #82 silently.** `index.css` auto-merged from 3 mobile
+   `@media` blocks to 4 — two independent implementations of the same 44px and
+   card-reflow rules concatenated rather than reconciled. jsdom does no layout, so
+   `npm test` stays green while the cascade fights itself.
+
+Treat the sections below as the product-rules document they are, not as a
+work queue. Check each item against `main` before implementing it.
+
+---
+
 # OlbosTrade UI/UX — Phases 1–4 Implementation Plan
 
 Frontend trust, clarity, and density work derived from
@@ -296,3 +358,98 @@ Use one phase per session (or one batch if context is tight).
 - [x] CHANGELOG updated *(Phases 1–4)*
 - [ ] Operator-approved deploy via `deploy/hetzner/update.sh`
 - [ ] Backend architecture audit HIGH items still deferred (explicitly out of scope)
+
+---
+
+## Phase 5 — Institutional mobile workstation
+
+**Goal:** Make the phone experience an intentional operator workflow rather
+than a compressed desktop terminal. This is a display and interaction phase;
+it must not change execution, risk, sizing, broker, or authentication logic.
+
+### Product rules
+
+1. **Truth before density:** Paper/live, execution mode, kill state, data
+   freshness, and risk availability must be readable before any performance
+   metric. Failed data must never resemble a safe value.
+2. **One decision per screen:** A screen identifies the current operational
+   state, the highest-priority next action, and supporting detail—in that order.
+3. **Semantic restraint:** Gold is brand/active navigation only; blue is
+   selection; green/red communicate verified positive/negative or approval/
+   rejection; amber is caution. Do not use color as the only state cue.
+4. **Touch is the baseline:** Every mobile control has a 44 × 44px minimum hit
+   area. Critical actions must remain usable at 320px wide and with the on-screen
+   keyboard open.
+5. **Progressive disclosure:** Show the position/signal/action summary first;
+   tables, diagnostics, and configuration are expandable—not removed.
+
+### Batch 5.1 — Mobile shell safety and ergonomics
+
+**Files:** `frontend/src/components/TerminalLayout.tsx`, `frontend/src/index.css`,
+`frontend/src/components/MobileBottomNav.tsx`
+
+- Replace the compressed three-button execution-mode header control with a
+  compact current-state trigger that reveals three 44px choices on demand.
+- On phones, hide the continuously moving ticker and secondary clock from the
+  fixed header. Preserve execution state, and leave market detail available in
+  Markets—not as inaccessible moving chrome.
+- Make sidebar group rows, children, and Advanced toggle 44px tall on mobile.
+- Preserve the existing six bottom destinations until product analytics supports
+  a reduction; do not silently remove a primary route.
+
+**Acceptance:** At 320px and 390px, no clipped execution option; all mobile
+shell controls are at least 44px tall; “More” remains dismissible and clears
+the bottom navigation; keyboard focus is visible.
+
+### Batch 5.2 — Operational dashboard hierarchy
+
+**Files:** `frontend/src/pages/Dashboard.tsx`, `frontend/src/components/GlobalRiskStatus.tsx`,
+`frontend/src/components/WelcomeBanner.tsx`
+
+- Replace a collection of separate `UNKNOWN`/`UNAVAILABLE` chips with one
+  compact system-health banner that states what failed, when it was last known,
+  and has a Retry/action path where the API supports it.
+- Add one state-driven next action above secondary analytics: Review queue,
+  Scan equities, Scan options, Review risk, or Connect broker.
+- Keep risk state and execution state visible in the first viewport; move
+  secondary performance blocks below it.
+
+### Batch 5.3 — Mobile data views
+
+**Files:** position, order, execution queue, and scan result components
+
+- At ≤760px, replace horizontal data-table dependency with expandable summary
+  rows. Initial content: symbol, direction/status, primary price/P&L, risk or
+  confidence, and the safe next action. Expose remaining fields in Details.
+- Preserve desktop tables and all existing information.
+- Use a clear empty state that names the next useful action; avoid a blank table
+  as the only outcome.
+
+### Batch 5.4 — Execution safety surface
+
+**Files:** `TerminalLayout.tsx`, `KillSwitchButton.tsx`, existing modal/shared UI
+
+- Give every execution-mode transition an explicit current-state sentence and a
+  reason/guardrail summary. Autopilot requires a separate deliberate
+  confirmation; returning to Manual is immediate and clearly acknowledged.
+- Show server-confirmed state, requested state, and data freshness separately.
+- Do not change APIs or make optimistic mode claims.
+
+### Verification matrix
+
+| Scenario | Expected outcome |
+|---|---|
+| 320px / 390px portrait | No horizontal page overflow; all shell controls ≥44px |
+| Offline / partial API failure | One honest recovery banner; no false $0 or “clear” state |
+| Open positions / queue | First screen gives a clear review path; details remain reachable |
+| Manual → Copilot → Autopilot | Server-confirmed state only; Autopilot confirmation is explicit |
+| Kill switch engaged | State is visible in fixed context and action stays cancelable |
+| Reduced motion | No required information relies on animation or marquee movement |
+
+### Reusable agent prompt (Codex, Claude Code, or Cursor)
+
+> Implement one Batch from Phase 5 of `docs/ui-ux-phase1-4/PLAN.md` only.
+> Preserve all trading, risk, broker, sizing, auth, and API behavior. Reuse
+> existing tokens and components. Do not deploy. Add or update focused tests,
+> run `cd frontend && npm test && npm run build`, and report screenshots or
+> mobile verification at 320px and 390px.

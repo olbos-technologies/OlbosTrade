@@ -11,6 +11,7 @@ import ModeAnalytics   from "./pages/ModeAnalytics";
 // Consolidated hubs (each folds two former pages behind tabs)
 import RiskCenter      from "./pages/RiskCenter";          // Risk Monitor + Guardrails
 import SignalsCenter   from "./pages/SignalsCenter";       // Equity Signals + Strategy
+import CryptoSignals   from "./pages/CryptoSignals";       // Crypto (read-only, phase 1)
 import OptionsSignals  from "./pages/OptionsSignals";       // Live options spread signal feed
 import SignalResearch  from "./pages/SignalResearch";       // Forward-return study over tracked signals
 import ResearchCenter  from "./pages/ResearchCenter";      // Research Lab: Strategy Lab + Market/Regime + Chart + Intel
@@ -76,6 +77,7 @@ export function tradeDeskPages(v2: boolean): Record<string, React.ComponentType>
 export const BASE_PAGES: Record<string, React.ComponentType> = {
   dashboard: Dashboard,
   equity:    SignalsCenter,
+  "crypto:signals": CryptoSignals,
   backtest:  BacktestCenter,
   lab:       ResearchCenter,
   risk:      RiskCenter,

@@ -21,6 +21,7 @@
 
 import { describe, it, expect } from "vitest";
 
+import { BASE_PAGES, tradeDeskPages } from "../../App";
 import { NAV_MODEL_LEGACY, NAV_MODEL_V2 } from "../../utils/navModels";
 import { filterNavForDisplay } from "../../utils/navLabels";
 
@@ -147,5 +148,37 @@ describe("the Account group only exists for a signed-in user", () => {
     // arguments and must keep its behaviour.
     const legacyCall = filterNavForDisplay(NAV_MODEL_V2, true, "dashboard");
     expect(legacyCall.some(g => g.id === "account")).toBe(true);
+  });
+});
+
+/**
+ * The inverse of the check above, and the other half of the same hole.
+ *
+ * navReachability's original tests go tab -> nav: they catch a page that exists
+ * but is invisible. Nothing went nav -> registry, so the opposite mistake — a
+ * sidebar entry whose key resolves to no page — was uncovered. That one is
+ * worse from the user's side: the menu item is right there, they click it, and
+ * they get whatever App.tsx does with an unknown key. Added while registering
+ * "crypto:signals", which is exactly the change that could have introduced it.
+ */
+describe("every nav key resolves to a real page", () => {
+  const V2_ONLY = new Set(Object.keys(tradeDeskPages(true)));
+
+  for (const [modelName, model] of [
+    ["NAV_MODEL_LEGACY", NAV_MODEL_LEGACY],
+    ["NAV_MODEL_V2", NAV_MODEL_V2],
+  ] as const) {
+    it(`${modelName}: no dead sidebar entries`, () => {
+      const dead = [...navKeys(model as any)].filter(
+        (key) => !(key in BASE_PAGES) && !V2_ONLY.has(key),
+      );
+      expect(dead).toEqual([]);
+    });
+  }
+
+  it("crypto:signals is registered in both models and in the page registry", () => {
+    expect(navKeys(NAV_MODEL_LEGACY as any).has("crypto:signals")).toBe(true);
+    expect(navKeys(NAV_MODEL_V2 as any).has("crypto:signals")).toBe(true);
+    expect("crypto:signals" in BASE_PAGES).toBe(true);
   });
 });

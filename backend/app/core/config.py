@@ -256,6 +256,53 @@ class Settings(BaseSettings):
     equity_min_confidence_paper: float = Field(default=0.45)
     equity_min_risk_reward: float = Field(default=1.80)
     earnings_gate_days: int = Field(default=3)
+    # ── Crypto (phase 1: read-only signals, no execution) ─────────────────
+    # Phase 1 generates crypto signals and records their forward outcomes so
+    # there is a real, dated sample with a denominator before any capital is
+    # committed. Nothing here can place an order: run_crypto_scan() has no
+    # route to handle_signal(), so this flag controls a measurement job, not a
+    # trading permission. It therefore defaults ON — a read-only scan that
+    # never runs collects nothing, and the collection is the deliverable.
+    crypto_enabled: bool = Field(default=True)
+    # Symbols in the internal DASH form (see crypto_signal_engine.
+    # normalize_crypto_symbol) — which is also the yfinance ticker and the
+    # value stored in signal_outcomes.ticker.
+    #
+    # This list is the intersection of two constraints, not a popularity
+    # ranking. (1) Every name is tradable on Alpaca's US crypto venue, so a
+    # later execution phase can act on the same population this phase
+    # measures — signals for an instrument the broker cannot trade would
+    # measure something unactionable. That is why liquid non-Alpaca names
+    # (ADA, XLM) are absent. (2) Every name clears
+    # MIN_REPRESENTABLE_PRICE, so no row collapses under the Numeric(12, 4)
+    # price columns — which is why SHIB and PEPE are absent despite being on
+    # Alpaca.
+    crypto_watchlist: str = Field(
+        default=(
+            "BTC-USD,ETH-USD,SOL-USD,XRP-USD,AVAX-USD,LINK-USD,"
+            "DOT-USD,LTC-USD,DOGE-USD,BCH-USD,UNI-USD,AAVE-USD"
+        )
+    )
+    # Crypto trades 24/7, so unlike the equity scan this cadence is not shaped
+    # by a session — it is purely how stale a daily-bar signal is allowed to
+    # get. Daily bars are the input, so anything under ~15 min would re-derive
+    # identical indicators; the (ticker, action, UTC-day) dedup in
+    # record_signal means the extra passes would write nothing either way.
+    crypto_signal_interval_minutes: int = Field(default=30)
+    crypto_scan_concurrency: int = Field(default=6)
+    # Deliberately NOT tied to effective_equity_min_confidence, and not lower
+    # than it. A crypto signal is scored with orderflow_score at its neutral
+    # default because no crypto orderflow feed exists (see
+    # crypto_signal_engine's docstring), so it clears this bar on strictly
+    # less evidence than an equity signal clearing the same number. A higher
+    # floor is what keeps the recorded cohort from being dominated by weak
+    # setups that only look comparable.
+    crypto_min_confidence: float = Field(default=0.60)
+    # Sizing for the recorded trade plan. Phase 1 never submits an order, so
+    # this only affects the advisory position_size/shares shown alongside a
+    # signal — but quoting equity sizing for an asset that routinely moves
+    # 5-10% in a day would be misleading the moment anyone reads it.
+    crypto_max_position_pct: float = Field(default=0.03)
     max_equity_positions: int = Field(default=5)
     max_options_positions: int = Field(default=5)
 
@@ -391,6 +438,40 @@ class Settings(BaseSettings):
     def get_equity_watchlist(self) -> list[str]:
         """Parse comma-separated watchlist into a list."""
         return [t.strip().upper() for t in self.equity_watchlist.split(",") if t.strip()]
+
+    def get_crypto_watchlist(self) -> list[str]:
+        """
+        Parse the crypto watchlist into canonical internal symbols.
+
+        Non-crypto entries are dropped — see the loop below.
+
+        Normalised rather than merely upper-cased: an operator overriding
+        CRYPTO_WATCHLIST is as likely to write ``BTC/USD`` or ``BTCUSD`` as
+        ``BTC-USD``, and three shapes of one instrument would split into three
+        populations that the (ticker, action, day) dedup cannot see across.
+        Duplicates that collapse to the same symbol are dropped, order kept.
+        """
+        from app.services.crypto_signal_engine import (
+            is_crypto_symbol, normalize_crypto_symbol,
+        )
+
+        seen: set[str] = set()
+        out: list[str] = []
+        for raw in self.crypto_watchlist.split(","):
+            if not raw.strip():
+                continue
+            symbol = normalize_crypto_symbol(raw)
+            # Anything that is not a crypto pair is DROPPED, not passed through.
+            # An override of CRYPTO_WATCHLIST=AAPL would otherwise fetch equity
+            # bars, write them with asset_type="crypto", and quietly contaminate
+            # the one cohort this phase exists to keep clean — and it would look
+            # like it was working the whole time.
+            if not is_crypto_symbol(symbol):
+                continue
+            if symbol not in seen:
+                seen.add(symbol)
+                out.append(symbol)
+        return out
 
     @property
     def is_paper_trading(self) -> bool:
