@@ -785,7 +785,7 @@ function TickerStrip({ onToggle, sidebarExpanded, isMobile }: {
             </svg>
           </button>
 
-          <img src="/favicon-32x32.png" alt="" width={20} height={20} style={{ flexShrink: 0 }} />
+          <img src="/olbos-mark-sm.webp" alt="" width={46} height={20} style={{ flexShrink: 0 }} />
           <span className="brand-wordmark" style={{ fontSize: 15, lineHeight: 1, whiteSpace: "nowrap" }}>
             OLBOS
           </span>
@@ -924,10 +924,18 @@ function TickerStrip({ onToggle, sidebarExpanded, isMobile }: {
 
         {showFullLogo && (
           <div style={{ display: "flex", alignItems: "center", gap: 7, overflow: "hidden", paddingRight: 12 }}>
+            {/* 46x20, not 45x20: the attributes must match the ASSET's ratio
+                (160/70 = 2.2857), not the source art's (1618/712 = 2.2725).
+                45 forces 2.250 and squeezes the mark 1.6% horizontally — the
+                browser stretches to exactly width x height, it does not
+                letterbox. 18->41 and 24->55 already round correctly.
+
+                At 46px the mark takes 46 of the 232px expanded block, leaving
+                119px for the OLBOS/TERMINAL stack, measured at 69px. */}
             <img
-              src="/favicon-32x32.png"
+              src="/olbos-mark-sm.webp"
               alt=""
-              width={20}
+              width={46}
               height={20}
               style={{ flexShrink: 0, filter: "drop-shadow(0 0 4px rgba(212,175,55,.35))" }}
             />

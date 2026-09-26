@@ -135,14 +135,6 @@ a.landing-signin:hover { color: var(--ink); }
 
 /* ── Hero ────────────────────────────────────────────────────────────── */
 .landing-hero { padding-top: 72px; }
-.landing-hero-banner {
-  display: block;
-  width: 100%;
-  max-width: 620px;
-  height: auto;
-  margin: 0 0 40px;
-  filter: drop-shadow(0 0 44px rgba(212, 175, 55, 0.10));
-}
 .landing-hero-ctas { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 56px; }
 
 .pipeline {

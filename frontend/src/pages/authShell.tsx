@@ -109,7 +109,7 @@ export function AuthPage({
               navigation out of that subtree would leave the gate mounted
               around a page that is not the terminal. */}
           <a className="auth-brand" href="/">
-            <img src="/favicon-32x32.png" alt="" width={24} height={24} />
+            <img src="/olbos-mark-sm.webp" alt="" width={55} height={24} />
             <span className="auth-wordmark">OLBOS</span>
           </a>
           {navAction && (

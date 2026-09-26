@@ -159,10 +159,16 @@ def test_only_hashed_build_output_is_immutable():
             "it and the hashed bundle loses its cache policy")
 
 
-@pytest.mark.parametrize("ext", ["png", "ico", "svg", "jpg"])
+@pytest.mark.parametrize("ext", ["png", "ico", "svg", "jpg", "webp"])
 def test_unhashed_image_types_are_revalidated(ext):
     """These are the extensions public/ actually ships. They must be
-    cacheable — but revalidated, so replacing the hero image takes effect."""
+    cacheable — but revalidated, so replacing the hero image takes effect.
+
+    webp joined the list when the brand mark moved to it. Leaving it out of
+    the regex is not a missing optimisation: an extension no location block
+    matches falls through to `location /`, which sets no-cache/no-store — so
+    the mark would be re-fetched on every page load, forever. This list is the
+    only thing that notices, which is the whole reason it is parametrised."""
     matched = [
         (m, b) for m, b in _location_blocks().items()
         if m.startswith("~") and ext in m
@@ -248,7 +254,7 @@ def test_the_proxy_does_not_force_public_caching_onto_errors():
     assert not offenders, offenders
 
 
-@pytest.mark.parametrize("ext", ["png", "ico", "svg"])
+@pytest.mark.parametrize("ext", ["png", "ico", "svg", "webp"])
 def test_proxy_unhashed_images_are_revalidated(ext):
     matched = [(m, b) for m, b in _proxy_location_blocks().items()
                if m.startswith("~") and ext in m]
