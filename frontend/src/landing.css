@@ -109,7 +109,7 @@ a.landing-signin:hover { color: var(--ink); }
   margin-bottom: 14px;
 }
 .landing-h1 {
-  font-family: var(--sans);
+  font-family: var(--display);
   font-size: 44px;
   font-weight: 600;
   line-height: 1.15;
@@ -117,8 +117,19 @@ a.landing-signin:hover { color: var(--ink); }
   max-width: 720px;
   margin-bottom: 20px;
 }
+/* The short gold rule under the hero headline. An ::after rather than markup
+   because .landing-h1 is used exactly once — if a second headline ever takes
+   the class, this wants to become its own element instead. */
+.landing-h1::after {
+  content: "";
+  display: block;
+  width: 72px;
+  height: 2px;
+  background: var(--brand);
+  margin-top: 24px;
+}
 .landing-h2 {
-  font-family: var(--sans);
+  font-family: var(--display);
   font-size: 28px;
   font-weight: 600;
   letter-spacing: -0.01em;

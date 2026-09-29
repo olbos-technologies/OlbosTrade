@@ -107,7 +107,7 @@
   margin-bottom: 14px;
 }
 .auth-h1 {
-  font-family: var(--sans);
+  font-family: var(--display);
   font-size: 32px;
   font-weight: 600;
   line-height: 1.18;
