@@ -63,6 +63,30 @@ describe("Landing", () => {
     expect(bodyText).not.toMatch(/\(planned\)/i);
   });
 
+  it("describes crypto as signals-only, and never as tradable", () => {
+    // Was "planned and not yet supported", which stopped being true when #84
+    // shipped a crypto scanner and a Crypto Signals page. The replacement has
+    // to hold two things at once: crypto EXISTS now, and it cannot trade.
+    //
+    // Both directions are asserted because both can go wrong. Understating it
+    // makes the page contradict a feature the user can see; overstating it
+    // claims an order path that deliberately does not exist — run_crypto_scan
+    // never reaches handle_signal, and the backend tests hold that line. If
+    // crypto execution ever ships, this test should fail and be rewritten
+    // rather than deleted.
+    renderLanding();
+    const bodyText = document.body.textContent || "";
+
+    expect(bodyText).toMatch(/crypto is signals-only/i);
+    expect(bodyText).toMatch(/no order path/i);
+
+    // The old understatement, and the obvious overstatements.
+    expect(bodyText).not.toMatch(/crypto is planned/i);
+    expect(bodyText).not.toMatch(/crypto[^.]*\bnot yet supported\b/i);
+    expect(bodyText).not.toMatch(/crypto trading/i);
+    expect(bodyText).not.toMatch(/trade crypto/i);
+  });
+
   it("never sends a signup CTA back to the terminal", () => {
     // The pin that matters. Retargeting three cards and three buttons by hand
     // is exactly the edit where one gets missed, and the one that is missed

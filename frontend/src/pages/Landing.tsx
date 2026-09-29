@@ -201,17 +201,28 @@ export default function Landing() {
             <h1 className="landing-h1">
               Systematic options and equity execution with risk controls built into every decision.
             </h1>
-            {/* Crypto is named as a ROADMAP item and nowhere else. There is no
-                crypto support in this codebase — no venue, no data feed, no
-                instrument model — so anything that reads as a current
-                capability would be false. The same rule the track-record
-                numbers follow: say what exists, label what does not. */}
+            {/* Crypto's claim changed in #84 and this sentence had to change
+                with it. It used to read "planned and not yet supported", which
+                was true when there was no venue, no data feed and no
+                instrument model. Phase 1 added a scanner: 12 symbols on daily
+                bars, signals recorded to signal_outcomes and resolved against
+                forward price. So "not supported" is now false — the app has a
+                Crypto Signals page a new user can open.
+
+                What did NOT change is the part that matters: there is no order
+                path. run_crypto_scan() never reaches handle_signal, no crypto
+                module imports an execution symbol, and two tests hold that
+                line. "Signals-only ... no order path" is the whole truth and
+                claims nothing beyond it — no track record is implied, because
+                none exists yet. Same rule the numbers follow: say what exists,
+                label what does not. */}
             <p className="landing-lede">
               Olbos Trading System runs a rules-based options and equity workflow — regime
               detection, a trained signal model, and a fail-closed risk gate — in front of every
               trade decision. Nothing executes without passing guardrails, and every signal shows
-              where it came from. Crypto is planned and not yet supported. Currently in
-              paper-trading evaluation; live capital requires a validated track record first.
+              where it came from. Crypto is signals-only — scanned and tracked for forward
+              outcomes, with no order path. Currently in paper-trading evaluation; live capital
+              requires a validated track record first.
             </p>
             <div className="landing-hero-ctas">
               <Link className="landing-cta-btn" to="/request-access">Start Paper Trading</Link>
