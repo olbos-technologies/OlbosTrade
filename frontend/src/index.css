@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Playfair+Display:wght@600&display=swap');
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -32,6 +32,13 @@
   --sans:      "IBM Plex Sans", system-ui, sans-serif;
   /* Brand wordmark uses the same sans stack — no serif/manuscript faces. */
   --brand-font: var(--sans);
+  /* Editorial display face, MARKETING SURFACES ONLY — landing, login,
+     request-access, claim. Deliberately not used anywhere in the terminal:
+     its numerals do not tabulate (the .tnum rule below exists because data
+     columns must align), and a high-contrast serif is built on hairline
+     strokes that disappear at the 9-11px the terminal renders data at. One
+     weight is loaded because headings are the only thing that use it. */
+  --display:   "Playfair Display", Georgia, serif;
 
   /* Instrument console (skeuomorphic-lite) — crisp bezels, not soft/glass UI.
      Highlight = top edge catching light; shade = bottom/right recess. */
