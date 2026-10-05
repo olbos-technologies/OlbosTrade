@@ -11,9 +11,14 @@ reasoning that was true at the time stays readable.
 | ADR | Decision | Status |
 | --- | --- | --- |
 | [0001](0001-broker-connection-ownership.md) | Broker connection ownership semantics (§23 item 3) | Accepted 2026-10-05 |
+| [0002](0002-legal-operating-model.md) | Legal operating model and regulated scope (§23 item 1) | Open — awaiting counsel |
 
-Still required by §20.2, not yet written: legal operating model and regulated
-scope; identity provider versus the existing session service; managed cloud and
+A record may also be **Open**, meaning the decision is not engineering's to
+make and is waiting on someone outside the team. An Open ADR states the
+question and the facts needed to answer it, and proposes nothing.
+
+Still required by §20.2, not yet written: identity provider versus the existing
+session service; managed cloud and
 vault/KMS; durable queue technology; event schema and retention; OAuth versus a
 temporary Alpaca API-key bridge; IBKR integration model; market-data vendors and
 licenses; HA/DR region strategy; audit immutability method; live SLOs and
