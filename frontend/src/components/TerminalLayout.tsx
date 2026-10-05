@@ -388,11 +388,11 @@ function ExecutionModeControl({
    read these rather than repeating a literal -- they were two separate magic
    numbers before, which is how they would quietly diverge.
 
-   Collapsed is 72 rather than 48 because the brand mark lives in that rail
+   Collapsed is 80 rather than 48 because the brand mark lives in that rail
    too: 48 is entirely consumed by the toggle's tap target, and the sidebar
    defaults to collapsed, so at 48 a desktop operator saw no mark at all on
-   the screen they land on. 48 (toggle) + 21 (mark) + 3 breathing = 72. */
-const RAIL_COLLAPSED = 72;
+   the screen they land on. 48 (toggle) + 27 (mark) + 5 breathing = 80. */
+const RAIL_COLLAPSED = 80;
 const RAIL_EXPANDED = 232;
 
 function TickerStrip({ onToggle, sidebarExpanded, isMobile }: {
@@ -797,10 +797,10 @@ function TickerStrip({ onToggle, sidebarExpanded, isMobile }: {
             </svg>
           </button>
 
-          <img src="/olbos-o-sm.webp" alt="" width={21} height={20} style={{ flexShrink: 0 }} />
-          <span className="brand-wordmark" style={{ fontSize: 15, lineHeight: 1, whiteSpace: "nowrap" }}>
-            OLBOS
-          </span>
+          <div className="brand-lockup brand-lockup--mobile">
+            <img className="brand-lockup-mark" src="/olbos-o-sm.webp" alt="" width={34} height={32} />
+            <span className="brand-lockup-word">OLBOS</span>
+          </div>
 
           <div style={{ flex: 1 }} />
 
@@ -939,15 +939,21 @@ function TickerStrip({ onToggle, sidebarExpanded, isMobile }: {
             fits the collapsed rail, where the 2.27:1 OB mark it replaces
             could not. Width is set from the ASSET's ratio, not the source
             art's — the browser stretches an img to exactly width x height
-            and does not letterbox. */}
-        <div style={{ display: "flex", alignItems: "center", gap: showFullLogo ? 9 : 7, overflow: "hidden", paddingRight: showFullLogo ? 12 : 0 }}>
-          <img
-            src="/olbos-o-sm.webp"
-            alt=""
-            width={21}
-            height={20}
-            style={{ flexShrink: 0, filter: "drop-shadow(0 0 4px rgba(212,175,55,.35))" }}
-          />
+            and does not letterbox.
+
+            The mark keeps ONE size across both rail states. Growing it only
+            when expanded would make the brand twitch on every toggle, which
+            is the opposite of the intended effect.
+
+            Sizing is capped by this bar: it is 38px tall, so the 40-44px
+            mark and 28-32px wordmark a standalone brand spec would ask for
+            cannot fit. 25px of mark leaves 6-7px of air top and bottom,
+            which is the largest that still reads as deliberate. The bar
+            height would have to rise to about 52px for the larger figures,
+            and that costs vertical space on every terminal page. */}
+        <div className={`brand-lockup brand-lockup--strip${showFullLogo ? "" : " is-mark-only"}`}
+             style={{ overflow: "hidden", paddingRight: showFullLogo ? 12 : 0 }}>
+          <img className="brand-lockup-mark" src="/olbos-o-sm.webp" alt="" width={27} height={25} />
           {showFullLogo && (
             /* Wordmark alone — the "TERMINAL" sub-label is gone. It was a
                second thing to read in a 38px strip whose entire job is to be
@@ -962,12 +968,7 @@ function TickerStrip({ onToggle, sidebarExpanded, isMobile }: {
                0.276em-tracked small caps, and reads tight on a standalone
                wordmark. Overridden here rather than on .brand-wordmark, which
                the landing and auth headers also use. */
-            <span
-              className="brand-wordmark"
-              style={{ fontSize: 19, lineHeight: 1, letterSpacing: "0.08em", whiteSpace: "nowrap" }}
-            >
-              OLBOS
-            </span>
+            <span className="brand-lockup-word">OLBOS</span>
           )}
         </div>
       </div>
