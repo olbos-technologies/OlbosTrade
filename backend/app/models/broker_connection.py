@@ -29,7 +29,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import DateTime, ForeignKey, Index, String, Text, func
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -91,6 +91,14 @@ class BrokerConnection(Base):
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default=STATUS_ACTIVE
     )
+    #: §7.2: increments on a security- or routing-relevant change, so §8's
+    #: worker can revalidate with one integer comparison immediately before
+    #: submitting. Revocation bumps it; recording a successful verification
+    #: does NOT -- see _revoke_in_place and touch_verified. A credential
+    #: ROTATION does not bump it either, because connect() revokes this row
+    #: and inserts a new one: an in-flight order holding the old id finds it
+    #: revoked, which stops the order by a different route.
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

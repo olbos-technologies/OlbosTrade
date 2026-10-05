@@ -313,6 +313,10 @@ def _revoke_in_place(row: BrokerConnection, now: datetime) -> None:
     row.revoked_at = now
     row.api_key_enc = None
     row.secret_key_enc = None
+    # §7.2: a security-relevant change bumps the version, so an in-flight
+    # order holding the old one is stopped by §8's revalidation rather than
+    # submitted against a credential that has just been pulled.
+    row.version = (row.version or 1) + 1
 
 
 async def revoke(db, organization_id, connection_id) -> bool:
@@ -346,6 +350,24 @@ async def revoke(db, organization_id, connection_id) -> bool:
     return True
 
 
+async def get_connection(db, connection_id):
+    """One connection row by id, with no organization scoping.
+
+    Unscoped deliberately, and used for exactly one thing: §8's pre-submit
+    revalidation, which asks "has THIS connection changed" about a connection
+    it already resolved through an organization. It returns no credential of
+    its own -- the ciphertext is on the row, so a caller that only needs
+    status and version should read only those.
+
+    Not a lookup to reach for from a route. Every route-facing read is scoped
+    by organization (see list_for_org, revoke), because an unscoped id lookup
+    is how a leaked or guessed id becomes access.
+    """
+    return (await db.execute(
+        select(BrokerConnection).where(BrokerConnection.id == _as_uuid(connection_id))
+    )).scalar_one_or_none()
+
+
 async def touch_verified(db, connection_id) -> None:
     """Record that a stored credential was just confirmed to work."""
     row = (await db.execute(
@@ -353,6 +375,9 @@ async def touch_verified(db, connection_id) -> None:
     )).scalar_one_or_none()
     if row is None:
         return
+    # Deliberately does NOT bump `version`. Verification records that a
+    # credential was checked, not that it changed; bumping here would make
+    # every verification invalidate every in-flight order for this connection.
     row.last_verified_at = datetime.now(timezone.utc)
     await db.commit()
 
