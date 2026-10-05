@@ -167,8 +167,8 @@ async def verify_alpaca(api_key: str, secret_key: str, environment: str) -> dict
     }
 
 
-async def list_for_user(db, user_id) -> list[dict]:
-    """Every connection for a user, active and revoked, newest first.
+async def list_for_org(db, organization_id) -> list[dict]:
+    """Every connection an organization owns, active and revoked, newest first.
 
     Revoked rows are included because "I disconnected this yesterday" is a
     question the screen should answer. They carry no secrets — revoke clears
@@ -176,14 +176,15 @@ async def list_for_user(db, user_id) -> list[dict]:
     """
     rows = (await db.execute(
         select(BrokerConnection)
-        .where(BrokerConnection.user_id == _as_uuid(user_id))
+        .where(BrokerConnection.organization_id == _as_uuid(organization_id))
         .order_by(BrokerConnection.created_at.desc())
     )).scalars().all()
     return [serialize(r) for r in rows]
 
 
-async def connect(db, user_id, *, broker: str, environment: str,
+async def connect(db, organization_id, *, broker: str, environment: str,
                   api_key: str, secret_key: str, label: str = "",
+                  created_by_user_id=None,
                   verified_at: Optional[datetime] = None) -> BrokerConnection:
     """Store one credential pair, replacing any active one for that slot.
 
@@ -191,7 +192,7 @@ async def connect(db, user_id, *, broker: str, environment: str,
     whose key changed should be able to paste the new one rather than having
     to find a disconnect button first. The old row is revoked in the same
     transaction, which is also what keeps the partial unique index satisfied:
-    it permits exactly one active row per (user, broker, environment), so the
+    it permits exactly one active row per (org, broker, environment), so the
     revoke has to land before the insert or the insert violates it.
 
     `verified_at` is passed in rather than computed here because verification
@@ -215,7 +216,8 @@ async def connect(db, user_id, *, broker: str, environment: str,
     if len(api_key) > MAX_CREDENTIAL_LEN or len(secret_key) > MAX_CREDENTIAL_LEN:
         raise BrokerConnectionError("That does not look like an Alpaca key pair.")
 
-    uid = _as_uuid(user_id)
+    oid = _as_uuid(organization_id)
+    actor = _as_uuid(created_by_user_id) if created_by_user_id else None
 
     # Two attempts, because the lock below cannot cover the FIRST connection
     # for a slot. SELECT ... FOR UPDATE locks the rows it finds, and on a
@@ -229,35 +231,35 @@ async def connect(db, user_id, *, broker: str, environment: str,
     # race re-reads AFTER the winner has committed, so the second pass finds a
     # real row, locks it, revokes it and inserts — exactly the path a
     # sequential reconnect takes. A second conflict would mean a third
-    # concurrent writer for one user's single slot, which is not a case worth
-    # spinning on.
+    # concurrent writer for one organization's single slot, which is not a case
+    # worth spinning on.
     for attempt in (1, 2):
         try:
             return await _connect_once(
-                db, uid, broker=broker, environment=environment,
-                api_key=api_key, secret_key=secret_key,
-                label=label, verified_at=verified_at,
+                db, oid, broker=broker, environment=environment,
+                api_key=api_key, secret_key=secret_key, label=label,
+                created_by_user_id=actor, verified_at=verified_at,
             )
         except IntegrityError:
             await db.rollback()
             if attempt == 2:
                 raise
             logger.info(
-                "Broker connect raced another request for user=%s %s/%s — retrying",
-                uid, broker, environment,
+                "Broker connect raced another request for org=%s %s/%s — retrying",
+                oid, broker, environment,
             )
 
 
-async def _connect_once(db, uid, *, broker: str, environment: str,
+async def _connect_once(db, oid, *, broker: str, environment: str,
                         api_key: str, secret_key: str, label: str,
-                        verified_at: Optional[datetime]) -> BrokerConnection:
+                        created_by_user_id, verified_at: Optional[datetime]) -> BrokerConnection:
     """One attempt at the revoke-then-insert. See connect() for the retry."""
     now = datetime.now(timezone.utc)
 
     existing = (await db.execute(
         select(BrokerConnection)
         .where(
-            BrokerConnection.user_id == uid,
+            BrokerConnection.organization_id == oid,
             BrokerConnection.broker == broker,
             BrokerConnection.environment == environment,
             BrokerConnection.status == STATUS_ACTIVE,
@@ -277,7 +279,8 @@ async def _connect_once(db, uid, *, broker: str, environment: str,
     await db.flush()
 
     conn = BrokerConnection(
-        user_id=uid,
+        organization_id=oid,
+        created_by_user_id=created_by_user_id,
         broker=broker,
         environment=environment,
         label=(label or "").strip()[:MAX_LABEL_LEN],
@@ -290,10 +293,11 @@ async def _connect_once(db, uid, *, broker: str, environment: str,
     db.add(conn)
     await db.commit()
     await db.refresh(conn)
-    # The user id, the broker and the environment. Never the label (user text)
-    # and never any part of the key beyond what is already stored in clear.
-    logger.info("Broker connection stored: user=%s broker=%s env=%s",
-                uid, broker, environment)
+    # The organization id, the broker and the environment. Never the label
+    # (user text) and never any part of the key beyond what is already stored
+    # in clear.
+    logger.info("Broker connection stored: org=%s broker=%s env=%s",
+                oid, broker, environment)
     return conn
 
 
@@ -311,10 +315,10 @@ def _revoke_in_place(row: BrokerConnection, now: datetime) -> None:
     row.secret_key_enc = None
 
 
-async def revoke(db, user_id, connection_id) -> bool:
+async def revoke(db, organization_id, connection_id) -> bool:
     """Disconnect one connection. True if something was revoked.
 
-    Scoped by user_id as well as id, so a guessed or leaked connection id from
+    Scoped by organization_id as well as id, so a guessed or leaked id from
     another account revokes nothing. Returns False rather than raising for a
     missing row: the two cases — never existed, and belongs to someone else —
     must be indistinguishable to the caller.
@@ -328,7 +332,7 @@ async def revoke(db, user_id, connection_id) -> bool:
         select(BrokerConnection)
         .where(
             BrokerConnection.id == cid,
-            BrokerConnection.user_id == _as_uuid(user_id),
+            BrokerConnection.organization_id == _as_uuid(organization_id),
             BrokerConnection.status == STATUS_ACTIVE,
         )
         .with_for_update()
@@ -338,7 +342,7 @@ async def revoke(db, user_id, connection_id) -> bool:
 
     _revoke_in_place(row, datetime.now(timezone.utc))
     await db.commit()
-    logger.info("Broker connection revoked: user=%s id=%s", row.user_id, cid)
+    logger.info("Broker connection revoked: org=%s id=%s", row.organization_id, cid)
     return True
 
 
@@ -353,7 +357,7 @@ async def touch_verified(db, connection_id) -> None:
     await db.commit()
 
 
-async def credentials_for(db, user_id, *, broker: str = BROKER_ALPACA,
+async def credentials_for(db, organization_id, *, broker: str = BROKER_ALPACA,
                           environment: Optional[str] = None
                           ) -> Optional[tuple[str, str, str, BrokerConnection]]:
     """The decrypted key pair and host for a user's active connection.
@@ -371,10 +375,10 @@ async def credentials_for(db, user_id, *, broker: str = BROKER_ALPACA,
     the one they mean when they place an order; paper is the sandbox they opt
     into per request.
     """
-    uid = _as_uuid(user_id)
+    oid = _as_uuid(organization_id)
     rows = (await db.execute(
         select(BrokerConnection).where(
-            BrokerConnection.user_id == uid,
+            BrokerConnection.organization_id == oid,
             BrokerConnection.broker == broker,
             BrokerConnection.status == STATUS_ACTIVE,
         )

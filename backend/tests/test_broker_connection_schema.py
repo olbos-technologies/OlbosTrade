@@ -23,6 +23,7 @@ from sqlalchemy.schema import CreateIndex
 # metadata before the foreign key can resolve, and nothing else in this file
 # references the users table.
 import app.models.user  # noqa: F401
+from app.models.organization import Organization
 from app.models.broker_connection import (
     STATUS_ACTIVE, STATUS_REVOKED, BrokerConnection,
 )
@@ -43,10 +44,15 @@ def _compiled(name: str) -> str:
     return str(CreateIndex(_index(name)).compile(dialect=postgresql.dialect()))
 
 
-def test_one_active_connection_per_user_broker_and_environment():
+def test_one_active_connection_per_org_broker_and_environment():
+    """Re-scoped from user to organization by ADR-0001.
+
+    This is MASTER_ARCHITECTURE §7.2's "only one connection may be the active
+    execution target for a given organization and execution scope", enforced
+    by the database rather than by the service remembering to check."""
     ix = _index("idx_broker_connections_active")
     assert ix.unique is True
-    assert [c.name for c in ix.columns] == ["user_id", "broker", "environment"]
+    assert [c.name for c in ix.columns] == ["organization_id", "broker", "environment"]
 
 
 def test_the_unique_index_is_partial_on_active_rows():
@@ -66,7 +72,7 @@ def test_the_partial_predicate_would_be_missed_by_a_looser_check():
     an assertion that only looked for those would pass on the bug."""
     sql = _compiled("idx_broker_connections_active")
     without_where = sql.split("WHERE")[0]
-    assert "user_id" in without_where and "broker" in without_where
+    assert "organization_id" in without_where and "broker" in without_where
     assert f"status = '{STATUS_ACTIVE}'" not in without_where
 
 
@@ -79,13 +85,50 @@ def test_revoked_rows_do_not_occupy_the_slot():
     )
 
 
-def test_deleting_a_user_removes_their_stored_credentials():
-    fks = list(BrokerConnection.__table__.c.user_id.foreign_keys)
+def test_deleting_a_user_still_removes_their_stored_credentials():
+    """The property survives ADR-0001; the path to it got longer.
+
+    It used to be one hop: broker_connections.user_id ON DELETE CASCADE. An
+    organization owns the connection now, so the chain is
+
+        users --CASCADE--> organizations --CASCADE--> broker_connections
+
+    via organizations.personal_for_user_id. Asserted hop by hop, because the
+    whole chain is what keeps the guarantee and either link going SET NULL or
+    RESTRICT would leave encrypted credentials behind with nobody owning them.
+    """
+    org_fks = list(BrokerConnection.__table__.c.organization_id.foreign_keys)
+    assert len(org_fks) == 1
+    assert org_fks[0].column.table.name == "organizations"
+    assert org_fks[0].ondelete == "CASCADE", (
+        "a deleted organization would leave encrypted broker credentials behind"
+    )
+
+    user_fks = list(Organization.__table__.c.personal_for_user_id.foreign_keys)
+    assert len(user_fks) == 1
+    assert user_fks[0].column.table.name == "users"
+    assert user_fks[0].ondelete == "CASCADE", (
+        "a deleted user would keep a personal organization, and with it their "
+        "stored broker credentials"
+    )
+
+
+def test_the_connector_is_recorded_without_owning_the_connection():
+    """created_by_user_id is provenance, not ownership.
+
+    SET NULL rather than CASCADE on purpose: deleting the person who pasted a
+    key must not delete the organization's record that a connection existed,
+    which is the same reason disconnecting revokes instead of deleting. The
+    credentials are still destroyed when the OWNER goes — see the test above.
+    """
+    fks = list(BrokerConnection.__table__.c.created_by_user_id.foreign_keys)
     assert len(fks) == 1
-    fk = fks[0]
-    assert fk.column.table.name == "users"
-    assert fk.ondelete == "CASCADE", (
-        "a deleted user would leave encrypted broker credentials behind"
+    assert fks[0].column.table.name == "users"
+    assert fks[0].ondelete == "SET NULL", (
+        "deleting a user would destroy another organization's connection history"
+    )
+    assert BrokerConnection.__table__.c.created_by_user_id.nullable, (
+        "SET NULL needs a nullable column; this would fail at runtime instead"
     )
 
 
