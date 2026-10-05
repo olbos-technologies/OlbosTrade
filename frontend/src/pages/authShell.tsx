@@ -62,15 +62,32 @@ export function Notice({
  *  the token in someone's hand is for, so it stacks rather than hides on a
  *  phone. */
 export function Pitch({
-  eyebrow, title, lede, points,
+  eyebrow, title, lede, points, mark = false,
 }: {
   eyebrow: string;
   title: string;
   lede: React.ReactNode;
   points?: string[];
+  /** Show the pearl O above the eyebrow. OFF by default and opted into only
+   *  by Login, because this component is shared with RequestAccess and Claim.
+   *
+   *  This is the one surface in the product that draws the mark large enough
+   *  for it to be itself: its pearl body and gold ribbons only exist above
+   *  ~48px, which is why it is not in the 18-24px header lockups and not the
+   *  16px favicon. At 96px here it reads as intended. */
+  mark?: boolean;
 }) {
   return (
     <div>
+      {mark && (
+        <img
+          className="auth-mark"
+          src="/olbos-o.webp"
+          alt=""
+          width={103}
+          height={96}
+        />
+      )}
       <div className="auth-eyebrow">{eyebrow}</div>
       <h1 className="auth-h1">{title}</h1>
       <p className="auth-lede">{lede}</p>

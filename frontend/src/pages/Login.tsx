@@ -23,6 +23,7 @@ import {
 
 const PITCH = (
   <Pitch
+    mark
     eyebrow="Operator access"
     title="Sign in to the terminal."
     lede={
