@@ -92,6 +92,58 @@ def test_apple_touch_icon_is_180_and_opaque():
         "composite it onto white")
 
 
+def test_apple_touch_icon_is_the_pearl_O_not_the_favicon_mark():
+    """The app icon is deliberately a DIFFERENT drawing, and that needs pinning.
+
+    The favicon trio is one gold-on-navy lemniscate rasterised from
+    favicon.svg. apple-touch-icon is the pearl-and-gold O instead, because
+    180px on an iOS home screen is the only place in this product a logo is
+    drawn large enough for that detail to survive — below ~48px its pearl body
+    and gold ribbons vanish and it reads as a pale ring, which is why it is
+    not the favicon and not in the header lockups.
+
+    Without this test the inconsistency looks like a mistake, and the obvious
+    "fix" is to regenerate the app icon from favicon.svg, silently throwing the
+    decision away. Asserted on near-white pixels: the pearl body has them in
+    quantity, and a gold-on-navy lemniscate has essentially none.
+    """
+    from collections import Counter
+
+    data = (PUBLIC / "apple-touch-icon.png").read_bytes()
+    # Decode without an image library: count near-white via a coarse scan of
+    # the zlib-inflated scanlines.
+    import zlib
+    idat = b""
+    i = 8
+    while i < len(data):
+        length = int.from_bytes(data[i:i + 4], "big")
+        ctype = data[i + 4:i + 8]
+        if ctype == b"IDAT":
+            idat += data[i + 8:i + 8 + length]
+        i += 12 + length
+    raw = zlib.decompress(idat)
+
+    width = struct.unpack(">I", data[16:20])[0]
+    stride = width * 3 + 1          # colour type 2, 8-bit: filter byte + RGB
+    near_white = 0
+    sampled = 0
+    for row in range(0, len(raw) // stride, 4):
+        off = row * stride + 1
+        for px in range(0, width, 4):
+            r, g, b = raw[off + px * 3: off + px * 3 + 3]
+            sampled += 1
+            if r > 200 and g > 195 and b > 185:
+                near_white += 1
+
+    assert sampled > 0, "scan read no pixels"
+    share = near_white / sampled
+    assert share > 0.04, (
+        f"only {share:.1%} of sampled pixels are near-white — the app icon "
+        "looks like the gold-on-navy favicon mark rather than the pearl O. If "
+        "the app icon was intentionally changed, update this test and the "
+        "comment in frontend/index.html together.")
+
+
 def test_svg_favicon_carries_the_brand_colours():
     """Catches a blank or placeholder SVG, which would render as nothing at all."""
     svg = (PUBLIC / "favicon.svg").read_text()
