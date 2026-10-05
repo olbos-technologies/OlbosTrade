@@ -940,7 +940,7 @@ function TickerStrip({ onToggle, sidebarExpanded, isMobile }: {
             could not. Width is set from the ASSET's ratio, not the source
             art's — the browser stretches an img to exactly width x height
             and does not letterbox. */}
-        <div style={{ display: "flex", alignItems: "center", gap: 7, overflow: "hidden", paddingRight: showFullLogo ? 12 : 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: showFullLogo ? 9 : 7, overflow: "hidden", paddingRight: showFullLogo ? 12 : 0 }}>
           <img
             src="/olbos-o-sm.webp"
             alt=""
@@ -949,18 +949,25 @@ function TickerStrip({ onToggle, sidebarExpanded, isMobile }: {
             style={{ flexShrink: 0, filter: "drop-shadow(0 0 4px rgba(212,175,55,.35))" }}
           />
           {showFullLogo && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 2, overflow: "hidden" }}>
-              <span
-                className="brand-wordmark"
-                style={{ fontSize: 17, lineHeight: 1, whiteSpace: "nowrap" }}
-              >
-                OLBOS
-              </span>
-              <span style={{
-                fontFamily: "var(--mono)", fontSize: 8, fontWeight: 500,
-                letterSpacing: "0.276em", color: "var(--ink-faint)", lineHeight: 1, paddingLeft: 1, whiteSpace: "nowrap",
-              }}>TERMINAL</span>
-            </div>
+            /* Wordmark alone — the "TERMINAL" sub-label is gone. It was a
+               second thing to read in a 38px strip whose entire job is to be
+               glanced past, and it named the surface the operator is already
+               looking at.
+
+               Dropping it is what lets the wordmark sit properly. Stacked, it
+               was pinned at 17px above an 8px line; on its own it takes the
+               row's full height at 19px and centres against the mark instead
+               of hanging above a label. Tracking opens from the shared
+               class's 0.04em to 0.08em: that value was chosen to sit over
+               0.276em-tracked small caps, and reads tight on a standalone
+               wordmark. Overridden here rather than on .brand-wordmark, which
+               the landing and auth headers also use. */
+            <span
+              className="brand-wordmark"
+              style={{ fontSize: 19, lineHeight: 1, letterSpacing: "0.08em", whiteSpace: "nowrap" }}
+            >
+              OLBOS
+            </span>
           )}
         </div>
       </div>
