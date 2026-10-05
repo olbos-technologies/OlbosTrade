@@ -1,5 +1,5 @@
 """
-A user's own broker credentials.
+Broker credentials, owned by an organization.
 
 WHY ALPACA ONLY, FOR NOW. Alpaca authenticates every request with an API key
 pair and holds no session, so one process can act for many users by sending
@@ -61,8 +61,20 @@ class BrokerConnection(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    #: The OWNER, and the execution-routing key. See ADR-0001: an organization
+    #: owns a connection, and every user has a personal organization, so today
+    #: this is one user's own org and behaves as `user_id` used to.
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    #: Provenance, not ownership: WHO connected it. SET NULL rather than
+    #: CASCADE on purpose — deleting the person who pasted the key must not
+    #: delete the organization's record that a connection existed, which is
+    #: the same reason disconnecting revokes instead of deleting.
+    created_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
 
     broker: Mapped[str] = mapped_column(String(20), nullable=False)
@@ -94,16 +106,21 @@ class BrokerConnection(Base):
     )
 
     __table_args__ = (
-        # PARTIAL unique: one ACTIVE connection per user, broker and
+        # PARTIAL unique: one ACTIVE connection per organization, broker and
         # environment. Partial so that revoking and reconnecting works — a
         # plain unique index would make the old revoked row block the new one
         # forever, and the only fix would be deleting the history the revoke
         # was designed to keep.
+        #
+        # This is also what MASTER_ARCHITECTURE §7.2 means by "only one
+        # connection may be the active execution target for a given
+        # organization and execution scope", enforced by the database rather
+        # than by the service remembering to check.
         Index(
             "idx_broker_connections_active",
-            "user_id", "broker", "environment",
+            "organization_id", "broker", "environment",
             unique=True,
             postgresql_where=(status == STATUS_ACTIVE),
         ),
-        Index("idx_broker_connections_user", "user_id"),
+        Index("idx_broker_connections_org", "organization_id"),
     )

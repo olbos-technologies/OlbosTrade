@@ -35,6 +35,7 @@ from app.core.config import settings
 from app.models.broker_connection import (
     ENV_LIVE, ENV_PAPER, STATUS_ACTIVE, STATUS_REVOKED, BrokerConnection,
 )
+from app.models.organization import KIND_PERSONAL, Organization
 from app.services import broker_connection_service as svc
 from app.services import credential_cipher
 
@@ -84,10 +85,26 @@ class _Result:
     def scalars(self):
         return _Scalars(self._rows)
 
+    def scalar_one_or_none(self):
+        if len(self._rows) > 1:
+            raise AssertionError("scalar_one_or_none() got more than one row")
+        return self._rows[0] if self._rows else None
+
 
 class _Store:
     def __init__(self):
         self.connections: list[BrokerConnection] = []
+        #: Personal organizations, as migration 0036 backfills them: one per
+        #: user. Pre-populated so a route can resolve its caller without the
+        #: get-or-create path running in every test.
+        self.organizations: list[Organization] = [
+            Organization(id=ORG_A, name="a", kind=KIND_PERSONAL,
+                         personal_for_user_id=USER_A,
+                         created_at=datetime.now(timezone.utc)),
+            Organization(id=ORG_B, name="b", kind=KIND_PERSONAL,
+                         personal_for_user_id=USER_B,
+                         created_at=datetime.now(timezone.utc)),
+        ]
         self.commits = 0
         #: Which lookups asked for FOR UPDATE, read off the compiled statement
         #: rather than by grepping the source — a `.with_for_update()` inside a
@@ -111,6 +128,19 @@ class _FakeSession:
         entities = [d["entity"].__name__ for d in stmt.column_descriptions]
         params = stmt.compile().params
         sql = str(stmt)
+
+        # Routes resolve the caller's organization before touching a
+        # connection, so the fake has to answer that lookup too. Returning
+        # the pre-seeded personal org is what migration 0036 leaves behind.
+        if entities == ["Organization"]:
+            orgs = list(self.store.organizations)
+            if "personal_for_user_id_1" in params:
+                _require_uuid("Organization.personal_for_user_id",
+                              params["personal_for_user_id_1"])
+                orgs = [o for o in orgs
+                        if o.personal_for_user_id == params["personal_for_user_id_1"]]
+            return _Result(orgs)
+
         if entities != ["BrokerConnection"]:
             raise AssertionError(f"unexpected query over {entities}")
 
@@ -118,9 +148,10 @@ class _FakeSession:
         if "id_1" in params:
             _require_uuid("BrokerConnection.id", params["id_1"])
             rows = [r for r in rows if r.id == params["id_1"]]
-        if "user_id_1" in params:
-            _require_uuid("BrokerConnection.user_id", params["user_id_1"])
-            rows = [r for r in rows if r.user_id == params["user_id_1"]]
+        if "organization_id_1" in params:
+            _require_uuid("BrokerConnection.organization_id", params["organization_id_1"])
+            rows = [r for r in rows
+                    if r.organization_id == params["organization_id_1"]]
         if "broker_1" in params:
             rows = [r for r in rows if r.broker == params["broker_1"]]
         if "environment_1" in params:
@@ -187,12 +218,17 @@ def cipher_key(monkeypatch):
 
 USER_A = uuid.UUID("11111111-1111-4111-8111-111111111111")
 USER_B = uuid.UUID("22222222-2222-4222-8222-222222222222")
+#: Each user's personal organization — the OWNER of a connection since
+#: ADR-0001. One per user, so these stand in one-for-one for the user ids
+#: these tests used to key on.
+ORG_A = uuid.UUID("aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa")
+ORG_B = uuid.UUID("bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb")
 
 
-def _row(store, user_id=USER_A, *, broker="alpaca", environment=ENV_PAPER,
+def _row(store, organization_id=ORG_A, *, broker="alpaca", environment=ENV_PAPER,
          status=STATUS_ACTIVE, key=ALPACA_KEY, created_at=None):
     conn = BrokerConnection(
-        id=uuid.uuid4(), user_id=user_id, broker=broker,
+        id=uuid.uuid4(), organization_id=organization_id, broker=broker,
         environment=environment, label="", status=status,
         api_key_enc=credential_cipher.encrypt(key) if status == STATUS_ACTIVE else None,
         secret_key_enc=(credential_cipher.encrypt(ALPACA_SECRET)
@@ -277,7 +313,7 @@ def test_last4_is_four_characters_and_not_the_key(cipher_key):
 
 def test_serialize_carries_no_ciphertext_and_no_plaintext(cipher_key):
     conn = BrokerConnection(
-        id=uuid.uuid4(), user_id=USER_A, broker="alpaca", environment=ENV_PAPER,
+        id=uuid.uuid4(), organization_id=ORG_A, broker="alpaca", environment=ENV_PAPER,
         label="my paper account", status=STATUS_ACTIVE,
         api_key_enc=credential_cipher.encrypt(ALPACA_KEY),
         secret_key_enc=credential_cipher.encrypt(ALPACA_SECRET),
@@ -297,7 +333,7 @@ def test_serialize_carries_no_ciphertext_and_no_plaintext(cipher_key):
 def test_that_assertion_would_actually_catch_a_leak(cipher_key):
     """A guard that cannot fail is decoration. This is the mutation."""
     conn = BrokerConnection(
-        id=uuid.uuid4(), user_id=USER_A, broker="alpaca", environment=ENV_PAPER,
+        id=uuid.uuid4(), organization_id=ORG_A, broker="alpaca", environment=ENV_PAPER,
         label="", status=STATUS_ACTIVE,
         api_key_enc=credential_cipher.encrypt(ALPACA_KEY),
         secret_key_enc=credential_cipher.encrypt(ALPACA_SECRET),
@@ -314,7 +350,7 @@ def test_that_assertion_would_actually_catch_a_leak(cipher_key):
 
 async def test_connect_stores_a_credential_that_comes_back_out(store):
     db = _FakeSession(store)
-    conn = await svc.connect(db, USER_A, broker="alpaca", environment=ENV_PAPER,
+    conn = await svc.connect(db, ORG_A, broker="alpaca", environment=ENV_PAPER,
                              api_key=ALPACA_KEY, secret_key=ALPACA_SECRET,
                              label="paper")
     assert conn.status == STATUS_ACTIVE
@@ -327,9 +363,9 @@ async def test_connect_stores_a_credential_that_comes_back_out(store):
 async def test_reconnecting_replaces_the_active_row_and_destroys_its_secrets(store, cipher_key):
     """Key rotation is routine. Pasting the new key must work without hunting
     for a disconnect button first — and must not leave the old key behind."""
-    old = _row(store, USER_A, environment=ENV_PAPER, key="PKOLDOLDOLDOLDOLD")
+    old = _row(store, ORG_A, environment=ENV_PAPER, key="PKOLDOLDOLDOLDOLD")
     db = _FakeSession(store)
-    await svc.connect(db, USER_A, broker="alpaca", environment=ENV_PAPER,
+    await svc.connect(db, ORG_A, broker="alpaca", environment=ENV_PAPER,
                       api_key=ALPACA_KEY, secret_key=ALPACA_SECRET)
 
     assert old.status == STATUS_REVOKED
@@ -349,41 +385,50 @@ async def test_connect_locks_the_row_it_is_about_to_replace(store, cipher_key):
     Without it two simultaneous connects both read "no active row", both
     insert, and the unique index turns a legitimate replace into a 500.
     """
-    _row(store, USER_A)
+    _row(store, ORG_A)
     db = _FakeSession(store)
-    await svc.connect(db, USER_A, broker="alpaca", environment=ENV_PAPER,
+    await svc.connect(db, ORG_A, broker="alpaca", environment=ENV_PAPER,
                       api_key=ALPACA_KEY, secret_key=ALPACA_SECRET)
     assert store.locked, "the lookup before the replace did not lock"
 
 
 async def test_paper_and_live_are_separate_connections(store, cipher_key):
     """A user may legitimately hold both; connecting live must not revoke paper."""
-    paper = _row(store, USER_A, environment=ENV_PAPER)
+    paper = _row(store, ORG_A, environment=ENV_PAPER)
     db = _FakeSession(store)
-    await svc.connect(db, USER_A, broker="alpaca", environment=ENV_LIVE,
+    await svc.connect(db, ORG_A, broker="alpaca", environment=ENV_LIVE,
                       api_key=ALPACA_KEY, secret_key=ALPACA_SECRET)
     assert paper.status == STATUS_ACTIVE, "connecting live revoked the paper account"
     assert len([c for c in store.connections if c.status == STATUS_ACTIVE]) == 2
 
 
-async def test_two_users_connect_independently(store, cipher_key):
-    """The whole point of the feature, stated once: one person's IBKR-or-Alpaca
-    setup is not the other's."""
+async def test_two_organizations_connect_independently(store, cipher_key):
+    """The whole point of the feature, stated once: one tenant's Alpaca setup
+    is not the other's.
+
+    Keyed on organization since ADR-0001. With one personal organization per
+    user this is still "two people", which is why the assertion reads the same
+    as it did — what changed is that the isolation is now enforced on the
+    column execution will route by."""
     db = _FakeSession(store)
-    await svc.connect(db, USER_A, broker="alpaca", environment=ENV_PAPER,
-                      api_key="PKAAAAAAAAAAAAAAAAAA", secret_key=ALPACA_SECRET)
-    await svc.connect(db, USER_B, broker="alpaca", environment=ENV_PAPER,
-                      api_key="PKBBBBBBBBBBBBBBBBBB", secret_key=ALPACA_SECRET)
+    await svc.connect(db, ORG_A, broker="alpaca", environment=ENV_PAPER,
+                      api_key="PKAAAAAAAAAAAAAAAAAA", secret_key=ALPACA_SECRET,
+                      created_by_user_id=USER_A)
+    await svc.connect(db, ORG_B, broker="alpaca", environment=ENV_PAPER,
+                      api_key="PKBBBBBBBBBBBBBBBBBB", secret_key=ALPACA_SECRET,
+                      created_by_user_id=USER_B)
     active = [c for c in store.connections if c.status == STATUS_ACTIVE]
-    assert len(active) == 2, "one user's connect revoked the other's"
-    assert {c.user_id for c in active} == {USER_A, USER_B}
+    assert len(active) == 2, "one organization's connect revoked the other's"
+    assert {c.organization_id for c in active} == {ORG_A, ORG_B}
+    # Provenance survives the re-key: who pasted the key is still recorded.
+    assert {c.created_by_user_id for c in active} == {USER_A, USER_B}
 
 
 async def test_connect_refuses_when_the_deployment_cannot_encrypt(store, monkeypatch):
     monkeypatch.setattr(settings, "broker_encryption_key", "", raising=False)
     db = _FakeSession(store)
     with pytest.raises(credential_cipher.CredentialCipherUnavailable):
-        await svc.connect(db, USER_A, broker="alpaca", environment=ENV_PAPER,
+        await svc.connect(db, ORG_A, broker="alpaca", environment=ENV_PAPER,
                           api_key=ALPACA_KEY, secret_key=ALPACA_SECRET)
     assert store.connections == [], "a credential was stored without encryption"
 
@@ -393,7 +438,7 @@ async def test_ibkr_is_refused_with_a_reason_rather_than_stored(store, cipher_ke
     their IBKR account was connected and find out at the first order."""
     db = _FakeSession(store)
     with pytest.raises(svc.BrokerConnectionError) as exc:
-        await svc.connect(db, USER_A, broker="ibkr", environment=ENV_PAPER,
+        await svc.connect(db, ORG_A, broker="ibkr", environment=ENV_PAPER,
                           api_key=ALPACA_KEY, secret_key=ALPACA_SECRET)
     assert "gateway" in str(exc.value).lower()
     assert store.connections == []
@@ -404,7 +449,7 @@ async def test_an_unknown_broker_and_environment_are_refused(store, cipher_key):
     for kwargs in ({"broker": "robinhood", "environment": ENV_PAPER},
                    {"broker": "alpaca", "environment": "production"}):
         with pytest.raises(svc.BrokerConnectionError):
-            await svc.connect(db, USER_A, api_key=ALPACA_KEY,
+            await svc.connect(db, ORG_A, api_key=ALPACA_KEY,
                               secret_key=ALPACA_SECRET, **kwargs)
     assert store.connections == []
 
@@ -412,16 +457,16 @@ async def test_an_unknown_broker_and_environment_are_refused(store, cipher_key):
 async def test_a_blank_credential_is_refused(store, cipher_key):
     db = _FakeSession(store)
     with pytest.raises(svc.BrokerConnectionError):
-        await svc.connect(db, USER_A, broker="alpaca", environment=ENV_PAPER,
+        await svc.connect(db, ORG_A, broker="alpaca", environment=ENV_PAPER,
                           api_key="   ", secret_key=ALPACA_SECRET)
 
 
 # ── revoking ─────────────────────────────────────────────────────────────────
 
 async def test_revoke_keeps_the_row_and_destroys_the_secrets(store, cipher_key):
-    row = _row(store, USER_A)
+    row = _row(store, ORG_A)
     db = _FakeSession(store)
-    assert await svc.revoke(db, USER_A, row.id) is True
+    assert await svc.revoke(db, ORG_A, row.id) is True
     assert row.status == STATUS_REVOKED
     assert row.api_key_enc is None and row.secret_key_enc is None
     assert row in store.connections, (
@@ -434,32 +479,32 @@ async def test_revoke_keeps_the_row_and_destroys_the_secrets(store, cipher_key):
 async def test_one_users_connection_id_is_worthless_to_another(store, cipher_key):
     """Scoped by user_id as well as id. False, not an error: 'never existed'
     and 'belongs to someone else' must be indistinguishable."""
-    row = _row(store, USER_A)
+    row = _row(store, ORG_A)
     db = _FakeSession(store)
-    assert await svc.revoke(db, USER_B, row.id) is False
+    assert await svc.revoke(db, ORG_B, row.id) is False
     assert row.status == STATUS_ACTIVE
     assert row.api_key_enc is not None
 
 
 async def test_revoking_an_unknown_or_malformed_id_is_false_not_a_crash(store, cipher_key):
     db = _FakeSession(store)
-    assert await svc.revoke(db, USER_A, uuid.uuid4()) is False
-    assert await svc.revoke(db, USER_A, "not-a-uuid") is False
+    assert await svc.revoke(db, ORG_A, uuid.uuid4()) is False
+    assert await svc.revoke(db, ORG_A, "not-a-uuid") is False
 
 
 async def test_revoking_twice_is_false_the_second_time(store, cipher_key):
-    row = _row(store, USER_A)
+    row = _row(store, ORG_A)
     db = _FakeSession(store)
-    assert await svc.revoke(db, USER_A, row.id) is True
-    assert await svc.revoke(db, USER_A, row.id) is False
+    assert await svc.revoke(db, ORG_A, row.id) is True
+    assert await svc.revoke(db, ORG_A, row.id) is False
 
 
 # ── reading credentials back ─────────────────────────────────────────────────
 
 async def test_credentials_for_returns_the_decrypted_pair_and_the_right_host(store, cipher_key):
-    _row(store, USER_A, environment=ENV_PAPER)
+    _row(store, ORG_A, environment=ENV_PAPER)
     db = _FakeSession(store)
-    found = await svc.credentials_for(db, USER_A, environment=ENV_PAPER)
+    found = await svc.credentials_for(db, ORG_A, environment=ENV_PAPER)
     assert found is not None
     api_key, secret_key, base, _row_obj = found
     assert api_key == ALPACA_KEY and secret_key == ALPACA_SECRET
@@ -472,17 +517,17 @@ async def test_the_host_comes_from_the_environment_not_the_operators_setting(sto
     otherwise one setting silently redirects everyone's credentials."""
     monkeypatch.setattr(settings, "alpaca_base_url",
                         "https://api.alpaca.markets", raising=False)
-    _row(store, USER_A, environment=ENV_PAPER)
+    _row(store, ORG_A, environment=ENV_PAPER)
     db = _FakeSession(store)
-    _k, _s, base, _r = await svc.credentials_for(db, USER_A, environment=ENV_PAPER)
+    _k, _s, base, _r = await svc.credentials_for(db, ORG_A, environment=ENV_PAPER)
     assert base == "https://paper-api.alpaca.markets"
 
 
 async def test_live_wins_when_the_user_has_both_and_asks_for_neither(store, cipher_key):
-    _row(store, USER_A, environment=ENV_PAPER)
-    _row(store, USER_A, environment=ENV_LIVE)
+    _row(store, ORG_A, environment=ENV_PAPER)
+    _row(store, ORG_A, environment=ENV_LIVE)
     db = _FakeSession(store)
-    _k, _s, base, row = await svc.credentials_for(db, USER_A)
+    _k, _s, base, row = await svc.credentials_for(db, ORG_A)
     assert row.environment == ENV_LIVE
     assert base == "https://api.alpaca.markets"
 
@@ -492,29 +537,29 @@ async def test_no_connection_means_none_not_an_error(store, cipher_key):
     what keeps a single-operator install working exactly as it did before this
     table existed."""
     db = _FakeSession(store)
-    assert await svc.credentials_for(db, USER_A) is None
+    assert await svc.credentials_for(db, ORG_A) is None
 
 
 async def test_a_revoked_connection_is_not_returned(store, cipher_key):
-    _row(store, USER_A, status=STATUS_REVOKED)
+    _row(store, ORG_A, status=STATUS_REVOKED)
     db = _FakeSession(store)
-    assert await svc.credentials_for(db, USER_A) is None
+    assert await svc.credentials_for(db, ORG_A) is None
 
 
 async def test_an_active_row_with_no_ciphertext_reads_as_not_connected(store, cipher_key):
     """Should be impossible — revoke clears both fields and the status
     together. Treated as "not connected" rather than crashing an order path
     over a row that should not exist."""
-    row = _row(store, USER_A)
+    row = _row(store, ORG_A)
     row.api_key_enc = None
     db = _FakeSession(store)
-    assert await svc.credentials_for(db, USER_A) is None
+    assert await svc.credentials_for(db, ORG_A) is None
 
 
 async def test_one_users_credentials_are_never_returned_for_another(store, cipher_key):
-    _row(store, USER_A)
+    _row(store, ORG_A)
     db = _FakeSession(store)
-    assert await svc.credentials_for(db, USER_B) is None
+    assert await svc.credentials_for(db, ORG_B) is None
 
 
 # ── verification against the broker ──────────────────────────────────────────
@@ -735,9 +780,9 @@ async def test_the_response_says_execution_is_not_routed_yet(client, store, monk
 
 
 async def test_listing_never_decrypts_and_never_leaks(client, store, cipher_key):
-    _row(store, USER_A, environment=ENV_PAPER)
-    _row(store, USER_A, environment=ENV_LIVE)
-    _row(store, USER_B, environment=ENV_PAPER)
+    _row(store, ORG_A, environment=ENV_PAPER)
+    _row(store, ORG_A, environment=ENV_LIVE)
+    _row(store, ORG_B, environment=ENV_PAPER)
     async with client as c:
         r = await c.get("/api/brokers/connections")
     assert r.status_code == 200
@@ -751,15 +796,15 @@ async def test_listing_never_decrypts_and_never_leaks(client, store, cipher_key)
 
 async def test_listing_is_newest_first(client, store, cipher_key):
     now = datetime.now(timezone.utc)
-    _row(store, USER_A, environment=ENV_PAPER, created_at=now - timedelta(days=3))
-    _row(store, USER_A, environment=ENV_LIVE, created_at=now)
+    _row(store, ORG_A, environment=ENV_PAPER, created_at=now - timedelta(days=3))
+    _row(store, ORG_A, environment=ENV_LIVE, created_at=now)
     async with client as c:
         r = await c.get("/api/brokers/connections")
     assert [c_["environment"] for c_ in r.json()["connections"]] == [ENV_LIVE, ENV_PAPER]
 
 
 async def test_deleting_another_users_connection_is_404(client, store, cipher_key):
-    row = _row(store, USER_B)
+    row = _row(store, ORG_B)
     async with client as c:
         r = await c.delete(f"/api/brokers/connections/{row.id}")
     assert r.status_code == 404
@@ -768,7 +813,7 @@ async def test_deleting_another_users_connection_is_404(client, store, cipher_ke
 
 
 async def test_deleting_your_own_connection_disconnects_it(client, store, cipher_key):
-    row = _row(store, USER_A)
+    row = _row(store, ORG_A)
     async with client as c:
         r = await c.delete(f"/api/brokers/connections/{row.id}")
     assert r.status_code == 200
@@ -779,7 +824,7 @@ async def test_deleting_your_own_connection_disconnects_it(client, store, cipher
 async def test_verifying_another_users_connection_is_404(client, store, monkeypatch, cipher_key):
     called = []
     _patch_http(monkeypatch, lambda url, headers: called.append(url) or _FakeResponse(200, {}))
-    row = _row(store, USER_B)
+    row = _row(store, ORG_B)
     async with client as c:
         r = await c.post(f"/api/brokers/connections/{row.id}/verify")
     assert r.status_code == 404
@@ -788,7 +833,7 @@ async def test_verifying_another_users_connection_is_404(client, store, monkeypa
 
 async def test_verifying_your_own_connection_records_the_check(client, store, monkeypatch, cipher_key):
     _patch_http(monkeypatch, lambda url, headers: _FakeResponse(200, {"status": "ACTIVE"}))
-    row = _row(store, USER_A)
+    row = _row(store, ORG_A)
     assert row.last_verified_at is None
     async with client as c:
         r = await c.post(f"/api/brokers/connections/{row.id}/verify")
@@ -920,7 +965,7 @@ async def test_two_simultaneous_first_connections_do_not_500(store, cipher_key):
         await real_commit()
 
     db.commit = flaky_commit
-    conn = await svc.connect(db, USER_A, broker="alpaca", environment=ENV_PAPER,
+    conn = await svc.connect(db, ORG_A, broker="alpaca", environment=ENV_PAPER,
                              api_key=ALPACA_KEY, secret_key=ALPACA_SECRET)
 
     assert calls["n"] == 2, "the conflict was not retried"
@@ -943,7 +988,7 @@ async def test_a_persistent_conflict_still_raises_rather_than_spinning(store, ci
 
     db.commit = always_conflict
     with pytest.raises(IntegrityError):
-        await svc.connect(db, USER_A, broker="alpaca", environment=ENV_PAPER,
+        await svc.connect(db, ORG_A, broker="alpaca", environment=ENV_PAPER,
                           api_key=ALPACA_KEY, secret_key=ALPACA_SECRET)
     assert calls["n"] == 2, f"expected exactly 2 attempts, got {calls['n']}"
 

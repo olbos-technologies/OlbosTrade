@@ -34,6 +34,7 @@ from app.api.rate_limit import rate_limit
 from app.api.routes.access_requests import require_auth_enabled
 from app.api.tier_deps import require_broker_access
 from app.services import broker_connection_service as svc
+from app.services.organization_service import personal_org_for
 from app.services import credential_cipher
 from app.services.broker_connection_service import (
     BrokerConnectionError, VerificationRejected, VerificationUnavailable,
@@ -103,7 +104,8 @@ async def list_connections(request: Request) -> dict:
     _require_cipher()
     user = current_user(request)
     async with AsyncSessionLocal() as db:
-        connections = await svc.list_for_user(db, user["id"])
+        org = await personal_org_for(db, user["id"])
+        connections = await svc.list_for_org(db, org.id)
     return {
         "connections": connections,
         # Told plainly rather than discovered later. A user who connects a
@@ -179,11 +181,13 @@ async def create_connection(
 
     try:
         async with AsyncSessionLocal() as db:
+            org = await personal_org_for(db, user["id"])
             conn = await svc.connect(
-                db, user["id"],
+                db, org.id,
                 broker=broker, environment=environment,
                 api_key=api_key, secret_key=secret_key,
-                label=body.label, verified_at=verified_at,
+                label=body.label, created_by_user_id=user["id"],
+                verified_at=verified_at,
             )
             payload = svc.serialize(conn)
     except BrokerConnectionError as exc:
@@ -215,7 +219,8 @@ async def verify_connection(
 
     Decrypts, which is why it is rate-limited and why it answers 404 for a
     connection belonging to anyone else — scoped through credentials_for,
-    which filters on user_id, rather than by looking the id up directly.
+    which filters on the caller's organization, not by looking the id up
+    directly.
     """
     from app.core.database import AsyncSessionLocal
 
@@ -223,7 +228,8 @@ async def verify_connection(
     user = current_user(request)
 
     async with AsyncSessionLocal() as db:
-        connections = await svc.list_for_user(db, user["id"])
+        org = await personal_org_for(db, user["id"])
+        connections = await svc.list_for_org(db, org.id)
         match = next(
             (c for c in connections
              if c["id"] == connection_id and c["status"] == "active"),
@@ -234,7 +240,7 @@ async def verify_connection(
             raise HTTPException(status_code=404, detail="No such connection")
 
         found = await svc.credentials_for(
-            db, user["id"],
+            db, org.id,
             broker=match["broker"], environment=match["environment"],
         )
         if found is None:
@@ -266,7 +272,8 @@ async def delete_connection(connection_id: str, request: Request) -> dict:
 
     user = current_user(request)
     async with AsyncSessionLocal() as db:
-        removed = await svc.revoke(db, user["id"], connection_id)
+        org = await personal_org_for(db, user["id"])
+        removed = await svc.revoke(db, org.id, connection_id)
     if not removed:
         raise HTTPException(status_code=404, detail="No such connection")
     return {"ok": True, "detail": "Disconnected. The stored keys were deleted."}
