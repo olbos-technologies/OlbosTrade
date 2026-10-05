@@ -154,7 +154,7 @@ export default function Landing() {
       <header className="landing-nav">
         <div className="landing-container landing-nav-row">
           <span style={{ display: "inline-flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-            <img src="/olbos-mark-sm.webp" alt="" width={55} height={24} />
+            <img src="/olbos-o-sm.webp" alt="" width={26} height={24} />
             <span className="landing-wordmark">OLBOS</span>
           </span>
           <nav
@@ -416,7 +416,7 @@ export default function Landing() {
         <div className="landing-container">
           <div className="landing-footer-row">
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <img src="/olbos-mark-sm.webp" alt="" width={41} height={18} />
+              <img src="/olbos-o-sm.webp" alt="" width={19} height={18} />
               <span className="landing-wordmark" style={{ fontSize: 15 }}>OLBOS</span>
               <span style={{ width: 1, height: 12, background: "var(--line-dim)" }} />
               <span style={{

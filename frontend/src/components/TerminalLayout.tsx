@@ -383,6 +383,18 @@ function ExecutionModeControl({
   );
 }
 
+/* The desktop sidebar's two widths. The header's hamburger+logo block must be
+   exactly as wide as the sidebar so their right-hand dividers line up, so both
+   read these rather than repeating a literal -- they were two separate magic
+   numbers before, which is how they would quietly diverge.
+
+   Collapsed is 72 rather than 48 because the brand mark lives in that rail
+   too: 48 is entirely consumed by the toggle's tap target, and the sidebar
+   defaults to collapsed, so at 48 a desktop operator saw no mark at all on
+   the screen they land on. 48 (toggle) + 21 (mark) + 3 breathing = 72. */
+const RAIL_COLLAPSED = 72;
+const RAIL_EXPANDED = 232;
+
 function TickerStrip({ onToggle, sidebarExpanded, isMobile }: {
   onToggle: () => void; sidebarExpanded: boolean; isMobile: boolean;
 }) {
@@ -391,7 +403,7 @@ function TickerStrip({ onToggle, sidebarExpanded, isMobile }: {
   // collapses. On mobile the sidebar is an overlay (doesn't reserve layout
   // space) so the header block keeps its natural, unconstrained width.
   const showFullLogo = isMobile || sidebarExpanded;
-  const headerLeftWidth = isMobile ? undefined : (sidebarExpanded ? 232 : 48);
+  const headerLeftWidth = isMobile ? undefined : (sidebarExpanded ? RAIL_EXPANDED : RAIL_COLLAPSED);
 
   const [time, setTime] = useState(new Date());
   const [spy,  setSpy]  = useState<SnapShot>({ last_close: null, prev_close: null, change_pct: null });
@@ -785,7 +797,7 @@ function TickerStrip({ onToggle, sidebarExpanded, isMobile }: {
             </svg>
           </button>
 
-          <img src="/olbos-mark-sm.webp" alt="" width={46} height={20} style={{ flexShrink: 0 }} />
+          <img src="/olbos-o-sm.webp" alt="" width={21} height={20} style={{ flexShrink: 0 }} />
           <span className="brand-wordmark" style={{ fontSize: 15, lineHeight: 1, whiteSpace: "nowrap" }}>
             OLBOS
           </span>
@@ -922,23 +934,21 @@ function TickerStrip({ onToggle, sidebarExpanded, isMobile }: {
           </svg>
         </button>
 
-        {showFullLogo && (
-          <div style={{ display: "flex", alignItems: "center", gap: 7, overflow: "hidden", paddingRight: 12 }}>
-            {/* 46x20, not 45x20: the attributes must match the ASSET's ratio
-                (160/70 = 2.2857), not the source art's (1618/712 = 2.2725).
-                45 forces 2.250 and squeezes the mark 1.6% horizontally — the
-                browser stretches to exactly width x height, it does not
-                letterbox. 18->41 and 24->55 already round correctly.
-
-                At 46px the mark takes 46 of the 232px expanded block, leaving
-                119px for the OLBOS/TERMINAL stack, measured at 69px. */}
-            <img
-              src="/olbos-mark-sm.webp"
-              alt=""
-              width={46}
-              height={20}
-              style={{ flexShrink: 0, filter: "drop-shadow(0 0 4px rgba(212,175,55,.35))" }}
-            />
+        {/* The mark renders in BOTH states; only the wordmark is conditional.
+            That is what the near-square pearl O buys: at 77/72 = 1.0694 it
+            fits the collapsed rail, where the 2.27:1 OB mark it replaces
+            could not. Width is set from the ASSET's ratio, not the source
+            art's — the browser stretches an img to exactly width x height
+            and does not letterbox. */}
+        <div style={{ display: "flex", alignItems: "center", gap: 7, overflow: "hidden", paddingRight: showFullLogo ? 12 : 0 }}>
+          <img
+            src="/olbos-o-sm.webp"
+            alt=""
+            width={21}
+            height={20}
+            style={{ flexShrink: 0, filter: "drop-shadow(0 0 4px rgba(212,175,55,.35))" }}
+          />
+          {showFullLogo && (
             <div style={{ display: "flex", flexDirection: "column", gap: 2, overflow: "hidden" }}>
               <span
                 className="brand-wordmark"
@@ -951,8 +961,8 @@ function TickerStrip({ onToggle, sidebarExpanded, isMobile }: {
                 letterSpacing: "0.276em", color: "var(--ink-faint)", lineHeight: 1, paddingLeft: 1, whiteSpace: "nowrap",
               }}>TERMINAL</span>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Marquee strip — scrolls continuously */}
@@ -1045,7 +1055,7 @@ function Sidebar({ active, onNav, expanded, isMobile = false }: {
   // On mobile, labels always show (it's a full overlay panel); on desktop they
   // appear only when expanded (icon rail otherwise).
   const showLabels = expanded || isMobile;
-  const W = isMobile ? 240 : (expanded ? 232 : 48);
+  const W = isMobile ? 240 : (expanded ? RAIL_EXPANDED : RAIL_COLLAPSED);
 
   const containerStyle: React.CSSProperties = isMobile
     ? {
