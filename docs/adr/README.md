@@ -10,7 +10,7 @@ reasoning that was true at the time stays readable.
 
 | ADR | Decision | Status |
 | --- | --- | --- |
-| [0001](0001-broker-connection-ownership.md) | Broker connection ownership semantics (§23 item 3) | Proposed |
+| [0001](0001-broker-connection-ownership.md) | Broker connection ownership semantics (§23 item 3) | Accepted 2026-10-05 |
 
 Still required by §20.2, not yet written: legal operating model and regulated
 scope; identity provider versus the existing session service; managed cloud and
