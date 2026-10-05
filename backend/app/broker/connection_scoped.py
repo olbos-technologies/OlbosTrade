@@ -29,7 +29,9 @@ from dataclasses import dataclass
 from typing import Optional
 
 from app.broker.alpaca_client import AlpacaClient
-from app.models.broker_connection import BROKER_ALPACA, BROKER_IBKR
+from app.models.broker_connection import (
+    BROKER_ALPACA, BROKER_IBKR, STATUS_ACTIVE,
+)
 from app.services import broker_connection_service as connections
 
 logger = logging.getLogger(__name__)
@@ -131,12 +133,46 @@ async def scoped_alpaca_for(
 
 
 def _version_of(row) -> int:
-    """§7.2 increments a connection version on routing- or security-relevant
-    change. The column does not exist yet, so this reads 1 until it does —
-    stated here rather than silently defaulting, because a version that never
-    changes makes the worker's revalidation vacuous. Adding the column is the
-    change that makes the check real."""
+    """§7.2's connection version, as stored. Migration 0038 added the column;
+    the `or 1` covers a row object built in a test without one."""
     return int(getattr(row, "version", 1) or 1)
+
+
+async def assert_still_executable(db, scoped: ScopedBroker) -> None:
+    """§8's pre-submit revalidation: has this connection changed under us?
+
+    The worker builds a client, queues work, and submits some time later.
+    Between those points the credential may have been revoked or rotated. This
+    is the check that stops the order, and it runs immediately before
+    submission rather than at build time — a check at build time proves only
+    that the connection was fine when nobody was about to trade on it.
+
+    Raises rather than returning False for the same reason the builder does: a
+    caller must not be able to treat "changed" as a falsy value and carry on.
+
+    Three ways to fail, all of them the same answer to the caller:
+      * the row is gone;
+      * it is no longer active;
+      * its version moved.
+    """
+    row = await connections.get_connection(db, scoped.connection_id)
+
+    if row is None:
+        raise ConnectionNotExecutable(
+            f"connection {scoped.connection_id} no longer exists"
+        )
+    if row.status != STATUS_ACTIVE:
+        raise ConnectionNotExecutable(
+            f"connection {scoped.connection_id} is {row.status}; it was active "
+            "when this order was prepared"
+        )
+    current = _version_of(row)
+    if current != scoped.connection_version:
+        raise ConnectionNotExecutable(
+            f"connection {scoped.connection_id} moved from version "
+            f"{scoped.connection_version} to {current} since this order was "
+            "prepared; it may no longer be the account that was evaluated"
+        )
 
 
 def scoped_broker_unsupported(broker: str) -> ConnectionNotExecutable:
