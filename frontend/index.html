@@ -10,13 +10,19 @@
          (.ico, .svg, both PNGs) are one drawing — public/favicon.svg,
          rasterised from it rather than redrawn.
 
-         apple-touch-icon is DELIBERATELY a different mark: the pearl-and-gold
-         O. It renders at 180px on an iOS home screen, which is the only place
-         in this product a logo is drawn large enough for that detail to exist
-         at all — below ~48px its pearl body and gold ribbons disappear and it
-         reads as a pale ring, which is why it is not the favicon and not in
-         the header lockups. Do not "fix" the inconsistency by regenerating it
-         from favicon.svg; test_favicon_assets.py pins the divergence. -->
+         apple-touch-icon is the SAME mark — the pearl-and-gold O, as used in
+         every lockup — but a DIFFERENT DRAWING of it. It is the photographic
+         render: pearl body, gold ribbons, real depth. That detail only exists
+         above ~48px, and it renders at 180px on an iOS home screen, which is
+         the one place in this product a logo is drawn that large. favicon.svg
+         is the flat two-stroke drawing of the same O, because downsampling
+         the render to 16px produces a muddy ring.
+
+         So the two are not inconsistent and must not be reconciled in either
+         direction: do not regenerate the favicon from the render (muddy), and
+         do not flatten the app icon to favicon.svg (throws away the only
+         reason the render exists). test_favicon_assets.py pins both, on
+         measured distinct-colour counts. -->
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />

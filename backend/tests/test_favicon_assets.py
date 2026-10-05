@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import re
 import struct
+import zlib
 from pathlib import Path
 
 import pytest
@@ -33,6 +34,21 @@ ICON_LINK = re.compile(
 )
 SIZES_ATTR = re.compile(r'sizes="(\d+)x(\d+)"')
 
+# Measured, not guessed. With filters correctly reconstructed, the render
+# scores 729 distinct colours (quantised to 5 bits per channel) and
+# favicon.svg rasterised in Chromium at the same 180px scores 141 -- a 5.2x
+# gap. 350 sits roughly 2x from either side, so a re-export at a different
+# compression level cannot trip it but swapping one drawing for the other
+# does.
+PHOTOGRAPHIC_COLOUR_FLOOR = 350
+
+# The render is a thin shaded pearl ring on navy, so near-white is only ~7.6%
+# of it. This floor is deliberately well below that: its job is to catch an
+# icon with no pearl left at all, NOT to tell the two drawings apart. It
+# cannot do the latter -- the flat drawing is a thicker stroke and scores
+# ~15%, i.e. HIGHER. Only the colour count separates them.
+PEARL_PIXEL_FLOOR = 0.03
+
 
 def _png_size(path: Path) -> tuple[int, int]:
     """Width/height from the IHDR chunk. No image library needed."""
@@ -40,6 +56,69 @@ def _png_size(path: Path) -> tuple[int, int]:
     assert data[:8] == b"\x89PNG\r\n\x1a\n", f"{path.name} is not a PNG"
     assert data[12:16] == b"IHDR", f"{path.name} has no IHDR chunk"
     return struct.unpack(">II", data[16:24])
+
+
+def _png_pixels(path: Path) -> tuple[int, int, list[tuple[int, int, int]]]:
+    """Decode a PNG to RGB triples, undoing the per-row filters.
+
+    Written out by hand because Pillow is not in the backend's requirements,
+    and skipped filter reconstruction is NOT a shortcut that merely loses
+    accuracy -- it yields plausible-looking noise. The first version of this
+    guard read the filter byte and then ignored it, and every statistic it
+    computed was garbage that happened to fall in a believable range. All
+    five filter types appear in these assets, so this has to be complete.
+
+    Rows must be walked in order even when only some are sampled: filters 2-4
+    reconstruct against the row above.
+    """
+    data = path.read_bytes()
+    width, height = struct.unpack(">II", data[16:24])
+    bit_depth, colour_type = data[24], data[25]
+    assert bit_depth == 8, f"{path.name} is not 8-bit; this decoder assumes it"
+    bpp = {0: 1, 2: 3, 6: 4}.get(colour_type)
+    assert bpp, f"{path.name} has unsupported PNG colour type {colour_type}"
+
+    idat = b""
+    i = 8
+    while i < len(data):
+        length = int.from_bytes(data[i:i + 4], "big")
+        if data[i + 4:i + 8] == b"IDAT":
+            idat += data[i + 8:i + 8 + length]
+        i += 12 + length
+    raw = zlib.decompress(idat)
+
+    stride = width * bpp + 1
+    assert len(raw) >= stride * height, f"{path.name}: short IDAT"
+
+    pixels: list[tuple[int, int, int]] = []
+    prev = bytearray(width * bpp)
+    for row in range(height):
+        ftype = raw[row * stride]
+        line = bytearray(raw[row * stride + 1:(row + 1) * stride])
+        for x in range(len(line)):
+            left = line[x - bpp] if x >= bpp else 0
+            up = prev[x]
+            upleft = prev[x - bpp] if x >= bpp else 0
+            if ftype == 1:
+                line[x] = (line[x] + left) & 0xFF
+            elif ftype == 2:
+                line[x] = (line[x] + up) & 0xFF
+            elif ftype == 3:
+                line[x] = (line[x] + (left + up) // 2) & 0xFF
+            elif ftype == 4:
+                est = left + up - upleft
+                da, db, dc = abs(est - left), abs(est - up), abs(est - upleft)
+                nearest = left if da <= db and da <= dc else up if db <= dc else upleft
+                line[x] = (line[x] + nearest) & 0xFF
+            elif ftype != 0:
+                raise AssertionError(f"{path.name}: unknown PNG filter {ftype}")
+        for x in range(0, len(line), bpp):
+            if bpp == 1:
+                pixels.append((line[x], line[x], line[x]))
+            else:
+                pixels.append((line[x], line[x + 1], line[x + 2]))
+        prev = line
+    return width, height, pixels
 
 
 def _icon_links() -> list[tuple[str, str]]:
@@ -92,56 +171,47 @@ def test_apple_touch_icon_is_180_and_opaque():
         "composite it onto white")
 
 
-def test_apple_touch_icon_is_the_pearl_O_not_the_favicon_mark():
-    """The app icon is deliberately a DIFFERENT drawing, and that needs pinning.
+def test_the_two_icons_are_the_same_mark_drawn_differently():
+    """Both icons are the O now. What must not collapse is that they are
+    DIFFERENT DRAWINGS of it, chosen per size.
 
-    The favicon trio is one gold-on-navy lemniscate rasterised from
-    favicon.svg. apple-touch-icon is the pearl-and-gold O instead, because
-    180px on an iOS home screen is the only place in this product a logo is
-    drawn large enough for that detail to survive — below ~48px its pearl body
-    and gold ribbons vanish and it reads as a pale ring, which is why it is
-    not the favicon and not in the header lockups.
+    apple-touch-icon is the photographic render: pearl body, gold ribbons,
+    real depth. It earns its 180px on an iOS home screen and turns to mush
+    below ~48px. favicon.svg is a flat two-stroke drawing — pearl outside,
+    gold on the inner edge — that stays legible at 16px where the render
+    cannot.
 
-    Without this test the inconsistency looks like a mistake, and the obvious
-    "fix" is to regenerate the app icon from favicon.svg, silently throwing the
-    decision away. Asserted on near-white pixels: the pearl body has them in
-    quantity, and a gold-on-navy lemniscate has essentially none.
+    Two opposite mistakes this guards, and each looks like tidying up:
+      * regenerating the favicon by downsampling the render (muddy at 16px);
+      * flattening the app icon to the two-stroke drawing (throws away the
+        only reason to have the render at all).
+
+    Distinct colour count is what separates them: a photograph has hundreds,
+    a flat vector has ~140 even with antialiasing. See
+    PHOTOGRAPHIC_COLOUR_FLOOR for the measurements behind the threshold.
     """
-    from collections import Counter
+    _, _, pixels = _png_pixels(PUBLIC / "apple-touch-icon.png")
 
-    data = (PUBLIC / "apple-touch-icon.png").read_bytes()
-    # Decode without an image library: count near-white via a coarse scan of
-    # the zlib-inflated scanlines.
-    import zlib
-    idat = b""
-    i = 8
-    while i < len(data):
-        length = int.from_bytes(data[i:i + 4], "big")
-        ctype = data[i + 4:i + 8]
-        if ctype == b"IDAT":
-            idat += data[i + 8:i + 8 + length]
-        i += 12 + length
-    raw = zlib.decompress(idat)
+    colours = {(r >> 3, g >> 3, b >> 3) for r, g, b in pixels}
+    near_white = sum(1 for r, g, b in pixels if r > 200 and g > 195 and b > 185)
 
-    width = struct.unpack(">I", data[16:20])[0]
-    stride = width * 3 + 1          # colour type 2, 8-bit: filter byte + RGB
-    near_white = 0
-    sampled = 0
-    for row in range(0, len(raw) // stride, 4):
-        off = row * stride + 1
-        for px in range(0, width, 4):
-            r, g, b = raw[off + px * 3: off + px * 3 + 3]
-            sampled += 1
-            if r > 200 and g > 195 and b > 185:
-                near_white += 1
+    assert pixels, "scan read no pixels"
+    assert near_white / len(pixels) > PEARL_PIXEL_FLOOR, (
+        f"only {near_white / len(pixels):.1%} of the app icon is near-white; "
+        "the icon has no pearl left in it at all -- is it still the O?")
+    assert len(colours) > PHOTOGRAPHIC_COLOUR_FLOOR, (
+        f"the app icon has only {len(colours)} distinct colours, which is a "
+        "flat vector rather than the photographic render. Flattening it "
+        "removes the whole reason it is a separate drawing from favicon.svg.")
 
-    assert sampled > 0, "scan read no pixels"
-    share = near_white / sampled
-    assert share > 0.04, (
-        f"only {share:.1%} of sampled pixels are near-white — the app icon "
-        "looks like the gold-on-navy favicon mark rather than the pearl O. If "
-        "the app icon was intentionally changed, update this test and the "
-        "comment in frontend/index.html together.")
+
+def test_svg_favicon_is_the_flat_two_stroke_drawing():
+    """The counterpart: the favicon must stay drawn, not become a render."""
+    svg = (PUBLIC / "favicon.svg").read_text()
+    assert "#f4efe6" in svg, "the pearl stroke is missing from favicon.svg"
+    assert svg.count("ellipse") >= 2, (
+        "favicon.svg is no longer the two-stroke O — if it was replaced with a "
+        "rasterised or traced render, it will go muddy at 16px")
 
 
 def test_svg_favicon_carries_the_brand_colours():
