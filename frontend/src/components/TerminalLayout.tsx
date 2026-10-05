@@ -26,6 +26,7 @@ import MobileBottomNav from "./MobileBottomNav";
 import { isTradeDeskV2Enabled } from "../trade-desk/featureFlags";
 import { TerminalNavProvider } from "./TerminalNavContext";
 import { Badge, Button } from "./ui";
+import BrandWordmark from "./BrandWordmark";
 
 // ── Icons (inline SVG — no dep) ───────────────────────────────────────────────
 const Icon = ({ d, size = 16 }: { d: string; size?: number }) => (
@@ -799,7 +800,7 @@ function TickerStrip({ onToggle, sidebarExpanded, isMobile }: {
 
           <div className="brand-lockup brand-lockup--mobile">
             <img className="brand-lockup-mark" src="/olbos-o-sm.webp" alt="" width={34} height={32} />
-            <span className="brand-lockup-word">OLBOS</span>
+            <BrandWordmark className="brand-lockup-word" height={17} />
           </div>
 
           <div style={{ flex: 1 }} />
@@ -958,17 +959,12 @@ function TickerStrip({ onToggle, sidebarExpanded, isMobile }: {
             /* Wordmark alone — the "TERMINAL" sub-label is gone. It was a
                second thing to read in a 38px strip whose entire job is to be
                glanced past, and it named the surface the operator is already
-               looking at.
+               looking at. Dropping it is what lets the wordmark centre
+               against the mark instead of hanging above a label.
 
-               Dropping it is what lets the wordmark sit properly. Stacked, it
-               was pinned at 17px above an 8px line; on its own it takes the
-               row's full height at 19px and centres against the mark instead
-               of hanging above a label. Tracking opens from the shared
-               class's 0.04em to 0.08em: that value was chosen to sit over
-               0.276em-tracked small caps, and reads tight on a standalone
-               wordmark. Overridden here rather than on .brand-wordmark, which
-               the landing and auth headers also use. */
-            <span className="brand-lockup-word">OLBOS</span>
+               height is CAP HEIGHT, not font-size: 15 here is the 20px text
+               wordmark this replaces (Manrope's caps are 0.75em). */
+            <BrandWordmark className="brand-lockup-word" height={15} />
           )}
         </div>
       </div>

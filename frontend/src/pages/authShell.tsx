@@ -16,6 +16,7 @@
 
 import React from "react";
 import { Link } from "react-router-dom";
+import BrandWordmark from "../components/BrandWordmark";
 
 import { tint } from "../utils/tint";
 import "../auth.css";
@@ -127,7 +128,7 @@ export function AuthPage({
               around a page that is not the terminal. */}
           <a className="auth-brand" href="/">
             <img src="/olbos-o-sm.webp" alt="" width={26} height={24} />
-            <span className="auth-wordmark">OLBOS</span>
+            <BrandWordmark className="auth-wordmark" height={15} />
           </a>
           {navAction && (
             navAction.external

@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Manrope:wght@600&family=Playfair+Display:wght@600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Playfair+Display:wght@600&display=swap');
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -30,15 +30,7 @@
   --orange:    #f97316;
   --mono:      "JetBrains Mono", monospace;
   --sans:      "IBM Plex Sans", system-ui, sans-serif;
-  /* Brand wordmark uses the same sans stack — no serif/manuscript faces. */
-  --brand-font: var(--sans);
-  /* Application-header lockup only (.brand-lockup). Manrope's wide apertures
-     and near-geometric caps hold up at the small sizes this header allows,
-     where IBM Plex Sans reads as UI chrome rather than a wordmark. Scoped
-     deliberately: .brand-wordmark on the landing and auth headers is NOT
-     switched, because the brief covered the app header alone. */
-  --brand-lockup-font: "Manrope", "Inter", system-ui, sans-serif;
-  --brand-lockup-tracking: 0.09em;
+
   /* Editorial display face, MARKETING SURFACES ONLY — landing, login,
      request-access, claim. Deliberately not used anywhere in the terminal:
      its numerals do not tabulate (the .tnum rule below exists because data
@@ -111,29 +103,20 @@ body {
 
 /* Typography */
 .mono { font-family: var(--mono); }
-.brand-wordmark {
-  font-family: var(--brand-font);
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  color: var(--brand);
-  text-shadow: 0 0 10px rgba(212, 175, 55, 0.3);
-}
-
 /* ── Application-header brand lockup ──────────────────────────────────────
    The O mark plus the OLBOS wordmark, in the terminal header only.
 
    Sizes here are smaller than a standalone brand spec would ask for, and
    that is a hard constraint rather than a preference: the desktop ticker
    strip is 38px tall and the mobile header is 48px. A 42px mark does not
-   fit in 38px of bar. Everything else in the brief — Manrope 600, uppercase,
-   0.09em tracking, line-height 1, a 12-16px gap, flex centring, contain
-   fitting, no glow — applies as specified, and the mark is scaled to the
-   largest size each bar actually holds. Raising the bar is the one change
-   that would allow the larger figures; see the note in TerminalLayout.
+   fit in 38px of bar, so the mark is scaled to the largest each bar holds.
+   Raising the bar is the one change that would allow the larger figures;
+   see the note in TerminalLayout.
 
-   No text-shadow and no drop-shadow, unlike .brand-wordmark above: a glow
-   on a gold wordmark at this size muddies the letterforms it is meant to
-   flatter. */
+   Nothing here glows. The mark's drop-shadow and the wordmark's text-shadow
+   are both gone: at this size a glow thickens the forms it is meant to
+   flatter. Weight, tracking and case live in the wordmark artwork, not in
+   CSS -- see components/BrandWordmark. */
 .brand-lockup {
   display: flex;
   align-items: center;      /* optical centring, not margins */
@@ -144,37 +127,30 @@ body {
   flex-shrink: 0;
   object-fit: contain;      /* never distort the mark if a size is mismatched */
 }
-.brand-lockup-word {
-  font-family: var(--brand-lockup-font);
-  font-weight: 600;         /* 600, not 700 — heavier reads as a dashboard label */
-  text-transform: uppercase;
-  letter-spacing: var(--brand-lockup-tracking);
-  line-height: 1;
-  color: var(--brand);      /* #D4AF37, already the token; no duplicate literal */
-  white-space: nowrap;      /* OLBOS never wraps and never drops a letter */
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
+/* Outlines, so weight, tracking, case and anti-aliasing are all settled in
+   BrandWordmark. Only colour is left to CSS -- the SVG fills currentColor.
+   It cannot wrap, cannot lose a letter and cannot flash a fallback face. */
+.brand-lockup-word { color: var(--brand); }
 
 /* Desktop ticker strip — 38px bar. */
 .brand-lockup--strip { gap: 14px; }
 .brand-lockup--strip .brand-lockup-mark { width: 27px; height: 25px; }
-.brand-lockup--strip .brand-lockup-word { font-size: 20px; }
+/* cap height 15px -> 15 * 4.758 */
+.brand-lockup--strip .brand-lockup-word { height: 15px; width: 71px; }
 /* Collapsed rail shows the mark alone, so it needs no gap reservation. */
 .brand-lockup--strip.is-mark-only { gap: 0; }
 
 /* Mobile header — 48px bar, so the mark can be bigger than on desktop. */
 .brand-lockup--mobile { gap: 12px; }
 .brand-lockup--mobile .brand-lockup-mark { width: 34px; height: 32px; }
-.brand-lockup--mobile .brand-lockup-word { font-size: 23px; }
+.brand-lockup--mobile .brand-lockup-word { height: 17px; width: 81px; }
 
-/* Narrow phones: step down so the wordmark cannot collide with the mode
-   chip on the right. Tracking is deliberately NOT reduced — it is what makes
-   the wordmark read as a wordmark. */
+/* Narrow phones: step down so the wordmark cannot collide with the mode chip
+   on the right. Tracking does not change, because it is inside the artwork. */
 @media (max-width: 380px) {
   .brand-lockup--mobile { gap: 10px; }
   .brand-lockup--mobile .brand-lockup-mark { width: 30px; height: 28px; }
-  .brand-lockup--mobile .brand-lockup-word { font-size: 20px; }
+  .brand-lockup--mobile .brand-lockup-word { height: 15px; width: 71px; }
 }
 /* tabular-nums: proportional sans with monospaced digits — for ALL P&L,
    prices, percentages, and metrics so columns align without using --mono. */

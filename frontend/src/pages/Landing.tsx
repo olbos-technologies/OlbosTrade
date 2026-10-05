@@ -15,6 +15,7 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import "../landing.css";
+import BrandWordmark from "../components/BrandWordmark";
 
 function NavLink({ href, children }: { href: string; children: React.ReactNode }) {
   return <a href={href}>{children}</a>;
@@ -155,7 +156,7 @@ export default function Landing() {
         <div className="landing-container landing-nav-row">
           <span style={{ display: "inline-flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
             <img src="/olbos-o-sm.webp" alt="" width={26} height={24} />
-            <span className="landing-wordmark">OLBOS</span>
+            <BrandWordmark className="landing-wordmark" height={15} />
           </span>
           <nav
             id="landing-nav-links"
@@ -417,7 +418,7 @@ export default function Landing() {
           <div className="landing-footer-row">
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <img src="/olbos-o-sm.webp" alt="" width={19} height={18} />
-              <span className="landing-wordmark" style={{ fontSize: 15 }}>OLBOS</span>
+              <BrandWordmark className="landing-wordmark" height={11} />
               <span style={{ width: 1, height: 12, background: "var(--line-dim)" }} />
               <span style={{
                 fontFamily: "var(--mono)", fontSize: 9, fontWeight: 500,
