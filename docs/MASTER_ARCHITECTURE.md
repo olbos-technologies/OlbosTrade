@@ -496,7 +496,7 @@ sequenceDiagram
             Broker-->>Worker: Broker order ID and status
             Worker->>DB: Record acknowledgement/fills + outbox atomically
         else timeout or uncertain response
-            Worker->>DB: Mark AMBIGUOUS; do not blind retry
+            Worker->>DB: Mark AMBIGUOUS and stop automatic retry
             Worker->>Recon: Request broker lookup/reconciliation
         end
         Recon->>Broker: Fetch orders, fills, positions, balances
