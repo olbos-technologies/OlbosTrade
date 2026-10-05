@@ -1,10 +1,10 @@
 # ADR-0001 — Broker connection ownership semantics
 
-- **Status:** Proposed — requires operator approval before implementation
-- **Date:** 2026-10-05
+- **Status:** Accepted
+- **Date:** 2026-10-05 (proposed), 2026-10-05 (accepted by the operator)
 - **Decides:** `MASTER_ARCHITECTURE.md` §23 item 3 ("organization/account ownership semantics for broker connections")
 - **Baseline:** `main` at `b0c59e1`
-- **Blocks:** §21 Phase 2 (tenant-aware Alpaca paper execution)
+- **Unblocks:** §21 Phase 2 (tenant-aware Alpaca paper execution), now that this is Accepted
 - **Does not depend on:** §23 item 1 (legal operating model) — see "Why this is safe to decide first"
 
 ---
@@ -106,7 +106,8 @@ the start. Roles, invitations and multi-member orgs stay unbuilt.
 
 ## Decision
 
-**Option C.** An organization owns a broker connection. Every user gets a
+**Option C**, accepted by the operator on 2026-10-05. An organization owns a
+broker connection. Every user gets a
 personal organization at registration. `broker_connections.organization_id`
 replaces `user_id` as the owning key and as the execution-routing key.
 
@@ -171,11 +172,11 @@ unused table. If it permits them, Option C has already done the hard part.
 
 ## Follow-ups this ADR creates
 
-1. `docs/trade-desk-2.0/PLAN.md` lists multi-tenancy as a deferred non-goal in
-   **two** places — line 97 ("Multi-tenant SaaS auth") and line 411
-   ("Multi-tenant auth/RBAC/billing (SaaS expansion later)"). Supersede both or
-   the documents will keep disagreeing; fixing one is worse than fixing neither,
-   because it looks resolved.
+1. ~~`docs/trade-desk-2.0/PLAN.md` lists multi-tenancy as a deferred non-goal in
+   two places.~~ **Done 2026-10-05**, in the same change that accepted this ADR —
+   both the prose list and the bullet now point here, and both say that roles,
+   invitations and multi-member organizations stay deferred. Only the ownership
+   key is decided.
 2. `MASTER_ARCHITECTURE.md` §3.1 warns of a migration `0029` conflict. All eleven
    remote branches carry the same `0029_add_options_scan_rejections.py`; no
    conflict exists in the repository. Reword it before someone hunts for one.
