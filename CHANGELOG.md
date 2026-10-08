@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased — Copilot approval is a single-use atomic claim
+
+- `_resolve_pending_approval` now claims a pending approval with one
+  conditional `UPDATE ... WHERE status='pending' RETURNING`, replacing an
+  unlocked `SELECT` followed by an ORM write. Under READ COMMITTED that read
+  took no row lock, so two concurrent approvals of one signal could both see
+  `pending`, both commit, and both return a payload — **two broker orders for
+  one signal**. The rotation path next door already used `SELECT ... FOR
+  UPDATE`; this path did not.
+- A concurrent approve/reject pair now produces exactly one terminal decision
+  instead of submitting and recording a rejection for the same signal.
+- Approval and rejection record the authenticated actor (`approved_by_actor` /
+  `rejected_by_actor`) alongside the existing role label, and the decision is
+  merged into the stored payload. When auth is disabled the field is omitted
+  rather than filled with a placeholder.
+- Concurrency is now covered against a real PostgreSQL
+  (`tests/test_approval_concurrency_pg.py`), and CI gained a `postgres:16`
+  service so those tests run instead of skipping. The pre-existing mock-based
+  tests passed throughout the window in which this bug was live.
+
 ## Unreleased — Instrument console UI (skeuomorphic-lite)
 
 - Terminal chrome: raised bezels on panels/buttons, rack ticker + status bars,

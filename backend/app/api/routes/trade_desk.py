@@ -12,9 +12,11 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from starlette.requests import HTTPConnection
 
 from decimal import Decimal
 
+from app.api.auth_deps import current_user
 from app.api.deps import require_api_key
 from app.api.tier_deps import require_broker_access
 from app.api.rate_limit import rate_limit
@@ -306,26 +308,81 @@ async def _get_pending_approvals() -> list[dict]:
     return [r.payload for r in rows]
 
 
-async def _resolve_pending_approval(signal_id: str, resolution: str) -> Optional[dict]:
-    """Mark a pending approval approved/rejected and return its payload, or None if not found/already resolved."""
+def _approval_actor(conn: HTTPConnection) -> Optional[str]:
+    """Identify the signed-in caller who is approving or rejecting, if any.
+
+    Returns None rather than a placeholder when auth is disabled, because an
+    audit trail that says "user" for every decision is worse than one that
+    admits it does not know: the first looks like evidence and is not.
+    """
+    user = current_user(conn)
+    identity = user.get("id") or user.get("email")
+    return str(identity) if identity else None
+
+
+async def _resolve_pending_approval(
+    signal_id: str,
+    resolution: str,
+    actor: Optional[str] = None,
+) -> Optional[dict]:
+    """Atomically claim a pending approval and return its payload.
+
+    Returns None when there was no PENDING row to claim — it never existed, or
+    another request resolved it first. Callers turn that into a 404, which is
+    what makes an approval single-use.
+
+    THE CLAIM IS ONE CONDITIONAL UPDATE, NOT A SELECT FOLLOWED BY A WRITE.
+    That distinction is the whole point of this function. Under READ COMMITTED
+    a bare SELECT takes no row lock, so two concurrent approvals of the same
+    signal both read status='pending', both assign, and both commit: two
+    callers each receive a payload, and each goes on to submit an order for
+    one signal. `UPDATE ... WHERE status='pending'` cannot do that. Postgres
+    waits on the row lock and then RE-EVALUATES the WHERE clause against the
+    committed version, so the loser matches zero rows and gets None. The
+    rotation path next door has always done this via SELECT ... FOR UPDATE;
+    this path did not, and that asymmetry was the bug.
+
+    `actor` is recorded with the decision so approval history says who
+    authorised it. It is deliberately best-effort: these routes are API-key
+    gated and `current_user` is {} when auth_enabled is off, in which case
+    there is no authenticated actor to name and the field is omitted rather
+    than filled with a guess.
+    """
     from app.core.database import AsyncSessionLocal
     from app.models.execution_event import ExecutionEvent
-    from sqlalchemy import select
+    from sqlalchemy import cast, update
+    from sqlalchemy.dialects.postgresql import JSONB
+
+    decision = {
+        "resolution": resolution,
+        "resolved_at": datetime.now(timezone.utc).isoformat(),
+    }
+    if actor:
+        decision["resolved_by"] = actor
 
     async with AsyncSessionLocal() as session:
         async with session.begin():
-            row = (await session.execute(
-                select(ExecutionEvent).where(
+            claimed = (await session.execute(
+                update(ExecutionEvent)
+                .where(
                     ExecutionEvent.kind == "pending_approval",
                     ExecutionEvent.signal_id == signal_id,
                     ExecutionEvent.status == "pending",
                 )
-            )).scalar_one_or_none()
-            if row is None:
-                return None
-            payload = row.payload
-            row.status = resolution
-    return payload
+                .values(
+                    status=resolution,
+                    # Merge, not replace: the decision is appended to whatever
+                    # the signal already carries so history is not overwritten.
+                    payload=ExecutionEvent.payload.op("||")(
+                        cast({"approval": decision}, JSONB)
+                    ),
+                )
+                .returning(ExecutionEvent.payload)
+                .execution_options(synchronize_session=False)
+            )).first()
+    if claimed is None:
+        return None
+    return dict(claimed[0] or {})
 
 
 async def _log_execution(entry: dict) -> None:
@@ -759,14 +816,26 @@ async def evaluate_options(req: OptionsEvaluateRequest):
 
 
 @router.post("/approve/{signal_id}", dependencies=[Depends(require_api_key), Depends(rate_limit), Depends(require_broker_access)])
-async def approve_signal(signal_id: str):
-    """User approves a pending signal → executes order."""
-    signal = await _resolve_pending_approval(signal_id, "approved")
+async def approve_signal(signal_id: str, conn: HTTPConnection):
+    """User approves a pending signal → executes order.
+
+    The claim happens first and is single-use. If it returns None this request
+    lost the race (or there was nothing to approve) and MUST NOT execute —
+    that is the difference between one order and two.
+    """
+    actor = _approval_actor(conn)
+    signal = await _resolve_pending_approval(signal_id, "approved", actor=actor)
     if signal is None:
         raise HTTPException(404, "Signal not found in pending queue")
 
     result = await _execute_signal(signal, approved_by="user")
-    await _log_execution({**result, "signal_id": signal_id, "approved_by": "user"})
+    await _log_execution({
+        **result,
+        "signal_id": signal_id,
+        "approved_by": "user",
+        # Who, specifically — "user" is a role, not an identity.
+        "approved_by_actor": actor,
+    })
     return result
 
 
@@ -909,9 +978,14 @@ async def reject_rotation_review(review_id: str):
 
 
 @router.post("/reject/{signal_id}", dependencies=[Depends(require_api_key), Depends(rate_limit), Depends(require_broker_access)])
-async def reject_signal(signal_id: str):
-    """User rejects a pending signal — no order sent."""
-    signal = await _resolve_pending_approval(signal_id, "rejected")
+async def reject_signal(signal_id: str, conn: HTTPConnection):
+    """User rejects a pending signal — no order sent.
+
+    Shares the single-use claim with approve, so a concurrent approve/reject
+    pair produces exactly one terminal decision rather than both.
+    """
+    actor = _approval_actor(conn)
+    signal = await _resolve_pending_approval(signal_id, "rejected", actor=actor)
     if signal is None:
         raise HTTPException(404, "Signal not found in pending queue")
 
@@ -923,6 +997,7 @@ async def reject_signal(signal_id: str):
         "result":      "rejected",
         "rejected_at": datetime.now(timezone.utc).isoformat(),
         "rejected_by": "user",
+        "rejected_by_actor": actor,
     }
     await _log_execution(entry)
     return entry

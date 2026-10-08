@@ -82,19 +82,31 @@ async def test_get_pending_approvals_returns_payloads_in_query_order():
 
 
 @pytest.mark.asyncio
-async def test_resolve_pending_approval_marks_resolved_and_returns_payload():
-    row = MagicMock(payload={"id": "s1", "ticker": "SPY"}, status="pending")
-    result = MagicMock(scalar_one_or_none=MagicMock(return_value=row))
+async def test_resolve_pending_approval_returns_the_claimed_payload():
+    """The claim is UPDATE ... RETURNING, so the payload arrives as the database
+    wrote it — including the approval block merged in by the same statement.
+
+    These two tests deliberately do NOT assert anything about concurrency. They
+    cannot: a mocked session returns whatever the test told it to, so a racy
+    SELECT-then-write and an atomic claim are indistinguishable through it.
+    This file asserted exactly that shape while the double-approval bug was
+    live and passed throughout. Concurrency lives in
+    test_approval_concurrency_pg.py, against a real PostgreSQL.
+    """
+    returned = {"id": "s1", "ticker": "SPY",
+                "approval": {"resolution": "approved", "resolved_at": "2026-01-01T00:00:00+00:00"}}
+    result = MagicMock(first=MagicMock(return_value=(returned,)))
     session = _session([result])
     with patch("app.core.database.AsyncSessionLocal", return_value=session):
         payload = await _resolve_pending_approval("s1", "approved")
-    assert payload == {"id": "s1", "ticker": "SPY"}
-    assert row.status == "approved"
+    assert payload == returned
 
 
 @pytest.mark.asyncio
-async def test_resolve_pending_approval_returns_none_when_not_found():
-    result = MagicMock(scalar_one_or_none=MagicMock(return_value=None))
+async def test_resolve_pending_approval_returns_none_when_nothing_was_claimable():
+    """Zero rows updated — it never existed, or someone else already resolved
+    it. Callers turn this into a 404 and must not execute."""
+    result = MagicMock(first=MagicMock(return_value=None))
     session = _session([result])
     with patch("app.core.database.AsyncSessionLocal", return_value=session):
         payload = await _resolve_pending_approval("missing", "approved")
