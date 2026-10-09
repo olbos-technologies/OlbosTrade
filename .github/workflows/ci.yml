@@ -94,20 +94,58 @@ jobs:
         # is how the defects they cover survived a passing suite. Fail the job
         # if any of them skip, and report passed and skipped separately rather
         # than as one number.
+        #
+        # Counts come from the JUnit XML, never from pytest's summary line.
+        # These tests leave coroutines pending and the interpreter loses the
+        # last line of stdout during teardown, so the summary is absent even
+        # on a fully passing run. Grepping for it both failed this step
+        # spuriously and made the skip check vacuous: an all-skipped run has
+        # no summary line either, so the grep would have matched nothing and
+        # passed. The XML is written before teardown, so it is the only count
+        # that survives.
         run: |
-          set -o pipefail
-          pytest -q --no-header -rs \
+          pytest --no-header -q -rs --junitxml=pg-tests.xml \
             tests/test_position_claim_pg.py \
             tests/test_trade_desk_claim_route.py \
             tests/test_approval_concurrency_pg.py \
-            tests/test_journal_isolation_pg.py | tee pg-tests.log
-          if grep -qE '[0-9]+ skipped' pg-tests.log; then
-            echo "::error::PostgreSQL-backed tests skipped — the database is not reaching them."
-            grep -E 'SKIPPED|skipped' pg-tests.log
-            exit 1
-          fi
-          echo "--- PostgreSQL-backed test outcome ---"
-          grep -E '[0-9]+ (passed|failed|error)' pg-tests.log
+            tests/test_journal_isolation_pg.py || true
+          python - <<'PY'
+          import sys
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          report = Path("pg-tests.xml")
+          if not report.exists():
+              sys.exit("::error::pytest wrote no JUnit report — it never ran.")
+
+          root = ET.parse(report).getroot()
+          tests = failures = errors = skipped = 0
+          for suite in root.iter("testsuite"):
+              tests += int(suite.get("tests", 0))
+              failures += int(suite.get("failures", 0))
+              errors += int(suite.get("errors", 0))
+              skipped += int(suite.get("skipped", 0))
+
+          print("--- PostgreSQL-backed test outcome ---")
+          print(f"collected={tests}")
+          print(f"passed={tests - failures - errors - skipped}")
+          print(f"failed={failures}")
+          print(f"errors={errors}")
+          print(f"skipped={skipped}")
+
+          if tests == 0:
+              sys.exit("::error::No PostgreSQL-backed tests were collected.")
+          if skipped:
+              print("::error::PostgreSQL-backed tests skipped — the database is "
+                    "not reaching them.")
+              for case in root.iter("testcase"):
+                  if case.find("skipped") is not None:
+                      print(f"  SKIPPED {case.get('classname')}::{case.get('name')}")
+              sys.exit(1)
+          if failures or errors:
+              sys.exit(f"::error::PostgreSQL-backed tests failed: "
+                       f"{failures} failed, {errors} errors.")
+          PY
 
       - name: Whole-app coverage (ratchet floor; target 95%)
         run: pytest --cov=app --cov-report=term-missing

@@ -303,7 +303,7 @@ async def test_a_missing_claims_table_blocks_entries(claims_table):
     broker.place_order.assert_not_awaited()
 
 
-def test_only_the_entry_path_consults_the_claim():
+async def test_only_the_entry_path_consults_the_claim():
     """Exits and monitoring must keep working when claims are unavailable.
 
     Rather than assert that by driving every exit, assert the structural fact
