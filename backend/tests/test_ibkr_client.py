@@ -14,6 +14,54 @@ import pytest
 from app.broker.ibkr_client import IBKRClient
 
 
+@pytest.fixture(autouse=True)
+def _reap_account_subscribe_tasks():
+    """Cancel the account-subscription task these tests leave behind.
+
+    `get_account_summary` spawns `_subscribe_account_updates` via
+    `ensure_future` and stores it on the instance. In production `disconnect()`
+    cancels it through `_reset_account_subscription`; these tests build clients
+    and never disconnect, so the task was still pending when the event loop
+    closed and printed "Task was destroyed but it is pending!".
+
+    This cannot live in the shared conftest fixture, which stops SERVICES —
+    module-level singletons with their own shutdown API. An IBKRClient is
+    per-instance and per-test, and nothing global holds the ones a test
+    created.
+
+    It is still targeted rather than a sweep: it cancels tasks running ONE
+    named coroutine function, not whatever happens to be pending. A new
+    leaking task from somewhere else is not silently tidied up by this — it
+    still shows up as a warning and in CI, which is the point.
+    """
+    yield
+
+    target = IBKRClient._subscribe_account_updates
+    try:
+        loop = asyncio.get_event_loop_policy().get_event_loop()
+    except RuntimeError:
+        return
+    if loop.is_closed():
+        return
+
+    doomed = []
+    for task in asyncio.all_tasks(loop) if loop.is_running() else _pending(loop):
+        coro = getattr(task, "get_coro", lambda: None)()
+        if getattr(coro, "cr_code", None) is getattr(target, "__code__", None):
+            task.cancel()
+            doomed.append(task)
+    if doomed:
+        loop.run_until_complete(asyncio.gather(*doomed, return_exceptions=True))
+
+
+def _pending(loop):
+    """Tasks on a loop that is not currently running."""
+    try:
+        return [t for t in asyncio.all_tasks(loop) if not t.done()]
+    except RuntimeError:
+        return []
+
+
 @pytest.fixture
 def client():
     c = IBKRClient()

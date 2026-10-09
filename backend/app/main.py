@@ -238,6 +238,13 @@ from app.api.routes import access_requests as access_request_routes  # noqa: E40
 app.include_router(access_request_routes.router)
 app.include_router(access_request_routes.admin_router)
 
+# Operator view of unresolved position claims, and the audited override that
+# clears one. Under /api/admin/ for the same reason as the queue above: the
+# session allowlist matches on path alone.
+from app.api.routes import admin_claims as admin_claims_routes  # noqa: E402
+
+app.include_router(admin_claims_routes.router)
+
 # Per-user broker credentials. Own prefix, and deliberately NOT under
 # /api/ibkr or any broker-specific path: it is where a user connects any
 # broker, and today that is Alpaca.
@@ -390,6 +397,24 @@ async def _on_startup() -> None:
             "system will trade freely (PAPER validation). Disable for real runs."
         )
 
+    # 3b. Reconcile position claims left behind by the previous process.
+    #
+    # A claim in `submitted` or `unknown` blocks new entries on that position,
+    # and a process that died mid-submit is exactly how one gets there. Doing
+    # this at startup rather than waiting for the first periodic tick means a
+    # restart does not carry someone else's block for five minutes.
+    #
+    # Fire-and-forget, like the market init above: it makes a broker call, and
+    # startup must not block on the broker being reachable. Failures inside
+    # are logged and leave claims blocked, which is the safe direction.
+    async def _startup_claim_reconciliation():
+        try:
+            from app.services.claim_reconciliation import reconcile_at_startup
+            await reconcile_at_startup()
+        except Exception as exc:
+            logger.error("Startup claim reconciliation failed: %s", exc)
+    asyncio.create_task(_startup_claim_reconciliation())
+
     # 4. Start background scheduler
     asyncio.create_task(_background_scheduler())
 
@@ -464,6 +489,11 @@ async def _background_scheduler() -> None:
     # so it sits above that deadline rather than cutting the pass short. At 120s
     # the guard WAS the limit, and it killed every run mid-write.
     reconciliation_interval_s  = 5 * 60        # 5 minutes
+    # Unresolved position claims block new entries on their position, so the
+    # sweep has to be routine rather than something an operator remembers.
+    # Five minutes matches the position reconciler: both are cheap, and both
+    # exist to stop a stale record standing in for the truth.
+    claim_sweep_interval_s     = 5 * 60        # 5 minutes
     # Daily-bar-derived like regime/options, but not gated on daily-close
     # semantics — keeps position_rotation.py's correlation tiebreaker
     # reasonably fresh without a live yfinance fetch in the money path.
@@ -492,6 +522,8 @@ async def _background_scheduler() -> None:
     last_fills   = 0.0
     last_signal_outcomes = _now
     last_reconciliation  = 0.0   # cheap local-cache read — fine to run on first tick
+    # Startup already ran one sweep, so wait a full interval before the next.
+    last_claim_sweep     = _now
     # No startup counterpart (unlike equity/options/regime) and a stale/
     # empty cache already fails open safely — fine to run on first tick.
     last_correlation     = 0.0
@@ -603,6 +635,18 @@ async def _background_scheduler() -> None:
             if now - last_reconciliation >= reconciliation_interval_s:
                 await _guarded(_reconcile_positions(), "reconciliation", 30)
                 last_reconciliation = now
+
+            # Every 5 min: ask the broker what became of claims left in
+            # `submitted` or `unknown`. Each of those blocks new entries on its
+            # position, so this is the difference between a crashed submit
+            # costing one cycle and costing until someone notices.
+            #
+            # The timeout covers the retry chain inside reconcile_once
+            # (MAX_ATTEMPTS sweeps with backoff), not a single broker call.
+            if now - last_claim_sweep >= claim_sweep_interval_s:
+                from app.services.claim_reconciliation import reconcile_once
+                await _guarded(reconcile_once(), "position_claims", 90)
+                last_claim_sweep = now
 
                 # Immediately behind it, on the same tick: reconciliation is
                 # what adopts a position without a stop, so this is the

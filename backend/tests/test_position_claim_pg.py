@@ -276,7 +276,7 @@ async def test_reconcile_releases_a_claim_the_broker_has_no_order_for(sessions):
     await position_claim.mark_submitted(held)
     await position_claim.mark_unknown(held, "timed out")
 
-    async def lookup(_key):
+    async def lookup(_claim):
         # Authoritative: this broker states no such order exists.
         return position_claim.BrokerVerdict.ABSENT
 
@@ -296,7 +296,7 @@ async def test_reconcile_leaves_a_claim_whose_order_the_broker_knows_about(sessi
     await position_claim.mark_submitted(held)
     await position_claim.mark_unknown(held, "timed out")
 
-    async def lookup(_key):
+    async def lookup(_claim):
         return position_claim.BrokerVerdict.PRESENT
 
     out = await position_claim.reconcile_unresolved(lookup)
@@ -311,7 +311,7 @@ async def test_a_failed_lookup_resolves_nothing(sessions):
     await position_claim.mark_submitted(held)
     await position_claim.mark_unknown(held, "timed out")
 
-    async def lookup(_key):
+    async def lookup(_claim):
         raise ConnectionError("broker unreachable")
 
     out = await position_claim.reconcile_unresolved(lookup)
@@ -324,7 +324,7 @@ async def test_reconcile_ignores_claims_that_are_merely_pending(sessions):
     reconciliation's."""
     await position_claim.try_claim(_sym(), "equity")
 
-    async def lookup(_key):
+    async def lookup(_claim):
         raise AssertionError("reconciliation asked about a pending claim")
 
     out = await position_claim.reconcile_unresolved(lookup, settle_seconds=0)
@@ -395,7 +395,7 @@ async def test_an_absent_verdict_does_not_release_a_claim_inside_the_settle_wind
     await position_claim.mark_submitted(held)
     await position_claim.mark_unknown(held, "timed out")
 
-    async def lookup(_key):
+    async def lookup(_claim):
         return position_claim.BrokerVerdict.ABSENT
 
     out = await position_claim.reconcile_unresolved(lookup, settle_seconds=3600)
@@ -411,7 +411,7 @@ async def test_an_indeterminate_verdict_is_not_treated_as_absence(sessions):
     await position_claim.mark_submitted(held)
     await position_claim.mark_unknown(held, "timed out")
 
-    async def lookup(_key):
+    async def lookup(_claim):
         return position_claim.BrokerVerdict.INDETERMINATE
 
     out = await position_claim.reconcile_unresolved(lookup, settle_seconds=0)
@@ -432,7 +432,7 @@ async def test_an_unrecognised_verdict_is_treated_as_indeterminate(sessions):
     await position_claim.mark_submitted(held)
     await position_claim.mark_unknown(held, "timed out")
 
-    async def lookup(_key):
+    async def lookup(_claim):
         return None                     # what the previous contract released on
 
     out = await position_claim.reconcile_unresolved(lookup, settle_seconds=0)

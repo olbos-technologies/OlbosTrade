@@ -59,37 +59,83 @@ def stub_position_claim():
         })
 
 
-@pytest_asyncio.fixture(autouse=True)
-async def _reap_ibkr_coordinator_workers():
-    """Stop coordinator workers before their event loop is torn down.
+#: The services in this app that own long-lived background tasks, and the
+#: entry point each one exposes to stop its own.
+#:
+#: Enumerated on purpose. The alternative — sweeping `asyncio.all_tasks()` and
+#: cancelling whatever is left — would also silence the warnings, and that is
+#: exactly what makes it the wrong fix: it cancels tasks belonging to services
+#: that have no shutdown path at all, so a service that leaks forever in
+#: production looks clean in the test suite. Stopping named services through
+#: their own lifecycle APIs means a NEW leaker shows up as a warning and has
+#: to be given a real shutdown path, which is the defect being surfaced rather
+#: than hidden.
+#:
+#: `test_no_leaked_coordinator_workers.py` asserts this list stays in step with
+#: the services that actually spawn loops, and that no blanket sweep creeps in.
+BACKGROUND_TASK_OWNERS = (
+    "ibkr_coordinator",
+    "execution_mode",
+    "ibkr_live",
+)
 
-    `ibkr_coordinator` is a module-level singleton and `submit()` calls
-    `start()`, so any test that submits spawns worker tasks bound to that
-    test's event loop. Nothing stopped them: the loop closed with the tasks
-    still pending, and at garbage-collection each one printed
+
+async def _stop_background_task_owners() -> None:
+    """Stop each owner through its own API. Never a blanket cancel.
+
+    A stale reference here — a renamed singleton, a moved module — is allowed
+    to raise. It was not, originally: a blanket `except Exception: pass` meant
+    an import of the wrong name (`execution_mode` rather than
+    `execution_mode_manager`) silently stopped nothing, and the fixture went on
+    looking like it covered three services while covering one. An ImportError
+    or AttributeError here is a broken fixture and should say so.
+    """
+    # The request coordinator: submit() calls start(), so any test that
+    # submits spawns worker loops on that test's event loop.
+    from app.broker.ibkr_coordinator import ibkr_coordinator
+    if ibkr_coordinator._workers:
+        await ibkr_coordinator.stop()
+
+    # execution_mode's retry task, which keeps trying to record an unrecorded
+    # safety reduction. Bounded, so it ends on its own eventually — but
+    # "eventually" is after the loop has closed.
+    from app.services.execution_mode import execution_mode_manager
+    execution_mode_manager._cancel_retry()
+
+    # The live-data broker's update loop.
+    from app.api.routes import ibkr_live
+    if getattr(ibkr_live._live_broker, "update_task", None):
+        await ibkr_live.shutdown_ibkr_live()
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _stop_services_owning_background_tasks():
+    """Stop services that own background tasks, before their loop is torn down.
+
+    Several services here spawn long-lived asyncio tasks on whatever loop
+    happens to be running. Nothing stopped them in tests, so each test's loop
+    closed with tasks still pending and every one printed
 
         Task was destroyed but it is pending!
 
-    `stop()` already exists and documents itself as being for exactly this; it
-    simply had no caller outside the app's lifespan and test_ibkr_coordinator's
-    own tests.
+    at garbage-collection — 54 per full run.
 
-    This has to be an ASYNC fixture. A sync one is set up before pytest-asyncio
-    creates the event loop, so it tears down after that loop is already closed,
-    and cancellation is delivered by a task's own loop — a closed loop can
-    never run them. The first version of this fixture was sync and reaped
-    nothing; the full suite still printed 54 of these.
+    Two things about the shape of this fixture matter more than the warning:
+
+    1. It must be ASYNC. A sync fixture is set up before pytest-asyncio
+       creates the loop, so it tears down after that loop is closed, and
+       cancellation is delivered by a task's own loop — a closed loop never
+       runs them. The first version of this was sync and reaped nothing.
+
+    2. It stops NAMED services through their own shutdown APIs rather than
+       cancelling every surviving task. A blanket sweep hides the defect it
+       appears to fix: a service with no shutdown path would be tidied up by
+       the test suite while still leaking in production. See
+       BACKGROUND_TASK_OWNERS.
 
     It IS autouse, unlike `stub_position_claim` above, and the distinction is
     deliberate: it changes no behaviour a test can observe. It runs after the
-    test body, reclaims tasks the test left behind, and asserts nothing. A stub
-    that changes what the code under test does is the kind of global fixture
-    that hides defects; reclaiming a leaked task is not.
+    test body and asserts nothing.
     """
     yield
-
-    from app.broker.ibkr_coordinator import ibkr_coordinator as coord
-
-    if not coord._workers:
-        return
-    await coord.stop()
+    await _stop_background_task_owners()

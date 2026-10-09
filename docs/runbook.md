@@ -205,23 +205,52 @@ ordering, or step 4 recreated the database), entries refuse with
 safe direction but not a state to sit in: apply the migration, or roll the
 image back.
 
-#### Clearing a claim by hand
+#### Unresolved position claims
 
-A claim left `submitted` or `unknown` blocks new entries on that position
-until the broker gives an authoritative answer. When it never will, use the
-audited override rather than editing the table — it writes the delete and an
-`execution_events` row of kind `claim_override` in one transaction, so there
-is a record of who cleared what and why:
+A claim in `submitted` or `unknown` blocks **new entries** on that position
+(exits, fill polling, reconciliation and the kill switch are unaffected).
+Two things clear them.
 
-```python
-from app.services import position_claim
-await position_claim.force_release(
-    claim_token, operator="you@olbostrade", reason="venue confirmed no fill",
-)
+**Automatically**, if the broker can answer. A sweep runs at startup and every
+5 minutes, asks the broker whether it holds an order carrying the claim's
+`client_order_id`, and releases the claim only on an authoritative "no such
+order" past a 120-second settle window. Everything else leaves it blocked.
+Look for `Claim reconciliation sweep` in the logs.
+
+It cannot answer for:
+
+| case | why |
+|---|---|
+| IBKR claims | no client-id lookup, so absence is never established |
+| **equity** claims | `place_equity_order` sends no client id, so nothing carries the key |
+| broker unreachable, 5xx, 429, timeout | not an answer |
+| the order is real | correctly held for position reconciliation |
+
+When a sweep exhausts its retries it logs **CRITICAL** naming each blocked
+position and pointing here.
+
+**By hand**, for the ones it cannot. Authenticated, audited, and it records
+who and why in `execution_events` (kind `claim_override`) in the same
+transaction as the release:
+
+```bash
+# What is blocking entries
+curl -s -b "$SESSION_COOKIE" https://<host>/api/admin/position-claims | jq
+
+# Clear one, once the order's fate is actually known
+curl -s -b "$SESSION_COOKIE" -X POST \
+  https://<host>/api/admin/position-claims/<claim_token>/release \
+  -H 'Content-Type: application/json' \
+  -d '{"reason":"venue confirmed no fill by phone"}'
 ```
 
-`position_claim.unresolved()` lists what is currently blocking. Note there is
-no HTTP route for either yet — see the PR's limitations.
+The reason is required and cannot be blank. Identity comes from the session,
+never from the request body — **with `AUTH_ENABLED` off there is no identity
+to record and the release is refused with 403**, because an override
+attributed to nobody is not an audit trail. Releasing re-opens the position to
+a new entry, so only do it once you know the order did not fill.
+
+---
 
 ---
 

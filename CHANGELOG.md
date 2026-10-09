@@ -46,11 +46,42 @@ No new environment variables.**
 - A lookup that raises still resolves nothing, and each outcome is counted
   separately — `released`, `still_unresolved`, `indeterminate`, `unreachable`,
   `too_fresh` — so a quiet broker cannot look like a clean sweep.
+- **Reconciliation now runs.** It had no caller: the mechanism existed and
+  nothing ever invoked it, so in production a crashed submit blocked its
+  position until a human noticed. A sweep runs at startup — the case the
+  lifecycle exists for, since the previous process may have died mid-submit —
+  and every 5 minutes from the scheduler, with bounded retries (3, exponential
+  backoff) that re-ask only while the broker is the thing not answering. A
+  sweep that exhausts them logs CRITICAL naming each blocked position and the
+  endpoint that clears it.
+- **Broker lookup is per-broker and fails safe by default.**
+  `BrokerInterface.find_order_by_client_order_id` returns UNDETERMINED unless
+  a broker overrides it, so a broker is opted *in* to authoritative absence
+  rather than opted out by omission. Alpaca overrides it against
+  `/v2/orders:by_client_order_id`, which is indexed by client id — a 404 there
+  is a statement about that id, not an empty page of a filtered list. A 5xx,
+  429, timeout, transport error or unexpected status is UNDETERMINED. IBKR
+  does not override it, so IBKR claims are never released automatically.
+- **An equity claim is never resolved by lookup.** Only the options path sends
+  the claim's key as `client_order_id`, so Alpaca's 404 for an equity key
+  means "nothing was ever tagged with this" — true, and silent on whether an
+  equity order exists. Releasing on it would free the claim on exactly the
+  asset class with no broker-side dedup behind it. A guard test fails if
+  `place_equity_order` gains a client id and the rule is not updated.
+- **Waiting is never evidence.** The settle window only makes an authoritative
+  NOT_FOUND believable; it does not turn silence, an unsupported lookup or an
+  untransmitted key into absence.
 - `force_release()` gives an operator a way to clear a claim the broker will
   never answer for. The delete and an `execution_events` row of kind
   `claim_override` are written in **one transaction**, so a release cannot land
   without a record of who did it and why; an override that matched no claim
-  writes nothing.
+  writes nothing. It is reachable over HTTP at
+  `GET /api/admin/position-claims` and
+  `POST /api/admin/position-claims/{claim_token}/release`, under `/api/admin/`
+  because the session allowlist matches on path alone. Identity comes from
+  authentication, never the request body, and a caller with no identity is
+  refused rather than recorded as nobody; the reason is required and cannot be
+  blank.
 - Every state change is keyed on a **unique claim token**, so a worker whose
   claim was reclaimed cannot release or advance whoever holds the position
   now. Lease comparisons are **database-side** throughout; no timestamp
@@ -69,8 +100,19 @@ No new environment variables.**
   polling, reconciliation and the kill switch are unaffected when the table is
   missing — pinned by a test.
 - A claim survives a process restart and still blocks, which is the case the
-  whole lifecycle exists for; three tests drive it through a genuinely new
-  engine and session factory over the same rows.
+  whole lifecycle exists for; tests drive crash → restart → broker lookup →
+  resolution through a genuinely new engine and session factory over the same
+  rows, including an order that only becomes visible on the second sweep.
+- The test suite no longer cancels background tasks indiscriminately. It stops
+  three **named** services through their own shutdown APIs
+  (`conftest.BACKGROUND_TASK_OWNERS`), because a blanket `asyncio.all_tasks()`
+  sweep would silence the same warnings while hiding the lifecycle defect
+  behind them — a service with no shutdown path would look clean in the suite
+  and go on leaking in production.
+- `deploy/hetzner/update.sh` is now **executed** in tests, not just parsed,
+  against a real disposable PostgreSQL with Docker stubbed: ordering, a real
+  `alembic upgrade head`, and a failed migration leaving the running service
+  untouched.
 - Deploy ordering is fixed rather than documented around. `update.sh` used to
   start containers and migrate afterwards, leaving new code serving an old
   schema in between, and the runbook's suggested pre-apply —

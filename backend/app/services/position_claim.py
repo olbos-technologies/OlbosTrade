@@ -252,10 +252,15 @@ class BrokerVerdict(str, Enum):
     INDETERMINATE = "indeterminate"
 
 
-#: What the broker says about one client_order_id. Raising means the lookup
-#: failed, which is NOT the same as "no such order" and must not resolve a
-#: claim — same contract as ambiguous_order_resolver.BrokerLookup.
-BrokerLookup = Callable[[str], Awaitable[BrokerVerdict]]
+#: What the broker says about one unresolved claim. Takes the CLAIM, not just
+#: its key: whether a lookup can establish absence at all depends on the asset
+#: class (only the options path transmits the key), so a key-only contract
+#: cannot express "this is not answerable". See services/claim_lookup.py.
+#:
+#: Raising means the lookup failed, which is NOT the same as "no such order"
+#: and must not resolve a claim — same contract as
+#: ambiguous_order_resolver.BrokerLookup.
+BrokerLookup = Callable[["PositionClaim"], Awaitable[BrokerVerdict]]
 
 # Even an authoritative ABSENT is not trusted on a claim this young. A broker
 # that has accepted an order can still answer "no such order" for a short
@@ -324,7 +329,7 @@ async def reconcile_unresolved(
 
     for claim, settled in rows:
         try:
-            verdict = await lookup(claim.idempotency_key)
+            verdict = await lookup(claim)
         except Exception as exc:
             counts["unreachable"] += 1
             logger.error(

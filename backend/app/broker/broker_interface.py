@@ -9,6 +9,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from datetime import date, datetime
 from decimal import Decimal
+from enum import Enum
 from typing import List, Literal, Optional
 
 from pydantic import BaseModel, Field
@@ -83,6 +84,30 @@ class SpreadOrder(BaseModel):
     order_type: Literal["LMT", "MKT"] = "LMT"
     time_in_force: Literal["DAY", "GTC"] = "DAY"
     client_order_id: Optional[str] = None
+
+
+class OrderLookup(str, Enum):
+    """What a broker was able to establish about one client_order_id.
+
+    Three values, not two, because "I asked and there is no such order" and "I
+    could not establish that" have opposite consequences for a position claim:
+    the first may release it, the second must never.
+
+    The default implementation on BrokerInterface returns UNDETERMINED, so a
+    broker that cannot look an order up by client id reports that it cannot
+    rather than appearing to answer. A broker is opted IN to authoritative
+    absence by overriding the method, not opted out by forgetting to.
+    """
+
+    #: The broker returned an order for this client id.
+    FOUND = "found"
+    #: The broker states positively that it holds no order with this client id,
+    #: from an API that indexes by client id. NOT merely an empty list from a
+    #: filtered query, and never a timeout.
+    NOT_FOUND = "not_found"
+    #: Could not be established: unsupported, unreachable, rate-limited,
+    #: a response that was not understood, or a key the broker never received.
+    UNDETERMINED = "undetermined"
 
 
 class CancelSweep(BaseModel):
@@ -249,6 +274,17 @@ class BrokerInterface(ABC):
     async def get_positions(self) -> List[Position]:
         """Return all currently open options positions."""
         ...
+
+    async def find_order_by_client_order_id(self, client_order_id: str) -> "OrderLookup":
+        """Ask the broker whether it holds an order with this client id.
+
+        Deliberately NOT abstract, and the default is deliberately
+        UNDETERMINED: a broker with no client-id index must report that it
+        cannot answer, not return something a caller could read as absence.
+        Overriding this is how a broker declares it CAN establish absence
+        authoritatively.
+        """
+        return OrderLookup.UNDETERMINED
 
     @abstractmethod
     async def cancel_all_open_orders(self) -> "CancelSweep":

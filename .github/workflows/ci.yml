@@ -118,6 +118,9 @@ jobs:
           pytest --no-header -rs --junitxml=pg-tests.xml \
             tests/test_position_claim_pg.py \
             tests/test_trade_desk_claim_route.py \
+            tests/test_claim_reconciliation_pg.py \
+            tests/test_admin_claims_routes.py \
+            tests/test_update_script_deploys_in_order.py \
             tests/test_approval_concurrency_pg.py \
             tests/test_journal_isolation_pg.py
           rc=$?

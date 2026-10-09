@@ -51,6 +51,25 @@ pytestmark = [
 ]
 
 
+@pytest.fixture(autouse=True)
+def _market_open():
+    """Pin the market open, because otherwise these tests tell the time.
+
+    `_execute_signal` blocks with `market_closed` before it ever reaches the
+    duplicate guard, so without this every test here passes during the US
+    session and fails outside it. CI went green at 12:44 ET and would have
+    gone red on the same commit after 16:00 — a suite that depends on when it
+    runs is not evidence about the code.
+
+    test_trade_desk_routes.py has carried the same fixture for this reason;
+    this file was added without it. The market-closed path itself is covered
+    there (test_market_closed_blocks_order), so nothing is lost by fixing it
+    open here.
+    """
+    with patch("app.utils.market_hours.is_market_open", return_value=True):
+        yield
+
+
 @pytest_asyncio.fixture
 async def claims_table():
     engine = create_async_engine(TEST_DB_URL, poolclass=NullPool)
@@ -357,7 +376,12 @@ async def test_only_the_entry_path_consults_the_claim():
     allowed = {
         "models/position_claim.py",
         "services/position_claim.py",
-        "api/routes/trade_desk.py",      # the entry path, and only it
+        "api/routes/trade_desk.py",          # the entry path, and only it
+        # Reconciliation: exists to RELEASE claims, never to block an exit.
+        "services/claim_lookup.py",
+        "services/claim_reconciliation.py",
+        "api/routes/admin_claims.py",        # the audited operator override
+        "main.py",                           # startup + periodic worker wiring
     }
     users = {
         str(f.relative_to(root))
@@ -366,4 +390,57 @@ async def test_only_the_entry_path_consults_the_claim():
     }
     assert users <= allowed, (
         f"the position claim reached beyond the entry path: {sorted(users - allowed)}"
+    )
+
+
+async def test_nothing_on_the_exit_or_monitoring_path_consults_the_claim():
+    """The half of the rule that matters, stated positively.
+
+    The allowlist above grows as reconciliation is wired in, and an allowlist
+    that grows can eventually be grown to include anything. These are the
+    modules whose job is to get OUT of a position or to observe one; if a
+    claim ever becomes reachable from here, a missing claims table could stop
+    an exit, which is the failure mode the whole fail-closed design avoids.
+    """
+    import pathlib
+    import re
+
+    root = pathlib.Path(__file__).resolve().parents[1] / "app"
+    must_never_import = [
+        "services/kill_switch.py",
+        "services/position_reconciler.py",
+        "services/risk_manager.py",
+        "services/guardrails.py",
+        "services/margin_monitor.py",
+        "services/trade_frequency_controller.py",
+        "services/account_guard.py",
+    ]
+    for rel in must_never_import:
+        path = root / rel
+        assert path.exists(), f"{rel} moved — this guard is reading nothing"
+        assert not re.search(r"\bposition_claim\b", path.read_text()), (
+            f"{rel} now consults the position claim; an unavailable claims "
+            f"table could then block an exit or a monitor"
+        )
+
+
+async def test_equity_orders_still_carry_no_client_order_id():
+    """claim_lookup.KEYED_ASSET_CLASSES depends on this and cannot see it.
+
+    Only the options path sends the claim's key to the broker, which is why an
+    equity claim is never resolvable by a client-id lookup. If the equity path
+    gains a client id, equity claims BECOME resolvable and
+    KEYED_ASSET_CLASSES must be updated — otherwise they would stay blocked
+    forever for a reason that is no longer true.
+    """
+    import inspect
+
+    from app.broker.broker_interface import BrokerInterface
+    from app.services.claim_lookup import KEYED_ASSET_CLASSES
+
+    sig = inspect.signature(BrokerInterface.place_equity_order)
+    has_key = "client_order_id" in sig.parameters
+    assert has_key is ("equity" in KEYED_ASSET_CLASSES), (
+        "place_equity_order's client_order_id support and "
+        "KEYED_ASSET_CLASSES disagree: one of them has changed"
     )
