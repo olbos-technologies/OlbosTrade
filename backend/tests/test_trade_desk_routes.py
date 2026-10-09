@@ -56,6 +56,15 @@ def _pf_session():
     return session
 
 
+def _conn(user: dict | None = None):
+    """Minimal stand-in for the HTTPConnection FastAPI injects into the
+    approval routes. `state.user` is what `current_user` reads, so an empty
+    dict models auth being disabled — the case where there is no authenticated
+    actor to record."""
+    from types import SimpleNamespace
+    return SimpleNamespace(state=SimpleNamespace(user=user or {}))
+
+
 @pytest.mark.asyncio
 async def test_fetch_portfolio_state_success():
     broker = MagicMock()
@@ -148,17 +157,47 @@ async def test_approve_signal_executes():
          patch.object(td, "_execute_signal",
                       new=AsyncMock(return_value={"result": "submitted", "ticker": "SPY"})), \
          patch.object(td, "_log_execution", new=AsyncMock()) as log_mock:
-        out = await approve_signal("s1")
+        out = await approve_signal("s1", _conn({"id": "u-1"}))
     assert out["result"] == "submitted"
     log_mock.assert_awaited_once()
     assert log_mock.await_args.args[0]["approved_by"] == "user"
 
 
 @pytest.mark.asyncio
+async def test_approve_records_the_authenticated_actor():
+    """"approved_by" is a role; "approved_by_actor" is an identity.
+
+    An audit trail that says "user" for every decision cannot answer which
+    person authorised a given order, which is the question it exists for.
+    """
+    with patch.object(td, "_resolve_pending_approval",
+                      new=AsyncMock(return_value={"id": "s1", "ticker": "SPY"})) as claim, \
+         patch.object(td, "_execute_signal",
+                      new=AsyncMock(return_value={"result": "submitted"})), \
+         patch.object(td, "_log_execution", new=AsyncMock()) as log_mock:
+        await approve_signal("s1", _conn({"id": "u-7", "email": "a@b.c"}))
+
+    assert claim.await_args.kwargs["actor"] == "u-7"
+    assert log_mock.await_args.args[0]["approved_by_actor"] == "u-7"
+
+
+@pytest.mark.asyncio
+async def test_approve_does_not_invent_an_actor_when_auth_is_off():
+    with patch.object(td, "_resolve_pending_approval",
+                      new=AsyncMock(return_value={"id": "s1", "ticker": "SPY"})) as claim, \
+         patch.object(td, "_execute_signal",
+                      new=AsyncMock(return_value={"result": "submitted"})), \
+         patch.object(td, "_log_execution", new=AsyncMock()):
+        await approve_signal("s1", _conn())
+
+    assert claim.await_args.kwargs["actor"] is None
+
+
+@pytest.mark.asyncio
 async def test_approve_signal_not_found():
     with patch.object(td, "_resolve_pending_approval", new=AsyncMock(return_value=None)):
         with pytest.raises(Exception):
-            await approve_signal("missing")
+            await approve_signal("missing", _conn())
 
 
 @pytest.mark.asyncio
@@ -166,7 +205,7 @@ async def test_reject_signal():
     with patch.object(td, "_resolve_pending_approval",
                       new=AsyncMock(return_value={"id": "s2", "ticker": "QQQ", "action": "BUY"})), \
          patch.object(td, "_log_execution", new=AsyncMock()) as log_mock:
-        out = await reject_signal("s2")
+        out = await reject_signal("s2", _conn({"id": "u-1"}))
     assert out["result"] == "rejected" and out["rejected_by"] == "user"
     log_mock.assert_awaited_once()
 
@@ -175,7 +214,7 @@ async def test_reject_signal():
 async def test_reject_signal_not_found():
     with patch.object(td, "_resolve_pending_approval", new=AsyncMock(return_value=None)):
         with pytest.raises(Exception):
-            await reject_signal("nope")
+            await reject_signal("nope", _conn())
 
 
 @pytest.mark.asyncio

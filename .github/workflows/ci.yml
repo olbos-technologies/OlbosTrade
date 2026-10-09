@@ -9,6 +9,24 @@ jobs:
   backend-tests:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # A real PostgreSQL, because some defects are properties of transaction
+    # isolation and a mocked session cannot decide a race. Without this the
+    # concurrency tests skip, and a skipped test is a green tick that proves
+    # nothing — which is how the double-approval bug survived a passing suite.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: olbos_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      OLBOS_TEST_DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/olbos_test
     defaults:
       run:
         working-directory: backend

@@ -137,9 +137,75 @@ class CreateExperiment(BaseModel):
 
 class TransitionRequest(BaseModel):
     target:     str                    # backtested | walk_forward | paper | promoted | archived | draft
-    metrics:    Optional[dict] = None   # backtest metrics (→ backtested / → walk_forward)
-    wf_metrics: Optional[dict] = None   # walk-forward (out-of-sample) metrics (→ paper)
+    # The id of a COMPLETED BacktestRun. The server reads that run's own
+    # metrics and writes the provenance; this is the only way to establish a
+    # backtested stage.
+    backtest_run_id: Optional[str] = None
+    # Client-supplied metric dicts. Retained so an older client gets a clear
+    # refusal instead of a 422, and deliberately NOT forwarded to the gates:
+    # the UI used to post sharpe 1.0 / oos_sharpe 0.9 literals here and the
+    # gates, which evaluate whatever dict they are given, cleared them.
+    metrics:    Optional[dict] = None
+    wf_metrics: Optional[dict] = None
     perf:       Optional[dict] = None    # paper performance (→ promoted)
+
+
+async def _backtest_evidence(session, run_id: str, strategy: str):
+    """Build backtest evidence from a stored BacktestRun, or say why not.
+
+    Returns (evidence, None) or (None, reason). The metrics come from the run
+    row, never from the request, and the provenance block records what a
+    reader needs to decide whether the number applies: which engine, which
+    run, which strategy, which window, and the configuration it ran under
+    (commissions and slippage live in `parameters`).
+
+    The run's strategy is checked against the experiment's. Evidence from a
+    backtest of something else is not evidence about this strategy, and
+    nothing downstream would have noticed.
+    """
+    from app.models.backtest_result import BacktestRun
+    from app.services.research_lab import PROVENANCE_KEY
+    from sqlalchemy import select
+    import uuid as _uuid
+
+    try:
+        key = _uuid.UUID(str(run_id))
+    except (ValueError, AttributeError, TypeError):
+        return None, f"backtest_run_id {run_id!r} is not a valid run id"
+
+    run = (await session.execute(
+        select(BacktestRun).where(BacktestRun.id == key)
+    )).scalar_one_or_none()
+    if run is None:
+        return None, f"backtest run {run_id} not found"
+    if not run.metrics:
+        return None, (
+            f"backtest run {run_id} has no metrics — it has not completed, "
+            "or it failed"
+        )
+    if str(run.strategy) != str(strategy):
+        return None, (
+            f"backtest run {run_id} ran strategy {run.strategy!r}, but this "
+            f"experiment is {strategy!r}"
+        )
+
+    metrics = dict(run.metrics)
+    # evaluate_backtest_gate reads "sharpe"; the engine's own key is
+    # "sharpe_ratio". Mapping this on the server means a client can no longer
+    # get it wrong — nor quietly right by sending its own number.
+    if "sharpe" not in metrics and "sharpe_ratio" in metrics:
+        metrics["sharpe"] = metrics["sharpe_ratio"]
+    metrics[PROVENANCE_KEY] = {
+        "source": "backtester",
+        "run_id": str(run.id),
+        "strategy": run.strategy,
+        "start_date": run.start_date.isoformat() if run.start_date else None,
+        "end_date": run.end_date.isoformat() if run.end_date else None,
+        "starting_capital": str(run.starting_capital) if run.starting_capital is not None else None,
+        "parameters": run.parameters or {},
+        "recorded_at": run.created_at.isoformat() if run.created_at else None,
+    }
+    return metrics, None
 
 
 async def _experiment_or_none(session, exp_id: str):
@@ -201,8 +267,33 @@ async def transition_experiment(exp_id: str, req: TransitionRequest):
             exp = await _experiment_or_none(session, exp_id)
             if exp is None:
                 return {"error": "experiment not found"}
+
+            # Evidence is built here, from a stored run, or not at all. A
+            # client cannot supply metrics: numbers that arrive in a request
+            # body have no provenance, and the gates cannot tell a measured
+            # Sharpe from a typed one.
+            if req.metrics or req.wf_metrics:
+                return {
+                    "ok": False,
+                    "reason": (
+                        "metrics may not be supplied by the caller. Pass "
+                        "backtest_run_id referencing a completed backtest; the "
+                        "server reads that run's results and records their "
+                        "provenance."
+                    ),
+                    "experiment": exp.as_dict(),
+                }
+
+            metrics = None
+            if req.backtest_run_id:
+                metrics, problem = await _backtest_evidence(
+                    session, req.backtest_run_id, exp.strategy
+                )
+                if problem:
+                    return {"ok": False, "reason": problem, "experiment": exp.as_dict()}
+
             result = transition(exp.as_dict(), req.target,
-                                metrics=req.metrics, wf_metrics=req.wf_metrics,
+                                metrics=metrics, wf_metrics=None,
                                 perf=req.perf)
             if not result.ok:
                 return {"ok": False, "reason": result.reason, "experiment": exp.as_dict()}

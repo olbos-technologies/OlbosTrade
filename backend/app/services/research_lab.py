@@ -71,6 +71,80 @@ class PromotionGates:
 DEFAULT_GATES = PromotionGates()
 
 
+# ── Evidence provenance ─────────────────────────────────────────────────────────
+# A metrics dict on its own says nothing about where its numbers came from. The
+# UI used to post literal values — sharpe 1.0, oos_sharpe 0.9 — straight into
+# the transition route, and the gates, which evaluate whatever dict they are
+# handed, cleared them. A strategy could reach a validated stage without
+# anything ever having been measured.
+#
+# Evidence is therefore only evidence when it carries a provenance block the
+# SERVER wrote from a completed evaluation record. Client-supplied numbers are
+# not upgraded by passing through an API.
+PROVENANCE_KEY = "provenance"
+
+# Written by whoever builds evidence from a stored run. `source` names the
+# engine; the rest is what a reader needs to decide whether the number applies
+# to the strategy in front of them.
+REQUIRED_PROVENANCE_FIELDS = ("source", "run_id", "strategy", "start_date", "end_date")
+
+
+def provenance_of(evidence: dict | None) -> dict | None:
+    """The provenance block of an evidence dict, or None when it has none."""
+    if not evidence:
+        return None
+    prov = evidence.get(PROVENANCE_KEY)
+    return prov if isinstance(prov, dict) else None
+
+
+def verify_evidence(evidence: dict | None, *, strategy: str | None = None
+                    ) -> tuple[bool, str]:
+    """Is this evidence attributable to a real, completed evaluation?
+
+    Returns (False, why) for anything a reader could not trace back to a run:
+    no provenance at all (the hardcoded-demo case, and every row written before
+    provenance existed), a provenance block missing fields, or one recorded
+    against a different strategy than the experiment being advanced.
+
+    Existing history is NOT rewritten by this. Old evidence keeps its numbers
+    and simply reads as unverified, which blocks promotion and says why,
+    rather than being silently deleted or silently trusted.
+    """
+    if not evidence:
+        return False, "no evidence recorded"
+    prov = provenance_of(evidence)
+    if prov is None:
+        return False, (
+            "evidence has no provenance — it cannot be traced to a completed "
+            "evaluation run, so it may be hand-entered or demo values"
+        )
+    missing = [f for f in REQUIRED_PROVENANCE_FIELDS if not prov.get(f)]
+    if missing:
+        return False, f"evidence provenance is incomplete: missing {', '.join(missing)}"
+    if strategy and str(prov.get("strategy")) != str(strategy):
+        return False, (
+            f"evidence was recorded for strategy {prov.get('strategy')!r}, "
+            f"not {strategy!r}"
+        )
+    return True, "evidence verified"
+
+
+# Walk-forward gating exists (evaluate_walkforward_gate) but nothing in this
+# codebase COMPUTES walk-forward metrics: `oos_sharpe` and friends appear only
+# in the gate and the route that feeds it. The only producer was a literal
+# object in the Research Lab UI. Until an out-of-sample engine exists that can
+# report training and out-of-sample windows separately, the gate has nothing
+# real to judge, so the transition it guards is closed rather than left open to
+# whatever a caller cares to send.
+WALK_FORWARD_ENGINE_AVAILABLE = False
+WALK_FORWARD_MISSING_REASON = (
+    "walk-forward validation is unavailable: no out-of-sample evaluation engine "
+    "exists in this build, so nothing can produce the training and out-of-sample "
+    "windows this gate requires. The transition is disabled rather than accepting "
+    "supplied metrics."
+)
+
+
 def evaluate_backtest_gate(metrics: dict,
                            gates: PromotionGates = DEFAULT_GATES) -> tuple[bool, list[str]]:
     """Check Symphony backtest metrics against the backtest gate."""
@@ -201,31 +275,68 @@ def transition(
 
     patch: dict = {"stage": target}
 
+    strategy = experiment.get("strategy")
+
     if target == BACKTESTED:
         if not metrics:
             return TransitionResult(False, "backtest requires metrics", {})
+        # The caller must hand over evidence the server built from a completed
+        # run, not numbers it chose. Without this a POST body established a
+        # validated stage.
+        verified, why = verify_evidence(metrics, strategy=strategy)
+        if not verified:
+            return TransitionResult(False, f"backtest evidence rejected: {why}", {})
         patch["backtest_metrics"] = metrics
         return TransitionResult(True, "recorded backtest", patch)
 
     if target == WALK_FORWARD and current == BACKTESTED:
         bt = metrics or experiment.get("backtest_metrics")
+        verified, why = verify_evidence(bt, strategy=strategy)
+        if not verified:
+            return TransitionResult(False, f"backtest evidence rejected: {why}", {})
         passed, reasons = evaluate_backtest_gate(bt, gates)
         if not passed:
             return TransitionResult(False, "backtest gate failed: " + "; ".join(reasons), {})
         if wf_metrics:
-            patch["walk_forward_metrics"] = wf_metrics
+            # Walk-forward evidence has no producer (see
+            # WALK_FORWARD_MISSING_REASON); accepting a supplied dict here
+            # would reintroduce the hole one stage earlier.
+            return TransitionResult(False, WALK_FORWARD_MISSING_REASON, {})
         return TransitionResult(True, "advanced to walk-forward", patch)
 
     if target == PAPER and current == WALK_FORWARD:
-        wf = wf_metrics or experiment.get("walk_forward_metrics")
-        passed, reasons = evaluate_walkforward_gate(wf, gates)
-        if not passed:
+        if not WALK_FORWARD_ENGINE_AVAILABLE:
+            return TransitionResult(False, WALK_FORWARD_MISSING_REASON, {})
+        # Unreachable while the flag above is False, and kept rather than
+        # deleted so the shape of the check an engine must satisfy stays
+        # visible: traced out-of-sample evidence first, then the gate. The
+        # gate itself is exercised directly by its own tests; only this
+        # plumbing is dark. Remove the pragma when an engine lands.
+        wf = wf_metrics or experiment.get("walk_forward_metrics")        # pragma: no cover
+        verified, why = verify_evidence(wf, strategy=strategy)           # pragma: no cover
+        if not verified:                                                 # pragma: no cover
+            return TransitionResult(False, f"walk-forward evidence rejected: {why}", {})
+        passed, reasons = evaluate_walkforward_gate(wf, gates)           # pragma: no cover
+        if not passed:                                                   # pragma: no cover
             return TransitionResult(False, "walk-forward gate failed: " + "; ".join(reasons), {})
-        if wf_metrics:
-            patch["walk_forward_metrics"] = wf_metrics
-        return TransitionResult(True, "promoted to paper", patch)
+        patch["walk_forward_metrics"] = wf                               # pragma: no cover
+        return TransitionResult(True, "promoted to paper", patch)        # pragma: no cover
 
     if target == PROMOTED:
+        # Promotion makes a strategy eligible for live capital, so the whole
+        # evidence chain behind it has to be traceable — not just the last
+        # hop. An experiment seeded with demo numbers fails here even if its
+        # paper record is real.
+        bt_verified, bt_why = verify_evidence(
+            experiment.get("backtest_metrics"), strategy=strategy
+        )
+        if not bt_verified:
+            return TransitionResult(
+                False,
+                f"cannot promote: the backtest behind this experiment is not "
+                f"verifiable ({bt_why})",
+                {},
+            )
         p = perf or experiment.get("paper_perf")
         passed, reasons = evaluate_paper_gate(p, gates)
         if not passed:

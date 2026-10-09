@@ -10,14 +10,36 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select, func
+from starlette.requests import HTTPConnection
 
 from app.core.database import AsyncSessionLocal
 from app.models.journal_entry import JournalEntry
 from app.models.trade import Trade
 from app.services.journal_service import JournalAnalytics, JournalEntryOut
+from app.services.organization_service import owner_scope
 
 router = APIRouter()
 _analytics = JournalAnalytics()
+
+
+def _owned_by(org_id):
+    """Filter restricting a query to one owner's entries.
+
+    `org_id is None` is the single-operator scope and matches the rows
+    migration 0039 left unattributed — NOT every row. Writing this as "no
+    filter when None" is the shared query these routes used to be.
+    """
+    if org_id is None:
+        return JournalEntry.organization_id.is_(None)
+    return JournalEntry.organization_id == org_id
+
+
+async def _scope(session, conn: HTTPConnection):
+    """Resolve the caller's scope, turning a missing identity into a 401."""
+    try:
+        return await owner_scope(session, conn)
+    except PermissionError:
+        raise HTTPException(401, "Not authenticated")
 
 
 def _to_out(e: JournalEntry, trade: Optional[Trade] = None) -> JournalEntryOut:
@@ -44,10 +66,13 @@ def _to_out(e: JournalEntry, trade: Optional[Trade] = None) -> JournalEntryOut:
     )
 
 
-async def _load_all() -> list[JournalEntryOut]:
+async def _load_all(conn: HTTPConnection) -> list[JournalEntryOut]:
     async with AsyncSessionLocal() as session:
+        org_id = await _scope(session, conn)
         entries = (await session.execute(
-            select(JournalEntry).order_by(JournalEntry.created_at.desc())
+            select(JournalEntry)
+            .where(_owned_by(org_id))
+            .order_by(JournalEntry.created_at.desc())
         )).scalars().all()
         trade_ids = [e.trade_id for e in entries if e.trade_id]
         trade_map: dict = {}
@@ -73,20 +98,22 @@ class JournalEntryPatch(BaseModel):
 
 
 @router.post("/entry", status_code=201)
-async def create_entry(entry: JournalEntryIn):
+async def create_entry(entry: JournalEntryIn, conn: HTTPConnection):
     trade_uuid = None
     if entry.trade_id:
         try:
             trade_uuid = uuid.UUID(entry.trade_id)
         except ValueError:
             raise HTTPException(400, "Invalid trade_id UUID")
-    row = JournalEntry(
-        id=uuid.uuid4(), trade_id=trade_uuid,
-        pre_trade_thesis=entry.pre_trade_thesis,
-        confidence_level=max(1, min(5, entry.confidence_level)),
-        market_context=entry.market_context,
-    )
     async with AsyncSessionLocal() as session:
+        org_id = await _scope(session, conn)
+        row = JournalEntry(
+            id=uuid.uuid4(), trade_id=trade_uuid,
+            organization_id=org_id,
+            pre_trade_thesis=entry.pre_trade_thesis,
+            confidence_level=max(1, min(5, entry.confidence_level)),
+            market_context=entry.market_context,
+        )
         session.add(row)
         await session.commit()
         await session.refresh(row)
@@ -94,64 +121,81 @@ async def create_entry(entry: JournalEntryIn):
 
 
 @router.get("/entries")
-async def list_entries(limit: int = Query(50, le=500), offset: int = Query(0)):
+async def list_entries(conn: HTTPConnection, limit: int = Query(50, le=500), offset: int = Query(0)):
     try:
         async with AsyncSessionLocal() as session:
+            org_id = await _scope(session, conn)
             rows = (await session.execute(
-                select(JournalEntry).order_by(JournalEntry.created_at.desc()).offset(offset).limit(limit)
+                select(JournalEntry).where(_owned_by(org_id))
+                .order_by(JournalEntry.created_at.desc()).offset(offset).limit(limit)
             )).scalars().all()
-            total = (await session.execute(select(func.count(JournalEntry.id)))).scalar() or 0
+            total = (await session.execute(
+                select(func.count(JournalEntry.id)).where(_owned_by(org_id))
+            )).scalar() or 0
             trade_ids = [r.trade_id for r in rows if r.trade_id]
             trade_map: dict = {}
             if trade_ids:
                 trades = (await session.execute(select(Trade).where(Trade.id.in_(trade_ids)))).scalars().all()
                 trade_map = {t.id: t for t in trades}
         return {"entries": [_to_out(r, trade_map.get(r.trade_id)).__dict__ for r in rows], "total": total}
+    except HTTPException:
+        # An auth or scope failure is not an empty journal. Swallowing it into
+        # {"entries": [], "error": ...} renders "you are not allowed to see
+        # this" as "you have nothing", which reads as a safe value and is not
+        # one.
+        raise
     except Exception as exc:
         return {"entries": [], "total": 0, "error": str(exc)}
 
 
 @router.get("/analytics/tags")
-async def get_tag_performance():
-    entries = await _load_all()
+async def get_tag_performance(conn: HTTPConnection):
+    entries = await _load_all(conn)
     if not entries:
         return {"tag_performance": [], "message": "No journal entries yet."}
     return {"tag_performance": [p.__dict__ for p in _analytics.tag_performance(entries)]}
 
 
 @router.get("/analytics/mistakes")
-async def get_mistake_frequency():
-    entries = await _load_all()
+async def get_mistake_frequency(conn: HTTPConnection):
+    entries = await _load_all(conn)
     if not entries:
         return {"mistakes": {}, "message": "No journal entries yet."}
     return {"mistakes": _analytics.mistake_frequency(entries)}
 
 
 @router.get("/analytics/rule-breach-impact")
-async def get_rule_breach_impact():
-    entries = await _load_all()
+async def get_rule_breach_impact(conn: HTTPConnection):
+    entries = await _load_all(conn)
     if not [e for e in entries if e.followed_rules is not None]:
         return {"impact": None, "message": "No entries with followed_rules data yet."}
     return {"impact": _analytics.rule_breach_impact(entries).__dict__}
 
 
 @router.get("/review/monthly/{month}")
-async def get_monthly_review(month: str):
-    entries = await _load_all()
+async def get_monthly_review(month: str, conn: HTTPConnection):
+    entries = await _load_all(conn)
     return {"month": month, "review": _analytics.generate_monthly_review(entries, month).__dict__}
 
 
 @router.get("/{entry_id}")
-async def get_entry(entry_id: str):
+async def get_entry(entry_id: str, conn: HTTPConnection):
     try:
         uid = uuid.UUID(entry_id)
     except ValueError:
         raise HTTPException(400, "Invalid UUID")
     async with AsyncSessionLocal() as session:
-        row = await session.get(JournalEntry, uid)
+        org_id = await _scope(session, conn)
+        # Ownership is part of the lookup, not a check afterwards. Another
+        # organization's id must answer exactly as a nonexistent one does —
+        # 404, never 403 — or the response confirms the row exists.
+        row = (await session.execute(
+            select(JournalEntry).where(JournalEntry.id == uid, _owned_by(org_id))
+        )).scalar_one_or_none()
         if not row:
-            result = await session.execute(select(JournalEntry).where(JournalEntry.trade_id == uid))
-            row = result.scalar_one_or_none()
+            row = (await session.execute(
+                select(JournalEntry).where(JournalEntry.trade_id == uid, _owned_by(org_id))
+            )).scalar_one_or_none()
         if not row:
             raise HTTPException(404, "Journal entry not found")
         trade = await session.get(Trade, row.trade_id) if row.trade_id else None
@@ -159,13 +203,16 @@ async def get_entry(entry_id: str):
 
 
 @router.put("/{entry_id}")
-async def update_entry(entry_id: str, patch: JournalEntryPatch):
+async def update_entry(entry_id: str, patch: JournalEntryPatch, conn: HTTPConnection):
     try:
         uid = uuid.UUID(entry_id)
     except ValueError:
         raise HTTPException(400, "Invalid UUID")
     async with AsyncSessionLocal() as session:
-        row = await session.get(JournalEntry, uid)
+        org_id = await _scope(session, conn)
+        row = (await session.execute(
+            select(JournalEntry).where(JournalEntry.id == uid, _owned_by(org_id))
+        )).scalar_one_or_none()
         if not row:
             raise HTTPException(404, "Journal entry not found")
         if patch.post_trade_notes is not None: row.post_trade_notes = patch.post_trade_notes

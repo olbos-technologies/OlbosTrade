@@ -22,6 +22,16 @@ class JournalEntry(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
+    # Owner (ADR-0001). Nullable on purpose and staying that way: rows written
+    # before ownership existed carry no recoverable author, and migration 0039
+    # leaves those unattributed rather than guessing one. NULL is not a
+    # wildcard — it matches only the unowned scope used when auth is disabled,
+    # so an unattributed row is invisible to every organization-scoped query.
+    organization_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=True, index=True,
+    )
+
     trade_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("trades.id", ondelete="SET NULL"), nullable=True
     )

@@ -51,7 +51,7 @@ afterEach(() => {
 });
 
 describe("ResearchLab — real backtest wiring", () => {
-  it("runs a real backtest and maps sharpe_ratio to sharpe for the gate", async () => {
+  it("runs a real backtest and sends the run id, never the numbers", async () => {
     mockExperimentList([experiment({})]);
     mockedApi.runBacktest.mockResolvedValue({ run_id: "run-1", status: "queued" });
     mockedApi.getBacktestResults
@@ -67,10 +67,17 @@ describe("ResearchLab — real backtest wiring", () => {
 
     await flushPolls(2);
 
+    // The client posts the RUN ID. It used to post the metrics it had mapped
+    // itself, which left the server unable to tell measured numbers from
+    // typed ones — the same door the hardcoded demo values walked through.
+    // Provenance and the sharpe_ratio → sharpe mapping are now server-side.
     await waitFor(() => expect(mockedApi.transitionExperiment).toHaveBeenCalledWith(
       "exp-1",
-      { target: "backtested", metrics: { sharpe: 1.42, total_return_pct: 18.3, max_drawdown_pct: 9.1 } },
+      { target: "backtested", backtest_run_id: "run-1" },
     ));
+    const calls = mockedApi.transitionExperiment.mock.calls;
+    const [, body] = calls[calls.length - 1];
+    expect(body).not.toHaveProperty("metrics");
   });
 
   it("shows an error and never calls transition when the backtest fails", async () => {

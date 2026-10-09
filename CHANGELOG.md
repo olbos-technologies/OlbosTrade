@@ -1,5 +1,144 @@
 # Changelog
 
+## Unreleased — Journal entries are owned by an organization
+
+**Requires a migration (0039). No new environment variables.**
+
+- `journal_entries` had **no ownership column at all** — not `organization_id`,
+  not even `user_id` — and every journal route was a shared query. Listing
+  returned everyone's entries; fetching or updating by id worked on any row
+  regardless of who asked; the analytics endpoints aggregated across all
+  tenants.
+- Every journal read and write is now scoped to the caller's organization,
+  resolved from the authenticated server context (`owner_scope`). Nothing a
+  client sends takes part in deciding what it can see.
+- **Cross-organization ids answer 404, not 403**, and with the same detail
+  string a nonexistent id gets — a 403 would confirm the row exists.
+  Ownership is part of the lookup rather than a check afterwards.
+- **Migration 0039 does not guess.** `organization_id` is nullable and stays
+  that way: a pre-ownership entry's author is not recoverable from the row.
+  The backfill assigns existing entries only when there is **exactly one**
+  personal organization (the single-operator case). With zero or several it
+  leaves them unattributed and raises a NOTICE with the count, because handing
+  one customer's trading journal to another is worse than leaving old rows
+  unowned.
+- **NULL is a scope, not a wildcard.** Unattributed rows match only the
+  single-operator scope used when auth is disabled, so they are invisible to
+  every organization-scoped query and fail closed.
+- `list_entries` no longer swallows an auth failure into
+  `{"entries": [], "error": ...}`. Rendering "you are not allowed to see this"
+  as "you have nothing" reads as a safe value and is not one.
+
+Isolation for `trades` is **not** in this change — the model is read by eight
+route modules (analytics, portfolio, risk, rotation, strategy, paper_trade,
+research, trade_desk) and warrants its own batch.
+
+## Unreleased — Strategy validation requires traceable evidence
+
+- **Hardcoded metrics can no longer validate a strategy.** The Research Lab UI
+  posted literal values — `sharpe: 1.0`, `oos_sharpe: 0.9` — into the
+  transition route, and the gates, which evaluate whatever dict they are
+  handed, cleared them. A strategy could reach a validated stage without
+  anything ever having been measured. Those literals are gone.
+- **Clients may no longer supply metrics at all.** The route refuses
+  `metrics` / `wf_metrics` in a request body and instead takes a
+  `backtest_run_id`. The server loads that `BacktestRun`, checks it completed
+  and that its strategy matches the experiment, reads the metrics from the
+  stored row, and writes a `provenance` block (engine, run id, strategy,
+  dataset window, starting capital, parameters including commissions and
+  slippage, recorded-at). The `sharpe_ratio` → `sharpe` key mapping moved
+  server-side too, so a client can no longer get it wrong — nor quietly right
+  by sending its own number.
+- Evidence without complete provenance is **unverified** and cannot clear a
+  gate. Promotion additionally re-checks the backtest behind the experiment,
+  so a demo-seeded experiment cannot become live-eligible on the strength of a
+  real paper record alone.
+- **Existing history is preserved, not rewritten.** Rows written before
+  provenance existed keep their numbers and simply stop clearing gates, with
+  an explanation naming what is missing. A rejected transition changes
+  nothing.
+- **The walk-forward → paper transition is disabled.** Nothing in this build
+  computes out-of-sample metrics: `oos_sharpe` appears only in the gate and
+  the route that fed it, and the sole producer was that literal object in the
+  UI. Rather than keep judging whatever a caller sends, the transition now
+  refuses and states what is missing. `evaluate_walkforward_gate` is retained
+  and still tested, ready for a real engine.
+
+## Unreleased — Broker-neutral emergency stop, with verified flatness
+
+- **Cancellation now works on every broker.** It sat inside
+  `if hasattr(self._broker, "ib")`, so on Alpaca the entire step was skipped —
+  no orders cancelled, **no error recorded**, `orders_cancelled` left at 0. A
+  caller could not tell "nothing to cancel" from "never tried", and working
+  orders stayed live while the positions underneath them were flattened. A
+  resting entry filling afterwards re-opens the exposure the stop existed to
+  remove.
+- New `BrokerInterface.cancel_all_open_orders()` sweeps the whole account and
+  returns a `CancelSweep` of `requested` / `cancelled` / `unresolved` /
+  `enumeration_error`. The existing per-symbol `cancel_open_orders` cannot
+  substitute: it only visits symbols the caller already knows about, which
+  during a stop means symbols that still have positions — a working order for
+  a symbol with **no** position is invisible to it.
+- **Flatness is now verified, not inferred.** `positions_flattened` counts
+  every non-rejected result, so an accepted-but-unfilled market order, a
+  partial fill and a venue cancellation all increment it. A reconciliation
+  step re-reads the broker; `reconciliation.flat` is `True` only when no
+  non-zero position and no unresolved order remain, and `None` — unknown, not
+  `False` — when the read itself failed.
+- **Re-engaging re-verifies instead of reassuring.** It returned
+  `already_engaged` and nothing else, which reads as success while unresolved
+  orders and residual positions sit untouched. It now reconciles and reports
+  the exposure.
+- **Options flatten orders now state that they close.** `position_intent` was
+  hardcoded to `*_to_open` for every leg, so the kill switch asked the broker
+  to open a naked short in the contract it was trying to close. `SpreadLeg`
+  gains `intent` (`open` by default, so no existing caller changes behaviour);
+  the flatten path sets `close`.
+
+## Unreleased — Execution-mode changes state their durability
+
+- Raising automation (Manual → Copilot → Autopilot) now **records the decision
+  before activating it**. Previously `set_mode` mutated the runtime first and
+  swallowed the write's failure, so a database outage produced a live Autopilot
+  and an ordinary success response — the machine trading automatically on a
+  decision nothing durably held. A failed write now leaves the mode unchanged
+  and the route answers `503` instead of `200` with the old mode in the body.
+- Reducing automation, and engaging an emergency stop, still take effect
+  **immediately even during a database outage**. Making a safety reduction wait
+  for a database that may be the broken thing would be the same mistake with
+  the opposite sign. A reduction that could not be recorded is surfaced as
+  `persistence: "unconfirmed"` rather than logged and forgotten.
+- `summary()` now states durability explicitly: `confirmed`, `unavailable`
+  (requested but **not** in force), `unconfirmed` (in force, not recorded) or
+  `stale`, plus `requested_mode` when the two differ. A failed write used to be
+  indistinguishable from a successful one.
+- **Autopilot is no longer auto-restored on restart.** A reduction out of
+  Autopilot that failed to persist leaves the older, more permissive row newest
+  on disk, so restoring it would hand automation back silently as a side effect
+  of a restart. It now restores as Copilot — every signal is kept, a human is
+  still asked — with `restore_note` explaining why. **This is a behaviour
+  change: Autopilot must be re-engaged explicitly after a deploy.**
+
+## Unreleased — Copilot approval is a single-use atomic claim
+
+- `_resolve_pending_approval` now claims a pending approval with one
+  conditional `UPDATE ... WHERE status='pending' RETURNING`, replacing an
+  unlocked `SELECT` followed by an ORM write. Under READ COMMITTED that read
+  took no row lock, so two concurrent approvals of one signal could both see
+  `pending`, both commit, and both return a payload — **two broker orders for
+  one signal**. The rotation path next door already used `SELECT ... FOR
+  UPDATE`; this path did not.
+- A concurrent approve/reject pair now produces exactly one terminal decision
+  instead of submitting and recording a rejection for the same signal.
+- Approval and rejection record the authenticated actor (`approved_by_actor` /
+  `rejected_by_actor`) alongside the existing role label, and the decision is
+  merged into the stored payload. When auth is disabled the field is omitted
+  rather than filled with a placeholder.
+- Concurrency is now covered against a real PostgreSQL
+  (`tests/test_approval_concurrency_pg.py`), and CI gained a `postgres:16`
+  service so those tests run instead of skipping. The pre-existing mock-based
+  tests passed throughout the window in which this bug was live.
+
 ## Unreleased — Instrument console UI (skeuomorphic-lite)
 
 - Terminal chrome: raised bezels on panels/buttons, rack ticker + status bars,
