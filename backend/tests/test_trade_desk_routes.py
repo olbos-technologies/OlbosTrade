@@ -685,6 +685,46 @@ async def test_duplicate_open_trade_skipped():
 
 
 @pytest.mark.asyncio
+async def test_entry_is_skipped_when_another_entry_already_holds_the_claim():
+    """The duplicate READ passing is not enough to submit.
+
+    The trade row that read looks for is written only after the broker
+    accepts, so a second signal arriving inside that round trip sees nothing
+    and passes too. The claim is what the second one collides with. Here the
+    read finds nothing and the claim is refused, which must still skip.
+    """
+    with patch("app.api.routes.trade_desk._fetch_portfolio_state", new=AsyncMock(return_value=_clean())), \
+         patch("app.api.routes.trade_desk._is_kill_switch_active", return_value=False), \
+         patch("app.core.database.AsyncSessionLocal", return_value=_dup_session(None)), \
+         patch("app.services.position_claim.try_claim", new=AsyncMock(return_value=False)), \
+         patch("app.broker.broker_factory.get_broker", return_value=MagicMock()), \
+         patch("app.services.trade_recorder.trade_recorder.record_fill",
+               new=AsyncMock()) as record_mock:
+        res = await _execute_signal(_options_signal(), approved_by="manual")
+
+    assert res["result"] == "skipped" and "entry_in_flight" in res["reason"]
+    # get_broker is resolved earlier than Stage 3, so the meaningful assertion
+    # is that nothing was ever submitted or recorded.
+    record_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_claim_failure_fails_closed_rather_than_submitting():
+    """Stage 3 blocks on a broken duplicate check rather than risking a
+    duplicate order. A broken claim store is the same situation."""
+    with patch("app.api.routes.trade_desk._fetch_portfolio_state", new=AsyncMock(return_value=_clean())), \
+         patch("app.api.routes.trade_desk._is_kill_switch_active", return_value=False), \
+         patch("app.core.database.AsyncSessionLocal", return_value=_dup_session(None)), \
+         patch("app.services.position_claim.try_claim",
+               new=AsyncMock(side_effect=RuntimeError("relation does not exist"))), \
+         patch("app.broker.broker_factory.get_broker", return_value=MagicMock()):
+        res = await _execute_signal(_options_signal(), approved_by="manual")
+
+    assert res["result"] == "blocked"
+    assert "duplicate_check_error" in res["reason"]
+
+
+@pytest.mark.asyncio
 async def test_duplicate_guard_allows_other_asset_class_same_underlying():
     """Open SPY equity must not block a new SPY options signal (and vice versa)."""
     equity_open = MagicMock()

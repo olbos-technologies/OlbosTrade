@@ -19,6 +19,7 @@ from app.models import (  # noqa: F401
     oms_order,
     organization,
     position,
+    position_claim,
     research_experiment,
     risk_state,
     trade,

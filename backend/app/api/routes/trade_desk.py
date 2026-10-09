@@ -1625,6 +1625,17 @@ async def _execute_signal(signal: dict, approved_by: str = "autopilot") -> dict:
                 ticker, wanted, wanted,
             )
             return _skipped("already_open")
+
+        # The read above cannot see an entry that has been submitted but not
+        # yet recorded — the trade row is written only after the broker
+        # accepts, so two signals arriving inside that round trip both read
+        # zero rows and both pass. Claim the position before submitting, so
+        # the second one collides with something that exists.
+        from app.services import position_claim
+        if not await position_claim.try_claim(
+            ticker, wanted, dispatch_id=signal.get("dispatch_id"),
+        ):
+            return _skipped("entry_in_flight")
     except Exception as _dup_exc:
         # Fail closed, matching Stage 2's guardrail gate (_fetch_portfolio_state)
         # a few lines above — a DB blip here must not silently let a possible

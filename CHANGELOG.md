@@ -1,5 +1,35 @@
 # Changelog
 
+## Unreleased — The duplicate-position guard is no longer a bare read
+
+**Requires a migration (0040). No new environment variables.**
+
+- `_execute_signal` Stage 3 asked the database whether an open or pending
+  trade already existed for (underlying, asset class) and skipped if one did.
+  That read is correct and **not sufficient**: the row it looks for is written
+  only *after* the broker accepts, so two signals for the same name arriving
+  inside that round trip both read zero rows, both pass, and both submit —
+  one position, two economic orders. Same shape as the Copilot approval race,
+  one layer down.
+- A **position claim** is now taken before submission. `INSERT ... ON CONFLICT
+  DO NOTHING` against a composite primary key lets exactly one of two
+  concurrent entries proceed; the loser skips with `entry_in_flight`. The
+  database decides, under contention, rather than application code reading and
+  then writing.
+- Claims **expire rather than being released** (120s default). Threading a
+  release through every exit of a ~400-line function in the live order path
+  would risk wedging a symbol permanently on a missed path; expiry means a
+  crashed process cannot lock a name out. The cost is a short cooldown on that
+  name after a failed attempt — behaviour this codebase already imposes after
+  a close (Stage 3b).
+- Equity and options on the same underlying claim separately, so SPY shares
+  and a SPY spread still do not false-block each other.
+- A claim that cannot be taken because of an infrastructure fault **fails
+  closed**, matching the duplicate read beside it. Note the deploy
+  consequence: between containers coming up and `alembic upgrade head`
+  running, `position_claims` does not exist and entries will block. That
+  window is brief and fail-safe, but it is real.
+
 ## Unreleased — Autopilot is restored from the record again
 
 Reverses the restart behaviour shipped in "Execution-mode changes state their
