@@ -1,5 +1,5 @@
 /**
- * The status-bar identity chip.
+ * The Account-group identity chip.
  *
  * Mostly about when it must render NOTHING. It sits inside TerminalLayout, so
  * every way it can misbehave takes the whole shell with it — and it first
@@ -95,13 +95,10 @@ describe("signed in", () => {
     await waitFor(() => expect(container).toBeEmptyDOMElement());
   });
 
-  it("renders the menu outside the status bar so it is not clipped", async () => {
+  it("renders the menu outside scrollable navigation so it is not clipped", async () => {
     /**
-     * On mobile .instrument-status is a horizontal scroller (overflow-x: auto,
-     * overflow-y: hidden) and this menu opens above it, outside that box — so
-     * the ancestor clipped it completely and Sign out became unreachable on a
-     * phone. Verified in Chromium at 390px before the fix: the menu painted
-     * nothing at all.
+     * On mobile the Account group is inside a scrollable navigation drawer.
+     * The menu opens outside that box so an ancestor cannot clip Sign out.
      *
      * The fix portals it to <body>, so the test asserts the structural
      * property that makes clipping impossible rather than a pixel measurement
@@ -109,7 +106,7 @@ describe("signed in", () => {
      */
     stubStatus({ auth_enabled: true, authenticated: true, user: USER });
     const { container } = render(
-      <div className="instrument-status" style={{ overflowX: "auto", overflowY: "hidden" }}>
+      <div aria-label="Account navigation" style={{ overflowX: "hidden", overflowY: "auto" }}>
         <AuthProvider><UserMenu /></AuthProvider>
       </div>
     );

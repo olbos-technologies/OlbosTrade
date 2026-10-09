@@ -125,11 +125,11 @@ test.describe("mobile nav drawer", () => {
 });
 
 /**
- * Sign-out on a phone. THIS is the test that guards the original bug.
+ * Sign-out on a phone, from the Account group where identity controls belong.
  *
- * The account menu was once clipped to nothing by an ancestor's
- * `overflow-y: hidden` — present in the DOM, non-zero box, never painted —
- * which made sign-out unreachable on a phone.
+ * The identity chip used to consume scarce room in the bottom status strip.
+ * It now lives in the scrollable Account group, and its menu still has to
+ * escape drawer clipping so sign-out remains reachable on a phone.
  *
  * Mutation testing pinned down which half of the fix actually holds it up.
  * Removing the portal alone still passes: the menu is `position: fixed`, and a
@@ -158,6 +158,14 @@ test.describe("sign out on a phone", () => {
     });
 
     await openTerminal(page, PHONE_WIDTH);
+
+    // Auth has resolved (the gated Account group exists), but the identity
+    // chip must not occupy the bottom status strip anymore.
+    await expect(page.getByRole("button", { name: "Account", exact: true })).toHaveCount(1);
+    await expect(page.getByRole("button", { name: /^Account:/ })).toHaveCount(0);
+
+    await page.getByRole("button", { name: "More" }).click();
+    await page.getByRole("button", { name: "Account", exact: true }).click();
 
     const account = page.getByRole("button", { name: /^Account:/ });
     await expect(

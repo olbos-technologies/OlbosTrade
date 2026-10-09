@@ -1124,35 +1124,49 @@ function Sidebar({ active, onNav, expanded, isMobile = false }: {
           )}
         </div>
 
-        {/* Sub-items — only when expanded and open */}
-        {showLabels && !isLeaf && isOpen && g.children!.map(c => {
-          const subActive  = active === c.key;
-          const subHovered = hovered === c.key;
-          return (
-            <button
-              key={c.key}
-              onClick={() => onNav(c.key)}
-              onMouseEnter={() => setHovered(c.key)}
-              onMouseLeave={() => setHovered(null)}
-              aria-label={c.label}
-              aria-current={subActive ? "page" : undefined}
-              style={{
-                width: "100%", height: 32, display: "flex", alignItems: "center",
-                paddingLeft: 40, gap: 0,
-                background: subActive ? "var(--cyan-dim)" : subHovered ? "var(--bg-3)" : "transparent",
-                border: "none",
-                borderLeft: subActive ? "2px solid var(--cyan)" : "2px solid transparent",
-                color: subActive ? "var(--cyan)" : subHovered ? "var(--ink)" : "var(--ink-dim)",
-                cursor: "pointer", transition: "all 0.1s", overflow: "hidden", whiteSpace: "nowrap",
-                textAlign: "left",
-              }}
-            >
-              <span style={{ fontFamily: "var(--mono)", fontSize: 10.5, letterSpacing: "0.04em" }}>
-                {c.label}
-              </span>
-            </button>
-          );
-        })}
+        {/* Sub-items — only when expanded and open. Identity and sign-out live
+            with the Account tools, not in the operational status strip. */}
+        {showLabels && !isLeaf && isOpen && (
+          <>
+            {g.children!.map(c => {
+              const subActive  = active === c.key;
+              const subHovered = hovered === c.key;
+              return (
+                <button
+                  key={c.key}
+                  onClick={() => onNav(c.key)}
+                  onMouseEnter={() => setHovered(c.key)}
+                  onMouseLeave={() => setHovered(null)}
+                  aria-label={c.label}
+                  aria-current={subActive ? "page" : undefined}
+                  style={{
+                    width: "100%", height: 32, display: "flex", alignItems: "center",
+                    paddingLeft: 40, gap: 0,
+                    background: subActive ? "var(--cyan-dim)" : subHovered ? "var(--bg-3)" : "transparent",
+                    border: "none",
+                    borderLeft: subActive ? "2px solid var(--cyan)" : "2px solid transparent",
+                    color: subActive ? "var(--cyan)" : subHovered ? "var(--ink)" : "var(--ink-dim)",
+                    cursor: "pointer", transition: "all 0.1s", overflow: "hidden", whiteSpace: "nowrap",
+                    textAlign: "left",
+                  }}
+                >
+                  <span style={{ fontFamily: "var(--mono)", fontSize: 10.5, letterSpacing: "0.04em" }}>
+                    {c.label}
+                  </span>
+                </button>
+              );
+            })}
+            {g.id === "account" && (
+              <div style={{
+                display: "flex", alignItems: "center",
+                margin: "4px 12px 8px 40px", paddingTop: 8,
+                borderTop: "1px solid var(--line-dim)",
+              }}>
+                <UserMenu />
+              </div>
+            )}
+          </>
+        )}
       </div>
     );
   };
@@ -1422,8 +1436,6 @@ function StatusBar({ page }: { page: string }) {
       <StatusLamp label="Rotation" on={rotationOn} />
       <div style={{ flex: 1 }} />
       <span id="broker-status-bar" className="status-dup">IBKR GATEWAY</span>
-      {/* Renders nothing when auth is disabled — see UserMenu. */}
-      <UserMenu />
       <span style={{ color: "var(--brand)", fontWeight: 700 }}>Olbos v5.0</span>
     </div>
   );
