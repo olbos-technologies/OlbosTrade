@@ -1518,6 +1518,12 @@ summary span[aria-hidden="true"] { display: inline-block; transition: transform 
 }
 
 @media (max-width: 760px) {
+  /* Positions is a monitoring workspace: use the screen for holdings, not a
+     second copy of the execution selector. The current mode remains visible
+     in both the terminal header trigger and the Session chip above. This must
+     beat ExecModeBar's inline display:flex, hence the scoped !important. */
+  .exec-mode-row--mobile-hidden { display: none !important; }
+
   /* ── The desk rail: three facts, a toggle, and the kill switch ───────── */
   .instrument-rail {
     align-items: center;
