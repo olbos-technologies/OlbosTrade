@@ -301,7 +301,7 @@ async def test_zero_contracts_skipped_in_execute_signal():
 # ══════════════════════════════════════════════════════════════════════════════
 
 @pytest.mark.asyncio
-async def test_clean_order_passes_all_stages_in_order():
+async def test_clean_order_passes_all_stages_in_order(stub_position_claim):
     """
     A clean signal must:
       kill_switch(False) → portfolio_state fetched → guardrail passes →

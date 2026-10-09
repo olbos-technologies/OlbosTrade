@@ -72,7 +72,7 @@ async def _run(signal, broker):
 
 
 @pytest.mark.asyncio
-async def test_buy_reprices_to_live_ask_with_marketable_buffer():
+async def test_buy_reprices_to_live_ask_with_marketable_buffer(stub_position_claim):
     """A stale entry_price of $150 with a live ask of $160 must submit near
     $160 (marketable), not the stale $150 that would never fill."""
     broker = MagicMock()
@@ -89,7 +89,7 @@ async def test_buy_reprices_to_live_ask_with_marketable_buffer():
 
 
 @pytest.mark.asyncio
-async def test_sell_reprices_to_live_bid_with_marketable_buffer():
+async def test_sell_reprices_to_live_bid_with_marketable_buffer(stub_position_claim):
     broker = MagicMock()
     broker.get_latest_quote = AsyncMock(return_value=_quote(bid=140.00, ask=140.10))
     broker.get_account_summary = AsyncMock(return_value=MagicMock(net_liquidation=100_000.0))
@@ -104,7 +104,7 @@ async def test_sell_reprices_to_live_bid_with_marketable_buffer():
 
 
 @pytest.mark.asyncio
-async def test_falls_back_to_stale_entry_price_when_quote_unavailable():
+async def test_falls_back_to_stale_entry_price_when_quote_unavailable(stub_position_claim):
     """If the live quote fetch fails for any reason, the order must still go
     out at the original scan-time entry_price rather than blocking the trade
     entirely — a repricing improvement should never become a new failure mode."""
@@ -120,7 +120,7 @@ async def test_falls_back_to_stale_entry_price_when_quote_unavailable():
 
 
 @pytest.mark.asyncio
-async def test_zero_ask_does_not_reprice_buy():
+async def test_zero_ask_does_not_reprice_buy(stub_position_claim):
     """A zeroed/missing ask (e.g. a bad tick) must not produce a $0 limit
     order — falls back to the stale entry_price instead."""
     broker = MagicMock()

@@ -2,33 +2,50 @@
 
 ## Unreleased — The duplicate-position guard is no longer a bare read
 
-**Requires a migration (0040). No new environment variables.**
+**Requires a migration (0040), applied BEFORE deploying this code — see
+docs/runbook.md. No new environment variables.**
 
 - `_execute_signal` Stage 3 asked the database whether an open or pending
   trade already existed for (underlying, asset class) and skipped if one did.
   That read is correct and **not sufficient**: the row it looks for is written
-  only *after* the broker accepts, so two signals for the same name arriving
-  inside that round trip both read zero rows, both pass, and both submit —
-  one position, two economic orders. Same shape as the Copilot approval race,
-  one layer down.
+  only *after* the broker accepts, so two signals arriving inside that round
+  trip both read zero rows, both pass, and both submit — one position, two
+  economic orders.
 - A **position claim** is now taken before submission. `INSERT ... ON CONFLICT
-  DO NOTHING` against a composite primary key lets exactly one of two
-  concurrent entries proceed; the loser skips with `entry_in_flight`. The
-  database decides, under contention, rather than application code reading and
-  then writing.
-- Claims **expire rather than being released** (120s default). Threading a
-  release through every exit of a ~400-line function in the live order path
-  would risk wedging a symbol permanently on a missed path; expiry means a
-  crashed process cannot lock a name out. The cost is a short cooldown on that
-  name after a failed attempt — behaviour this codebase already imposes after
-  a close (Stage 3b).
-- Equity and options on the same underlying claim separately, so SPY shares
-  and a SPY spread still do not false-block each other.
-- A claim that cannot be taken because of an infrastructure fault **fails
-  closed**, matching the duplicate read beside it. Note the deploy
-  consequence: between containers coming up and `alembic upgrade head`
-  running, `position_claims` does not exist and entries will block. That
-  window is brief and fail-safe, but it is real.
+  DO NOTHING` against a composite primary key lets exactly one concurrent
+  entry proceed; the loser skips with `entry_in_flight`.
+- The trade read now runs **again after the claim is won**. The first read and
+  the claim are separate round trips, so a caller could read "no trade",
+  stall, and win a claim another caller had just released by recording its
+  position. Winning the claim is what makes the second read conclusive.
+- A claim has a **state, not just a lease**. Only `pending` claims — nothing
+  sent to the broker — are reclaimable by time. Once intent is recorded the
+  lease stops applying, because a timer expiring is not evidence that no order
+  exists. A submission that times out leaves the claim `unknown`, which blocks
+  re-entry until reconciled.
+- **Intent is recorded before the broker call**, so a process killed mid-submit
+  cannot leave an order placed and nothing persisted. On the options path the
+  claim's key rides along as `client_order_id`, which Alpaca honours, making a
+  retry safe there; `place_equity_order` accepts no such key, so on the equity
+  path the broker has no dedup of its own — which is why a submitted claim
+  must never free itself on a timer.
+- `reconcile_unresolved()` asks the broker what became of each unknown claim
+  and releases it **only** when the broker positively has no such order. A
+  lookup that raises resolves nothing: "I could not ask" and "there is nothing
+  there" are different answers.
+- Every state change is keyed on a **unique claim token**, so a worker whose
+  claim was reclaimed cannot release or advance whoever holds the position
+  now. Lease comparisons are **database-side** throughout; no timestamp
+  travels from a worker's clock.
+- Claims are **global** (`scope` column, always `'global'`). Positions are not
+  yet owned — `trades` has no organization column — so scoping claims per
+  tenant while the duplicate read beside them stays global would make the two
+  disagree. The column exists so the batch that gives trades an owner can fill
+  it in without reshaping a primary key.
+- A claim that cannot be taken **fails closed**, matching the duplicate read
+  beside it. Nothing outside the entry path consults claims, so exits, fill
+  polling, reconciliation and the kill switch are unaffected when the table is
+  missing — pinned by a test.
 
 ## Unreleased — Autopilot is restored from the record again
 

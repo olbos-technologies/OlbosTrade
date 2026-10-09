@@ -151,6 +151,35 @@ Wait for `✅ Update complete`, then check `/api/health/detail`.
 **Expect IBKR to need a moment after every deploy**, and occasionally a gateway
 restart — the container restart drops the broker connection.
 
+### Additive migrations go in BEFORE the code that needs them
+
+`update.sh` starts containers (step 3) and only then runs `alembic upgrade
+head` (step 4). For a migration whose table the new code *reads*, that order
+is backwards: between those two steps the code is live and the table is not
+there.
+
+For the position-claims table (migration `0040`) the consequence is
+deliberate and safe — Stage 3 fails closed, so **new entries are refused**
+during that window rather than submitted unguarded. Exits, fill polling,
+reconciliation and the kill switch are untouched: nothing outside the entry
+path consults claims, and there is a test pinning that.
+
+Refusing entries for the length of a deploy is acceptable. Shortening it is
+free, so do it for any additive migration:
+
+```bash
+# On the server, BEFORE update.sh — safe because 0040 is additive and empty,
+# and nothing reads the table until the new code is running.
+docker exec olbostrade-backend python3 -m alembic upgrade head
+cd /opt/olbostrade && bash deploy/hetzner/update.sh
+```
+
+The second `alembic upgrade head` inside `update.sh` is then a no-op.
+
+If a migration *fails*, do not deploy the code that depends on it. Entries
+will refuse for as long as the table is missing, which is the safe direction
+but is not a state to sit in: fix the migration, or roll the image back.
+
 ---
 
 ## Things that are true and easy to get wrong
