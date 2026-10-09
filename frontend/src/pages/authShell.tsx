@@ -69,13 +69,9 @@ export function Pitch({
   title: string;
   lede: React.ReactNode;
   points?: string[];
-  /** Show the pearl O above the eyebrow. OFF by default and opted into only
-   *  by Login, because this component is shared with RequestAccess and Claim.
-   *
-   *  This is the one surface in the product that draws the mark large enough
-   *  for it to be itself: its pearl body and gold ribbons only exist above
-   *  ~48px, which is why it is not in the 18-24px header lockups and not the
-   *  16px favicon. At 96px here it reads as intended. */
+  /** Show the standalone angular mark above the eyebrow. OFF by default and
+   *  opted into only by Login because this shell is shared with access and
+   *  account-claim flows. */
   mark?: boolean;
 }) {
   return (
@@ -83,9 +79,9 @@ export function Pitch({
       {mark && (
         <img
           className="auth-mark"
-          src="/olbos-o.webp"
+          src="/olbos-mark.webp"
           alt=""
-          width={103}
+          width={96}
           height={96}
         />
       )}
@@ -127,8 +123,7 @@ export function AuthPage({
               navigation out of that subtree would leave the gate mounted
               around a page that is not the terminal. */}
           <a className="auth-brand" href="/">
-            <img src="/olbos-o-sm.webp" alt="" width={26} height={24} />
-            <BrandWordmark className="auth-wordmark" height={15} />
+            <BrandWordmark className="auth-wordmark" height={32} />
           </a>
           {navAction && (
             navAction.external

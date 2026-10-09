@@ -34,20 +34,12 @@ ICON_LINK = re.compile(
 )
 SIZES_ATTR = re.compile(r'sizes="(\d+)x(\d+)"')
 
-# Measured, not guessed. With filters correctly reconstructed, the render
-# scores 729 distinct colours (quantised to 5 bits per channel) and
-# favicon.svg rasterised in Chromium at the same 180px scores 141 -- a 5.2x
-# gap. 350 sits roughly 2x from either side, so a re-export at a different
-# compression level cannot trip it but swapping one drawing for the other
-# does.
+# The large application icon retains metallic tonal detail; the SVG favicon
+# deliberately reduces that treatment to a handful of shapes for 16px use.
 PHOTOGRAPHIC_COLOUR_FLOOR = 350
 
-# The render is a thin shaded pearl ring on navy, so near-white is only ~7.6%
-# of it. This floor is deliberately well below that: its job is to catch an
-# icon with no pearl left at all, NOT to tell the two drawings apart. It
-# cannot do the latter -- the flat drawing is a thicker stroke and scores
-# ~15%, i.e. HIGHER. Only the colour count separates them.
-PEARL_PIXEL_FLOOR = 0.03
+# The silver body must remain visibly present after export.
+SILVER_PIXEL_FLOOR = 0.03
 
 
 def _png_size(path: Path) -> tuple[int, int]:
@@ -171,51 +163,34 @@ def test_apple_touch_icon_is_180_and_opaque():
         "composite it onto white")
 
 
-def test_the_two_icons_are_the_same_mark_drawn_differently():
-    """Both icons are the O now. What must not collapse is that they are
-    DIFFERENT DRAWINGS of it, chosen per size.
-
-    apple-touch-icon is the photographic render: pearl body, gold ribbons,
-    real depth. It earns its 180px on an iOS home screen and turns to mush
-    below ~48px. favicon.svg is a flat two-stroke drawing — pearl outside,
-    gold on the inner edge — that stays legible at 16px where the render
-    cannot.
-
-    Two opposite mistakes this guards, and each looks like tidying up:
-      * regenerating the favicon by downsampling the render (muddy at 16px);
-      * flattening the app icon to the two-stroke drawing (throws away the
-        only reason to have the render at all).
-
-    Distinct colour count is what separates them: a photograph has hundreds,
-    a flat vector has ~140 even with antialiasing. See
-    PHOTOGRAPHIC_COLOUR_FLOOR for the measurements behind the threshold.
-    """
+def test_large_icon_retains_metallic_detail_and_silver_body():
+    """The 180px icon earns its size with richer facets than the favicon."""
     _, _, pixels = _png_pixels(PUBLIC / "apple-touch-icon.png")
 
     colours = {(r >> 3, g >> 3, b >> 3) for r, g, b in pixels}
     near_white = sum(1 for r, g, b in pixels if r > 200 and g > 195 and b > 185)
 
     assert pixels, "scan read no pixels"
-    assert near_white / len(pixels) > PEARL_PIXEL_FLOOR, (
+    assert near_white / len(pixels) > SILVER_PIXEL_FLOOR, (
         f"only {near_white / len(pixels):.1%} of the app icon is near-white; "
-        "the icon has no pearl left in it at all -- is it still the O?")
+        "the angular mark has lost its silver body")
     assert len(colours) > PHOTOGRAPHIC_COLOUR_FLOOR, (
         f"the app icon has only {len(colours)} distinct colours, which is a "
         "flat vector rather than the photographic render. Flattening it "
         "removes the whole reason it is a separate drawing from favicon.svg.")
 
 
-def test_svg_favicon_is_the_flat_two_stroke_drawing():
-    """The counterpart: the favicon must stay drawn, not become a render."""
+def test_svg_favicon_is_the_simplified_angular_mark():
+    """The favicon keeps the angular silhouette without raster detail."""
     svg = (PUBLIC / "favicon.svg").read_text()
-    assert "#f4efe6" in svg, "the pearl stroke is missing from favicon.svg"
-    assert svg.count("ellipse") >= 2, (
-        "favicon.svg is no longer the two-stroke O — if it was replaced with a "
-        "rasterised or traced render, it will go muddy at 16px")
+    assert 'id="silver"' in svg, "the silver treatment is missing"
+    assert 'fill-rule="evenodd"' in svg, "the angular O counter is missing"
+    assert svg.count("<path") >= 3, "the mark has lost its faceted/gold cuts"
+    assert "<ellipse" not in svg, "the superseded oval mark returned"
 
 
 def test_svg_favicon_carries_the_brand_colours():
     """Catches a blank or placeholder SVG, which would render as nothing at all."""
     svg = (PUBLIC / "favicon.svg").read_text()
-    assert "#D4AF37" in svg, "the gold stroke is missing from favicon.svg"
+    assert "#e5a932" in svg, "the gold diagonal cuts are missing from favicon.svg"
     assert "viewBox" in svg, "favicon.svg has no viewBox, so it will not scale"

@@ -66,13 +66,7 @@
   gap: 8px;
   flex-shrink: 0;
 }
-/* Outlines now (see components/BrandWordmark). Same artwork the terminal
-   header uses, so the brand reads identically across marketing and product.
-   The gold glow that used to sit here is gone with it: at this size it
-   thickened the letterforms it was meant to flatter. */
-.auth-wordmark {
-  color: var(--brand);
-}
+.auth-wordmark { flex-shrink: 0; }
 .auth-nav-link {
   font-family: var(--sans);
   font-size: 13px;
@@ -97,20 +91,19 @@
 }
 
 /* ── Pitch column ────────────────────────────────────────────────────── */
-/* The pearl O, Login only. Sized in CSS as well as on the element so the
-   reserved box matches before the image loads and the pitch does not jump.
-   The asset is 2x (206x192) for retina. */
+/* The standalone angular O, Login only. Dimensions are repeated in CSS so
+   the reserved box matches before the image loads and the pitch does not jump. */
 .auth-mark {
   display: block;
-  width: 103px;
+  width: 96px;
   height: 96px;
+  object-fit: contain;
   margin: 0 0 22px;
 }
 @media (max-width: 760px) {
   /* The layout stacks here and the mark is competing with the form for the
-     first screen, so it steps down rather than pushing the fields below the
-     fold. 64px still clears the ~48px floor where its detail survives. */
-  .auth-mark { width: 69px; height: 64px; margin-bottom: 16px; }
+     first screen, so it steps down rather than pushing fields below the fold. */
+  .auth-mark { width: 64px; height: 64px; margin-bottom: 16px; }
 }
 .auth-eyebrow {
   font-family: var(--mono);
