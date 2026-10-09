@@ -32,12 +32,9 @@
   gap: 28px;
   height: 64px;
 }
-/* Outlines now (see components/BrandWordmark). Same artwork the terminal
-   header uses, so the brand reads identically across marketing and product.
-   The gold glow that used to sit here is gone with it: at this size it
-   thickened the letterforms it was meant to flatter. */
+/* Same complete lockup the terminal uses, so marketing and product cannot
+   drift into different mark/type proportions. */
 .landing-wordmark {
-  color: var(--brand);
   flex-shrink: 0;
 }
 .landing-nav-links {

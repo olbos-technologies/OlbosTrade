@@ -104,7 +104,7 @@ body {
 /* Typography */
 .mono { font-family: var(--mono); }
 /* ── Application-header brand lockup ──────────────────────────────────────
-   The O mark plus the OLBOS wordmark, in the terminal header only.
+   The complete angular OLBOS / TRADE lockup in the terminal header.
 
    Sizes here are smaller than a standalone brand spec would ask for, and
    that is a hard constraint rather than a preference: the desktop ticker
@@ -113,10 +113,9 @@ body {
    Raising the bar is the one change that would allow the larger figures;
    see the note in TerminalLayout.
 
-   Nothing here glows. The mark's drop-shadow and the wordmark's text-shadow
-   are both gone: at this size a glow thickens the forms it is meant to
-   flatter. Weight, tracking and case live in the wordmark artwork, not in
-   CSS -- see components/BrandWordmark. */
+   Nothing here glows: at this size a glow thickens the geometric forms.
+   Proportion, type, metallic treatment and descriptor live in one artwork,
+   not in CSS -- see components/BrandWordmark. */
 .brand-lockup {
   display: flex;
   align-items: center;      /* optical centring, not margins */
@@ -127,30 +126,23 @@ body {
   flex-shrink: 0;
   object-fit: contain;      /* never distort the mark if a size is mismatched */
 }
-/* Outlines, so weight, tracking, case and anti-aliasing are all settled in
-   BrandWordmark. Only colour is left to CSS -- the SVG fills currentColor.
-   It cannot wrap, cannot lose a letter and cannot flash a fallback face. */
-.brand-lockup-word { color: var(--brand); }
+.brand-lockup-word { object-fit: contain; }
 
 /* Desktop ticker strip — 38px bar. */
-.brand-lockup--strip { gap: 14px; }
-.brand-lockup--strip .brand-lockup-mark { width: 27px; height: 25px; }
-/* cap height 15px -> 15 * 4.758 */
-.brand-lockup--strip .brand-lockup-word { height: 15px; width: 71px; }
+.brand-lockup--strip { gap: 0; }
+.brand-lockup--strip .brand-lockup-mark { width: 25px; height: 25px; }
+.brand-lockup--strip .brand-lockup-word { height: 25px; width: 97px; }
 /* Collapsed rail shows the mark alone, so it needs no gap reservation. */
 .brand-lockup--strip.is-mark-only { gap: 0; }
 
 /* Mobile header — 48px bar, so the mark can be bigger than on desktop. */
-.brand-lockup--mobile { gap: 12px; }
-.brand-lockup--mobile .brand-lockup-mark { width: 34px; height: 32px; }
-.brand-lockup--mobile .brand-lockup-word { height: 17px; width: 81px; }
+.brand-lockup--mobile { gap: 0; }
+.brand-lockup--mobile .brand-lockup-word { height: 32px; width: 124px; }
 
 /* Narrow phones: step down so the wordmark cannot collide with the mode chip
    on the right. Tracking does not change, because it is inside the artwork. */
 @media (max-width: 380px) {
-  .brand-lockup--mobile { gap: 10px; }
-  .brand-lockup--mobile .brand-lockup-mark { width: 30px; height: 28px; }
-  .brand-lockup--mobile .brand-lockup-word { height: 15px; width: 71px; }
+  .brand-lockup--mobile .brand-lockup-word { height: 28px; width: 109px; }
 }
 /* tabular-nums: proportional sans with monospaced digits — for ALL P&L,
    prices, percentages, and metrics so columns align without using --mono. */

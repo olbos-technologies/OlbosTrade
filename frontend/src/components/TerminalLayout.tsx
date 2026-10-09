@@ -799,8 +799,7 @@ function TickerStrip({ onToggle, sidebarExpanded, isMobile }: {
           </button>
 
           <div className="brand-lockup brand-lockup--mobile">
-            <img className="brand-lockup-mark" src="/olbos-o-sm.webp" alt="" width={34} height={32} />
-            <BrandWordmark className="brand-lockup-word" height={17} />
+            <BrandWordmark className="brand-lockup-word" height={32} />
           </div>
 
           <div style={{ flex: 1 }} />
@@ -935,37 +934,13 @@ function TickerStrip({ onToggle, sidebarExpanded, isMobile }: {
           </svg>
         </button>
 
-        {/* The mark renders in BOTH states; only the wordmark is conditional.
-            That is what the near-square pearl O buys: at 77/72 = 1.0694 it
-            fits the collapsed rail, where the 2.27:1 OB mark it replaces
-            could not. Width is set from the ASSET's ratio, not the source
-            art's — the browser stretches an img to exactly width x height
-            and does not letterbox.
-
-            The mark keeps ONE size across both rail states. Growing it only
-            when expanded would make the brand twitch on every toggle, which
-            is the opposite of the intended effect.
-
-            Sizing is capped by this bar: it is 38px tall, so the 40-44px
-            mark and 28-32px wordmark a standalone brand spec would ask for
-            cannot fit. 25px of mark leaves 6-7px of air top and bottom,
-            which is the largest that still reads as deliberate. The bar
-            height would have to rise to about 52px for the larger figures,
-            and that costs vertical space on every terminal page. */}
+        {/* Expanded rail gets the complete lockup; collapsed rail gets the
+            same angular mark alone. Both fit the fixed 38px ticker strip. */}
         <div className={`brand-lockup brand-lockup--strip${showFullLogo ? "" : " is-mark-only"}`}
              style={{ overflow: "hidden", paddingRight: showFullLogo ? 12 : 0 }}>
-          <img className="brand-lockup-mark" src="/olbos-o-sm.webp" alt="" width={27} height={25} />
-          {showFullLogo && (
-            /* Wordmark alone — the "TERMINAL" sub-label is gone. It was a
-               second thing to read in a 38px strip whose entire job is to be
-               glanced past, and it named the surface the operator is already
-               looking at. Dropping it is what lets the wordmark centre
-               against the mark instead of hanging above a label.
-
-               height is CAP HEIGHT, not font-size: 15 here is the 20px text
-               wordmark this replaces (Manrope's caps are 0.75em). */
-            <BrandWordmark className="brand-lockup-word" height={15} />
-          )}
+          {showFullLogo
+            ? <BrandWordmark className="brand-lockup-word" height={25} />
+            : <img className="brand-lockup-mark" src="/olbos-mark.webp" alt="Olbos Trade" width={25} height={25} />}
         </div>
       </div>
 
