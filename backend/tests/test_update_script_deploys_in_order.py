@@ -30,6 +30,7 @@ import os
 import pathlib
 import shutil
 import subprocess
+import sys
 import uuid
 
 import pytest
@@ -175,7 +176,12 @@ def _run(tmp_path: pathlib.Path, db_url: str, *, fail_migration: bool):
         "PATH": f"{bin_dir}:{env['PATH']}",
         "DEPLOY_TEST_LOG": str(log),
         "DEPLOY_TEST_BACKEND": str(BACKEND),
-        "DEPLOY_TEST_PYTHON": str(BACKEND / ".venv" / "bin" / "python"),
+        # The interpreter running these tests, which has alembic and the
+        # app importable. A hard-coded virtualenv path exists locally and
+        # NOT on a CI runner, where dependencies go into the system
+        # Python — three of these tests skipped there, and the no-skip
+        # gate caught it.
+        "DEPLOY_TEST_PYTHON": sys.executable,
         # alembic wants the asyncpg driver; the deploy's own URL form.
         "DEPLOY_TEST_DB_URL": db_url,
         "DEPLOY_TEST_FAIL_MIGRATION": "1" if fail_migration else "0",
@@ -206,9 +212,6 @@ async def test_a_successful_deploy_migrates_before_starting_containers(
     tmp_path, disposable_db
 ):
     """Build, then migrate from that image, then start serving, then verify."""
-    if not (BACKEND / ".venv" / "bin" / "python").exists():
-        pytest.skip("no backend venv to run alembic with")
-
     proc, lines = _run(tmp_path, disposable_db, fail_migration=False)
     assert proc.returncode == 0, (
         f"deploy failed:\nstdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
@@ -241,9 +244,6 @@ async def test_the_migration_runs_in_a_throwaway_container_not_docker_exec(
     tmp_path, disposable_db
 ):
     """`docker exec` would run inside the OLD image, which lacks the revision."""
-    if not (BACKEND / ".venv" / "bin" / "python").exists():
-        pytest.skip("no backend venv to run alembic with")
-
     _, lines = _run(tmp_path, disposable_db, fail_migration=False)
     migrate_line = lines[_index_of(lines, "real-alembic upgrade head") - 1]
     assert "run --rm" in migrate_line, (
@@ -304,9 +304,6 @@ async def test_the_deploy_test_harness_can_observe_a_failure(
     pass against a script that never checks anything. This asserts the harness
     distinguishes them.
     """
-    if not (BACKEND / ".venv" / "bin" / "python").exists():
-        pytest.skip("no backend venv to run alembic with")
-
     ok, ok_lines = _run(tmp_path / "ok", disposable_db, fail_migration=False)
     bad, bad_lines = _run(tmp_path / "bad", disposable_db, fail_migration=True)
 
