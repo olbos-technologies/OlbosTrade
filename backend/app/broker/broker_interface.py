@@ -59,6 +59,19 @@ class SpreadLeg(BaseModel):
     option_type: Literal["call", "put"]
     action: Literal["BUY", "SELL"]
     quantity: int
+    # Whether this leg OPENS new exposure or CLOSES existing exposure.
+    #
+    # Alpaca requires a per-leg position_intent and rejects an order whose
+    # stated intent contradicts the one it infers from the account's existing
+    # position ("position intent mismatch, inferred: …, specified: …"). Action
+    # alone cannot carry this: SELL means sell_to_open on a new short and
+    # sell_to_close on a long being flattened, and sending the former while
+    # holding the latter is a request to go naked short, not to close.
+    #
+    # Defaults to "open" so every existing caller keeps the behaviour it had;
+    # only paths that genuinely close — the kill switch's flatten — set
+    # "close".
+    intent: Literal["open", "close"] = "open"
 
 
 class SpreadOrder(BaseModel):
@@ -70,6 +83,27 @@ class SpreadOrder(BaseModel):
     order_type: Literal["LMT", "MKT"] = "LMT"
     time_in_force: Literal["DAY", "GTC"] = "DAY"
     client_order_id: Optional[str] = None
+
+
+class CancelSweep(BaseModel):
+    """Outcome of cancelling every working order on an account.
+
+    `unresolved` is the field that matters during an emergency stop. An order
+    that could not be cancelled is still live at the broker, and the caller
+    has to be able to say so instead of reporting a smaller success count and
+    letting the difference pass as "nothing to do".
+    """
+    requested: int = 0
+    cancelled: int = 0
+    # order id -> why it is still outstanding
+    unresolved: dict[str, str] = Field(default_factory=dict)
+    # Set when the working-order list itself could not be read, which means
+    # `requested` is not a count of anything and nothing may be assumed flat.
+    enumeration_error: Optional[str] = None
+
+    @property
+    def fully_resolved(self) -> bool:
+        return self.enumeration_error is None and not self.unresolved
 
 
 class OrderResult(BaseModel):
@@ -214,6 +248,25 @@ class BrokerInterface(ABC):
     @abstractmethod
     async def get_positions(self) -> List[Position]:
         """Return all currently open options positions."""
+        ...
+
+    @abstractmethod
+    async def cancel_all_open_orders(self) -> "CancelSweep":
+        """Cancel every working order on the account, across all symbols.
+
+        Distinct from `cancel_open_orders(symbol)`, and not expressible in
+        terms of it: a symbol-by-symbol sweep can only visit symbols the
+        caller already knows about, which during an emergency stop means the
+        symbols that still have positions. A working order for a symbol with
+        no position — a resting entry, or a bracket leg whose position already
+        closed — is invisible to that loop and survives the stop, then fills
+        afterwards and re-opens the exposure the stop existed to remove.
+
+        MUST report outcomes rather than a bare count. A cancel request that
+        the broker refused, or that errored in transit, leaves a live order;
+        returning only a success tally makes that indistinguishable from
+        having had nothing to cancel.
+        """
         ...
 
     @abstractmethod

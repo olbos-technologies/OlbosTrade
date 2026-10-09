@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.broker.broker_interface import CancelSweep
 from app.services.kill_switch import KillSwitch
 
 
@@ -22,15 +23,35 @@ def _db_session(row=None):
     return session
 
 
-def _broker():
-    b = MagicMock()
-    b.ib.openOrders.return_value = [MagicMock(orderId=1), MagicMock(orderId=2)]
-    b.ib.cancelOrder = MagicMock()
+def _positions():
     equity = NS(quantity=100, strike=Decimal("0"), underlying="AAPL", symbol="AAPL",
                 expiration=date.today(), option_type="call")
     option = NS(quantity=-2, strike=Decimal("450"), underlying="SPY", symbol="SPY450P",
                 expiration=date.today(), option_type="put")
-    b.get_positions = AsyncMock(return_value=[equity, option])
+    return [equity, option]
+
+
+def _broker(*, sweep=None, residual_after_flatten=None):
+    """A broker that cancels through the BROKER-NEUTRAL interface.
+
+    The fixture used to stub `b.ib.openOrders`, which is what let the
+    IBKR-only cancellation branch look tested while Alpaca was skipped
+    entirely. Nothing here touches `.ib`.
+
+    get_positions is a sequence: the first call is what the flatten loop sees,
+    later calls are what reconciliation sees. By default the positions are
+    gone the second time, modelling a flatten that worked;
+    `residual_after_flatten` models one that did not.
+    """
+    b = MagicMock()
+    b.cancel_all_open_orders = AsyncMock(
+        return_value=sweep if sweep is not None
+        else CancelSweep(requested=2, cancelled=2)
+    )
+    after = _positions() if residual_after_flatten is None else residual_after_flatten
+    if residual_after_flatten is None:
+        after = []
+    b.get_positions = AsyncMock(side_effect=[_positions(), after, after, after])
     b.place_order = AsyncMock(return_value=MagicMock(status="filled", message=""))
     b.place_equity_order = AsyncMock(return_value=MagicMock(status="filled", message=""))
     return b
@@ -49,6 +70,10 @@ async def test_engage_full_flow():
     assert res["positions_flattened"] == 2
     assert res["db_persisted"] is True
     assert res["errors"] == []
+    # Flatness is asserted from a re-read, not from the closing orders being
+    # accepted.
+    assert res["reconciliation"]["performed"] is True
+    assert res["reconciliation"]["flat"] is True
     sched.pause.assert_called_once()
 
 

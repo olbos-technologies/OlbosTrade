@@ -91,8 +91,25 @@ class KillSwitch:
         """
         async with self._lock:
             if self._engaged:
-                logger.warning("Kill switch already engaged — ignoring duplicate call")
-                return {"status": "already_engaged", "reason": self._reason}
+                # Re-engaging is how an operator asks "did it work?" after a
+                # stop that reported errors. Returning early said
+                # "already_engaged" and nothing else, which reads as
+                # reassurance while unresolved orders and residual positions
+                # sit untouched. Re-verify and answer with the exposure.
+                logger.warning(
+                    "Kill switch already engaged — re-verifying exposure "
+                    "rather than reporting success"
+                )
+                recheck: dict = {
+                    "status": "already_engaged",
+                    "reason": self._reason,
+                    "errors": [],
+                    "unresolved_orders": {},
+                    "reconciliation": {"performed": False, "flat": None},
+                }
+                if self._broker is not None:
+                    await self._reconcile(recheck)
+                return recheck
 
             self._engaged = True
             self._engaged_at = datetime.now(timezone.utc)
@@ -118,6 +135,17 @@ class KillSwitch:
             # for the logs and the GuardrailEvent audit note; this is what the
             # UI should report.
             "flatten_statuses": {},
+            # How many working orders the sweep found, and which ones are
+            # still live. orders_cancelled alone cannot say whether the book
+            # is clear.
+            "orders_requested": 0,
+            "unresolved_orders": {},
+            "cancel_attempted": False,
+            # Filled in by _reconcile(): what the broker still reports AFTER
+            # the flatten orders went in. `flat` is the only field that
+            # answers "is the account actually out", and it is never asserted
+            # from the fact that closing orders were accepted.
+            "reconciliation": {"performed": False, "flat": None},
             "db_persisted": False,
             "errors": [],
         }
@@ -135,24 +163,35 @@ class KillSwitch:
             logger.error("Kill switch: failed to pause scheduler: %s", exc)
 
         # ── Step 2: Cancel all open orders ────────────────────────────────
+        # Broker-neutral. This used to sit inside `if hasattr(self._broker,
+        # "ib")`, so on Alpaca the entire step was skipped — silently, with no
+        # error recorded, leaving orders_cancelled at 0. A caller could not
+        # tell "cancelled nothing because there was nothing" from "never
+        # tried", and working orders stayed live at the broker while the
+        # positions underneath them were flattened.
         if self._broker is not None:
             try:
-                # For IBKR: cancel all open orders
-                if hasattr(self._broker, "ib"):
-                    open_orders = self._broker.ib.openOrders()
-                    for order in open_orders:
-                        try:
-                            self._broker.ib.cancelOrder(order)
-                            results["orders_cancelled"] += 1
-                        except Exception as exc:
-                            results["errors"].append(f"cancel_order_{order.orderId}: {exc}")
-                    logger.info(
-                        "Kill switch: cancelled %d open orders",
-                        results["orders_cancelled"],
+                sweep = await self._broker.cancel_all_open_orders()
+                results["orders_cancelled"] = sweep.cancelled
+                results["orders_requested"] = sweep.requested
+                if sweep.enumeration_error:
+                    results["errors"].append(
+                        f"cancel_enumerate: {sweep.enumeration_error}"
                     )
+                for oid, why in sweep.unresolved.items():
+                    results["unresolved_orders"][oid] = why
+                    results["errors"].append(f"cancel_order_{oid}: {why}")
+                logger.info(
+                    "Kill switch: cancelled %d of %d open orders (%d unresolved)",
+                    sweep.cancelled, sweep.requested, len(sweep.unresolved),
+                )
             except Exception as exc:
+                # A failure here means the book is NOT known to be clear.
                 results["errors"].append(f"cancel_orders: {exc}")
+                results["cancel_attempted"] = False
                 logger.error("Kill switch: failed to cancel orders: %s", exc)
+            else:
+                results["cancel_attempted"] = True
 
             # ── Step 3: Flatten all open positions at market ───────────────
             try:
@@ -194,6 +233,12 @@ class KillSwitch:
                                 option_type=pos.option_type,
                                 action=close_action,
                                 quantity=abs(pos.quantity),
+                                # This leg CLOSES. Without it the broker is
+                                # asked to open a naked short in the contract
+                                # being flattened, which Alpaca rejects as a
+                                # position-intent mismatch — so the flatten
+                                # silently did nothing on that broker.
+                                intent="close",
                             )
                         ],
                         limit_price=Decimal("0"),
@@ -213,6 +258,14 @@ class KillSwitch:
         else:
             results["errors"].append("broker_not_configured")
             logger.error("Kill switch: broker not configured — positions NOT flattened")
+
+        # ── Step 3b: Reconcile — is the account ACTUALLY flat? ─────────────
+        # Accepted closing orders are not closed positions. A market order can
+        # be accepted and sit unfilled, fill partially, or be cancelled by the
+        # venue, and positions_flattened counts all of those as successes. The
+        # only way to answer "is the book out" is to ask the broker again.
+        if self._broker is not None:
+            await self._reconcile(results)
 
         # ── Step 4: Persist to database ────────────────────────────────────
         try:
@@ -247,6 +300,50 @@ class KillSwitch:
             )
 
         return results
+
+    async def _reconcile(self, results: dict) -> None:
+        """Re-read the broker and record what exposure is actually left.
+
+        Never infers flatness from what was submitted. `flat` is True only
+        when the broker reports no non-zero positions AND no order was left
+        unresolved; it is None — unknown, not False — when the read itself
+        failed, because "could not check" and "checked and found nothing" are
+        different states and only one of them is safe to act on.
+        """
+        rec = results["reconciliation"]
+        rec["performed"] = True
+        try:
+            positions = await self._broker.get_positions()
+        except Exception as exc:
+            rec["flat"] = None
+            rec["error"] = f"{type(exc).__name__}: {exc}"
+            results["errors"].append(f"reconcile: {exc}")
+            logger.critical(
+                "Kill switch: could NOT verify the account is flat (%s). "
+                "Residual exposure is unknown — treat as live.", exc,
+            )
+            return
+
+        residual = [
+            {
+                "symbol": getattr(p, "symbol", "?"),
+                "quantity": str(getattr(p, "quantity", "?")),
+            }
+            for p in positions
+            if getattr(p, "quantity", 0) != 0
+        ]
+        rec["residual_positions"] = residual
+        rec["unresolved_orders"] = len(results["unresolved_orders"])
+        rec["flat"] = not residual and not results["unresolved_orders"]
+
+        if rec["flat"]:
+            logger.info("Kill switch: reconciled — account is flat")
+        else:
+            logger.critical(
+                "Kill switch: NOT flat after flattening — %d position(s) and "
+                "%d unresolved order(s) remain: %s",
+                len(residual), len(results["unresolved_orders"]), residual,
+            )
 
     async def _flatten_position(
         self, order: SpreadOrder, symbol: str, results: dict

@@ -27,6 +27,7 @@ from typing import List, Literal, Optional
 import httpx
 
 from app.broker.broker_interface import (
+    CancelSweep,
     AccountSummary,
     Bar,
     BrokerInterface,
@@ -307,7 +308,16 @@ class AlpacaClient(BrokerInterface):
                 ),
                 "side": "buy" if leg.action == "BUY" else "sell",
                 "ratio_qty": str(leg.quantity),
-                "position_intent": "buy_to_open" if leg.action == "BUY" else "sell_to_open",
+                # Intent is NOT derivable from side. SELL is sell_to_open on a
+                # new short and sell_to_close on a long being flattened, and
+                # Alpaca rejects an order whose stated intent contradicts the
+                # one it infers from the account ("position intent mismatch").
+                # This previously hardcoded *_to_open for every leg, so the
+                # kill switch's flatten asked to open a naked short in the
+                # contract it was trying to close.
+                "position_intent": (
+                    f"{'buy' if leg.action == 'BUY' else 'sell'}_to_{leg.intent}"
+                ),
             }
             for leg in spread.legs
         ]
@@ -335,6 +345,40 @@ class AlpacaClient(BrokerInterface):
             remaining_quantity=None,
             message=None,
         )
+
+    async def cancel_all_open_orders(self) -> CancelSweep:
+        """Cancel every working order on the account, reporting what survived.
+
+        Per-order failures are recorded in `unresolved`, not warned about and
+        dropped from the tally the way `cancel_open_orders` does — during an
+        emergency stop the orders that did NOT cancel are the whole story.
+        """
+        sweep = CancelSweep()
+        try:
+            orders = await self._get(
+                self._trading_base, "/v2/orders",
+                params={"status": "open", "nested": "true"},
+            )
+        except Exception as exc:
+            # Nothing may be assumed cancelled, including that there was
+            # nothing to cancel.
+            sweep.enumeration_error = f"{type(exc).__name__}: {exc}"
+            logger.error("cancel_all_open_orders: could not list open orders: %s", exc)
+            return sweep
+
+        sweep.requested = len(orders)
+        for order in orders:
+            oid = str(order.get("id", "?"))
+            try:
+                await self._delete(self._trading_base, f"/v2/orders/{oid}")
+                sweep.cancelled += 1
+            except Exception as exc:
+                sweep.unresolved[oid] = f"{type(exc).__name__}: {exc}"
+                logger.error(
+                    "cancel_all_open_orders: %s (%s) did not cancel: %s",
+                    oid, order.get("symbol", "?"), exc,
+                )
+        return sweep
 
     async def cancel_open_orders(self, symbol: str) -> int:
         """Cancel all working orders for `symbol` — used before a manual

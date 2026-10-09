@@ -18,6 +18,7 @@ from typing import Any, Dict, List, Literal, Optional, Tuple
 from ib_insync import IB, Contract, Index, LimitOrder, Option, Stock
 
 from app.broker.broker_interface import (
+    CancelSweep,
     AccountSummary,
     Bar,
     BrokerInterface,
@@ -695,6 +696,40 @@ class IBKRClient(BrokerInterface):
             remaining_quantity=total_qty,
             message=f"No fill after {_retries + 1} attempt(s)",
         )
+
+    async def cancel_all_open_orders(self) -> CancelSweep:
+        """Cancel every working order on the account, reporting what survived.
+
+        Unlike cancel_open_orders(symbol) this does not filter, so a resting
+        order for a symbol with no position — the case a position-driven loop
+        cannot see — is included.
+        """
+        sweep = CancelSweep()
+        try:
+            self._require_connection()
+            trades = list(self.ib.openTrades())
+        except Exception as exc:
+            sweep.enumeration_error = f"{type(exc).__name__}: {exc}"
+            logger.error("cancel_all_open_orders: could not list open trades: %s", exc)
+            return sweep
+
+        sweep.requested = len(trades)
+        for trade in trades:
+            oid = str(getattr(trade.order, "orderId", "?"))
+            try:
+                self.ib.cancelOrder(trade.order)
+                sweep.cancelled += 1
+            except Exception as exc:
+                sweep.unresolved[oid] = f"{type(exc).__name__}: {exc}"
+                logger.error(
+                    "cancel_all_open_orders: %s (%s) did not cancel: %s",
+                    oid, getattr(trade.contract, "symbol", "?"), exc,
+                )
+        if sweep.cancelled:
+            # cancelOrder is a request, not an acknowledgement. Give IBKR a
+            # moment to register them before anything reads the book back.
+            await asyncio.sleep(1)
+        return sweep
 
     async def cancel_open_orders(self, symbol: str) -> int:
         """Cancel all working orders for `symbol` (e.g. a bracket's still-live

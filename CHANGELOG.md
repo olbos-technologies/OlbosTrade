@@ -1,5 +1,36 @@
 # Changelog
 
+## Unreleased — Broker-neutral emergency stop, with verified flatness
+
+- **Cancellation now works on every broker.** It sat inside
+  `if hasattr(self._broker, "ib")`, so on Alpaca the entire step was skipped —
+  no orders cancelled, **no error recorded**, `orders_cancelled` left at 0. A
+  caller could not tell "nothing to cancel" from "never tried", and working
+  orders stayed live while the positions underneath them were flattened. A
+  resting entry filling afterwards re-opens the exposure the stop existed to
+  remove.
+- New `BrokerInterface.cancel_all_open_orders()` sweeps the whole account and
+  returns a `CancelSweep` of `requested` / `cancelled` / `unresolved` /
+  `enumeration_error`. The existing per-symbol `cancel_open_orders` cannot
+  substitute: it only visits symbols the caller already knows about, which
+  during a stop means symbols that still have positions — a working order for
+  a symbol with **no** position is invisible to it.
+- **Flatness is now verified, not inferred.** `positions_flattened` counts
+  every non-rejected result, so an accepted-but-unfilled market order, a
+  partial fill and a venue cancellation all increment it. A reconciliation
+  step re-reads the broker; `reconciliation.flat` is `True` only when no
+  non-zero position and no unresolved order remain, and `None` — unknown, not
+  `False` — when the read itself failed.
+- **Re-engaging re-verifies instead of reassuring.** It returned
+  `already_engaged` and nothing else, which reads as success while unresolved
+  orders and residual positions sit untouched. It now reconciles and reports
+  the exposure.
+- **Options flatten orders now state that they close.** `position_intent` was
+  hardcoded to `*_to_open` for every leg, so the kill switch asked the broker
+  to open a naked short in the contract it was trying to close. `SpreadLeg`
+  gains `intent` (`open` by default, so no existing caller changes behaviour);
+  the flatten path sets `close`.
+
 ## Unreleased — Execution-mode changes state their durability
 
 - Raising automation (Manual → Copilot → Autopilot) now **records the decision
