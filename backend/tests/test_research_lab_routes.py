@@ -76,6 +76,23 @@ async def test_create_experiment_error():
     assert "error" in out
 
 
+_PROV = {
+    "source": "backtester",
+    "run_id": "11111111-1111-4111-8111-111111111111",
+    "strategy": "bull_put_spread",
+    "start_date": "2024-01-01",
+    "end_date": "2024-12-31",
+    "parameters": {},
+    "recorded_at": "2026-01-01T00:00:00+00:00",
+}
+
+
+def _traced(metrics: dict) -> dict:
+    """Evidence shaped the way the route now writes it — numbers plus the run
+    they came from. _Exp's strategy defaults to "bull_put_spread", which _PROV matches."""
+    return {**metrics, "provenance": _PROV}
+
+
 @pytest.mark.asyncio
 async def test_transition_not_found():
     with patch("app.core.database.AsyncSessionLocal", return_value=_session(one=None)):
@@ -85,7 +102,7 @@ async def test_transition_not_found():
 
 @pytest.mark.asyncio
 async def test_transition_gate_blocks():
-    exp = _Exp(stage=BACKTESTED, backtest_metrics={"sharpe": 0.1, "total_return_pct": 1, "max_drawdown_pct": 5})
+    exp = _Exp(stage=BACKTESTED, backtest_metrics=_traced({"sharpe": 0.1, "total_return_pct": 1, "max_drawdown_pct": 5}))
     with patch("app.core.database.AsyncSessionLocal", return_value=_session(one=exp)):
         out = await transition_experiment("e1", TransitionRequest(target=WALK_FORWARD))
     assert out["ok"] is False and "backtest gate failed" in out["reason"]
@@ -93,7 +110,7 @@ async def test_transition_gate_blocks():
 
 @pytest.mark.asyncio
 async def test_transition_success_persists_patch():
-    exp = _Exp(stage=BACKTESTED, backtest_metrics={"sharpe": 1.5, "total_return_pct": 20, "max_drawdown_pct": 8})
+    exp = _Exp(stage=BACKTESTED, backtest_metrics=_traced({"sharpe": 1.5, "total_return_pct": 20, "max_drawdown_pct": 8}))
     with patch("app.core.database.AsyncSessionLocal", return_value=_session(one=exp)):
         out = await transition_experiment("e1", TransitionRequest(target=WALK_FORWARD))
     assert out["ok"] is True and exp.stage == WALK_FORWARD
@@ -101,7 +118,7 @@ async def test_transition_success_persists_patch():
 
 @pytest.mark.asyncio
 async def test_transition_promote_sets_baseline():
-    exp = _Exp(stage=PAPER, backtest_metrics={"max_drawdown_pct": 15.0})
+    exp = _Exp(stage=PAPER, backtest_metrics=_traced({"max_drawdown_pct": 15.0}))
     perf = {"total_trades": 40, "win_rate": 0.7, "expectancy": 35.0, "max_drawdown_trades_pct": 9.0}
     with patch("app.core.database.AsyncSessionLocal", return_value=_session(one=exp)):
         out = await transition_experiment("e1", TransitionRequest(target=PROMOTED, perf=perf))
@@ -157,3 +174,42 @@ async def test_get_features_catalog():
     out = await get_features()
     assert out["total"] >= 12
     assert any(f["name"] == "rsi" for f in out["features"])
+
+
+@pytest.mark.asyncio
+async def test_route_refuses_caller_supplied_metrics():
+    """The hole this closes: the UI posted sharpe 1.0 and the gates, which
+    judge whatever dict they are handed, cleared it. Metrics in a request body
+    have no provenance and the route will not forward them."""
+    exp = _Exp(stage=DRAFT)
+    with patch("app.core.database.AsyncSessionLocal", return_value=_session(one=exp)):
+        out = await transition_experiment("e1", TransitionRequest(
+            target=BACKTESTED,
+            metrics={"sharpe": 1.0, "total_return_pct": 12.0, "max_drawdown_pct": 10.0},
+        ))
+    assert out["ok"] is False
+    assert "may not be supplied by the caller" in out["reason"]
+    assert exp.stage == DRAFT, "a refused transition must not move the experiment"
+
+
+@pytest.mark.asyncio
+async def test_route_refuses_caller_supplied_walk_forward_metrics():
+    exp = _Exp(stage=WALK_FORWARD)
+    with patch("app.core.database.AsyncSessionLocal", return_value=_session(one=exp)):
+        out = await transition_experiment("e1", TransitionRequest(
+            target=PAPER,
+            wf_metrics={"oos_sharpe": 0.9, "oos_return_pct": 9.0, "max_drawdown_pct": 11.0},
+        ))
+    assert out["ok"] is False
+    assert "may not be supplied by the caller" in out["reason"]
+    assert exp.stage == WALK_FORWARD
+
+
+@pytest.mark.asyncio
+async def test_route_rejects_an_unknown_backtest_run():
+    exp = _Exp(stage=DRAFT)
+    with patch("app.core.database.AsyncSessionLocal", return_value=_session(one=None)):
+        out = await transition_experiment("e1", TransitionRequest(
+            target=BACKTESTED, backtest_run_id="not-a-uuid",
+        ))
+    assert "error" in out or out.get("ok") is False

@@ -1,5 +1,36 @@
 # Changelog
 
+## Unreleased — Strategy validation requires traceable evidence
+
+- **Hardcoded metrics can no longer validate a strategy.** The Research Lab UI
+  posted literal values — `sharpe: 1.0`, `oos_sharpe: 0.9` — into the
+  transition route, and the gates, which evaluate whatever dict they are
+  handed, cleared them. A strategy could reach a validated stage without
+  anything ever having been measured. Those literals are gone.
+- **Clients may no longer supply metrics at all.** The route refuses
+  `metrics` / `wf_metrics` in a request body and instead takes a
+  `backtest_run_id`. The server loads that `BacktestRun`, checks it completed
+  and that its strategy matches the experiment, reads the metrics from the
+  stored row, and writes a `provenance` block (engine, run id, strategy,
+  dataset window, starting capital, parameters including commissions and
+  slippage, recorded-at). The `sharpe_ratio` → `sharpe` key mapping moved
+  server-side too, so a client can no longer get it wrong — nor quietly right
+  by sending its own number.
+- Evidence without complete provenance is **unverified** and cannot clear a
+  gate. Promotion additionally re-checks the backtest behind the experiment,
+  so a demo-seeded experiment cannot become live-eligible on the strength of a
+  real paper record alone.
+- **Existing history is preserved, not rewritten.** Rows written before
+  provenance existed keep their numbers and simply stop clearing gates, with
+  an explanation naming what is missing. A rejected transition changes
+  nothing.
+- **The walk-forward → paper transition is disabled.** Nothing in this build
+  computes out-of-sample metrics: `oos_sharpe` appears only in the gate and
+  the route that fed it, and the sole producer was that literal object in the
+  UI. Rather than keep judging whatever a caller sends, the transition now
+  refuses and states what is missing. `evaluate_walkforward_gate` is retained
+  and still tested, ready for a real engine.
+
 ## Unreleased — Broker-neutral emergency stop, with verified flatness
 
 - **Cancellation now works on every broker.** It sat inside

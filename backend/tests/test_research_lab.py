@@ -16,6 +16,34 @@ from app.services.research_lab import (
 _STRONG_BT = {"sharpe": 1.5, "total_return_pct": 20, "max_drawdown_pct": 8}
 _GOOD_WF = {"oos_sharpe": 1.1, "oos_return_pct": 12, "max_drawdown_pct": 9, "is_sharpe": 1.4}
 
+_STRATEGY = "sym"
+
+
+def _traced(metrics: dict, strategy: str = _STRATEGY) -> dict:
+    """Metrics as the SERVER would record them: with a provenance block naming
+    the run they came from.
+
+    The gate evaluators below still take bare dicts — they judge numbers, not
+    their origin. `transition()` is where origin matters, because that is what
+    moves a strategy to a stage someone will later read as validated.
+    """
+    return {
+        **metrics,
+        "provenance": {
+            "source": "backtester",
+            "run_id": "11111111-1111-4111-8111-111111111111",
+            "strategy": strategy,
+            "start_date": "2024-01-01",
+            "end_date": "2024-12-31",
+            "parameters": {"commission_per_contract": 0.65, "slippage_bps": 2},
+            "recorded_at": "2026-01-01T00:00:00+00:00",
+        },
+    }
+
+
+def _exp(stage, **kw):
+    return {"stage": stage, "strategy": _STRATEGY, **kw}
+
 
 # ── gates ────────────────────────────────────────────────────────────────────────
 def test_backtest_gate_pass():
@@ -102,10 +130,29 @@ def test_transition_to_backtested_requires_metrics():
     assert not r.ok and "requires metrics" in r.reason
 
 
-def test_transition_to_backtested_stores_metrics():
-    m = {"sharpe": 1.0, "total_return_pct": 10, "max_drawdown_pct": 8}
-    r = transition({"stage": DRAFT}, BACKTESTED, metrics=m)
+def test_transition_to_backtested_stores_traced_metrics():
+    m = _traced({"sharpe": 1.0, "total_return_pct": 10, "max_drawdown_pct": 8})
+    r = transition(_exp(DRAFT), BACKTESTED, metrics=m)
     assert r.ok and r.patch["stage"] == BACKTESTED and r.patch["backtest_metrics"] == m
+
+
+def test_transition_to_backtested_rejects_metrics_with_no_provenance():
+    """The defect: the UI posted sharpe 1.0 and the gate cleared it."""
+    r = transition(_exp(DRAFT), BACKTESTED,
+                   metrics={"sharpe": 1.0, "total_return_pct": 12, "max_drawdown_pct": 10})
+    assert not r.ok and "no provenance" in r.reason and r.patch == {}
+
+
+def test_transition_to_backtested_rejects_evidence_for_another_strategy():
+    r = transition(_exp(DRAFT), BACKTESTED,
+                   metrics=_traced(_STRONG_BT, strategy="something_else"))
+    assert not r.ok and "not 'sym'" in r.reason
+
+
+def test_transition_to_backtested_rejects_incomplete_provenance():
+    m = dict(_STRONG_BT, provenance={"source": "backtester"})
+    r = transition(_exp(DRAFT), BACKTESTED, metrics=m)
+    assert not r.ok and "incomplete" in r.reason
 
 
 # ── walk-forward gate ───────────────────────────────────────────────────────────────
@@ -132,50 +179,70 @@ def test_walkforward_gate_failures(wf, frag):
 
 # ── transition: backtested → walk_forward (backtest gate) ────────────────────────────
 def test_transition_to_walkforward_blocks_on_weak_backtest():
-    exp = {"stage": BACKTESTED, "backtest_metrics": {"sharpe": 0.1, "total_return_pct": 1, "max_drawdown_pct": 5}}
+    exp = _exp(BACKTESTED, backtest_metrics=_traced(
+        {"sharpe": 0.1, "total_return_pct": 1, "max_drawdown_pct": 5}))
     r = transition(exp, WALK_FORWARD)
     assert not r.ok and "backtest gate failed" in r.reason
 
 
-def test_transition_to_walkforward_passes_strong_backtest():
-    exp = {"stage": BACKTESTED, "backtest_metrics": _STRONG_BT}
-    r = transition(exp, WALK_FORWARD, wf_metrics=_GOOD_WF)
+def test_transition_to_walkforward_passes_strong_traced_backtest():
+    exp = _exp(BACKTESTED, backtest_metrics=_traced(_STRONG_BT))
+    r = transition(exp, WALK_FORWARD)
     assert r.ok and r.patch["stage"] == WALK_FORWARD
-    assert r.patch["walk_forward_metrics"] == _GOOD_WF
 
 
-def test_transition_to_walkforward_accepts_inline_metrics():
-    r = transition({"stage": BACKTESTED}, WALK_FORWARD, metrics=_STRONG_BT)
-    assert r.ok
+def test_transition_to_walkforward_blocks_untraceable_history():
+    """Rows written before provenance existed keep their numbers and simply
+    stop clearing gates — flagged, not silently trusted or deleted."""
+    exp = _exp(BACKTESTED, backtest_metrics=_STRONG_BT)
+    r = transition(exp, WALK_FORWARD)
+    assert not r.ok and "no provenance" in r.reason
+    assert r.patch == {}, "a rejected transition must not rewrite history"
+
+
+def test_transition_to_walkforward_refuses_supplied_wf_metrics():
+    exp = _exp(BACKTESTED, backtest_metrics=_traced(_STRONG_BT))
+    r = transition(exp, WALK_FORWARD, wf_metrics=_GOOD_WF)
+    assert not r.ok and "walk-forward validation is unavailable" in r.reason
 
 
 # ── transition: walk_forward → paper (walk-forward gate) ─────────────────────────────
-def test_transition_to_paper_blocks_on_weak_walkforward():
-    exp = {"stage": WALK_FORWARD, "walk_forward_metrics": {"oos_sharpe": 0.1, "oos_return_pct": 1, "max_drawdown_pct": 5}}
+def test_transition_to_paper_is_disabled_without_an_oos_engine():
+    """Nothing in this build COMPUTES walk-forward metrics — oos_sharpe
+    appears only in the gate and the route that fed it, and the sole producer
+    was a literal object in the UI. The transition is closed and says so,
+    rather than judging whatever a caller sends."""
+    exp = _exp(WALK_FORWARD, walk_forward_metrics=_traced(_GOOD_WF))
     r = transition(exp, PAPER)
-    assert not r.ok and "walk-forward gate failed" in r.reason
+    assert not r.ok
+    assert "no out-of-sample evaluation engine" in r.reason
+    assert r.patch == {}
 
 
-def test_transition_to_paper_passes_strong_walkforward():
-    exp = {"stage": WALK_FORWARD, "walk_forward_metrics": _GOOD_WF}
-    r = transition(exp, PAPER)
-    assert r.ok and r.patch["stage"] == PAPER
-
-
-def test_transition_to_paper_accepts_inline_wf_metrics():
-    r = transition({"stage": WALK_FORWARD}, PAPER, wf_metrics=_GOOD_WF)
-    assert r.ok and r.patch["walk_forward_metrics"] == _GOOD_WF
+def test_transition_to_paper_rejects_supplied_wf_metrics():
+    r = transition(_exp(WALK_FORWARD), PAPER, wf_metrics=_GOOD_WF)
+    assert not r.ok and "unavailable" in r.reason
 
 
 # ── transition: promoted (paper gate + baseline) ───────────────────────────────────
 def test_transition_to_promoted_blocks_on_weak_paper():
-    exp = {"stage": PAPER, "paper_perf": {"total_trades": 3, "win_rate": 0.5, "expectancy": 1}}
+    exp = _exp(PAPER, backtest_metrics=_traced(_STRONG_BT),
+               paper_perf={"total_trades": 3, "win_rate": 0.5, "expectancy": 1})
     r = transition(exp, PROMOTED)
     assert not r.ok and "paper gate failed" in r.reason and r.baseline is None
 
 
+def test_promotion_blocked_when_the_backtest_behind_it_is_untraceable():
+    """Live-capital eligibility needs the WHOLE chain traceable, not just the
+    last hop. A demo-seeded experiment with a real paper record still fails."""
+    exp = _exp(PAPER, backtest_metrics=_STRONG_BT)
+    perf = {"total_trades": 40, "win_rate": 0.7, "expectancy": 35.0}
+    r = transition(exp, PROMOTED, perf=perf)
+    assert not r.ok and "not verifiable" in r.reason and r.baseline is None
+
+
 def test_transition_to_promoted_derives_baseline():
-    exp = {"stage": PAPER, "backtest_metrics": {"max_drawdown_pct": 15.0}}
+    exp = _exp(PAPER, backtest_metrics=_traced({"max_drawdown_pct": 15.0}))
     perf = {"total_trades": 40, "win_rate": 0.7, "expectancy": 35.0,
             "max_drawdown_trades_pct": 9.0}
     r = transition(exp, PROMOTED, perf=perf)
@@ -229,3 +296,35 @@ def test_custom_gates_respected():
     ok, _ = evaluate_backtest_gate({"sharpe": 1.5, "total_return_pct": 50, "max_drawdown_pct": 5}, gates)
     assert not ok
     assert DEFAULT_GATES.min_backtest_sharpe == 0.50
+
+
+# ── evidence provenance helpers ────────────────────────────────────────────────
+def test_provenance_of_handles_absent_and_malformed_blocks():
+    from app.services.research_lab import provenance_of
+    assert provenance_of(None) is None
+    assert provenance_of({}) is None
+    assert provenance_of({"sharpe": 1.0}) is None
+    # A non-dict provenance is not provenance — a caller cannot smuggle one in
+    # as a string.
+    assert provenance_of({"provenance": "backtester"}) is None
+    assert provenance_of(_traced(_STRONG_BT))["source"] == "backtester"
+
+
+def test_verify_evidence_rejects_nothing_at_all():
+    from app.services.research_lab import verify_evidence
+    ok, why = verify_evidence(None)
+    assert not ok and "no evidence recorded" in why
+    ok, why = verify_evidence({})
+    assert not ok and "no evidence recorded" in why
+
+
+def test_verify_evidence_rejects_a_non_dict_provenance():
+    from app.services.research_lab import verify_evidence
+    ok, why = verify_evidence({"sharpe": 1.0, "provenance": "trust me"})
+    assert not ok and "no provenance" in why
+
+
+def test_verify_evidence_passes_without_a_strategy_to_match():
+    from app.services.research_lab import verify_evidence
+    ok, why = verify_evidence(_traced(_STRONG_BT))
+    assert ok and "verified" in why

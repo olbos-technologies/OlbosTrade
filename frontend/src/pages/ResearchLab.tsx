@@ -90,15 +90,16 @@ export default function ResearchLab() {
 
   const advance = async (e: Experiment, target: string) => {
     setBusy(true); setMsg(null);
-    // Demo gate inputs: in production these come from the real backtest/paper
-    // engines. Backtested move stores live Symphony metrics; here we pass through
-    // whatever the server already holds (gate re-evaluates server-side).
+    // Structural moves only — archive, reopen, demote, and the walk-forward
+    // step that carries no new evidence.
+    //
+    // This used to attach literal metrics (sharpe 1.0, oos_sharpe 0.9) when
+    // advancing to BACKTESTED or PAPER, and the server's gates, which
+    // evaluate whatever dict they are handed, cleared them. A strategy could
+    // reach a validated stage without anything having been measured. Evidence
+    // is now built server-side from a stored run; advancing to BACKTESTED
+    // goes through advanceToBacktested(), which runs a real backtest first.
     const body: any = { target };
-    if (target === "backtested" && !e.backtest_metrics)
-      body.metrics = { sharpe: 1.0, total_return_pct: 12.0, max_drawdown_pct: 10.0 };
-    // Walk-forward (out-of-sample) demo metrics for the WALK_FORWARD → PAPER gate.
-    if (target === "paper")
-      body.wf_metrics = { oos_sharpe: 0.9, oos_return_pct: 9.0, max_drawdown_pct: 11.0, is_sharpe: 1.1 };
     const r = await fetch(`/api/research/lab/experiments/${e.id}/transition`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -129,7 +130,7 @@ export default function ResearchLab() {
       await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
       const res = await (api.getBacktestResults(runId) as Promise<any>);
       setBacktestRuns(prev => ({ ...prev, [exp.id]: { status: res.status, runId } }));
-      if (res.status === "completed") return res;
+      if (res.status === "completed") return { ...res, run_id: runId };
       if (res.status === "failed") throw new Error(res.error || "backtest failed");
     }
     throw new Error("backtest timed out after 3 minutes — check server logs");
@@ -139,15 +140,15 @@ export default function ResearchLab() {
     setMsg(null);
     try {
       const result = await runRealBacktest(e);
-      // evaluate_backtest_gate() reads metrics["sharpe"] — the backtest
-      // engine's own result key is sharpe_ratio. Must map explicitly, or
-      // the gate silently reads 0 and always fails.
-      const metrics = {
-        sharpe: result.sharpe_ratio,
-        total_return_pct: result.total_return_pct,
-        max_drawdown_pct: result.max_drawdown_pct,
-      };
-      const r = await (api.transitionExperiment(e.id, { target: "backtested", metrics }) as Promise<any>);
+      // Send the RUN ID, not the numbers. The server loads that run, reads its
+      // stored metrics, checks the strategy matches, and records where they
+      // came from. Posting metrics from here — even these real ones — would
+      // leave the route unable to tell them from typed ones, which is the
+      // hole this closes. Key mapping (sharpe_ratio → sharpe) now happens
+      // server-side too.
+      const r = await (api.transitionExperiment(e.id, {
+        target: "backtested", backtest_run_id: result.run_id,
+      }) as Promise<any>);
       if (r?.error) { setMsgKind("error"); setMsg(`${e.name}: ${r.error}`); return; }
       if (r?.ok === false) { setMsgKind("gate"); setMsg(`${e.name}: ${r.reason || "gate rejected"}`); return; }
       setMsgKind("info");
