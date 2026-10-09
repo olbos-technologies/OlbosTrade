@@ -278,18 +278,56 @@ async def test_a_timeout_whose_pending_row_was_written_releases_the_claim(claims
 
 # ── deployment ordering: the migration must land before this code ──────────
 
-async def test_a_missing_claims_table_blocks_entries(claims_table):
-    """Migration 0040 is additive and must be applied BEFORE this code runs.
+async def test_an_unmigrated_claims_table_blocks_entries_and_says_so(claims_table):
+    """Migration 0040 must be applied BEFORE this code runs.
 
-    If it has not been, the claim cannot be taken and Stage 3 fails closed —
-    the same way it already does when the duplicate read itself fails. An
-    entry is refused rather than submitted unguarded. This is the behaviour
-    during the window `update.sh` opens between starting containers and
-    running migrations, so it is worth having pinned.
+    If it has not been, the claim cannot be taken and Stage 3 fails closed: an
+    entry is refused rather than submitted unguarded.
+
+    The reason has to name the entry guard specifically. It previously shared
+    `duplicate_check_error` with every other Stage 3 failure, which made this
+    test unable to tell "the guard is missing, so we refused" from "something
+    unrelated broke, so we refused" — the fail-closed result passed the test
+    either way, so an accident counted as proof of the intended behaviour.
+    `test_a_broken_duplicate_read_is_not_reported_as_a_missing_guard` is the
+    other half of that pair.
     """
     broker = _broker()
     async with claims_table() as s, s.begin():
         await s.execute(text("DROP TABLE position_claims"))
+        # Assert the premise rather than trusting it: if the drop silently did
+        # nothing, this test would be exercising the healthy path and still
+        # expecting a refusal.
+        missing = (await s.execute(
+            text("SELECT to_regclass('position_claims') IS NULL")
+        )).scalar()
+        assert missing is True, "the table is still there; this test proves nothing"
+
+    with patch("app.api.routes.trade_desk._fetch_portfolio_state",
+               new=AsyncMock(return_value=_clean_portfolio())), \
+         patch("app.api.routes.trade_desk._is_kill_switch_active", return_value=False), \
+         patch("app.broker.broker_factory.get_broker", return_value=broker), \
+         patch.object(td.ibkr_coordinator, "submit", new=_run_submitted):
+        res = await _execute_signal(_signal(), approved_by="manual")
+
+    assert res["result"] == "blocked"
+    assert "entry_guard_unavailable" in res["reason"]
+    assert "position_claims" in res["reason"], (
+        "the reason should name what is actually missing"
+    )
+    broker.place_order.assert_not_awaited()
+
+
+async def test_a_broken_duplicate_read_is_not_reported_as_a_missing_guard(claims_table):
+    """The counterpart: a healthy claim table and a failing trades read.
+
+    Both outcomes are `blocked`, and that is correct — but they must be
+    distinguishable, or neither test can prove which defect it caught. Here the
+    claims table is present and working and the duplicate READ is what fails.
+    """
+    broker = _broker()
+    async with claims_table() as s, s.begin():
+        await s.execute(text("DROP TABLE trades CASCADE"))
 
     with patch("app.api.routes.trade_desk._fetch_portfolio_state",
                new=AsyncMock(return_value=_clean_portfolio())), \
@@ -300,6 +338,7 @@ async def test_a_missing_claims_table_blocks_entries(claims_table):
 
     assert res["result"] == "blocked"
     assert "duplicate_check_error" in res["reason"]
+    assert "entry_guard_unavailable" not in res["reason"]
     broker.place_order.assert_not_awaited()
 
 

@@ -151,34 +151,77 @@ Wait for `✅ Update complete`, then check `/api/health/detail`.
 **Expect IBKR to need a moment after every deploy**, and occasionally a gateway
 restart — the container restart drops the broker connection.
 
-### Additive migrations go in BEFORE the code that needs them
+### Migrations run from the new image, before it starts serving
 
-`update.sh` starts containers (step 3) and only then runs `alembic upgrade
-head` (step 4). For a migration whose table the new code *reads*, that order
-is backwards: between those two steps the code is live and the table is not
-there.
+`update.sh` does this itself now, and the order is the point:
 
-For the position-claims table (migration `0040`) the consequence is
-deliberate and safe — Stage 3 fails closed, so **new entries are refused**
-during that window rather than submitted unguarded. Exits, fill polling,
-reconciliation and the kill switch are untouched: nothing outside the entry
-path consults claims, and there is a test pinning that.
-
-Refusing entries for the length of a deploy is acceptable. Shortening it is
-free, so do it for any additive migration:
-
-```bash
-# On the server, BEFORE update.sh — safe because 0040 is additive and empty,
-# and nothing reads the table until the new code is running.
-docker exec olbostrade-backend python3 -m alembic upgrade head
-cd /opt/olbostrade && bash deploy/hetzner/update.sh
+```
+[2/6] build          ← the new image, containing the new revision
+[3/6] alembic upgrade head   ← in a throwaway container from THAT image
+[4/6] up -d          ← only now does new code start serving
+[5/6] alembic current        ← verify, in case up -d recreated the database
 ```
 
-The second `alembic upgrade head` inside `update.sh` is then a no-op.
+It used to start containers at step 3 and migrate at step 4, so between them
+the new code was live against the old schema. For the position-claims table
+(`0040`) that meant Stage 3 failing closed — **new entries refused** — for the
+length of a deploy. Exits, fill polling, reconciliation and the kill switch
+were unaffected then and are unaffected now: nothing outside the entry path
+consults claims, and `test_only_the_entry_path_consults_the_claim` pins that.
 
-If a migration *fails*, do not deploy the code that depends on it. Entries
-will refuse for as long as the table is missing, which is the safe direction
-but is not a state to sit in: fix the migration, or roll the image back.
+**Do not "pre-apply" a migration with `docker exec`.** An earlier version of
+this runbook said to run:
+
+```bash
+docker exec olbostrade-backend python3 -m alembic upgrade head   # ← WRONG
+```
+
+That executes inside the container **still running the old image**, which does
+not contain a revision that arrives with this deploy. It exits 0 having
+applied nothing, and reports success. A command that looks like it closed the
+window and did not is worse than no command, because it is believed. The
+migration has to come from the image just built, which is what step 3 does:
+
+```bash
+docker compose -f docker-compose.hetzner.yml run --rm --no-deps backend \
+  python3 -m alembic upgrade head
+```
+
+`--no-deps` because `olbostrade-db` is already up in a normal deploy and must
+not be recreated underneath the running backend. If the database is *not* up,
+start it first with `up -d olbostrade-db` rather than dropping `--no-deps`.
+
+#### If the migration fails
+
+The deploy stops at step 3, before any new container starts. `set -euo
+pipefail` is on and that line is deliberately unguarded, so the old image
+keeps serving the schema it was built for — a working system, not a degraded
+one. Fix the migration and re-run; there is nothing to roll back, because
+nothing was swapped.
+
+If new code is *already* serving without its table (someone ran the old
+ordering, or step 4 recreated the database), entries refuse with
+`entry_guard_unavailable` while monitoring and exits keep working. That is the
+safe direction but not a state to sit in: apply the migration, or roll the
+image back.
+
+#### Clearing a claim by hand
+
+A claim left `submitted` or `unknown` blocks new entries on that position
+until the broker gives an authoritative answer. When it never will, use the
+audited override rather than editing the table — it writes the delete and an
+`execution_events` row of kind `claim_override` in one transaction, so there
+is a record of who cleared what and why:
+
+```python
+from app.services import position_claim
+await position_claim.force_release(
+    claim_token, operator="you@olbostrade", reason="venue confirmed no fill",
+)
+```
+
+`position_claim.unresolved()` lists what is currently blocking. Note there is
+no HTTP route for either yet — see the PR's limitations.
 
 ---
 

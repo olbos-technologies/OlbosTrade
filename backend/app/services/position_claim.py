@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
+from enum import Enum
 from datetime import timedelta
 from typing import Awaitable, Callable, Optional
 
@@ -230,63 +231,212 @@ async def unresolved(limit: int = 100) -> list[PositionClaim]:
         )).scalars().all())
 
 
+class BrokerVerdict(str, Enum):
+    """What the broker was able to tell us about one client_order_id.
+
+    `Optional[order]` was not enough. It collapsed two different answers into
+    None: "I asked, and this broker authoritatively has no such order" and "I
+    asked, and I cannot see one *yet*". Order-by-client-id lookups are not
+    immediately consistent — an order accepted moments ago can read as missing
+    — and releasing a claim on that reading re-opens the position to a second
+    entry on a live order, which is the exact duplicate this module exists to
+    prevent. Only ABSENT may release a claim.
+    """
+
+    #: The broker states positively that no such order exists.
+    ABSENT = "absent"
+    #: The broker has an order for this key, in any state.
+    PRESENT = "present"
+    #: Neither could be established — not visible yet, a partial or degraded
+    #: response, a key the broker does not recognise as either. Resolves nothing.
+    INDETERMINATE = "indeterminate"
+
+
 #: What the broker says about one client_order_id. Raising means the lookup
 #: failed, which is NOT the same as "no such order" and must not resolve a
 #: claim — same contract as ambiguous_order_resolver.BrokerLookup.
-BrokerLookup = Callable[[str], Awaitable[Optional[object]]]
+BrokerLookup = Callable[[str], Awaitable[BrokerVerdict]]
+
+# Even an authoritative ABSENT is not trusted on a claim this young. A broker
+# that has accepted an order can still answer "no such order" for a short
+# while, and the cost of believing it is a duplicate position. Waiting costs a
+# blocked entry on one underlying; this is the asymmetry the whole module is
+# built around.
+DEFAULT_SETTLE_SECONDS = 120
 
 
-async def reconcile_unresolved(lookup: BrokerLookup, *, limit: int = 50) -> dict:
+async def reconcile_unresolved(
+    lookup: BrokerLookup,
+    *,
+    limit: int = 50,
+    settle_seconds: int = DEFAULT_SETTLE_SECONDS,
+) -> dict:
     """Ask the broker what became of each unresolved claim.
 
     A claim is released ONLY when the broker positively states the order does
-    not exist — `lookup` returning None. An order the broker knows about, in
-    any state, is left for the position/fill reconcilers and an operator,
-    because releasing it would re-open the position to a second entry while
-    the first is live. A lookup that raises resolves nothing: "I could not
-    ask" and "there is nothing there" are different answers.
+    not exist (BrokerVerdict.ABSENT) AND the claim is older than
+    `settle_seconds`, so a not-yet-visible order cannot be mistaken for an
+    absent one. PRESENT, INDETERMINATE, a lookup that raises, and anything
+    still inside the settle window all leave the claim exactly as it is.
+
+    "I could not ask", "it is not there yet" and "there is nothing there" are
+    three different answers and only the last one releases anything.
 
     This is deliberately the conservative half of reconciliation. It closes
     claims that provably correspond to no order; it does not try to reconstruct
     positions, which is position_reconciler's and ambiguous_order_resolver's
     work and reachable through the same client_order_id.
+
+    Every count it returns is a distinct outcome, so an operator can tell a
+    quiet broker from a clean sweep — `released: 0, unreachable: 7` and
+    `released: 7` must never look alike.
     """
     from app.core.database import AsyncSessionLocal
 
-    released, still_unresolved, unreachable = 0, 0, 0
-    for claim in await unresolved(limit=limit):
+    counts = {
+        "released": 0,
+        "still_unresolved": 0,
+        "indeterminate": 0,
+        "unreachable": 0,
+        "too_fresh": 0,
+    }
+
+    # Settled-ness is decided by the DATABASE clock, like every other time
+    # comparison here; a worker with a fast clock must not be able to declare a
+    # claim old enough to abandon.
+    async with AsyncSessionLocal() as session:
+        rows = (await session.execute(
+            select(
+                PositionClaim,
+                (
+                    func.extract(
+                        "epoch",
+                        func.now() - func.coalesce(
+                            PositionClaim.submitted_at, PositionClaim.claimed_at
+                        ),
+                    ) >= settle_seconds
+                ).label("settled"),
+            )
+            .where(PositionClaim.state.in_(UNRESOLVED_STATES))
+            .order_by(PositionClaim.claimed_at)
+            .limit(limit)
+        )).all()
+
+    for claim, settled in rows:
         try:
-            view = await lookup(claim.idempotency_key)
+            verdict = await lookup(claim.idempotency_key)
         except Exception as exc:
-            unreachable += 1
+            counts["unreachable"] += 1
             logger.error(
                 "Could not ask the broker about claim %s (%s %s): %s",
                 claim.claim_token, claim.underlying, claim.asset_class, exc,
             )
             continue
-        if view is None:
-            async with AsyncSessionLocal() as session:
-                async with session.begin():
-                    await session.execute(
-                        delete(PositionClaim).where(
-                            PositionClaim.claim_token == claim.claim_token
-                        )
-                    )
-            released += 1
-            logger.info(
-                "Claim %s released — the broker has no order for %s",
-                claim.claim_token, claim.idempotency_key,
-            )
-        else:
-            still_unresolved += 1
+
+        if verdict is BrokerVerdict.PRESENT:
+            counts["still_unresolved"] += 1
             logger.warning(
                 "Claim %s for %s %s corresponds to a real broker order (%s) — "
                 "leaving it blocked for position reconciliation",
                 claim.claim_token, claim.underlying, claim.asset_class,
                 claim.idempotency_key,
             )
-    return {
-        "released": released,
-        "still_unresolved": still_unresolved,
-        "unreachable": unreachable,
-    }
+            continue
+
+        if verdict is not BrokerVerdict.ABSENT:
+            # INDETERMINATE, or anything a lookup returns that is not one of
+            # the three verdicts. Unrecognised answers are treated as the
+            # cautious one rather than assumed absent.
+            counts["indeterminate"] += 1
+            logger.warning(
+                "Broker could not say whether claim %s (%s) exists — leaving "
+                "it blocked",
+                claim.claim_token, claim.idempotency_key,
+            )
+            continue
+
+        if not settled:
+            counts["too_fresh"] += 1
+            logger.info(
+                "Broker reports no order for claim %s (%s), but it is younger "
+                "than the %ss settle window — not releasing yet",
+                claim.claim_token, claim.idempotency_key, settle_seconds,
+            )
+            continue
+
+        async with AsyncSessionLocal() as session:
+            async with session.begin():
+                await session.execute(
+                    delete(PositionClaim).where(
+                        PositionClaim.claim_token == claim.claim_token
+                    )
+                )
+        counts["released"] += 1
+        logger.info(
+            "Claim %s released — the broker authoritatively has no order for %s",
+            claim.claim_token, claim.idempotency_key,
+        )
+
+    return counts
+
+
+async def force_release(
+    claim_token: uuid.UUID, *, operator: str, reason: str
+) -> bool:
+    """Operator override: drop a claim the automated path will not.
+
+    A claim left `submitted` or `unknown` blocks its position until the broker
+    gives an authoritative answer. When the broker never will — a venue that no
+    longer knows the key, an outage resolved by hand — somebody has to be able
+    to clear it, or the only way out is editing the table directly, which
+    leaves no trace.
+
+    So this exists, and it is audited rather than silent: the delete and the
+    `execution_events` row are written in ONE transaction, so a release can
+    never land without the record of who did it and why. Returns False when the
+    token names no claim, and writes nothing in that case — an override that
+    overrode nothing must not leave an audit row saying it did.
+    """
+    from app.core.database import AsyncSessionLocal
+    from app.models.execution_event import ExecutionEvent
+
+    async with AsyncSessionLocal() as session:
+        async with session.begin():
+            claim = (await session.execute(
+                select(PositionClaim).where(
+                    PositionClaim.claim_token == claim_token
+                )
+            )).scalar_one_or_none()
+            if claim is None:
+                return False
+
+            session.add(ExecutionEvent(
+                kind="claim_override",
+                ticker=claim.underlying,
+                asset_type=claim.asset_class,
+                status="force_released",
+                payload={
+                    "claim_token": str(claim.claim_token),
+                    "scope": claim.scope,
+                    "underlying": claim.underlying,
+                    "asset_class": claim.asset_class,
+                    "state": claim.state,
+                    "idempotency_key": claim.idempotency_key,
+                    "dispatch_id": claim.dispatch_id,
+                    "unresolved_reason": claim.unresolved_reason,
+                    "operator": operator,
+                    "reason": reason,
+                },
+            ))
+            await session.execute(
+                delete(PositionClaim).where(
+                    PositionClaim.claim_token == claim_token
+                )
+            )
+
+    logger.warning(
+        "Claim %s (%s %s, state=%s) force-released by %s: %s",
+        claim_token, claim.underlying, claim.asset_class, claim.state,
+        operator, reason,
+    )
+    return True

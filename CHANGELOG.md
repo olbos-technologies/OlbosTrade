@@ -2,8 +2,9 @@
 
 ## Unreleased — The duplicate-position guard is no longer a bare read
 
-**Requires a migration (0040), applied BEFORE deploying this code — see
-docs/runbook.md. No new environment variables.**
+**Requires a migration (0040). `deploy/hetzner/update.sh` now applies it from
+the newly built image before any new container serves — see docs/runbook.md.
+No new environment variables.**
 
 - `_execute_signal` Stage 3 asked the database whether an open or pending
   trade already existed for (underlying, asset class) and skipped if one did.
@@ -29,10 +30,27 @@ docs/runbook.md. No new environment variables.**
   retry safe there; `place_equity_order` accepts no such key, so on the equity
   path the broker has no dedup of its own — which is why a submitted claim
   must never free itself on a timer.
-- `reconcile_unresolved()` asks the broker what became of each unknown claim
-  and releases it **only** when the broker positively has no such order. A
-  lookup that raises resolves nothing: "I could not ask" and "there is nothing
-  there" are different answers.
+- `reconcile_unresolved()` asks the broker what became of each unresolved
+  claim and distinguishes **three** answers, where it previously had two. The
+  lookup returns a `BrokerVerdict`: `ABSENT` (the broker states positively
+  that no such order exists), `PRESENT`, or `INDETERMINATE` — not visible yet,
+  degraded, unrecognised. Only `ABSENT` releases. The old
+  `Optional[order]` contract collapsed "there is nothing there" and "I cannot
+  see one yet" into `None`, and order-by-client-id lookups are not immediately
+  consistent, so an order accepted moments earlier could read as absent and
+  free the claim guarding it.
+- Even `ABSENT` is not believed inside a **settle window** (120s by default,
+  measured database-side). A broker that has accepted an order can still answer
+  "no such order" briefly; waiting costs one blocked entry, believing it costs
+  a duplicate position.
+- A lookup that raises still resolves nothing, and each outcome is counted
+  separately — `released`, `still_unresolved`, `indeterminate`, `unreachable`,
+  `too_fresh` — so a quiet broker cannot look like a clean sweep.
+- `force_release()` gives an operator a way to clear a claim the broker will
+  never answer for. The delete and an `execution_events` row of kind
+  `claim_override` are written in **one transaction**, so a release cannot land
+  without a record of who did it and why; an override that matched no claim
+  writes nothing.
 - Every state change is keyed on a **unique claim token**, so a worker whose
   claim was reclaimed cannot release or advance whoever holds the position
   now. Lease comparisons are **database-side** throughout; no timestamp
@@ -43,9 +61,24 @@ docs/runbook.md. No new environment variables.**
   disagree. The column exists so the batch that gives trades an owner can fill
   it in without reshaping a primary key.
 - A claim that cannot be taken **fails closed**, matching the duplicate read
-  beside it. Nothing outside the entry path consults claims, so exits, fill
+  beside it, and now says which of the two failed: `entry_guard_unavailable`
+  for the claim, `duplicate_check_error` for the read. They previously shared
+  one reason, so a test asserting "blocked" passed whether the guard worked or
+  something unrelated broke — an accident counting as proof of the intended
+  behaviour. Nothing outside the entry path consults claims, so exits, fill
   polling, reconciliation and the kill switch are unaffected when the table is
   missing — pinned by a test.
+- A claim survives a process restart and still blocks, which is the case the
+  whole lifecycle exists for; three tests drive it through a genuinely new
+  engine and session factory over the same rows.
+- Deploy ordering is fixed rather than documented around. `update.sh` used to
+  start containers and migrate afterwards, leaving new code serving an old
+  schema in between, and the runbook's suggested pre-apply —
+  `docker exec olbostrade-backend alembic upgrade head` — ran inside the
+  container **still on the old image** and so applied nothing while reporting
+  success. The migration now runs in a throwaway container from the image just
+  built, before `up -d`, and a failure stops the deploy with the old image
+  still serving a schema it matches.
 
 ## Unreleased — Autopilot is restored from the record again
 

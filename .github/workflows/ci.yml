@@ -95,28 +95,44 @@ jobs:
         # if any of them skip, and report passed and skipped separately rather
         # than as one number.
         #
-        # Counts come from the JUnit XML, never from pytest's summary line.
-        # These tests leave coroutines pending and the interpreter loses the
-        # last line of stdout during teardown, so the summary is absent even
-        # on a fully passing run. Grepping for it both failed this step
-        # spuriously and made the skip check vacuous: an all-skipped run has
-        # no summary line either, so the grep would have matched nothing and
-        # passed. The XML is written before teardown, so it is the only count
-        # that survives.
+        # Counts come from the JUnit XML rather than pytest's summary line,
+        # and BOTH are checked against pytest's exit status.
+        #
+        # Why not the summary line: pyproject's `addopts` is already `-q`, so
+        # passing `-q` here too made it `-qq`, and double-quiet suppresses the
+        # summary entirely. The grep for it therefore found nothing even on a
+        # fully passing run — which failed this step, and worse, made the skip
+        # check vacuous, since an all-skipped run prints no summary either.
+        # (An earlier version of this comment blamed pending-coroutine
+        # teardown noise. That was wrong: the control case reproduces with no
+        # async teardown at all. The leaked tasks were real and are now reaped
+        # in tests/conftest.py, but they were not this.)
+        #
+        # The XML is a structured artifact and cannot be quietened away, but it
+        # is also not sufficient on its own: an internal error, a crashed
+        # interpreter or a plugin failure can leave a clean-looking report. So
+        # pytest's own exit code is kept and must agree. Either one saying
+        # "bad" fails the step.
         run: |
-          pytest --no-header -q -rs --junitxml=pg-tests.xml \
+          set +e
+          pytest --no-header -rs --junitxml=pg-tests.xml \
             tests/test_position_claim_pg.py \
             tests/test_trade_desk_claim_route.py \
             tests/test_approval_concurrency_pg.py \
-            tests/test_journal_isolation_pg.py || true
-          python - <<'PY'
+            tests/test_journal_isolation_pg.py
+          rc=$?
+          set -e
+          echo "pytest exit status: $rc"
+          PYTEST_RC="$rc" python - <<'PY'
+          import os
           import sys
           import xml.etree.ElementTree as ET
           from pathlib import Path
 
+          rc = int(os.environ["PYTEST_RC"])
           report = Path("pg-tests.xml")
           if not report.exists():
-              sys.exit("::error::pytest wrote no JUnit report — it never ran.")
+              sys.exit(f"::error::pytest wrote no JUnit report (exit {rc}) — it never ran.")
 
           root = ET.parse(report).getroot()
           tests = failures = errors = skipped = 0
@@ -127,6 +143,7 @@ jobs:
               skipped += int(suite.get("skipped", 0))
 
           print("--- PostgreSQL-backed test outcome ---")
+          print(f"pytest_exit={rc}")
           print(f"collected={tests}")
           print(f"passed={tests - failures - errors - skipped}")
           print(f"failed={failures}")
@@ -145,10 +162,28 @@ jobs:
           if failures or errors:
               sys.exit(f"::error::PostgreSQL-backed tests failed: "
                        f"{failures} failed, {errors} errors.")
+          if rc != 0:
+              # A clean report and a non-zero exit means something outside the
+              # tests themselves went wrong — an internal error, a plugin, a
+              # crash during teardown. Do not pass the step on the report alone.
+              sys.exit(f"::error::Report looks clean but pytest exited {rc}.")
           PY
 
       - name: Whole-app coverage (ratchet floor; target 95%)
-        run: pytest --cov=app --cov-report=term-missing
+        # Also the end-to-end check that no test leaks asyncio tasks. The
+        # coordinator is a module-level singleton whose submit() spawns worker
+        # tasks on the calling test's loop; nothing stopped them, so a full run
+        # printed 54 "Task was destroyed but it is pending!" lines. They are
+        # reaped by an autouse fixture now (tests/conftest.py), and a leak is
+        # not a test failure, so without this gate it would come back unnoticed.
+        run: |
+          set -o pipefail
+          pytest --cov=app --cov-report=term-missing 2>&1 | tee app-tests.log
+          if grep -q "Task was destroyed but it is pending" app-tests.log; then
+            echo "::error::A test leaked pending asyncio tasks."
+            grep -c "Task was destroyed but it is pending" app-tests.log
+            exit 1
+          fi
       - name: Dependency vulnerability scan (informational)
         # Non-blocking: CVE disclosures land on a schedule unrelated to any
         # commit here, so failing the build on one would block unrelated

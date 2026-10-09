@@ -20,6 +20,7 @@ shown capable of observing the failure it claims to prevent.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -31,6 +32,7 @@ from sqlalchemy import select, text, update
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
+from app.models.execution_event import ExecutionEvent
 from app.models.position_claim import (
     STATE_PENDING, STATE_SUBMITTED, STATE_UNKNOWN, PositionClaim,
 )
@@ -54,13 +56,43 @@ async def sessions():
     engine = create_async_engine(TEST_DB_URL, poolclass=NullPool)
     async with engine.begin() as conn:
         await conn.execute(text("DROP TABLE IF EXISTS position_claims"))
+        await conn.execute(text("DROP TABLE IF EXISTS execution_events"))
         await conn.run_sync(PositionClaim.__table__.create)
+        # force_release writes its audit row here, in the same transaction as
+        # the delete, so the table has to be real for that to be observable.
+        await conn.run_sync(ExecutionEvent.__table__.create)
     factory = async_sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
     with patch("app.core.database.AsyncSessionLocal", factory):
         yield factory
     async with engine.begin() as conn:
         await conn.execute(text("DROP TABLE IF EXISTS position_claims"))
+        await conn.execute(text("DROP TABLE IF EXISTS execution_events"))
     await engine.dispose()
+
+
+@pytest_asyncio.fixture
+async def restarted():
+    """Run a block as if a fresh process had taken over the same database.
+
+    A restart is the case the claim lifecycle exists for, and it cannot be
+    faked by calling the service again: the point is that NOTHING in memory
+    carries over. This builds a new engine, a new connection pool and a new
+    session factory over the same rows, and rebinds the service to them, so a
+    claim that still blocks does so purely on what is persisted.
+    """
+    @contextlib.asynccontextmanager
+    async def _restart():
+        engine = create_async_engine(TEST_DB_URL, poolclass=NullPool)
+        factory = async_sessionmaker(
+            bind=engine, expire_on_commit=False, autoflush=False,
+        )
+        try:
+            with patch("app.core.database.AsyncSessionLocal", factory):
+                yield factory
+        finally:
+            await engine.dispose()
+
+    return _restart
 
 
 def _sym() -> str:
@@ -245,9 +277,13 @@ async def test_reconcile_releases_a_claim_the_broker_has_no_order_for(sessions):
     await position_claim.mark_unknown(held, "timed out")
 
     async def lookup(_key):
-        return None                     # the broker positively has no such order
+        # Authoritative: this broker states no such order exists.
+        return position_claim.BrokerVerdict.ABSENT
 
-    out = await position_claim.reconcile_unresolved(lookup)
+    # settle_seconds=0: this claim is seconds old, and the settle window is
+    # what stops a not-yet-visible order being read as an absent one. Its own
+    # test below pins that; here it would only mask the release.
+    out = await position_claim.reconcile_unresolved(lookup, settle_seconds=0)
     assert out["released"] == 1
     assert await _rows(sessions) == []
 
@@ -261,7 +297,7 @@ async def test_reconcile_leaves_a_claim_whose_order_the_broker_knows_about(sessi
     await position_claim.mark_unknown(held, "timed out")
 
     async def lookup(_key):
-        return {"status": "filled"}
+        return position_claim.BrokerVerdict.PRESENT
 
     out = await position_claim.reconcile_unresolved(lookup)
     assert out["still_unresolved"] == 1
@@ -291,8 +327,10 @@ async def test_reconcile_ignores_claims_that_are_merely_pending(sessions):
     async def lookup(_key):
         raise AssertionError("reconciliation asked about a pending claim")
 
-    out = await position_claim.reconcile_unresolved(lookup)
-    assert out == {"released": 0, "still_unresolved": 0, "unreachable": 0}
+    out = await position_claim.reconcile_unresolved(lookup, settle_seconds=0)
+    assert out["released"] == 0
+    assert out["still_unresolved"] == 0
+    assert out["unreachable"] == 0
 
 
 async def test_unresolved_lists_what_blocks_re_entry(sessions):
@@ -341,3 +379,203 @@ async def test_check_then_insert_double_books(sessions):
         "expected check-then-insert to clear both callers to submit; if it did "
         "not, this harness can no longer demonstrate the defect"
     )
+
+
+async def test_an_absent_verdict_does_not_release_a_claim_inside_the_settle_window(sessions):
+    """"Not visible yet" is not "not there".
+
+    A broker that has accepted an order can still answer "no such order" for a
+    short while. Believing that reading releases the claim and re-opens the
+    position to a second entry on a live order — the exact duplicate this
+    module exists to prevent. Inside the settle window even an authoritative
+    ABSENT is held.
+    """
+    ticker = _sym()
+    held = await position_claim.try_claim(ticker, "equity")
+    await position_claim.mark_submitted(held)
+    await position_claim.mark_unknown(held, "timed out")
+
+    async def lookup(_key):
+        return position_claim.BrokerVerdict.ABSENT
+
+    out = await position_claim.reconcile_unresolved(lookup, settle_seconds=3600)
+    assert out["too_fresh"] == 1
+    assert out["released"] == 0
+    assert len(await _rows(sessions)) == 1
+
+
+async def test_an_indeterminate_verdict_is_not_treated_as_absence(sessions):
+    """The distinction the Optional[order] contract could not express."""
+    ticker = _sym()
+    held = await position_claim.try_claim(ticker, "equity")
+    await position_claim.mark_submitted(held)
+    await position_claim.mark_unknown(held, "timed out")
+
+    async def lookup(_key):
+        return position_claim.BrokerVerdict.INDETERMINATE
+
+    out = await position_claim.reconcile_unresolved(lookup, settle_seconds=0)
+    assert out["indeterminate"] == 1
+    assert out["released"] == 0
+    assert len(await _rows(sessions)) == 1
+
+
+async def test_an_unrecognised_verdict_is_treated_as_indeterminate(sessions):
+    """A lookup that returns something else must not release anything.
+
+    The old contract released on None, so any lookup that returned a falsy
+    "nothing to report" sentinel resolved a claim. Anything that is not
+    positively ABSENT is now the cautious branch.
+    """
+    ticker = _sym()
+    held = await position_claim.try_claim(ticker, "equity")
+    await position_claim.mark_submitted(held)
+    await position_claim.mark_unknown(held, "timed out")
+
+    async def lookup(_key):
+        return None                     # what the previous contract released on
+
+    out = await position_claim.reconcile_unresolved(lookup, settle_seconds=0)
+    assert out["released"] == 0
+    assert out["indeterminate"] == 1
+    assert len(await _rows(sessions)) == 1
+
+
+async def test_the_settle_window_is_measured_by_database_time(sessions):
+    """Like every other time comparison here, not by the worker's clock."""
+    import inspect
+
+    src = inspect.getsource(position_claim.reconcile_unresolved)
+    assert "func.now()" in src and 'func.extract(' in src
+    assert "datetime.now" not in src and "utcnow" not in src
+
+
+# ── restart recovery ───────────────────────────────────────────────────────
+
+async def test_a_submitted_claim_survives_a_process_restart(sessions, restarted):
+    """The claim is durable state, not worker memory.
+
+    The whole guarantee rests on this: a worker that dies between recording
+    intent and hearing back from the broker must leave the position blocked.
+    If the claim lived in the process, the restart would clear it and the next
+    dispatch would submit a second order on a position that may already exist.
+    """
+    ticker = _sym()
+    held = await position_claim.try_claim(ticker, "equity")
+    await position_claim.mark_submitted(held)
+
+    # A genuinely new engine, session factory and service state — the next
+    # process, not the next function call.
+    async with restarted():
+        again = await position_claim.try_claim(ticker, "equity")
+        assert again is None, "a restart handed out a claim on a submitted position"
+
+        blocking = await position_claim.describe(ticker, "equity")
+        assert blocking is not None
+        assert blocking.state == position_claim.STATE_SUBMITTED
+
+
+async def test_a_restart_does_not_resurrect_the_dead_workers_token(sessions, restarted):
+    """The old token is not usable after the restart, but the row still blocks.
+
+    A restarted worker holds no claim: it must go through try_claim like
+    anyone else, and be refused. The pre-restart Claim object must not be a
+    back door to advancing or clearing the row.
+    """
+    ticker = _sym()
+    held = await position_claim.try_claim(ticker, "equity")
+    await position_claim.mark_submitted(held)
+    await position_claim.mark_unknown(held, "worker died mid-submit")
+
+    async with restarted():
+        # The stale token can still address its own row — it is the same row —
+        # but nothing about the restart grants a fresh entry.
+        assert await position_claim.try_claim(ticker, "equity") is None
+        still = await position_claim.describe(ticker, "equity")
+        assert still.state == position_claim.STATE_UNKNOWN
+        assert still.unresolved_reason == "worker died mid-submit"
+
+
+async def test_an_expired_pending_claim_is_still_reclaimable_after_a_restart(sessions, restarted):
+    """Restart recovery must not block what the lease is meant to release.
+
+    The counterpart to the two tests above: a claim that never submitted
+    anything is the lease's business, and a restart does not promote it to
+    something that needs reconciliation.
+    """
+    ticker = _sym()
+    first = await position_claim.try_claim(ticker, "equity")
+    await _age_lease(sessions, first.token, 600)   # pending, lease long gone
+
+    async with restarted():
+        taken = await position_claim.try_claim(ticker, "equity")
+        assert taken is not None, "an expired pending claim outlived its lease"
+
+
+# ── audited operator override ──────────────────────────────────────────────
+
+async def test_force_release_clears_a_stuck_claim_and_audits_it(sessions):
+    """A claim the broker will never answer for needs a way out that leaves a trace."""
+    from app.models.execution_event import ExecutionEvent
+
+    ticker = _sym()
+    held = await position_claim.try_claim(ticker, "equity")
+    await position_claim.mark_submitted(held)
+    await position_claim.mark_unknown(held, "venue lost the key")
+
+    ok = await position_claim.force_release(
+        held.token, operator="ops@olbostrade", reason="venue confirmed no fill by phone",
+    )
+    assert ok is True
+    assert await _rows(sessions) == []
+
+    async with sessions() as s:
+        events = list((await s.execute(
+            select(ExecutionEvent).where(ExecutionEvent.kind == "claim_override")
+        )).scalars().all())
+    assert len(events) == 1
+    ev = events[0]
+    assert ev.status == "force_released"
+    assert ev.ticker == ticker
+    assert ev.payload["operator"] == "ops@olbostrade"
+    assert ev.payload["reason"] == "venue confirmed no fill by phone"
+    assert ev.payload["state"] == position_claim.STATE_UNKNOWN
+    assert ev.payload["unresolved_reason"] == "venue lost the key"
+    assert ev.payload["claim_token"] == str(held.token)
+
+    # And the position is genuinely open for business again.
+    assert await position_claim.try_claim(ticker, "equity") is not None
+
+
+async def test_force_release_of_an_unknown_token_audits_nothing(sessions):
+    """An override that overrode nothing must not leave a record saying it did."""
+    import uuid as _uuid
+
+    from app.models.execution_event import ExecutionEvent
+
+    ok = await position_claim.force_release(
+        _uuid.uuid4(), operator="ops@olbostrade", reason="typo",
+    )
+    assert ok is False
+    async with sessions() as s:
+        events = (await s.execute(
+            select(ExecutionEvent).where(ExecutionEvent.kind == "claim_override")
+        )).scalars().all()
+    assert list(events) == []
+
+
+async def test_force_release_writes_the_audit_row_in_the_same_transaction(sessions):
+    """Structural: the delete and the audit row cannot be separated.
+
+    If the audit write were its own transaction, a crash between the two would
+    release a claim with no record of who did it — the one thing an override
+    path must never allow.
+    """
+    import inspect
+
+    src = inspect.getsource(position_claim.force_release)
+    body = src[src.index("async with AsyncSessionLocal"):]
+    # one session, one begin(), with both the event and the delete inside it
+    assert body.count("AsyncSessionLocal()") == 1
+    assert body.count("session.begin()") == 1
+    assert body.index("ExecutionEvent(") < body.index("delete(PositionClaim)")

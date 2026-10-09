@@ -4,6 +4,7 @@ Trade Desk routes — execution mode + approval queue for Copilot/Autopilot.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import threading
 import uuid
@@ -1633,9 +1634,23 @@ async def _execute_signal(signal: dict, approved_by: str = "autopilot") -> dict:
         # zero rows and both pass. Claim the position before submitting, so
         # the second one collides with something that exists.
         from app.services import position_claim
-        _claim = await position_claim.try_claim(
-            ticker, wanted, dispatch_id=signal.get("dispatch_id"),
-        )
+        # Attributable fail-closed. The claim becoming unavailable (no table,
+        # no database, a broken query) and the duplicate READ failing are both
+        # fail-closed, but they are NOT the same defect, and a single shared
+        # reason string made them indistinguishable. A test asserting "blocked"
+        # then passed whether the guard worked or something unrelated broke —
+        # an accident counting as proof of the intended behaviour. Keep the two
+        # causes on separate reasons so each is provable on its own.
+        try:
+            _claim = await position_claim.try_claim(
+                ticker, wanted, dispatch_id=signal.get("dispatch_id"),
+            )
+        except Exception as _claim_exc:
+            logger.error(
+                "Entry guard unavailable for %s (fail closed): %s",
+                ticker, _claim_exc,
+            )
+            return _blocked(f"entry_guard_unavailable: {_claim_exc}")
         if _claim is None:
             return _skipped("entry_in_flight")
 
@@ -1644,8 +1659,17 @@ async def _execute_signal(signal: dict, approved_by: str = "autopilot") -> dict:
         # and then win a claim that another caller had already released by
         # recording its position. Winning the claim is what makes this second
         # read conclusive — nobody else can be mid-entry while we hold it.
-        async with AsyncSessionLocal() as _db:
-            existing = await _open_trade_for(_db)
+        try:
+            async with AsyncSessionLocal() as _db:
+                existing = await _open_trade_for(_db)
+        except Exception:
+            # Nothing has been submitted yet, so releasing is provably safe and
+            # avoids blocking the position for a whole lease over a read blip.
+            # If the release itself cannot be written, the claim is still
+            # `pending` and the lease reaps it; either way no order went out.
+            with contextlib.suppress(Exception):
+                await position_claim.resolve(_claim)
+            raise
         if existing is not None:
             await position_claim.resolve(_claim)
             logger.info(

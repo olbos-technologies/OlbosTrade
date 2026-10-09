@@ -11,6 +11,7 @@ import uuid
 from unittest.mock import AsyncMock, patch
 
 import pytest
+import pytest_asyncio
 
 from app.services.position_claim import Claim
 
@@ -56,3 +57,39 @@ def stub_position_claim():
             "mark_unknown": mark_unknown,
             "resolve": resolve,
         })
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _reap_ibkr_coordinator_workers():
+    """Stop coordinator workers before their event loop is torn down.
+
+    `ibkr_coordinator` is a module-level singleton and `submit()` calls
+    `start()`, so any test that submits spawns worker tasks bound to that
+    test's event loop. Nothing stopped them: the loop closed with the tasks
+    still pending, and at garbage-collection each one printed
+
+        Task was destroyed but it is pending!
+
+    `stop()` already exists and documents itself as being for exactly this; it
+    simply had no caller outside the app's lifespan and test_ibkr_coordinator's
+    own tests.
+
+    This has to be an ASYNC fixture. A sync one is set up before pytest-asyncio
+    creates the event loop, so it tears down after that loop is already closed,
+    and cancellation is delivered by a task's own loop — a closed loop can
+    never run them. The first version of this fixture was sync and reaped
+    nothing; the full suite still printed 54 of these.
+
+    It IS autouse, unlike `stub_position_claim` above, and the distinction is
+    deliberate: it changes no behaviour a test can observe. It runs after the
+    test body, reclaims tasks the test left behind, and asserts nothing. A stub
+    that changes what the code under test does is the kind of global fixture
+    that hides defects; reclaiming a leaked task is not.
+    """
+    yield
+
+    from app.broker.ibkr_coordinator import ibkr_coordinator as coord
+
+    if not coord._workers:
+        return
+    await coord.stop()
