@@ -2837,6 +2837,20 @@ async def _adopt_untracked_positions(untracked: list[str]) -> None:
 
                 price = Decimal(str(pos.avg_cost))
                 session.add(Trade(
+                    # The reconciler runs in the background with no caller, and
+                    # it is NOT organization-scoped in this change (Batch E2
+                    # step 6, deliberately held back): it compares ONE broker
+                    # against every open trade. So the organization it would
+                    # stamp here is not established — the position came from a
+                    # broker whose owner this code does not yet resolve.
+                    #
+                    # Left NULL on purpose, which is the single-operator scope
+                    # and exactly what migration 0041 leaves historical rows
+                    # as. In the current single-operator deployment that is
+                    # correct. With a second tenant it would be wrong, and the
+                    # fix is step 6 — pairing (broker, organization) — not a
+                    # guess here. docs/batch-e2-trades-isolation-analysis.md §4.
+                    organization_id=None,
                     strategy="adopted_untracked",
                     underlying=symbol,
                     spread_type="equity_long" if pos.quantity > 0 else "equity_short",

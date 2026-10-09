@@ -266,7 +266,7 @@ async def test_manual_trade_success_logs():
     with patch.object(td, "_execute_signal",
                       new=AsyncMock(return_value={"result": "submitted", "ticker": "AAPL"})), \
          patch.object(td, "_log_execution", new=AsyncMock()) as log_mock:
-        out = await manual_trade(ManualTradeRequest(ticker="aapl", action="buy", shares=5))
+        out = await manual_trade(ManualTradeRequest(ticker="aapl", action="buy", shares=5), _conn())
     assert out["result"] == "submitted"
     log_mock.assert_awaited_once()
 
@@ -276,7 +276,7 @@ async def test_manual_trade_error_raises():
     with patch.object(td, "_execute_signal",
                       new=AsyncMock(return_value={"result": "error", "error": "boom"})):
         with pytest.raises(Exception):
-            await manual_trade(ManualTradeRequest(ticker="aapl", action="buy", shares=5))
+            await manual_trade(ManualTradeRequest(ticker="aapl", action="buy", shares=5), _conn())
 
 
 # ── close_position (manual close, separate from _execute_signal) ──────────────

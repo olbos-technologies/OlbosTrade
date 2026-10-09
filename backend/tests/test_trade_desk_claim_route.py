@@ -382,6 +382,10 @@ async def test_only_the_entry_path_consults_the_claim():
         "services/claim_reconciliation.py",
         "api/routes/admin_claims.py",        # the audited operator override
         "main.py",                           # startup + periodic worker wiring
+        # Batch E2: converts an owning organization into the claim's `scope`.
+        # It imports GLOBAL_SCOPE and nothing else — it takes no claim, holds
+        # none, and cannot block an exit.
+        "services/trade_scope.py"
     }
     users = {
         str(f.relative_to(root))

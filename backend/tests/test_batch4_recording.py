@@ -69,6 +69,7 @@ async def test_record_fill_idempotent_on_duplicate_dispatch_id():
     recorder = TradeRecorder()
     with patch("app.core.database.AsyncSessionLocal", return_value=mock_session):
         result = await recorder.record_fill(
+            organization_id=None,   # single-operator scope
             strategy="bull_put_spread",
             underlying="SPY",
             option_type="put",
@@ -134,6 +135,7 @@ async def test_record_fill_emits_critical_on_db_failure():
             "critical"
         ) as mock_critical:
             result = await recorder.record_fill(
+                organization_id=None,   # single-operator scope
                 strategy="bull_put_spread",
                 underlying="SPY",
                 option_type="put",
