@@ -9,6 +9,7 @@ test_kill_switch.py does.
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -121,7 +122,7 @@ async def test_a_recorded_escalation_reports_confirmed():
 
 
 @pytest.mark.asyncio
-async def test_rehydrate_does_not_silently_resume_autopilot():
+async def test_rehydrate_restores_autopilot_from_the_record():
     from datetime import datetime, timezone
     row = MagicMock(status="autopilot", created_at=datetime.now(timezone.utc),
                      payload={"changed_by": "tester"})
@@ -129,14 +130,14 @@ async def test_rehydrate_does_not_silently_resume_autopilot():
     mgr = ExecutionModeManager()
     with patch("app.core.database.AsyncSessionLocal", return_value=_session(result)):
         await mgr.rehydrate()
-    # Autopilot is deliberately NOT auto-restored: a reduction out of it that
-    # failed to persist leaves the older, more permissive row newest on disk,
-    # and restoring it would hand automation back silently as a side effect of
-    # a restart. Copilot keeps every signal and still asks a human first.
-    assert mgr.mode == ExecutionMode.COPILOT
+    # Restored as recorded. An earlier revision refused to restore Autopilot
+    # at all; that closed the unpersisted-reduction hazard but disarmed
+    # automation on every deploy — a cure firing on every restart for a fault
+    # firing on almost none. What makes the record trustworthy instead is that
+    # a reduction which fails to persist is retried until it lands
+    # (test_an_unrecorded_reduction_is_retried_until_it_lands below).
+    assert mgr.mode == ExecutionMode.AUTOPILOT
     assert mgr.summary()["changed_by"] == "tester"
-    assert mgr.summary()["persistence"] == "stale"
-    assert "re-engage" in mgr.summary()["restore_note"].lower()
 
 
 @pytest.mark.asyncio
@@ -154,3 +155,117 @@ async def test_rehydrate_failure_defaults_to_manual():
     with patch("app.core.database.AsyncSessionLocal", side_effect=Exception("db down")):
         await mgr.rehydrate()   # must not raise
     assert mgr.mode == ExecutionMode.MANUAL
+
+
+# ── retrying an unrecorded reduction ───────────────────────────────────────────
+@pytest.mark.asyncio
+async def test_an_unrecorded_reduction_is_retried_until_it_lands():
+    """The mechanism that makes restoring from the record defensible.
+
+    Without it, a reduction that could not be written left the newest row on
+    disk more permissive than reality until somebody noticed — and a restart
+    in between would resume Autopilot.
+    """
+    import app.services.execution_mode as em
+
+    mgr = ExecutionModeManager()
+    mgr._mode = ExecutionMode.AUTOPILOT
+    calls = {"n": 0}
+    session = _session()
+
+    def _factory():
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("db down")
+        return session
+
+    with patch("app.core.database.AsyncSessionLocal", _factory), \
+         patch.object(em, "_RETRY_INITIAL_SECONDS", 0.01), \
+         patch.object(em, "_RETRY_MAX_SECONDS", 0.01):
+        out = await mgr.set_mode(ExecutionMode.MANUAL)
+        assert out["persistence"] == "unconfirmed"
+        assert mgr.mode is ExecutionMode.MANUAL, "the reduction must be in force now"
+        await asyncio.sleep(0.15)
+
+    assert calls["n"] >= 2, "the failed write was never retried"
+    assert mgr._unconfirmed_reduction is None
+    assert mgr.summary()["persistence"] == "confirmed"
+
+
+@pytest.mark.asyncio
+async def test_a_retry_is_abandoned_when_the_mode_moves_on():
+    """Re-recording a superseded reduction would make the history lie."""
+    import app.services.execution_mode as em
+
+    mgr = ExecutionModeManager()
+    mgr._mode = ExecutionMode.AUTOPILOT
+    attempts = {"n": 0}
+
+    def _always_down():
+        attempts["n"] += 1
+        raise RuntimeError("db down")
+
+    with patch("app.core.database.AsyncSessionLocal", _always_down), \
+         patch.object(em, "_RETRY_INITIAL_SECONDS", 0.01), \
+         patch.object(em, "_RETRY_MAX_SECONDS", 0.01):
+        await mgr.set_mode(ExecutionMode.MANUAL)
+        mgr._mode = ExecutionMode.COPILOT      # something else changed it
+        await asyncio.sleep(0.1)
+        settled = attempts["n"]
+        await asyncio.sleep(0.1)
+
+    assert attempts["n"] == settled, "the superseded reduction kept retrying"
+
+
+@pytest.mark.asyncio
+async def test_a_confirmed_change_cancels_a_pending_retry():
+    import app.services.execution_mode as em
+
+    mgr = ExecutionModeManager()
+    mgr._mode = ExecutionMode.AUTOPILOT
+    with patch("app.core.database.AsyncSessionLocal", side_effect=RuntimeError("db down")), \
+         patch.object(em, "_RETRY_INITIAL_SECONDS", 5.0):
+        await mgr.set_mode(ExecutionMode.MANUAL)
+        assert mgr._retry_task is not None
+
+    with patch("app.core.database.AsyncSessionLocal", return_value=_session()):
+        await mgr.set_mode(ExecutionMode.COPILOT)
+
+    assert mgr._retry_task is None
+    assert mgr._unconfirmed_reduction is None
+
+
+@pytest.mark.asyncio
+async def test_no_event_loop_does_not_break_a_reduction():
+    """A synchronous caller still gets the reduction; it just is not retried."""
+    mgr = ExecutionModeManager()
+    mgr._mode = ExecutionMode.AUTOPILOT
+    with patch("app.core.database.AsyncSessionLocal", side_effect=RuntimeError("db down")), \
+         patch("asyncio.get_running_loop", side_effect=RuntimeError("no loop")):
+        out = await mgr.set_mode(ExecutionMode.MANUAL)
+    assert mgr.mode is ExecutionMode.MANUAL
+    assert out["persistence"] == "unconfirmed"
+    assert mgr._retry_task is None
+
+
+@pytest.mark.asyncio
+async def test_giving_up_on_a_retry_is_loud(caplog):
+    """Exhausting the retries leaves the stored history more permissive than
+    the running mode. That is the state an operator most needs told about, so
+    it is CRITICAL rather than a warning that scrolls past."""
+    import logging
+    import app.services.execution_mode as em
+
+    mgr = ExecutionModeManager()
+    mgr._mode = ExecutionMode.AUTOPILOT
+    with caplog.at_level(logging.CRITICAL), \
+         patch("app.core.database.AsyncSessionLocal", side_effect=RuntimeError("db down")), \
+         patch.object(em, "_RETRY_INITIAL_SECONDS", 0.001), \
+         patch.object(em, "_RETRY_MAX_SECONDS", 0.001), \
+         patch.object(em, "_RETRY_ATTEMPTS", 2):
+        await mgr.set_mode(ExecutionMode.MANUAL)
+        await asyncio.sleep(0.1)
+
+    assert mgr.mode is ExecutionMode.MANUAL, "the reduction stays in force regardless"
+    assert any("Gave up recording" in r.getMessage() for r in caplog.records)
+    assert mgr.summary()["persistence"] == "unconfirmed"

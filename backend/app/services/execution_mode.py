@@ -13,6 +13,7 @@ switch's own DB rehydrate() pattern (kill_switch.py).
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timezone
 from enum import Enum
@@ -29,6 +30,14 @@ class ExecutionMode(str, Enum):
 # Ordering by how much the machine may do without a human. set_mode's
 # persistence rules key off the DIRECTION of a change, so this has to be an
 # explicit ordering rather than something inferred from the enum.
+# Retrying an unrecorded safety reduction. Starts quickly because a short
+# database blip is the common case, and backs off so a long outage does not
+# become a busy loop.
+_RETRY_INITIAL_SECONDS = 2.0
+_RETRY_MAX_SECONDS = 60.0
+_RETRY_ATTEMPTS = 20
+
+
 _RANK = {
     ExecutionMode.MANUAL: 0,
     ExecutionMode.COPILOT: 1,
@@ -46,10 +55,68 @@ class ExecutionModeManager:
         self._persistence_error: str | None = None
         self._unconfirmed_reduction: ExecutionMode | None = None
         self._restore_note: str | None = None
+        self._retry_task: "asyncio.Task | None" = None
 
     @property
     def mode(self) -> ExecutionMode:
         return self._mode
+
+    def _start_retry(self, mode: ExecutionMode, by: str, at: datetime) -> None:
+        """Keep retrying an unrecorded safety reduction until it lands.
+
+        Abandons the attempt if the mode moves on — a later change supersedes
+        this one and writes its own row, and re-recording a stale reduction
+        afterwards would make the history say the wrong thing.
+
+        Best-effort by construction: if the process dies before the database
+        comes back, nothing durable records that the reduction happened. That
+        residual window is the known limit of restoring from the stored
+        record, and is documented on rehydrate().
+        """
+        self._cancel_retry()
+
+        async def _retry() -> None:
+            delay = _RETRY_INITIAL_SECONDS
+            for _ in range(_RETRY_ATTEMPTS):
+                await asyncio.sleep(delay)
+                if self._mode is not mode:
+                    logger.info(
+                        "Abandoning retry of unrecorded %s — mode has since "
+                        "moved to %s", mode.value, self._mode.value,
+                    )
+                    return
+                try:
+                    await self._record(mode, by, at)
+                except Exception as exc:
+                    logger.warning(
+                        "Retry of unrecorded execution mode %s failed: %s",
+                        mode.value, exc,
+                    )
+                    delay = min(delay * 2, _RETRY_MAX_SECONDS)
+                    continue
+                self._persistence_error = None
+                self._unconfirmed_reduction = None
+                logger.info(
+                    "Unrecorded execution mode %s has now been recorded", mode.value
+                )
+                return
+            logger.critical(
+                "Gave up recording execution mode %s after %d attempts — the "
+                "stored history is still more permissive than the running mode",
+                mode.value, _RETRY_ATTEMPTS,
+            )
+
+        try:
+            self._retry_task = asyncio.get_running_loop().create_task(_retry())
+        except RuntimeError:
+            # No loop (synchronous caller, or a test). The reduction is still
+            # in force; it simply will not be retried.
+            self._retry_task = None
+
+    def _cancel_retry(self) -> None:
+        task, self._retry_task = self._retry_task, None
+        if task is not None and not task.done():
+            task.cancel()
 
     async def _record(self, mode: ExecutionMode, by: str, at: datetime) -> None:
         """Append the decision to execution_events. Raises on failure."""
@@ -114,6 +181,7 @@ class ExecutionModeManager:
                         "nothing durably holds."
                     ),
                 )
+            self._cancel_retry()
             self._persistence_error = None
             self._unconfirmed_reduction = None
             self._mode, self._changed_at, self._changed_by = mode, at, by
@@ -127,10 +195,17 @@ class ExecutionModeManager:
         except Exception as exc:
             self._persistence_error = str(exc)
             self._unconfirmed_reduction = mode
+            # Keep trying in the background. This is what makes the stored
+            # history trustworthy enough for rehydrate() to restore Autopilot
+            # from: the window in which the newest row on disk is more
+            # permissive than reality lasts until the database comes back,
+            # not until someone notices.
+            self._start_retry(mode, by, at)
             logger.critical(
                 "Execution mode reduced %s → %s but the change was NOT recorded "
-                "(%s). The reduction is in force now; a restart before it is "
-                "recorded would read the older, more permissive row.",
+                "(%s). The reduction is in force now and will be retried; a "
+                "restart before it lands would read the older, more permissive "
+                "row.",
                 prev.value, mode.value, exc,
             )
             logger.info("Execution mode: %s → %s (by %s)", prev.value, mode.value, by)
@@ -141,6 +216,7 @@ class ExecutionModeManager:
                     "recorded. Re-apply it once the database is reachable."
                 ),
             )
+        self._cancel_retry()
         self._persistence_error = None
         self._unconfirmed_reduction = None
         logger.info("Execution mode: %s → %s (by %s)", prev.value, mode.value, by)
@@ -167,29 +243,35 @@ class ExecutionModeManager:
                 recorded = ExecutionMode(row.status)
                 self._changed_at = row.created_at
                 self._changed_by = (row.payload or {}).get("changed_by", "restored")
+                # The recorded mode is restored as recorded, Autopilot
+                # included. An earlier revision refused to restore Autopilot
+                # at all, which did close the hazard below but made every
+                # deploy silently disarm automation — a cure that fires on
+                # every restart for a fault that fires on almost none.
+                #
+                # What makes the record trustworthy is that a reduction which
+                # fails to persist is now RETRIED until it lands, so the
+                # window in which the newest row is more permissive than
+                # reality ends when the database comes back rather than when
+                # somebody notices.
+                #
+                # KNOWN RESIDUAL RISK, stated rather than designed around: if
+                # the process dies during that window — database down, a
+                # reduction applied in memory, no retry has landed yet —
+                # nothing durable records the reduction, and this restores the
+                # older Autopilot row. Recovering that would need the
+                # information the failed write is precisely what did not
+                # record. The kill switch, which persists separately and
+                # rehydrates fail-closed, is the control that does not depend
+                # on this path.
+                self._mode = recorded
                 if recorded is ExecutionMode.AUTOPILOT:
-                    # AUTOPILOT IS NOT AUTO-RESTORED, and this is deliberate.
-                    # A reduction out of Autopilot that could not be written
-                    # leaves the older, more permissive row as the newest one
-                    # on disk. Restoring it would hand automation back to a
-                    # machine a human had just taken it away from, silently,
-                    # as a side effect of a restart. The information needed to
-                    # tell that case apart from a legitimate Autopilot is
-                    # precisely the information the failed write did not
-                    # record, so it cannot be recovered — only not relied on.
-                    # Copilot keeps every signal and still asks a human first.
-                    self._mode = ExecutionMode.COPILOT
-                    self._restore_note = (
-                        "Autopilot was in force before restart and has been "
-                        "restored as Copilot. Re-engage it explicitly."
-                    )
                     logger.warning(
-                        "ExecutionModeManager restored AUTOPILOT as COPILOT — "
-                        "automation is not resumed across a restart without an "
-                        "explicit decision"
+                        "ExecutionModeManager restored AUTOPILOT — automation "
+                        "resumes from the stored record; verify this is the "
+                        "mode you expect"
                     )
                 else:
-                    self._mode = recorded
                     logger.info(
                         "ExecutionModeManager restored — mode: %s",
                         self._mode.value.upper(),
@@ -228,8 +310,15 @@ class ExecutionModeManager:
             ExecutionMode.COPILOT:   "Signals queued for your approval. You approve → order executes.",
             ExecutionMode.AUTOPILOT: "Signals auto-execute through guardrails. Kill switch always active.",
         }
-        if persistence == "confirmed" and self._restore_note:
-            persistence = "stale"
+        # Derive from state when the caller did not say. GET /execution-mode
+        # calls summary() with no arguments, and defaulting to "confirmed"
+        # there reported a healthy mode while an unrecorded reduction was
+        # still outstanding — hiding exactly what these fields exist to show.
+        if persistence == "confirmed":
+            if self._unconfirmed_reduction is not None or self._persistence_error:
+                persistence = "unconfirmed"
+            elif self._restore_note:
+                persistence = "stale"
         out = {
             "mode":        self._mode.value,
             "description": descriptions[self._mode],

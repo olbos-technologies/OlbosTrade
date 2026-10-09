@@ -1,5 +1,34 @@
 # Changelog
 
+## Unreleased — Autopilot is restored from the record again
+
+Reverses the restart behaviour shipped in "Execution-mode changes state their
+durability", which refused to restore Autopilot at all. That did close the
+unpersisted-reduction hazard, but it disarmed automation on **every** deploy —
+a cure firing on every restart for a fault firing on almost none.
+
+- `rehydrate()` restores the recorded mode as recorded, Autopilot included,
+  and logs a warning when it does so.
+- What makes the record trustworthy instead: **a reduction that fails to
+  persist is now retried** (2s, backing off to 60s, 20 attempts) until it
+  lands. The window in which the newest row on disk is more permissive than
+  the running mode now ends when the database comes back, rather than when
+  somebody notices. A retry is abandoned if the mode moves on, so a superseded
+  reduction cannot be re-recorded over a newer decision, and giving up is
+  logged CRITICAL.
+- **Known residual risk, stated rather than designed around:** if the process
+  dies during that window — database down, reduction applied in memory, no
+  retry landed — nothing durable records the reduction and startup restores
+  the older Autopilot row. Recovering that would require the information the
+  failed write is precisely what did not record. The kill switch persists
+  separately and rehydrates fail-closed; it is the control that does not
+  depend on this path.
+- Fixes a bug from the same earlier change: `summary()` called with no
+  arguments — which is what `GET /api/trade-desk/execution-mode` does —
+  reported `persistence: "confirmed"` even while an unrecorded reduction was
+  outstanding, hiding exactly what those fields exist to show. It now derives
+  the value from state.
+
 ## Unreleased — Journal entries are owned by an organization
 
 **Requires a migration (0039). No new environment variables.**
