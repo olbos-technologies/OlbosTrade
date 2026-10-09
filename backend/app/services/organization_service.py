@@ -74,6 +74,35 @@ async def personal_org_for(db, user_id) -> Organization:
     return org
 
 
+async def owner_scope(db, conn) -> uuid.UUID | None:
+    """The organization whose private records this request may touch.
+
+    Returns the caller's personal organization, or None when auth is disabled —
+    the single-operator deployment, where there is no user to resolve and no
+    second tenant to isolate from. None is a SCOPE, not an absence of one:
+    callers must filter on `organization_id IS NULL` for it, which matches
+    exactly the unattributed rows migration 0039 declined to guess an owner
+    for. Treating None as "no filter" would reinstate the shared query this
+    exists to remove.
+
+    Resolved from the authenticated server context only. Nothing a client
+    sends takes part in deciding which records it can see.
+    """
+    from app.api.auth_deps import current_user
+    from app.core.config import settings
+
+    if not settings.auth_enabled:
+        return None
+    user = current_user(conn)
+    uid = user.get("id")
+    if not uid:
+        # Auth is on but this request carries no identity. Fail closed: there
+        # is no safe default scope to fall back to.
+        raise PermissionError("no authenticated user for an owner-scoped request")
+    org = await personal_org_for(db, uid)
+    return org.id
+
+
 async def org_ids_for_user(db, user_id) -> list[uuid.UUID]:
     """Every organization this user may act for.
 

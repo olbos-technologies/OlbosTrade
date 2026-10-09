@@ -1,5 +1,38 @@
 # Changelog
 
+## Unreleased — Journal entries are owned by an organization
+
+**Requires a migration (0039). No new environment variables.**
+
+- `journal_entries` had **no ownership column at all** — not `organization_id`,
+  not even `user_id` — and every journal route was a shared query. Listing
+  returned everyone's entries; fetching or updating by id worked on any row
+  regardless of who asked; the analytics endpoints aggregated across all
+  tenants.
+- Every journal read and write is now scoped to the caller's organization,
+  resolved from the authenticated server context (`owner_scope`). Nothing a
+  client sends takes part in deciding what it can see.
+- **Cross-organization ids answer 404, not 403**, and with the same detail
+  string a nonexistent id gets — a 403 would confirm the row exists.
+  Ownership is part of the lookup rather than a check afterwards.
+- **Migration 0039 does not guess.** `organization_id` is nullable and stays
+  that way: a pre-ownership entry's author is not recoverable from the row.
+  The backfill assigns existing entries only when there is **exactly one**
+  personal organization (the single-operator case). With zero or several it
+  leaves them unattributed and raises a NOTICE with the count, because handing
+  one customer's trading journal to another is worse than leaving old rows
+  unowned.
+- **NULL is a scope, not a wildcard.** Unattributed rows match only the
+  single-operator scope used when auth is disabled, so they are invisible to
+  every organization-scoped query and fail closed.
+- `list_entries` no longer swallows an auth failure into
+  `{"entries": [], "error": ...}`. Rendering "you are not allowed to see this"
+  as "you have nothing" reads as a safe value and is not one.
+
+Isolation for `trades` is **not** in this change — the model is read by eight
+route modules (analytics, portfolio, risk, rotation, strategy, paper_trade,
+research, trade_desk) and warrants its own batch.
+
 ## Unreleased — Strategy validation requires traceable evidence
 
 - **Hardcoded metrics can no longer validate a strategy.** The Research Lab UI
