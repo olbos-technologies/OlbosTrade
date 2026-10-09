@@ -42,8 +42,18 @@ async def get_strategy_config():
 
 @router.put("/config")
 async def update_strategy_config(config: StrategyConfig):
-    return {"updated": True, "strategy": config.strategy,
-            "message": "Use /api/mode/set to change the active trading mode and strategy set."}
+    """
+    No-op stub retained for backwards compatibility with older clients.
+    Per-strategy enable/disable is governed by the trading mode, not by this
+    endpoint. Use POST /api/mode/set to change the active mode and strategy set.
+    """
+    raise HTTPException(
+        status_code=410,
+        detail={
+            "message": "This endpoint is deprecated and has no effect.",
+            "action": "Use POST /api/mode/set to change the active trading mode and strategy set.",
+        },
+    )
 
 
 @router.get("/signals/current")

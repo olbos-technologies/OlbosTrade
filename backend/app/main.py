@@ -64,6 +64,8 @@ async def _yf_bars(ticker: str, limit: int = 60) -> list:
 
     return await loop.run_in_executor(None, _fetch)
 
+from contextlib import asynccontextmanager
+
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -112,11 +114,20 @@ logger = get_logger(__name__)
 # immediately, so existing installs are unchanged.
 from app.api.auth_deps import require_session  # noqa: E402
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """FastAPI lifespan handler — replaces the deprecated @app.on_event pattern."""
+    await _on_startup()
+    yield
+    await _on_shutdown()
+
+
 app = FastAPI(
     title="OlbosTrade",
     version="4.0.0",
     description="Blessed prosperity through disciplined, rules-based quantitative trading.",
     dependencies=[Depends(require_session)],
+    lifespan=lifespan,
 )
 
 _ALLOWED_ORIGINS = [
@@ -289,22 +300,10 @@ def _log_auth_posture() -> None:
         "unlimited tier limits. Do not remove Basic Auth while this reads OFF."
     )
 
-@app.on_event("startup")
-async def on_startup() -> None:
+# ── Startup / shutdown (called from the lifespan context manager above) ─────
+async def _on_startup() -> None:
     global _current_regime, _greeks_tracker
 
-    # 0. Say out loud whether this instance is guarded.
-    #
-    # Belt and braces for the same problem docker-compose.hetzner.yml guards:
-    # auth_enabled defaults to False, so an absent or misspelled AUTH_ENABLED
-    # is indistinguishable from choosing to turn it off — the app starts
-    # healthy and serves normally either way. Compose now refuses to start
-    # without an explicit value, but compose is not the only way this runs,
-    # and a log line is readable after the fact when a shell history is not.
-    #
-    # Logged at WARNING when off, because "no application authentication" is
-    # not routine information on a service that can reach a broker, and INFO
-    # scrolls past.
     _log_auth_posture()
 
     # 1. Initialize broker and connect
@@ -332,6 +331,20 @@ async def on_startup() -> None:
         # trading after the kill switch was engaged.
         await kill_switch_service.rehydrate()
         logger.info("Kill switch wired to broker (engaged=%s)", kill_switch_service.is_engaged)
+
+        # Rehydrate EmotionGuard from the latest PortfolioSnapshot so a process
+        # restart picks up the pre-restart consecutive-loss count and any active
+        # pause. Fail-soft: a missing snapshot or DB error starts the guard fresh
+        # (no consecutive losses, no pause) — never blocks trading.
+        try:
+            from app.services.unified_risk import emotion_guard as _eg
+            await _eg.rehydrate_from_db()
+            logger.info(
+                "EmotionGuard rehydrated — consecutive_losses=%d paused_until=%s",
+                _eg.state.consecutive_losses, _eg.state.paused_until,
+            )
+        except Exception as _eg_exc:
+            logger.warning("EmotionGuard rehydrate failed (starting fresh): %s", _eg_exc)
 
         # Restore execution mode (manual/copilot/autopilot) from the DB so a
         # restart can't silently reset an operator's chosen mode back to default.
@@ -397,13 +410,17 @@ async def on_startup() -> None:
         logger.warning("IBKR Live data broker init skipped (non-fatal): %s", exc)
 
 
-@app.on_event("shutdown")
-async def on_shutdown() -> None:
-    """Cleanup the IBKR Live Data broker on shutdown."""
+async def _on_shutdown() -> None:
+    """Cleanup the IBKR Live Data broker and coordinator workers on shutdown."""
     try:
         await ibkr_live.shutdown_ibkr_live()
     except Exception as exc:
         logger.warning("IBKR Live data broker shutdown failed: %s", exc)
+    try:
+        from app.broker.ibkr_coordinator import ibkr_coordinator
+        await ibkr_coordinator.stop()
+    except Exception as exc:
+        logger.warning("IBKR coordinator shutdown failed: %s", exc)
 
 
 async def _guarded(coro, name: str, timeout: float) -> None:
@@ -1401,7 +1418,7 @@ async def _run_options_scan(symbol: str = "SPY", execute: bool = True) -> Option
         from app.services.options_pricer import BlackScholesPricer
         from app.services.trading_mode import trading_mode_manager
         from app.services.strategy_engine import (
-            BullPutSpread, BearCallSpread, IronCondor, BullCallDebitSpread,
+            BullPutSpread, BearCallSpread, IronCondor, BullCallDebitSpread, BearPutSpread,
         )
         from app.services.equity_signal_engine import compute_indicators
         from app.api.routes.trade_desk import _fetch_portfolio_state, RiskGateError
@@ -1411,6 +1428,7 @@ async def _run_options_scan(symbol: str = "SPY", execute: bool = True) -> Option
             "bear_call_spread":       BearCallSpread,
             "iron_condor":            IronCondor,
             "bull_call_debit_spread": BullCallDebitSpread,
+            "bear_put_spread":        BearPutSpread,
         }
 
         pricer     = BlackScholesPricer()
@@ -1570,13 +1588,18 @@ async def _run_options_scan(symbol: str = "SPY", execute: bool = True) -> Option
             await _record_options_rejection(symbol, _confluence_reject, strategy_name)
             return None
 
-        is_debit = strategy_name == "bull_call_debit_spread"
+        is_debit = strategy_name in ("bull_call_debit_spread", "bear_put_spread")
         is_call  = strategy_name in ("bear_call_spread", "bull_call_debit_spread")
         opt_type = "call" if is_call else "put"
 
         short_strike = signal_obj.short_strike
+        # Fallback when signal didn't populate long_strike:
+        # bull_call_debit / bear_call: long leg is ABOVE short leg → +10
+        # bear_put_spread:             long leg (ATM) is ABOVE short leg (0.20δ) → +10
+        # bull_put / iron_condor put side: long leg is BELOW short leg → -10
         long_strike  = signal_obj.long_strike or (
-            short_strike + 10.0 if is_call else short_strike - 10.0
+            short_strike + 10.0 if (is_call or strategy_name == "bear_put_spread")
+            else short_strike - 10.0
         )
         spread_width = abs(short_strike - long_strike)
         best_short_delta = signal_obj.target_delta or 0.20
@@ -1826,7 +1849,14 @@ async def _run_options_scan(symbol: str = "SPY", execute: bool = True) -> Option
             except Exception as _intel_exc:
                 logger.debug("Options intelligence failed: %s", _intel_exc)
 
-        if is_debit:
+        if strategy_name == "bear_put_spread":
+            # Bear-put debit: long ATM put, short lower-strike put.
+            # Breakeven = long_strike − net_debit (stock must fall below this).
+            # credit_per_share < 0 for a debit, so: long_strike + credit_per_share.
+            breakeven = round(long_strike + credit_per_share, 2)
+        elif is_debit:
+            # Bull-call debit: long ATM call, short higher-strike call.
+            # Breakeven = long_strike + net_debit (stock must rise above this).
             breakeven = round(long_strike - credit_per_share, 2)
         elif is_call:
             breakeven = round(short_strike + credit_per_share, 2)
@@ -2275,6 +2305,32 @@ async def _poll_fills() -> None:
                     "source=ibkr_execution",
                     tid, underlying, exit_price, resolved_reason,
                 )
+
+                # Notify EmotionGuard so the consecutive-loss counter and tilt
+                # score stay current.  Fail-soft: a guard error never prevents
+                # the fill from being recorded (record_exit already returned).
+                try:
+                    spread_type = (getattr(trade, "spread_type", "") or "").lower()
+                    is_equity   = (getattr(trade, "strategy", "") == "equity") or spread_type.startswith("equity")
+                    multiplier  = 1 if is_equity else 100
+                    qty         = int(getattr(trade, "quantity", None) or 1)
+                    entry       = float(trade.credit_received or 0)
+                    if spread_type == "equity_short":
+                        pnl = (entry - exit_price) * qty * multiplier
+                    elif is_equity:
+                        pnl = (exit_price - entry) * qty * multiplier
+                    else:
+                        pnl = (entry - exit_price) * qty * multiplier
+                    from app.services.unified_risk import emotion_guard as _eg
+                    _eg.record_trade(
+                        was_loss=pnl < 0,
+                        position_size=abs(entry * qty * multiplier),
+                        baseline_size=max(abs(entry * qty * multiplier), 1.0),
+                    )
+                    await _eg._persist_to_db()
+                except Exception as _eg_exc:
+                    logger.warning("EmotionGuard.record_trade failed: %s", _eg_exc)
+
                 continue
 
             # No reliable exit price yet — wait within the grace window before

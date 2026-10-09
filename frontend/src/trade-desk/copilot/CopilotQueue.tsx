@@ -17,12 +17,25 @@ import {
   lifecycleLabel,
 } from "../executionStatus";
 
+function signalAge(queuedAt: string | null | undefined): string {
+  if (!queuedAt) return "";
+  const deltaMs = Date.now() - Date.parse(queuedAt);
+  if (Number.isNaN(deltaMs) || deltaMs < 0) return "";
+  const s = Math.floor(deltaMs / 1000);
+  if (s < 60) return `${s}s ago`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
+}
+
 export default function CopilotQueue() {
   const [pending, setPending] = useState<any[]>([]);
   const [log, setLog] = useState<any[]>([]);
   const [mode, setMode] = useState<string>("—");
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState<string | null>(null);
+  const [rejectingAll, setRejectingAll] = useState(false);
+  const [confirmClear, setConfirmClear] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // `showSkeleton` is only ever true for the very first load. A background
@@ -68,11 +81,25 @@ export default function CopilotQueue() {
     }
   };
 
+  const rejectAll = async () => {
+    setConfirmClear(false);
+    setRejectingAll(true);
+    setError(null);
+    try {
+      await (api.rejectAllPending() as any);
+      refresh();
+    } catch (e: any) {
+      setError(e?.message || "Bulk reject failed");
+    } finally {
+      setRejectingAll(false);
+    }
+  };
+
   const recent = log.slice(0, 40);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
-      <div className="desk-tool-rail" style={{ padding: "10px 16px", alignItems: "center", flexWrap: "wrap" }}>
+      <div className="desk-tool-rail" style={{ padding: "10px 16px", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
         <span className="panel-title">Copilot Queue</span>
         <Badge kind="tag" tone="var(--amber)">{`MODE ${mode}`}</Badge>
         {pending.length > 0 && (
@@ -81,6 +108,40 @@ export default function CopilotQueue() {
         <span style={{ fontFamily: "var(--mono)", fontSize: 10, color: "var(--ink-faint)", flex: 1 }}>
           Approve routes through existing OMS. Size edits require a new signal (no modify → re-eval yet).
         </span>
+        {pending.length > 1 && !confirmClear && (
+          <button
+            type="button"
+            className="btn-ghost"
+            style={{ padding: "4px 10px", fontSize: 10, color: "var(--red)", borderColor: "rgba(239,68,68,0.4)" }}
+            onClick={() => setConfirmClear(true)}
+          >
+            Reject All
+          </button>
+        )}
+        {confirmClear && (
+          <>
+            <span style={{ fontFamily: "var(--mono)", fontSize: 10, color: "var(--red)" }}>
+              Reject all {pending.length} pending?
+            </span>
+            <button
+              type="button"
+              className="btn-ghost"
+              disabled={rejectingAll}
+              style={{ padding: "4px 10px", fontSize: 10, color: "var(--red)", borderColor: "rgba(239,68,68,0.5)" }}
+              onClick={rejectAll}
+            >
+              {rejectingAll ? "Rejecting…" : "Confirm"}
+            </button>
+            <button
+              type="button"
+              className="btn-ghost"
+              style={{ padding: "4px 10px", fontSize: 10 }}
+              onClick={() => setConfirmClear(false)}
+            >
+              Cancel
+            </button>
+          </>
+        )}
         {/* Manual refresh does show the skeleton: the operator asked for it
             and wants to see that something happened. Only the silent 10s poll
             leaves the rows alone. Passing `refresh` directly here would hand
@@ -136,8 +197,12 @@ export default function CopilotQueue() {
       ) : (
         <div className="mission-list" style={{ overflowY: "auto", flex: "0 1 auto", maxHeight: "55%", padding: "6px 8px" }}>
           {pending.map((s: any) => {
-            const pop = s.intelligence?.pop;
-            const ev = s.intelligence?.expected_value;
+            // pop and expected_value may live at the top level (equity signals,
+            // scan-panel submissions) OR nested under intelligence (options
+            // scanner signals that went through SpreadIntelligence.as_dict()).
+            // Read top-level first; fall back to the nested path.
+            const pop = s.pop ?? s.intelligence?.pop ?? null;
+            const ev = s.expected_value ?? s.intelligence?.expected_value ?? null;
             const confidence = typeof s.confidence === "number" ? s.confidence : null;
             const progressVal = pop != null ? pop * 100 : confidence != null ? confidence * 100 : null;
             const progressTone = pop != null
@@ -154,9 +219,10 @@ export default function CopilotQueue() {
                   ? { prefix: "CONF", value: `${Math.round(confidence * 100)}%`, tone: progressTone }
                   : undefined;
 
+            const age = signalAge(s.queued_at);
             const subtitle = s.spread
-              ? `${s.spread.option_type?.toUpperCase()} ${s.spread.short_strike}/${s.spread.long_strike} · exp ${s.spread.expiration} · max loss $${s.spread.max_loss?.toFixed(2) ?? "—"}`
-              : `Equity · queued ${s.queued_at ? new Date(s.queued_at).toLocaleString() : "—"}`;
+              ? `${s.spread.option_type?.toUpperCase()} ${s.spread.short_strike}/${s.spread.long_strike} · exp ${s.spread.expiration} · max loss $${s.spread.max_loss?.toFixed(2) ?? "—"}${age ? ` · ${age}` : ""}`
+              : `Equity · queued ${s.queued_at ? new Date(s.queued_at).toLocaleString() : "—"}${age ? ` · ${age}` : ""}`;
 
             return (
               <MissionCard

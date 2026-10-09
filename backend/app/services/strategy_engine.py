@@ -464,6 +464,85 @@ class BullCallDebitSpread(BaseStrategy):
         return ExitDecision(should_exit=False, reason=None)
 
 
+class BearPutSpread(BaseStrategy):
+    """
+    Direction: Strong bearish
+    Entry: below SMA, RSI < 45, IV rank < 40 (debit is expensive at high IV)
+    Long: ATM put | Short: 0.20 delta put (lower strike)
+    DTE: 21–30 days
+    SUSPENDED in capital preservation mode.
+    """
+
+    DEFAULT_PARAMS = StrategyExitParams(profit_target_pct=0.75, dte_exit=10)
+
+    @property
+    def name(self) -> str:
+        return "bear_put_spread"
+
+    def generate_signal(self, chain, iv_rank, rsi, adx, above_sma20, vix, portfolio_state) -> Signal:
+        guardrail_status = self.guardrails.check_all(portfolio_state)
+        if not self.guardrails.is_strategy_allowed(self.name, guardrail_status):
+            return Signal(strategy=self.name, underlying=chain.underlying,
+                         direction="bearish", entry_allowed=False,
+                         reason="Debit spread suspended in capital preservation mode",
+                         iv_rank=iv_rank, rsi=rsi)
+
+        if iv_rank >= 40:
+            return Signal(strategy=self.name, underlying=chain.underlying,
+                         direction="bearish", entry_allowed=False,
+                         reason=f"IV rank too high for debit spread: {iv_rank:.1f} (need <40)",
+                         iv_rank=iv_rank, rsi=rsi)
+        if above_sma20:
+            return Signal(strategy=self.name, underlying=chain.underlying,
+                         direction="bearish", entry_allowed=False,
+                         reason="Price above 20-day SMA — no bearish bias",
+                         iv_rank=iv_rank, rsi=rsi)
+        if rsi >= 45:
+            return Signal(strategy=self.name, underlying=chain.underlying,
+                         direction="bearish", entry_allowed=False,
+                         reason=f"RSI not weak enough: {rsi:.1f} (need <45)",
+                         iv_rank=iv_rank, rsi=rsi)
+
+        underlying_price = float(chain.underlying_price)
+        long_strike  = round(underlying_price)            # ATM put (buy)
+        short_strike = self._find_strike_by_delta(chain, 0.20, "put")  # lower strike (sell)
+        if not short_strike:
+            return Signal(strategy=self.name, underlying=chain.underlying,
+                         direction="bearish", entry_allowed=False,
+                         reason="Could not find 0.20 delta put strike",
+                         iv_rank=iv_rank, rsi=rsi)
+
+        return Signal(
+            strategy=self.name, underlying=chain.underlying, direction="bearish",
+            entry_allowed=True, reason="All entry conditions met",
+            short_strike=short_strike, long_strike=float(long_strike),
+            expiration=chain.expiration, target_delta=0.20, iv_rank=iv_rank, rsi=rsi,
+        )
+
+    def size_position(self, signal, portfolio, guardrail_status) -> PositionSize:
+        multiplier = self.guardrails.get_position_size_multiplier(guardrail_status)
+        spread_width = abs((signal.long_strike or 0) - (signal.short_strike or 0))
+        max_loss = max(spread_width, 5.0) * 100
+        contracts = self.risk_manager.calculate_position_size(
+            portfolio.portfolio_value, max_loss,
+            risk_pct=_active_risk_pct(), size_multiplier=multiplier,
+        )
+        return PositionSize(contracts=contracts, risk_per_contract=max_loss,
+                           total_risk=contracts * max_loss, size_multiplier=multiplier)
+
+    def check_exit(self, entry_credit, current_value, dte_remaining, short_strike_breached) -> ExitDecision:
+        # entry_credit is actually net_debit paid for this debit spread
+        net_debit = abs(entry_credit)
+        current_profit_pct = (current_value - net_debit) / net_debit if net_debit else 0
+        if current_profit_pct >= self.params.profit_target_pct:
+            return ExitDecision(should_exit=True, reason=f"{self.params.profit_target_pct:.0%} max profit target reached")
+        if dte_remaining <= self.params.dte_exit:
+            return ExitDecision(should_exit=True, reason=f"{self.params.dte_exit} DTE time stop")
+        if current_value <= net_debit * 0.50:
+            return ExitDecision(should_exit=True, reason="50% loss stop hit", urgency="immediate")
+        return ExitDecision(should_exit=False, reason=None)
+
+
 def approve_trade(
     signal: Signal,
     portfolio_state: PortfolioState,

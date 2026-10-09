@@ -31,18 +31,19 @@ implemented.
 - **Mag-7:** AAPL, MSFT, NVDA, AMZN, META, GOOGL, TSLA
 - **Future expansion:** GLD, TLT, XLE, XLF, SMH, SOXX
 
-*Status:* the **equity** watchlist covers these. **Options spreads are SPY-only**
-today (the options spread engine is SPY-hardwired); the **CSP/covered-call
-screener runs across multiple underlyings**. Multi-underlying options *spreads*
-remain a roadmap item.
+*Status:* the **equity** watchlist covers these. **Options spread scanning covers
+the full equity watchlist** (SPY, QQQ, and all ~59 Nasdaq-100 members); the
+background options scanner ranks candidates by quality score and routes the
+best-scoring spread through execution each cycle. The **CSP/covered-call
+screener** runs the same watchlist via `/api/options/csp`.
 
 ## Supported strategies
 Bull put spread · bull call (debit) spread · bear call spread · bear put spread ·
 cash-secured put · covered call. **No** naked / unlimited / martingale.
 
-*Status:* bull-put, bear-call, iron-condor, bull-call-debit live. **Cash-secured
-put / covered call (wheel)** now live via the CSP module + `/api/options/csp` +
-CSP screener. **Bear-put spread** not yet implemented (roadmap).
+*Status:* bull-put, bear-call, iron-condor, bull-call-debit, **bear-put spread** all live.
+**Cash-secured put / covered call (wheel)** live via the CSP module + `/api/options/csp` +
+CSP screener.
 
 ## Trading modes
 - **Manual** — generate only, never execute.

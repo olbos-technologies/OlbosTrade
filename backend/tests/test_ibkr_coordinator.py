@@ -37,10 +37,7 @@ async def make_coordinator():
     yield _make
 
     for c in created:
-        if c._workers:
-            for w in c._workers:
-                w.cancel()
-            await asyncio.gather(*c._workers, return_exceptions=True)
+        await c.stop()  # cancels + awaits all workers; no-op when already stopped
 
 
 @pytest.mark.asyncio
@@ -381,3 +378,50 @@ async def test_every_account_summary_call_site_passes_a_dedup_key():
             if 'req_type="ACCOUNT_SUMMARY"' in line and 'key=' not in line:
                 offenders.append(f"{path.relative_to(root)}:{i}")
     assert not offenders, f"ACCOUNT_SUMMARY submitted without a dedup key: {offenders}"
+
+
+# ── stop() and lifespan shutdown ──────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_stop_cancels_and_awaits_all_workers(make_coordinator):
+    """stop() must cancel every worker task and leave _workers None."""
+    coord = make_coordinator(num_workers=3, num_reserved=1)
+    coord.start()
+    assert coord._workers is not None and len(coord._workers) == 3
+    tasks_before = list(coord._workers)
+
+    await coord.stop()
+
+    assert coord._workers is None
+    for t in tasks_before:
+        assert t.done(), f"worker task {t.get_name()} was not completed after stop()"
+
+
+@pytest.mark.asyncio
+async def test_stop_is_idempotent(make_coordinator):
+    """stop() on an already-stopped coordinator must not raise."""
+    coord = make_coordinator(num_workers=2, num_reserved=0)
+    coord.start()
+    await coord.stop()
+    # Second call must be a no-op, not a crash.
+    await coord.stop()
+
+
+@pytest.mark.asyncio
+async def test_lifespan_shutdown_calls_coordinator_stop():
+    """
+    The app lifespan's shutdown phase must call ibkr_coordinator.stop() so
+    worker tasks never outlive the event loop.
+
+    Guard: if _on_shutdown() is separated from coordinator.stop() by a refactor
+    that forgets to wire the call, this test fails rather than silently leaking.
+    """
+    from unittest.mock import AsyncMock, patch
+    import app.main as main_mod
+    from app.broker.ibkr_coordinator import ibkr_coordinator
+
+    with patch.object(main_mod.ibkr_live, "shutdown_ibkr_live", new=AsyncMock()), \
+         patch.object(ibkr_coordinator, "stop", new=AsyncMock()) as mock_stop:
+        await main_mod._on_shutdown()
+        mock_stop.assert_awaited_once()
+

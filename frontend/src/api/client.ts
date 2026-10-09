@@ -132,7 +132,6 @@ export const api = {
   // ── Paper Trading ─────────────────────────────────────────────────────────
   getPositions: () => request("/api/paper-trade/positions"),
   getPortfolio: () => request("/api/paper-trade/portfolio"),
-  toggleStrategy: (strategy: string) => request(`/api/paper-trade/toggle/${strategy}`, { method: "POST" }),
   getTradeHistory: (params?: { limit?: number; status?: string }) => {
     const q = new URLSearchParams();
     if (params?.limit != null) q.set("limit", String(params.limit));
@@ -215,7 +214,6 @@ export const api = {
   compareStrategySnapshots: (left: string, right: string) =>
     request(`/api/strategy/snapshots/compare?left=${encodeURIComponent(left)}&right=${encodeURIComponent(right)}`),
   getStrategyConfig: () => request("/api/strategy/config"),
-  updateStrategyConfig: (body: object) => request("/api/strategy/config", { method: "PUT", body: JSON.stringify(body) }),
   getCurrentSignals: () => request("/api/strategy/signals/current"),
   getSignalExplanation: (id: string) => request(`/api/strategy/signals/${id}/explanation`),
 
@@ -317,6 +315,7 @@ export const api = {
     request(`/api/trade-desk/approve/${id}`, { method: "POST" }),
   rejectSignal:        (id: string) =>
     request(`/api/trade-desk/reject/${id}`, { method: "POST" }),
+  rejectAllPending:    () => request("/api/trade-desk/reject-all", { method: "POST" }),
   getExecutionLog:     () => request("/api/trade-desk/execution-log"),
 
   // ── Mode Analytics ──────────────────────────────────────────────────────────

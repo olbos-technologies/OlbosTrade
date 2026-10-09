@@ -143,6 +143,20 @@ class IBKRRequestCoordinator:
             for i in range(self._num_workers)
         ]
 
+    async def stop(self) -> None:
+        """Cancel worker tasks and wait for them to finish.
+
+        Called during graceful shutdown (e.g. test teardown or app lifespan
+        exit) so tasks don't linger as "destroyed but pending" after the event
+        loop is torn down.
+        """
+        if not self._workers:
+            return
+        for w in self._workers:
+            w.cancel()
+        await asyncio.gather(*self._workers, return_exceptions=True)
+        self._workers = None
+
     async def submit(
         self,
         priority: Priority,

@@ -6,7 +6,7 @@ All signals pass through the UnifiedRiskEngine before execution.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -131,16 +131,6 @@ async def list_equity_signals(limit: int = 150):
             seen.add(ticker)
         deduped.append(sig)
     return {"signals": deduped[:limit], "total": len(deduped)}
-
-
-@router.post("/signals/{signal_id}/approve")
-async def approve_signal(signal_id: str):
-    """Manually approve a pending equity signal."""
-    for sig in _recent_signals:
-        if sig.get("id") == signal_id:
-            sig["approved_at"] = datetime.now(timezone.utc).isoformat()
-            return {"status": "approved", "signal": sig}
-    raise HTTPException(status_code=404, detail=f"Signal {signal_id} not found")
 
 
 @router.get("/positions")

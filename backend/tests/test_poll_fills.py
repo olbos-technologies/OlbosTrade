@@ -243,7 +243,9 @@ async def test_broker_detected_close_cancels_the_orphaned_bracket():
          patch("app.core.database.AsyncSessionLocal",
                return_value=_sequenced_session([trade], [])), \
          patch.object(m, "_compute_exit_price", return_value=41.5), \
-         patch.object(trade_recorder, "record_exit", new=AsyncMock()) as rec:
+         patch.object(trade_recorder, "record_exit", new=AsyncMock()) as rec, \
+         patch("app.services.unified_risk.emotion_guard._persist_to_db",
+               new=AsyncMock()):
         await m._poll_fills()
 
     rec.assert_awaited_once()
@@ -265,7 +267,9 @@ async def test_cancel_skipped_while_another_trade_is_still_open_on_the_symbol():
          patch("app.core.database.AsyncSessionLocal",
                return_value=_sequenced_session([closing], [survivor])), \
          patch.object(m, "_compute_exit_price", return_value=300.0), \
-         patch.object(trade_recorder, "record_exit", new=AsyncMock()):
+         patch.object(trade_recorder, "record_exit", new=AsyncMock()), \
+         patch("app.services.unified_risk.emotion_guard._persist_to_db",
+               new=AsyncMock()):
         await m._poll_fills()
 
     broker.cancel_open_orders.assert_not_called()
@@ -285,7 +289,9 @@ async def test_symbol_the_broker_still_holds_is_never_cancelled():
                return_value=_sequenced_session([gone, held], [])), \
          patch.object(m, "_compute_exit_price", return_value=277.0), \
          patch.object(trade_recorder, "record_exit", new=AsyncMock()), \
-         patch.object(trade_recorder, "update_excursion", new=AsyncMock()):
+         patch.object(trade_recorder, "update_excursion", new=AsyncMock()), \
+         patch("app.services.unified_risk.emotion_guard._persist_to_db",
+               new=AsyncMock()):
         await m._poll_fills()
 
     cancelled = [c.args[0] for c in broker.cancel_open_orders.await_args_list]
@@ -324,7 +330,9 @@ async def test_a_failed_cancel_does_not_abort_reconciliation():
          patch("app.core.database.AsyncSessionLocal",
                return_value=_sequenced_session([trade], [])), \
          patch.object(m, "_compute_exit_price", return_value=820.0), \
-         patch.object(trade_recorder, "record_exit", new=AsyncMock()) as rec:
+         patch.object(trade_recorder, "record_exit", new=AsyncMock()) as rec, \
+         patch("app.services.unified_risk.emotion_guard._persist_to_db",
+               new=AsyncMock()):
         await m._poll_fills()   # must not raise
 
     rec.assert_awaited_once()

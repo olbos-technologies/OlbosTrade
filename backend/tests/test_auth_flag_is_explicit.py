@@ -186,7 +186,7 @@ def test_the_posture_is_logged_before_anything_else_starts(caplog):
 
     import app.main as main_mod
 
-    src = inspect.getsource(main_mod.on_startup)
+    src = inspect.getsource(main_mod._on_startup)
     # Comments dropped, and the `global` declaration with them: it names
     # _greeks_tracker on the first line without doing any startup work, so
     # comparing against it measured nothing. Found by this test failing

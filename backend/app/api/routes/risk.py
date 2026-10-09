@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select, func, and_, case
 
-from app.api.deps import require_api_key_configured
+from app.api.deps import require_api_key, require_api_key_configured
 from app.api.rate_limit import rate_limit
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
@@ -219,7 +219,7 @@ async def get_reconciliation_history(limit: int = 20):
     }
 
 
-@router.post("/reconciliation/run")
+@router.post("/reconciliation/run", dependencies=[Depends(require_api_key), Depends(rate_limit)])
 async def run_reconciliation():
     """
     Force a fresh reconciliation against the active broker and persist the result.

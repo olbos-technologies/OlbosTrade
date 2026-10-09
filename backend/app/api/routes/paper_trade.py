@@ -7,7 +7,7 @@ import asyncio
 from datetime import date, datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import select, func, and_, case
 
 from app.broker.broker_factory import get_broker
@@ -338,11 +338,18 @@ async def get_trade_history(
 
 @router.post("/toggle/{strategy}")
 async def toggle_strategy(strategy: str):
-    return {
-        "strategy": strategy,
-        "toggled":  True,
-        "message":  "Use /api/mode/set to change active trading mode and allowed strategies.",
-    }
+    """
+    No-op stub retained for backwards compatibility with older clients.
+    Per-strategy enable/disable is governed by the trading mode, not by this
+    endpoint. Use POST /api/mode/set to change the active mode and strategy set.
+    """
+    raise HTTPException(
+        status_code=410,
+        detail={
+            "message": "This endpoint is deprecated and has no effect.",
+            "action": "Use POST /api/mode/set to change the active trading mode and allowed strategies.",
+        },
+    )
 
 
 # ── Greeks summary ────────────────────────────────────────────────────────────

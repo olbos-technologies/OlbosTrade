@@ -16,8 +16,8 @@ from app.api.routes.trade_desk import (
     ClosePositionRequest, ManualTradeRequest, KillSwitchRequest, SetExecutionModeRequest,
     RiskGateError, _execute_signal, _fetch_portfolio_state, approve_signal,
     close_position, get_execution_log, get_execution_mode, get_kill_switch,
-    get_pending, handle_signal, manual_trade, reject_signal, set_execution_mode,
-    set_kill_switch,
+    get_pending, handle_signal, manual_trade, reject_all_pending, reject_signal,
+    set_execution_mode, set_kill_switch,
 )
 from app.services.execution_mode import ExecutionMode
 from app.services.guardrails import PortfolioState
@@ -103,7 +103,8 @@ async def test_kill_switch_get_set():
                "flatten_statuses": {}, "errors": []}
     with patch.object(td.kill_switch_service, "engage",
                       new=AsyncMock(return_value=_report)), \
-         patch.object(td.kill_switch_service, "reset", new=AsyncMock()):
+         patch.object(td.kill_switch_service, "reset",
+                      new=AsyncMock(return_value={"reset": True})):
         out = await set_kill_switch(KillSwitchRequest(engaged=True))
         assert out["engaged"] is True
         await set_kill_switch(KillSwitchRequest(engaged=False))
@@ -175,6 +176,49 @@ async def test_reject_signal_not_found():
     with patch.object(td, "_resolve_pending_approval", new=AsyncMock(return_value=None)):
         with pytest.raises(Exception):
             await reject_signal("nope")
+
+
+@pytest.mark.asyncio
+async def test_reject_all_pending_bulk_rejects():
+    """reject_all_pending() should mark every pending row rejected and log each one."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+    from types import SimpleNamespace
+
+    # Build two fake pending ExecutionEvent rows.
+    def _make_row(signal_id, ticker, action):
+        row = MagicMock()
+        row.signal_id = signal_id
+        row.payload = {"ticker": ticker, "action": action, "asset_type": "equity"}
+        row.status = "pending"
+        return row
+
+    rows = [_make_row("s1", "SPY", "BUY"), _make_row("s2", "QQQ", "SELL")]
+
+    # Patch the DB session so we never touch a real DB.
+    mock_session = AsyncMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=False)
+    mock_session.begin = MagicMock(return_value=mock_session)
+    mock_session.execute = AsyncMock(
+        return_value=MagicMock(scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=rows))))
+    )
+
+    # AsyncSessionLocal is imported locally inside reject_all_pending so we
+    # patch it at the source module rather than on the trade_desk module.
+    with patch("app.core.database.AsyncSessionLocal", return_value=mock_session), \
+         patch.object(td, "_log_execution", new=AsyncMock()) as log_mock:
+        result = await reject_all_pending()
+
+    assert result["rejected"] == 2
+    assert log_mock.await_count == 2
+    # Every row should have its status flipped.
+    for row in rows:
+        assert row.status == "rejected"
+    # Log entries must carry the right rejection marker.
+    logged_tickers = {call.args[0]["ticker"] for call in log_mock.await_args_list}
+    assert logged_tickers == {"SPY", "QQQ"}
+    for call in log_mock.await_args_list:
+        assert call.args[0]["rejected_by"] == "user:bulk"
 
 
 # ── manual trade + execution log ──────────────────────────────────────────────────

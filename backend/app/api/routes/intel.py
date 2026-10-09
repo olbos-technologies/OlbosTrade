@@ -10,8 +10,10 @@ from __future__ import annotations
 
 import asyncio
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
+
+from app.api.deps import require_api_key
 
 from app.services.event_risk_service import _days_to_next_earnings
 from app.api.tier_deps import cap_watchlist, cap_watchlists
@@ -73,13 +75,13 @@ async def watchlist_detail(slug: str, request: Request):
 # so the next one added cannot quietly skip it.
 
 
-@router.post("/watchlists")
+@router.post("/watchlists", dependencies=[Depends(require_api_key)])
 async def create_watchlist(body: CreateWatchlist, request: Request):
     return cap_watchlist(
         request, await wl.create_watchlist(body.name, body.description, body.symbols))
 
 
-@router.post("/watchlists/{slug}/symbols")
+@router.post("/watchlists/{slug}/symbols", dependencies=[Depends(require_api_key)])
 async def add_symbol(slug: str, body: AddSymbol, request: Request):
     w = await wl.add_symbol(slug, body.symbol, body.asset_class)
     if not w:
@@ -87,7 +89,7 @@ async def add_symbol(slug: str, body: AddSymbol, request: Request):
     return cap_watchlist(request, w)
 
 
-@router.delete("/watchlists/{slug}/symbols/{symbol}")
+@router.delete("/watchlists/{slug}/symbols/{symbol}", dependencies=[Depends(require_api_key)])
 async def remove_symbol(slug: str, symbol: str, request: Request):
     w = await wl.remove_symbol(slug, symbol)
     if not w:
@@ -95,7 +97,7 @@ async def remove_symbol(slug: str, symbol: str, request: Request):
     return cap_watchlist(request, w)
 
 
-@router.delete("/watchlists/{slug}")
+@router.delete("/watchlists/{slug}", dependencies=[Depends(require_api_key)])
 async def delete_watchlist(slug: str):
     ok = await wl.delete_watchlist(slug)
     if not ok:
