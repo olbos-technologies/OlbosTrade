@@ -1,5 +1,29 @@
 # Changelog
 
+## Unreleased — Execution-mode changes state their durability
+
+- Raising automation (Manual → Copilot → Autopilot) now **records the decision
+  before activating it**. Previously `set_mode` mutated the runtime first and
+  swallowed the write's failure, so a database outage produced a live Autopilot
+  and an ordinary success response — the machine trading automatically on a
+  decision nothing durably held. A failed write now leaves the mode unchanged
+  and the route answers `503` instead of `200` with the old mode in the body.
+- Reducing automation, and engaging an emergency stop, still take effect
+  **immediately even during a database outage**. Making a safety reduction wait
+  for a database that may be the broken thing would be the same mistake with
+  the opposite sign. A reduction that could not be recorded is surfaced as
+  `persistence: "unconfirmed"` rather than logged and forgotten.
+- `summary()` now states durability explicitly: `confirmed`, `unavailable`
+  (requested but **not** in force), `unconfirmed` (in force, not recorded) or
+  `stale`, plus `requested_mode` when the two differ. A failed write used to be
+  indistinguishable from a successful one.
+- **Autopilot is no longer auto-restored on restart.** A reduction out of
+  Autopilot that failed to persist leaves the older, more permissive row newest
+  on disk, so restoring it would hand automation back silently as a side effect
+  of a restart. It now restores as Copilot — every signal is kept, a human is
+  still asked — with `restore_note` explaining why. **This is a behaviour
+  change: Autopilot must be re-engaged explicitly after a deploy.**
+
 ## Unreleased — Copilot approval is a single-use atomic claim
 
 - `_resolve_pending_approval` now claims a pending approval with one

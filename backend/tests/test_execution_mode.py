@@ -75,16 +75,53 @@ async def test_set_mode_persists_row():
 
 
 @pytest.mark.asyncio
-async def test_set_mode_persist_failure_is_non_fatal():
+async def test_escalation_is_refused_when_the_decision_cannot_be_recorded():
+    """Was test_set_mode_persist_failure_is_non_fatal, which asserted that a
+    failed write still changed the mode — the defect, written down as a
+    requirement. A database outage used to produce a live Autopilot and an
+    ordinary success response, trading automatically on a decision nothing
+    held. Raising automation now requires the record to exist first.
+    """
     mgr = ExecutionModeManager()
     with patch("app.core.database.AsyncSessionLocal", side_effect=Exception("db down")):
-        out = await mgr.set_mode(ExecutionMode.COPILOT)   # must not raise
-    assert out["mode"] == "copilot"
-    assert mgr.mode == ExecutionMode.COPILOT
+        out = await mgr.set_mode(ExecutionMode.AUTOPILOT)   # must not raise
+
+    assert mgr.mode is ExecutionMode.MANUAL, "automation engaged without a record"
+    assert out["mode"] == "manual"
+    assert out["requested_mode"] == "autopilot"
+    assert out["persistence"] == "unavailable"
+    assert out["persisted"] is False
+    assert "autopilot" in out["detail"].lower()
 
 
 @pytest.mark.asyncio
-async def test_rehydrate_restores_last_mode():
+async def test_a_reduction_takes_effect_even_when_the_database_is_down():
+    """The opposite sign of the same rule. Making a safety reduction wait for
+    a database that may be the broken thing would be the same mistake."""
+    mgr = ExecutionModeManager()
+    mgr._mode = ExecutionMode.AUTOPILOT
+    with patch("app.core.database.AsyncSessionLocal", side_effect=Exception("db down")):
+        out = await mgr.set_mode(ExecutionMode.MANUAL)
+
+    assert mgr.mode is ExecutionMode.MANUAL, "a stop was blocked by an outage"
+    assert out["mode"] == "manual"
+    assert out["persistence"] == "unconfirmed"
+    assert out["unconfirmed_reduction"] == "manual"
+    assert out["persisted"] is False
+
+
+@pytest.mark.asyncio
+async def test_a_recorded_escalation_reports_confirmed():
+    mgr = ExecutionModeManager()
+    with patch("app.core.database.AsyncSessionLocal", return_value=_session()):
+        out = await mgr.set_mode(ExecutionMode.AUTOPILOT, by="tester")
+    assert mgr.mode is ExecutionMode.AUTOPILOT
+    assert out["persistence"] == "confirmed" and out["persisted"] is True
+    assert "requested_mode" not in out
+
+
+@pytest.mark.asyncio
+async def test_rehydrate_does_not_silently_resume_autopilot():
     from datetime import datetime, timezone
     row = MagicMock(status="autopilot", created_at=datetime.now(timezone.utc),
                      payload={"changed_by": "tester"})
@@ -92,8 +129,14 @@ async def test_rehydrate_restores_last_mode():
     mgr = ExecutionModeManager()
     with patch("app.core.database.AsyncSessionLocal", return_value=_session(result)):
         await mgr.rehydrate()
-    assert mgr.mode == ExecutionMode.AUTOPILOT
+    # Autopilot is deliberately NOT auto-restored: a reduction out of it that
+    # failed to persist leaves the older, more permissive row newest on disk,
+    # and restoring it would hand automation back silently as a side effect of
+    # a restart. Copilot keeps every signal and still asks a human first.
+    assert mgr.mode == ExecutionMode.COPILOT
     assert mgr.summary()["changed_by"] == "tester"
+    assert mgr.summary()["persistence"] == "stale"
+    assert "re-engage" in mgr.summary()["restore_note"].lower()
 
 
 @pytest.mark.asyncio

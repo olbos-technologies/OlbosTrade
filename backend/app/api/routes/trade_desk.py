@@ -523,7 +523,20 @@ async def set_execution_mode(body: SetExecutionModeRequest):
         mode = ExecutionMode(body.mode)
     except ValueError:
         raise HTTPException(400, f"Invalid mode. Valid: manual, copilot, autopilot")
-    return await execution_mode_manager.set_mode(mode)
+    result = await execution_mode_manager.set_mode(mode)
+    if result.get("persistence") == "unavailable":
+        # The escalation was REFUSED, not applied. Returning 200 with the old
+        # mode in the body is how this used to read as success to a client
+        # that only checks the status code.
+        raise HTTPException(
+            503,
+            detail={
+                "error": "execution_mode_not_recorded",
+                "message": result.get("detail", "Mode change could not be recorded."),
+                **{k: result[k] for k in ("mode", "requested_mode") if k in result},
+            },
+        )
+    return result
 
 
 # ── Pending approvals (Copilot) ────────────────────────────────────────────────
