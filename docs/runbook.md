@@ -151,6 +151,107 @@ Wait for `✅ Update complete`, then check `/api/health/detail`.
 **Expect IBKR to need a moment after every deploy**, and occasionally a gateway
 restart — the container restart drops the broker connection.
 
+### Migrations run from the new image, before it starts serving
+
+`update.sh` does this itself now, and the order is the point:
+
+```
+[2/6] build          ← the new image, containing the new revision
+[3/6] alembic upgrade head   ← in a throwaway container from THAT image
+[4/6] up -d          ← only now does new code start serving
+[5/6] alembic current        ← verify, in case up -d recreated the database
+```
+
+It used to start containers at step 3 and migrate at step 4, so between them
+the new code was live against the old schema. For the position-claims table
+(`0040`) that meant Stage 3 failing closed — **new entries refused** — for the
+length of a deploy. Exits, fill polling, reconciliation and the kill switch
+were unaffected then and are unaffected now: nothing outside the entry path
+consults claims, and `test_only_the_entry_path_consults_the_claim` pins that.
+
+**Do not "pre-apply" a migration with `docker exec`.** An earlier version of
+this runbook said to run:
+
+```bash
+docker exec olbostrade-backend python3 -m alembic upgrade head   # ← WRONG
+```
+
+That executes inside the container **still running the old image**, which does
+not contain a revision that arrives with this deploy. It exits 0 having
+applied nothing, and reports success. A command that looks like it closed the
+window and did not is worse than no command, because it is believed. The
+migration has to come from the image just built, which is what step 3 does:
+
+```bash
+docker compose -f docker-compose.hetzner.yml run --rm --no-deps backend \
+  python3 -m alembic upgrade head
+```
+
+`--no-deps` because `olbostrade-db` is already up in a normal deploy and must
+not be recreated underneath the running backend. If the database is *not* up,
+start it first with `up -d olbostrade-db` rather than dropping `--no-deps`.
+
+#### If the migration fails
+
+The deploy stops at step 3, before any new container starts. `set -euo
+pipefail` is on and that line is deliberately unguarded, so the old image
+keeps serving the schema it was built for — a working system, not a degraded
+one. Fix the migration and re-run; there is nothing to roll back, because
+nothing was swapped.
+
+If new code is *already* serving without its table (someone ran the old
+ordering, or step 4 recreated the database), entries refuse with
+`entry_guard_unavailable` while monitoring and exits keep working. That is the
+safe direction but not a state to sit in: apply the migration, or roll the
+image back.
+
+#### Unresolved position claims
+
+A claim in `submitted` or `unknown` blocks **new entries** on that position
+(exits, fill polling, reconciliation and the kill switch are unaffected).
+Two things clear them.
+
+**Automatically**, if the broker can answer. A sweep runs at startup and every
+5 minutes, asks the broker whether it holds an order carrying the claim's
+`client_order_id`, and releases the claim only on an authoritative "no such
+order" past a 120-second settle window. Everything else leaves it blocked.
+Look for `Claim reconciliation sweep` in the logs.
+
+It cannot answer for:
+
+| case | why |
+|---|---|
+| IBKR claims | no client-id lookup, so absence is never established |
+| **equity** claims | `place_equity_order` sends no client id, so nothing carries the key |
+| broker unreachable, 5xx, 429, timeout | not an answer |
+| the order is real | correctly held for position reconciliation |
+
+When a sweep exhausts its retries it logs **CRITICAL** naming each blocked
+position and pointing here.
+
+**By hand**, for the ones it cannot. Authenticated, audited, and it records
+who and why in `execution_events` (kind `claim_override`) in the same
+transaction as the release:
+
+```bash
+# What is blocking entries
+curl -s -b "$SESSION_COOKIE" https://<host>/api/admin/position-claims | jq
+
+# Clear one, once the order's fate is actually known
+curl -s -b "$SESSION_COOKIE" -X POST \
+  https://<host>/api/admin/position-claims/<claim_token>/release \
+  -H 'Content-Type: application/json' \
+  -d '{"reason":"venue confirmed no fill by phone"}'
+```
+
+The reason is required and cannot be blank. Identity comes from the session,
+never from the request body — **with `AUTH_ENABLED` off there is no identity
+to record and the release is refused with 403**, because an override
+attributed to nobody is not an audit trail. Releasing re-opens the position to
+a new entry, so only do it once you know the order did not fill.
+
+---
+
 ---
 
 ## Things that are true and easy to get wrong

@@ -556,7 +556,7 @@ def _dup_session(existing=None):
 
 
 @pytest.mark.asyncio
-async def test_options_execution_submits_and_records():
+async def test_options_execution_submits_and_records(stub_position_claim):
     broker = MagicMock()
     broker.place_order = AsyncMock(return_value=MagicMock(order_id="ORD-9", status="submitted"))
     with patch("app.api.routes.trade_desk._fetch_portfolio_state", new=AsyncMock(return_value=_clean())), \
@@ -594,7 +594,7 @@ async def test_market_closed_blocks_order():
 
 
 @pytest.mark.asyncio
-async def test_options_record_failure_still_submits():
+async def test_options_record_failure_still_submits(stub_position_claim):
     # broker fills but DB record fails (None) → still 'submitted', critical-log path
     broker = MagicMock()
     broker.place_order = AsyncMock(return_value=MagicMock(order_id="ORD-X", status="submitted"))
@@ -609,7 +609,7 @@ async def test_options_record_failure_still_submits():
 
 
 @pytest.mark.asyncio
-async def test_options_place_order_timeout_records_pending_not_lost():
+async def test_options_place_order_timeout_records_pending_not_lost(stub_position_claim):
     """The coordinator's wait_for can time out while the real IBKR call
     (shielded, still running) later fills — this must not be a silent lost
     fill: a pending Trade row has to get written so _poll_fills() can later
@@ -633,7 +633,7 @@ async def test_options_place_order_timeout_records_pending_not_lost():
 
 
 @pytest.mark.asyncio
-async def test_options_place_order_timeout_and_record_failure_logs_critical():
+async def test_options_place_order_timeout_and_record_failure_logs_critical(stub_position_claim):
     """Belt-and-suspenders: even the pending-row write can fail (DB down) —
     must not raise, just log critical, since a real order may be in flight
     at the broker with zero remaining trace of it."""
@@ -651,7 +651,7 @@ async def test_options_place_order_timeout_and_record_failure_logs_critical():
 
 
 @pytest.mark.asyncio
-async def test_equity_place_order_timeout_records_pending_not_lost():
+async def test_equity_place_order_timeout_records_pending_not_lost(stub_position_claim):
     broker = MagicMock()
     broker.get_latest_quote = AsyncMock(return_value=MagicMock(ask_price=150.5, bid_price=150.0))
     sig = _equity_signal(source="equity_desk_composer", confidence=None, kelly_fraction=None)
@@ -685,7 +685,7 @@ async def test_duplicate_open_trade_skipped():
 
 
 @pytest.mark.asyncio
-async def test_duplicate_guard_allows_other_asset_class_same_underlying():
+async def test_duplicate_guard_allows_other_asset_class_same_underlying(stub_position_claim):
     """Open SPY equity must not block a new SPY options signal (and vice versa)."""
     equity_open = MagicMock()
     equity_open.id = "eq-1"
@@ -709,12 +709,13 @@ async def test_duplicate_guard_allows_other_asset_class_same_underlying():
 
 
 def _dup_and_cooldown_session(dup_existing=None, cooldown_existing=None):
-    """Three sequential AsyncSessionLocal() calls happen before Stage 3b can
+    """Four sequential AsyncSessionLocal() calls happen before Stage 3b can
     run: Stage 2b's own portfolio-risk-state read (check_execution_portfolio
     -> load_portfolio_risk_state, independent of the _fetch_portfolio_state
-    mock used for Stage 2), then Stage 3 (open/pending duplicate guard),
-    then Stage 3b (closed/cooldown). session.execute must answer them in
-    that order."""
+    mock used for Stage 2), then Stage 3's duplicate guard TWICE — once
+    before taking the position claim and once after winning it, because a
+    trade can be recorded by another caller in between — then Stage 3b
+    (closed/cooldown). session.execute must answer them in that order."""
     session = AsyncMock()
     session.__aenter__ = AsyncMock(return_value=session)
     session.__aexit__ = AsyncMock(return_value=False)
@@ -730,7 +731,8 @@ def _dup_and_cooldown_session(dup_existing=None, cooldown_existing=None):
     dup_result.scalars.return_value = MagicMock(all=lambda: dup_rows)
     cd_result = MagicMock()
     cd_result.scalars.return_value = MagicMock(all=lambda: cd_rows)
-    session.execute = AsyncMock(side_effect=[portfolio_result, dup_result, cd_result])
+    session.execute = AsyncMock(
+        side_effect=[portfolio_result, dup_result, dup_result, cd_result])
     return session
 
 
@@ -749,7 +751,7 @@ def _closed_trade(underlying="SPY", asset_class="options", exit_date=None):
 
 
 @pytest.mark.asyncio
-async def test_cooldown_blocks_recently_closed_same_ticker_same_asset_class():
+async def test_cooldown_blocks_recently_closed_same_ticker_same_asset_class(stub_position_claim):
     closed = _closed_trade(exit_date=datetime.now(timezone.utc) - timedelta(minutes=30))
     with patch("app.api.routes.trade_desk._fetch_portfolio_state", new=AsyncMock(return_value=_clean())), \
          patch("app.api.routes.trade_desk._is_kill_switch_active", return_value=False), \
@@ -762,7 +764,7 @@ async def test_cooldown_blocks_recently_closed_same_ticker_same_asset_class():
 
 
 @pytest.mark.asyncio
-async def test_cooldown_allows_different_asset_class_same_underlying():
+async def test_cooldown_allows_different_asset_class_same_underlying(stub_position_claim):
     """A closed SPY equity trade must not cooldown-block a new SPY options
     signal (and vice versa) — matches Stage 3's own asset-class carve-out."""
     closed_equity = _closed_trade(
@@ -784,7 +786,7 @@ async def test_cooldown_allows_different_asset_class_same_underlying():
 
 
 @pytest.mark.asyncio
-async def test_cooldown_allows_close_older_than_window():
+async def test_cooldown_allows_close_older_than_window(stub_position_claim):
     closed = _closed_trade(exit_date=datetime.now(timezone.utc) - timedelta(hours=3))
     broker = MagicMock()
     broker.place_order = AsyncMock(return_value=MagicMock(order_id="ORD-old", status="submitted"))
@@ -801,7 +803,7 @@ async def test_cooldown_allows_close_older_than_window():
 
 
 @pytest.mark.asyncio
-async def test_cooldown_disabled_skips_check():
+async def test_cooldown_disabled_skips_check(stub_position_claim):
     closed = _closed_trade(exit_date=datetime.now(timezone.utc) - timedelta(minutes=1))
     broker = MagicMock()
     broker.place_order = AsyncMock(return_value=MagicMock(order_id="ORD-off", status="submitted"))
@@ -815,13 +817,13 @@ async def test_cooldown_disabled_skips_check():
                new=AsyncMock(return_value="trade-off")):
         res = await _execute_signal(_options_signal(), approved_by="manual")
     assert res["result"] == "submitted"
-    # Stage 2b's own portfolio-state read + Stage 3's dup check — Stage 3b's
-    # DB call never happens since the cooldown is disabled.
-    assert session.execute.call_count == 2
+    # Stage 2b's portfolio-state read + Stage 3's dup check before and after
+    # the claim. Stage 3b's DB call never happens: the cooldown is disabled.
+    assert session.execute.call_count == 3
 
 
 @pytest.mark.asyncio
-async def test_cooldown_check_db_error_fails_closed():
+async def test_cooldown_check_db_error_fails_closed(stub_position_claim):
     session = AsyncMock()
     session.__aenter__ = AsyncMock(return_value=session)
     session.__aexit__ = AsyncMock(return_value=False)
@@ -829,7 +831,10 @@ async def test_cooldown_check_db_error_fails_closed():
     portfolio_result.scalars.return_value = MagicMock(all=lambda: [])
     dup_result = MagicMock()
     dup_result.scalars.return_value = MagicMock(all=lambda: [])
-    session.execute = AsyncMock(side_effect=[portfolio_result, dup_result, RuntimeError("db down")])
+    # portfolio read, then Stage 3's duplicate read before AND after the
+    # claim, then Stage 3b's cooldown read — which is the one that fails.
+    session.execute = AsyncMock(
+        side_effect=[portfolio_result, dup_result, dup_result, RuntimeError("db down")])
     with patch("app.api.routes.trade_desk._fetch_portfolio_state", new=AsyncMock(return_value=_clean())), \
          patch("app.api.routes.trade_desk._is_kill_switch_active", return_value=False), \
          patch("app.core.config.settings.position_cooldown_hours", 2), \
@@ -852,7 +857,7 @@ def _equity_signal(**overrides):
 
 
 @pytest.mark.asyncio
-async def test_equity_desk_composer_order_bypasses_confidence_gate():
+async def test_equity_desk_composer_order_bypasses_confidence_gate(stub_position_claim):
     """Regression: a human-composed Equity Desk order (no AI signal behind
     it) must not be silently blocked by the AI-signal confidence gate —
     every mode's min_confidence exceeds a fabricated 0.5, so this order
@@ -912,7 +917,7 @@ async def test_1dte_autopilot_signal_also_blocked():
 
 
 @pytest.mark.asyncio
-async def test_2dte_autopilot_signal_not_blocked_by_0dte_gate():
+async def test_2dte_autopilot_signal_not_blocked_by_0dte_gate(stub_position_claim):
     """2 DTE clears the hard gate — must reach broker submission, not be
     silently swallowed by an off-by-one in the dte<=1 comparison."""
     broker = MagicMock()
@@ -930,7 +935,7 @@ async def test_2dte_autopilot_signal_not_blocked_by_0dte_gate():
 
 
 @pytest.mark.asyncio
-async def test_0dte_manual_approval_not_blocked_by_autopilot_gate():
+async def test_0dte_manual_approval_not_blocked_by_autopilot_gate(stub_position_claim):
     """0DTE stays available with a human in the loop — the gate only fires
     for approved_by=="autopilot", matching the UI's "Copilot or manual
     only" language."""
@@ -949,7 +954,7 @@ async def test_0dte_manual_approval_not_blocked_by_autopilot_gate():
 
 
 @pytest.mark.asyncio
-async def test_0dte_gate_does_not_apply_to_equity_signals():
+async def test_0dte_gate_does_not_apply_to_equity_signals(stub_position_claim):
     """Equity signals have no spread.dte at all — the gate must be a no-op
     for asset_type != "options", not raise on a missing key."""
     sig = _equity_signal(source="equity_desk_composer", confidence=0.05, action="BUY")
@@ -1007,7 +1012,7 @@ async def test_liquidity_gate_blocks_0dte_near_close():
 
 
 @pytest.mark.asyncio
-async def test_liquidity_gate_0dte_check_skipped_when_not_0dte():
+async def test_liquidity_gate_0dte_check_skipped_when_not_0dte(stub_position_claim):
     """minutes_to_close < 30 must not block a >1 DTE signal — the close-
     proximity check is scoped to dte<=1 only."""
     sig = _options_signal_liquidity(dte=5)
@@ -1025,7 +1030,7 @@ async def test_liquidity_gate_0dte_check_skipped_when_not_0dte():
 
 
 @pytest.mark.asyncio
-async def test_liquidity_gate_fails_open_on_missing_data():
+async def test_liquidity_gate_fails_open_on_missing_data(stub_position_claim):
     """The base _options_signal() fixture has no bid_ask_width_pct/
     open_interest/gamma keys at all (the yfinance/Black-Scholes fallback
     shape) — must reach broker submission, not be blocked for missing
@@ -1044,7 +1049,7 @@ async def test_liquidity_gate_fails_open_on_missing_data():
 
 
 @pytest.mark.asyncio
-async def test_liquidity_gate_passes_healthy_spread():
+async def test_liquidity_gate_passes_healthy_spread(stub_position_claim):
     sig = _options_signal_liquidity(bid_ask_width_pct=0.05, open_interest=500, gamma=0.01)
     broker = MagicMock()
     broker.place_order = AsyncMock(return_value=MagicMock(order_id="ORD-HEALTHY", status="submitted"))
@@ -1096,7 +1101,7 @@ def _acct_summary(*, is_stale: bool, age: float, maint: float = 10_000.0):
 
 
 @pytest.mark.asyncio
-async def test_margin_guard_is_skipped_when_account_values_are_stale():
+async def test_margin_guard_is_skipped_when_account_values_are_stale(stub_position_claim):
     """Stale figures are treated as absent, not as an all-clear.
 
     evaluate_margin must never even run: a frozen snapshot can be wrong in
@@ -1125,7 +1130,7 @@ async def test_margin_guard_is_skipped_when_account_values_are_stale():
 
 
 @pytest.mark.asyncio
-async def test_margin_guard_still_blocks_on_fresh_critical_figures():
+async def test_margin_guard_still_blocks_on_fresh_critical_figures(stub_position_claim):
     """Regression pin for the other direction: the staleness check must not
     have quietly disabled the guard for live data."""
     broker = MagicMock()

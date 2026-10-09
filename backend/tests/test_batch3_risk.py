@@ -128,7 +128,7 @@ async def test_execute_signal_blocks_iron_condor_in_preservation():
 
 
 @pytest.mark.asyncio
-async def test_execute_signal_allows_credit_spread_in_preservation():
+async def test_execute_signal_allows_credit_spread_in_preservation(stub_position_claim):
     """bull_put_spread must be allowed in capital_preservation mode."""
     from app.api.routes.trade_desk import _execute_signal
 

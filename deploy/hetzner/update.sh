@@ -18,25 +18,54 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo "  OlbosTrade — Updating"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-echo "[1/5] Pulling latest code..."
+echo "[1/6] Pulling latest code..."
 git pull origin main
 echo "      ✅ Code updated"
 
-echo "[2/5] Rebuilding containers..."
+echo "[2/6] Rebuilding containers..."
 docker compose -f docker-compose.hetzner.yml build --no-cache backend frontend
 echo "      ✅ Images rebuilt"
 
-echo "[3/5] Restarting containers..."
+echo "[3/6] Running migrations (new image, before it starts serving)..."
+# ORDER MATTERS, and it used to be wrong: containers were started first and
+# migrated afterwards, so between those two steps the new code was live
+# against the old schema. For an additive migration whose table the new code
+# reads, that window is the code running without something it needs.
+#
+# It has to be the NEW image. The migration only exists after the pull and
+# build above, so `docker exec olbostrade-backend` — the CONTAINER THAT IS
+# STILL RUNNING THE OLD IMAGE — cannot see it. That command reports success
+# having applied nothing, which is worse than failing.
+#
+# `run --rm --no-deps backend` makes a throwaway container from the image just
+# built, runs alembic in it and removes it, without touching what is serving.
+# --no-deps: olbostrade-db is already up in a normal deploy and must not be
+# recreated underneath the running backend. If the database is NOT up, start it
+# first (`up -d olbostrade-db`) rather than dropping --no-deps here.
+#
+# `set -e` is on and this is deliberately not guarded: if the migration fails,
+# the deploy stops HERE, before any new container starts. The old image keeps
+# serving against the schema it was built for, which is a working system. The
+# alternative — carrying on to `up -d` — is what puts new code on a schema
+# that does not match it.
+docker compose -f docker-compose.hetzner.yml run --rm --no-deps backend \
+  python3 -m alembic upgrade head
+echo "      ✅ Migrations applied"
+
+echo "[4/6] Restarting containers..."
 docker compose -f docker-compose.hetzner.yml up -d
 echo "      ✅ Containers restarted"
 
-echo "[4/5] Running migrations..."
-# Wait briefly for backend to come up
+echo "[5/6] Verifying the schema the new containers are serving against..."
+# The migration ran against the database before the containers started, so this
+# is a check, not a step: it should print the same head and change nothing.
+# It catches the case where `up -d` recreated the database (a volume change, a
+# compose edit) and silently rolled the schema back under the new code.
 sleep 5
-docker exec olbostrade-backend python3 -m alembic upgrade head
-echo "      ✅ Migrations applied"
+docker exec olbostrade-backend python3 -m alembic current
+echo "      ✅ Schema verified"
 
-echo "[5/5] Reclaiming build cache..."
+echo "[6/6] Reclaiming build cache..."
 # The build above passes --no-cache, so BuildKit writes every layer it produces
 # and then never reads any of it. Nothing collected that. By 2026-09-17 it had
 # reached 40.83GB across 185 entries — 51GB of /var/lib/containerd on a 75GB

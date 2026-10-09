@@ -36,6 +36,7 @@ from app.broker.broker_interface import (
     OptionContract,
     OptionsChain,
     OrderResult,
+    OrderLookup,
     Position,
     Quote,
     SpreadOrder,
@@ -345,6 +346,47 @@ class AlpacaClient(BrokerInterface):
             remaining_quantity=None,
             message=None,
         )
+
+    async def find_order_by_client_order_id(self, client_order_id: str) -> OrderLookup:
+        """Look an order up by the client id we supplied when placing it.
+
+        `/v2/orders:by_client_order_id` is indexed by client id, so a 404 from
+        it is a real statement about that id rather than an empty page of a
+        filtered list. That is what makes NOT_FOUND usable as evidence.
+
+        Everything else is UNDETERMINED, including a 5xx, a 429, a timeout, a
+        transport error and any 4xx we did not expect. "The broker did not
+        answer" must not arrive at the caller wearing the same clothes as "the
+        broker says no".
+
+        Note what this method does NOT know: whether the id was ever actually
+        sent to Alpaca. Equity orders here carry no client id, so a 404 for an
+        equity key means only that nothing was ever tagged with it. The caller
+        is responsible for that distinction — see services/claim_lookup.py.
+        """
+        url = f"{self._trading_base}/v2/orders:by_client_order_id"
+        try:
+            async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT_SECONDS) as client:
+                resp = await client.get(
+                    url, headers=self._headers,
+                    params={"client_order_id": client_order_id},
+                )
+        except Exception as exc:
+            logger.warning(
+                "Alpaca order lookup for %s could not be completed: %s",
+                client_order_id, exc,
+            )
+            return OrderLookup.UNDETERMINED
+
+        if resp.status_code == 200:
+            return OrderLookup.FOUND
+        if resp.status_code == 404:
+            return OrderLookup.NOT_FOUND
+        logger.warning(
+            "Alpaca order lookup for %s returned %s — treating as undetermined",
+            client_order_id, resp.status_code,
+        )
+        return OrderLookup.UNDETERMINED
 
     async def cancel_all_open_orders(self) -> CancelSweep:
         """Cancel every working order on the account, reporting what survived.

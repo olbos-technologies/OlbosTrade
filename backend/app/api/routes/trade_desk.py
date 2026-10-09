@@ -4,6 +4,7 @@ Trade Desk routes — execution mode + approval queue for Copilot/Autopilot.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import threading
 import uuid
@@ -1608,20 +1609,72 @@ async def _execute_signal(signal: dict, approved_by: str = "autopilot") -> dict:
         from app.services.trade_identity import asset_class_from_signal, asset_class_from_trade
         from sqlalchemy import select
         wanted = asset_class_from_signal({**signal, "asset_type": asset_type})
-        async with AsyncSessionLocal() as _db:
-            rows = (await _db.execute(
+
+        async def _open_trade_for(db) -> object | None:
+            rows = (await db.execute(
                 select(Trade).where(
                     Trade.underlying == ticker,
                     Trade.status.in_(["open", "pending"]),
                 )
             )).scalars().all()
-        existing = next(
-            (t for t in rows if asset_class_from_trade(t) == wanted),
-            None,
-        )
+            return next((t for t in rows if asset_class_from_trade(t) == wanted), None)
+
+        async with AsyncSessionLocal() as _db:
+            existing = await _open_trade_for(_db)
         if existing is not None:
             logger.info(
                 "Skipping %s %s — open/pending %s trade already exists in DB",
+                ticker, wanted, wanted,
+            )
+            return _skipped("already_open")
+
+        # The read above cannot see an entry that has been submitted but not
+        # yet recorded — the trade row is written only after the broker
+        # accepts, so two signals arriving inside that round trip both read
+        # zero rows and both pass. Claim the position before submitting, so
+        # the second one collides with something that exists.
+        from app.services import position_claim
+        # Attributable fail-closed. The claim becoming unavailable (no table,
+        # no database, a broken query) and the duplicate READ failing are both
+        # fail-closed, but they are NOT the same defect, and a single shared
+        # reason string made them indistinguishable. A test asserting "blocked"
+        # then passed whether the guard worked or something unrelated broke —
+        # an accident counting as proof of the intended behaviour. Keep the two
+        # causes on separate reasons so each is provable on its own.
+        try:
+            _claim = await position_claim.try_claim(
+                ticker, wanted, dispatch_id=signal.get("dispatch_id"),
+            )
+        except Exception as _claim_exc:
+            logger.error(
+                "Entry guard unavailable for %s (fail closed): %s",
+                ticker, _claim_exc,
+            )
+            return _blocked(f"entry_guard_unavailable: {_claim_exc}")
+        if _claim is None:
+            return _skipped("entry_in_flight")
+
+        # RE-READ AFTER WINNING, not only before asking. The first read and the
+        # claim are separate round trips: a caller can read "no trade", stall,
+        # and then win a claim that another caller had already released by
+        # recording its position. Winning the claim is what makes this second
+        # read conclusive — nobody else can be mid-entry while we hold it.
+        try:
+            async with AsyncSessionLocal() as _db:
+                existing = await _open_trade_for(_db)
+        except Exception:
+            # Nothing has been submitted yet, so releasing is provably safe and
+            # avoids blocking the position for a whole lease over a read blip.
+            # If the release itself cannot be written, the claim is still
+            # `pending` and the lease reaps it; either way no order went out.
+            with contextlib.suppress(Exception):
+                await position_claim.resolve(_claim)
+            raise
+        if existing is not None:
+            await position_claim.resolve(_claim)
+            logger.info(
+                "Skipping %s %s — a %s trade was recorded while this entry was "
+                "acquiring its claim",
                 ticker, wanted, wanted,
             )
             return _skipped("already_open")
@@ -1778,6 +1831,14 @@ async def _execute_signal(signal: dict, approved_by: str = "autopilot") -> dict:
                     ticker, _q_exc,
                 )
 
+            # Durable intent BEFORE the call. A process killed mid-submit has
+            # already sent an order; if the claim were still only `pending`,
+            # its lease would later hand this position to another entry.
+            # place_equity_order takes no client_order_id, so on this path the
+            # broker has no dedup key of its own — all the more reason the
+            # claim must not free itself on a timer.
+            if not await position_claim.mark_submitted(_claim):
+                return _skipped("claim_lost")
             try:
                 result = await ibkr_coordinator.submit(
                     Priority.P0,
@@ -1793,6 +1854,11 @@ async def _execute_signal(signal: dict, approved_by: str = "autopilot") -> dict:
                     req_type="PLACE_ORDER", symbol=ticker, timeout=150.0,
                 )
             except asyncio.TimeoutError:
+                # The outcome is genuinely unknown, so the claim stays and
+                # stops being reclaimable by time. A lease expiring is not
+                # evidence that no order exists, and this is precisely the
+                # case where one may.
+                await position_claim.mark_unknown(_claim, "submit timed out")
                 # The coordinator's wait_for gives up, but asyncio.shield()
                 # means the real IBKR call keeps running regardless — it can
                 # still fill seconds later with nothing here left to record
@@ -1828,6 +1894,12 @@ async def _execute_signal(signal: dict, approved_by: str = "autopilot") -> dict:
                         "AND the fallback pending-row write failed — position may be "
                         "untracked. Immediate review required.", ticker,
                     )
+                else:
+                    # The position is tracked now, so the trade read blocks any
+                    # re-entry and the claim has done its job. Leaving it would
+                    # over-block: if the reconciler later cancels this pending
+                    # row, a fresh entry should be allowed.
+                    await position_claim.resolve(_claim)
                 observability.incr("execute.timeout")
                 observability.event("timeout", ticker=ticker, asset_type="equity")
                 return {
@@ -1847,6 +1919,9 @@ async def _execute_signal(signal: dict, approved_by: str = "autopilot") -> dict:
             # create a phantom position the broker never opened.
             if result.status in ("cancelled", "rejected"):
                 logger.info("Equity order for %s %s — not recorded", ticker, result.status)
+                # Definite outcome: the broker said no. Release the position
+                # so a corrected entry is not blocked for the lease duration.
+                await position_claim.resolve(_claim)
                 return _blocked(f"order_{result.status}")
 
             # Record as a live position only on a confirmed fill; otherwise record
@@ -1883,6 +1958,12 @@ async def _execute_signal(signal: dict, approved_by: str = "autopilot") -> dict:
                     ticker,
                 )
 
+            else:
+                # The position is tracked now, so the trade read blocks any
+                # re-entry and the claim has done its job. Leaving it would
+                # over-block: if the reconciler later cancels this pending
+                # row, a fresh entry should be allowed.
+                await position_claim.resolve(_claim)
             observability.incr("execute.submitted")
             observability.event("submitted", ticker=ticker, asset_type="equity",
                                 order_id=result.order_id)
@@ -1943,12 +2024,19 @@ async def _execute_signal(signal: dict, approved_by: str = "autopilot") -> dict:
                 limit_price=limit_px,
                 time_in_force="DAY",
             )
+            # Same durable intent as the equity branch. Here the broker DOES
+            # honour an idempotency key, so the claim's key rides along as
+            # client_order_id and a retry of this exact order is safe.
+            order.client_order_id = _claim.idempotency_key
+            if not await position_claim.mark_submitted(_claim):
+                return _skipped("claim_lost")
             try:
                 result = await ibkr_coordinator.submit(
                     Priority.P0, lambda: broker.place_order(order),
                     req_type="PLACE_ORDER", symbol=ticker, timeout=150.0,
                 )
             except asyncio.TimeoutError:
+                await position_claim.mark_unknown(_claim, "submit timed out")
                 # Same lost-fill gap as the equity branch above — see that
                 # comment for the full asyncio.shield() explanation.
                 from app.services.trade_recorder import trade_recorder
@@ -1975,6 +2063,12 @@ async def _execute_signal(signal: dict, approved_by: str = "autopilot") -> dict:
                         "broker AND the fallback pending-row write failed — position "
                         "may be untracked. Immediate review required.", strategy, ticker,
                     )
+                else:
+                    # The position is tracked now, so the trade read blocks any
+                    # re-entry and the claim has done its job. Leaving it would
+                    # over-block: if the reconciler later cancels this pending
+                    # row, a fresh entry should be allowed.
+                    await position_claim.resolve(_claim)
                 observability.incr("execute.timeout")
                 observability.event("timeout", ticker=ticker, asset_type="options", strategy=strategy)
                 return {
@@ -1995,6 +2089,9 @@ async def _execute_signal(signal: dict, approved_by: str = "autopilot") -> dict:
             if result.status in ("cancelled", "rejected"):
                 logger.info("Options order for %s %s %s — not recorded",
                             strategy, ticker, result.status)
+                                # Definite outcome: the broker said no. Release the position
+                # so a corrected entry is not blocked for the lease duration.
+                await position_claim.resolve(_claim)
                 return _blocked(f"order_{result.status}")
 
             # "filled"/"partial" → a real position exists now → open.
@@ -2029,6 +2126,12 @@ async def _execute_signal(signal: dict, approved_by: str = "autopilot") -> dict:
                     strategy, ticker,
                 )
 
+            else:
+                # The position is tracked now, so the trade read blocks any
+                # re-entry and the claim has done its job. Leaving it would
+                # over-block: if the reconciler later cancels this pending
+                # row, a fresh entry should be allowed.
+                await position_claim.resolve(_claim)
             observability.incr("execute.submitted")
             observability.event("submitted", ticker=ticker, asset_type="options",
                                 strategy=strategy, order_id=result.order_id)
