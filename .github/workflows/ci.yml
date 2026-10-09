@@ -1,9 +1,31 @@
 name: CI
 
 on:
+  # `branches: ["**"]` plus `pull_request` meant every push to a branch with an
+  # open PR started TWO full runs of this workflow. They tested the identical
+  # commit, doubled runner minutes, and made CI reports ambiguous about which
+  # run was being quoted. They also pulled the postgres service image twice per
+  # push, which is what exhausted Docker Hub's anonymous quota and failed
+  # backend-tests with `toomanyrequests` on PR #102.
+  #
+  # Keeping `pull_request` preserves the required checks a PR is gated on, and
+  # keeping `push` on main preserves main-branch validation after a merge.
+  # A branch with no PR open no longer runs CI on push — open the PR (a draft
+  # is enough) to get checks.
   push:
-    branches: ["**"]
+    branches: [main]
   pull_request:
+
+# Supersede, rather than race, when new commits land on the same PR. An older
+# run tests a commit nobody is waiting on any more.
+#
+# cancel-in-progress is conditional, NOT a bare `true`: main must never have a
+# validation run cancelled out from under it. On a pull_request event
+# github.ref is `refs/pull/N/merge`, so this is true there and false for the
+# push-to-main run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   backend-tests:
@@ -15,7 +37,36 @@ jobs:
     # nothing — which is how the double-approval bug survived a passing suite.
     services:
       postgres:
-        image: postgres:16
+        # ECR Public's mirror of the official image, pinned by digest, because
+        # anonymous pulls from Docker Hub are rate-limited per IP and shared
+        # runners exhaust that quota. PR #102 lost a backend-tests run to
+        # `toomanyrequests` three retries deep, before any test executed.
+        #
+        # VERIFIED, not assumed: the mirror's manifest is byte-for-byte the
+        # official one. Both registries return the same index digest, which also
+        # matches Docker Hub's own docker-content-digest header for postgres:16:
+        #
+        #   docker/library/postgres:16  (ECR Public) -> sha256:ca0bd484...b641d
+        #   library/postgres:16         (Docker Hub) -> sha256:ca0bd484...b641d
+        #
+        # Re-verify, or find the digest for a newer tag, with:
+        #
+        #   T=$(curl -s https://public.ecr.aws/token/ | jq -r .token)
+        #   curl -s -H "Authorization: Bearer $T" \
+        #     -H 'Accept: application/vnd.oci.image.index.v1+json' \
+        #     https://public.ecr.aws/v2/docker/library/postgres/manifests/16 \
+        #     | sha256sum
+        #
+        # Pinned by digest rather than tag so the mirror is content-addressed:
+        # a digest cannot drift, which is what makes "verified" stay true. Bump
+        # it deliberately when the test database should move.
+        #
+        # NO CREDENTIALS ARE NEEDED OR STORED. The authenticated-Docker-Hub
+        # alternative would be a `credentials:` block reading repository
+        # secrets — never literals in this file — and is deliberately not used
+        # here, because it would require secrets to exist before CI could run
+        # at all.
+        image: public.ecr.aws/docker/library/postgres@sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d
         env:
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: olbos_test
