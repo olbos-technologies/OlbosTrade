@@ -39,6 +39,16 @@ PUBLIC_EXACT = {
     # between "logged out" and "there is nothing to log into", and a frontend
     # that cannot tell them apart shows a login page where login 404s.
     "/api/auth/status",
+    # Asking for an account, and redeeming an approved one. Both are public by
+    # necessity: the caller has no account yet, which is the entire point.
+    #
+    # Note what is NOT here. The operator's review queue lives at
+    # /api/admin/access-requests, on a different prefix, precisely because this
+    # allowlist matches on PATH and knows nothing about METHOD — entries here
+    # open every verb on that path. Had the queue been a GET on
+    # /api/access-requests, allowlisting the form would have published it.
+    "/api/access-requests",
+    "/api/access-requests/claim",
     "/api/health",
     "/health",
     "/",

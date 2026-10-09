@@ -11,6 +11,7 @@ import ModeAnalytics   from "./pages/ModeAnalytics";
 // Consolidated hubs (each folds two former pages behind tabs)
 import RiskCenter      from "./pages/RiskCenter";          // Risk Monitor + Guardrails
 import SignalsCenter   from "./pages/SignalsCenter";       // Equity Signals + Strategy
+import CryptoSignals   from "./pages/CryptoSignals";       // Crypto (read-only, phase 1)
 import OptionsSignals  from "./pages/OptionsSignals";       // Live options spread signal feed
 import SignalResearch  from "./pages/SignalResearch";       // Forward-return study over tracked signals
 import ResearchCenter  from "./pages/ResearchCenter";      // Research Lab: Strategy Lab + Market/Regime + Chart + Intel
@@ -20,6 +21,7 @@ import OptionsFlow     from "./pages/OptionsFlow";           // Options flow (gr
 import OptionsChain    from "./pages/options/OptionsChain";  // Live calls/puts for a symbol
 import IncomeStrategiesCenter from "./pages/options/IncomeStrategiesCenter";
 import SystemCenter    from "./pages/SystemCenter";
+import AccountCenter   from "./pages/AccountCenter";
 import StrategyBuilder from "./pages/strategies/StrategyBuilder"; // Configure + register a strategy experiment
 import Alerts          from "./pages/strategies/Alerts";     // Smart Alert rules + notifications
 // Markets module
@@ -75,6 +77,7 @@ export function tradeDeskPages(v2: boolean): Record<string, React.ComponentType>
 export const BASE_PAGES: Record<string, React.ComponentType> = {
   dashboard: Dashboard,
   equity:    SignalsCenter,
+  "crypto:signals": CryptoSignals,
   backtest:  BacktestCenter,
   lab:       ResearchCenter,
   risk:      RiskCenter,
@@ -110,6 +113,10 @@ export const BASE_PAGES: Record<string, React.ComponentType> = {
   "markets:sector-rotation": SectorRotation,
 
   "system:broker":  () => <SystemCenter initialTab="broker" />,
+  "account:profile":  () => <AccountCenter initialTab="profile" />,
+  "account:password": () => <AccountCenter initialTab="password" />,
+  "account:sessions": () => <AccountCenter initialTab="sessions" />,
+  "account:brokers":  () => <AccountCenter initialTab="brokers" />,
   "system:market":  () => <SystemCenter initialTab="market" />,
   "system:quality": () => <SystemCenter initialTab="quality" />,
 };
@@ -128,7 +135,9 @@ export default function App() {
 
   const page = pathToPageKey(location.pathname);
   const v2 = isTradeDeskV2Enabled();
-  const PAGES = { ...BASE_PAGES, ...tradeDeskPages(v2) };
+  const TRADE_PAGES = tradeDeskPages(v2);
+  const PAGES = { ...BASE_PAGES, ...TRADE_PAGES };
+  const isDeskV2Shell = v2 && Object.prototype.hasOwnProperty.call(TRADE_PAGES, page);
 
   // hasOwnProperty, not a bare PAGES[page]. The key comes straight from the
   // URL, so a plain lookup also finds everything on Object.prototype:
@@ -171,7 +180,7 @@ export default function App() {
   );
 
   return (
-    <TerminalLayout activePage={page} onNav={handleNav}>
+    <TerminalLayout activePage={page} onNav={handleNav} isDeskV2Shell={isDeskV2Shell}>
       <Page />
     </TerminalLayout>
   );

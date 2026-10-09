@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Olbos">
+  <!-- The O mark, DRAWN for small sizes rather than downsampled from the
+       render in apple-touch-icon.png. That render is photographic: its pearl
+       body and gold ribbons only exist above ~48px, and shrinking it to 16px
+       produces a muddy ring. Two concentric strokes instead — pearl outside,
+       gold on the inner edge, matching how the real mark rings its counter in
+       gold. At 16px they fuse into one warm ring; from 32px they separate.
+
+       Both icons are now the same mark; only the drawing differs by size.
+       See the comment in index.html and test_favicon_assets.py. -->
+  <rect width="64" height="64" rx="13" fill="#101a2e"/>
+  <ellipse cx="32" cy="32" rx="17" ry="20" fill="none" stroke="#f4efe6" stroke-width="7"/>
+  <ellipse cx="32" cy="32" rx="17" ry="20" fill="none" stroke="#D4AF37" stroke-width="2.6"/>
+</svg>

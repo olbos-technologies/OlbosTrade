@@ -1,18 +1,41 @@
 /**
  * Sign-in screen.
  *
- * Deliberately plain. There is no "forgot password" (no reset flow exists yet
- * — Phase 4), no "create account" (invite-only, accounts come from
- * scripts/create_user.py), and no "remember me" (session length is an operator
- * setting, not a per-login choice). Offering any of them would be a link to
- * nowhere.
+ * Deliberately plain in what it OFFERS: there is no "forgot password" (no
+ * reset flow exists yet — Phase 4) and no "remember me" (session length is an
+ * operator setting, not a per-login choice). Offering either would be a link
+ * to nowhere.
+ *
+ * There IS now a "request access" link, because that one goes somewhere: the
+ * waitlist at /request-access. It is a plain <a>, not a router <Link> — this
+ * component renders inside AuthGate, below the route that mounts the terminal,
+ * and a client-side navigation out of that subtree would leave the gate
+ * mounted around a page that is not the terminal.
  */
 
 import React, { useEffect, useRef, useState } from "react";
 
 import { useAuth } from "../auth/AuthContext";
 import { LoginError } from "../auth/authApi";
-import { tint } from "../utils/tint";
+import {
+  AMBER, AuthPage, Field, Notice, Pitch, RED, SubmitButton,
+} from "./authShell";
+
+const PITCH = (
+  <Pitch
+    mark
+    eyebrow="Operator access"
+    title="Sign in to the terminal."
+    lede={
+      "Regime detection, signal attribution and a fail-closed risk gate sit in "
+      + "front of every trade decision. Nothing executes without passing them."
+    }
+    points={[
+      "Sessions are revocable — ending one takes effect immediately, not at expiry",
+      "Live orders stay blocked until the account and environment are both switched",
+    ]}
+  />
+);
 
 export default function Login() {
   const { signIn, expiredNotice, logoutWarning } = useAuth();
@@ -41,169 +64,68 @@ export default function Login() {
   }
 
   return (
-    <div style={{
-      minHeight: "100dvh",
-      display: "flex", alignItems: "center", justifyContent: "center",
-      background: "var(--bg)", color: "var(--ink)",
-      fontFamily: "var(--sans)",
-      padding: 16,                       // gutter survives at phone width
-    }}>
-      <form
-        onSubmit={onSubmit}
-        style={{
-          width: "100%", maxWidth: 380,
-          background: "var(--bg-2)",
-          border: "1px solid var(--line-dim)",
-          borderRadius: "var(--radius-card)",
-          boxShadow: "var(--raised-bezel)",
-          padding: 28,
-          display: "flex", flexDirection: "column", gap: 18,
-        }}
-      >
-        <header style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
-          <img src="/favicon-32x32.png" alt="" width={40} height={40} />
-          <span className="brand-wordmark" style={{
-            fontSize: 20, letterSpacing: "0.14em", color: "var(--brand)", fontWeight: 700,
-          }}>
-            OLBOS
-          </span>
-          <span style={{
-            fontFamily: "var(--mono)", fontSize: 10, letterSpacing: "0.1em",
-            textTransform: "uppercase", color: "var(--ink-faint)",
-          }}>
-            Operator sign-in
-          </span>
-        </header>
+    <AuthPage
+      pitch={PITCH}
+      cardTitle="Operator sign-in"
+      onSubmit={onSubmit}
+      navAction={{ to: "/request-access", label: "Request access", external: true }}
+    >
+      {expiredNotice && <Notice tone={AMBER}>{expiredNotice}</Notice>}
 
-        {expiredNotice && (
-          <div role="status" style={noticeStyle(AMBER)}>{expiredNotice}</div>
-        )}
+      {/* Shown here because this is where the operator lands after signing
+          out. It used to be set on the context and rendered nowhere: the
+          only component that displayed it was UserMenu, which returns null
+          the instant the phase leaves "signed-in". A warning that server-side
+          revocation may have failed was therefore unreachable by exactly the
+          person who needs it. */}
+      {logoutWarning && <Notice tone={AMBER}>{logoutWarning}</Notice>}
 
-        {/* Shown here because this is where the operator lands after signing
-            out. It used to be set on the context and rendered nowhere: the
-            only component that displayed it was UserMenu, which returns null
-            the instant the phase leaves "signed-in". A warning that server-side
-            revocation may have failed was therefore unreachable by exactly the
-            person who needs it. */}
-        {logoutWarning && (
-          <div role="status" style={noticeStyle(AMBER)}>{logoutWarning}</div>
-        )}
+      <Field label="Email">
+        <input
+          ref={emailRef}
+          className="auth-input"
+          type="email"
+          value={email}
+          onChange={e => setEmail(e.target.value)}
+          autoComplete="username"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+          inputMode="email"
+          required
+          disabled={busy}
+        />
+      </Field>
 
-        <Field label="Email">
-          <input
-            ref={emailRef}
-            type="email"
-            value={email}
-            onChange={e => setEmail(e.target.value)}
-            autoComplete="username"
-            autoCapitalize="none"
-            autoCorrect="off"
-            spellCheck={false}
-            inputMode="email"
-            required
-            disabled={busy}
-            style={inputStyle}
-          />
-        </Field>
+      <Field label="Password">
+        <input
+          className="auth-input"
+          type="password"
+          value={password}
+          onChange={e => setPassword(e.target.value)}
+          autoComplete="current-password"
+          required
+          disabled={busy}
+        />
+      </Field>
 
-        <Field label="Password">
-          <input
-            type="password"
-            value={password}
-            onChange={e => setPassword(e.target.value)}
-            autoComplete="current-password"
-            required
-            disabled={busy}
-            style={inputStyle}
-          />
-        </Field>
+      {/* aria-live so a screen reader announces a failure that appears after
+          submit, rather than leaving the user waiting on a silent form. */}
+      <div aria-live="polite">
+        {error && <Notice tone={RED} role="alert">{error}</Notice>}
+      </div>
 
-        {/* aria-live so a screen reader announces a failure that appears after
-            submit, rather than leaving the user waiting on a silent form. */}
-        <div aria-live="polite" style={{ minHeight: error ? undefined : 0 }}>
-          {error && <div role="alert" style={noticeStyle(RED)}>{error}</div>}
-        </div>
+      <SubmitButton
+        busy={busy}
+        disabled={!email || !password}
+        idleLabel="Sign in"
+        busyLabel="Signing in…"
+      />
 
-        <button
-          type="submit"
-          disabled={busy || !email || !password}
-          style={{
-            height: 44,                  // >= 44px: a real tap target on phones
-            borderRadius: "var(--radius-control)",
-            border: "1px solid var(--line)",
-            background: busy ? "var(--bg-3)" : "var(--fill-active)",
-            color: busy ? "var(--ink-faint)" : "var(--ink)",
-            fontFamily: "var(--mono)", fontSize: 12, letterSpacing: "0.08em",
-            textTransform: "uppercase",
-            cursor: busy ? "progress" : "pointer",
-            opacity: !busy && (!email || !password) ? 0.55 : 1,
-          }}
-        >
-          {busy ? "Signing in…" : "Sign in"}
-        </button>
-
-        <p style={{
-          fontSize: 11, lineHeight: 1.5, color: "var(--ink-faint)",
-          textAlign: "center", margin: 0,
-        }}>
-          Accounts are issued by the operator. There is no self-service signup.
-        </p>
-      </form>
-    </div>
+      <p className="auth-note">
+        Accounts are issued by the operator — there is no self-service signup.{" "}
+        <a href="/request-access" className="auth-link">Request access</a>.
+      </p>
+    </AuthPage>
   );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      <span style={{
-        fontFamily: "var(--mono)", fontSize: 10, letterSpacing: "0.1em",
-        textTransform: "uppercase", color: "var(--ink-dim)",
-      }}>
-        {label}
-      </span>
-      {children}
-    </label>
-  );
-}
-
-const inputStyle: React.CSSProperties = {
-  height: 44,
-  padding: "0 12px",
-  borderRadius: "var(--radius-control)",
-  border: "1px solid var(--line-dim)",
-  background: "var(--bg-1)",
-  color: "var(--ink)",
-  // 16px: anything smaller makes iOS Safari zoom the page on focus, which on a
-  // phone leaves the form half off-screen behind the keyboard.
-  fontSize: 16,
-  fontFamily: "var(--sans)",
-  width: "100%",
-};
-
-/**
- * Notice tones as literal hex, NOT `var(--amber)`.
- *
- * These used to be built as `${tone}55` on top of a var() reference, matching a
- * pattern already in the codebase. It does not work: var() substitutes at the
- * token level, so `var(--amber)55` is two tokens rather than an 8-digit colour,
- * and the whole declaration is dropped. Verified in Chromium — the border came
- * back `border-style: none` and the background fully transparent, so the error
- * notice rendered as bare text with no tint at all.
- *
- * Same values as --amber and --red in index.css; keep them in step.
- */
-const AMBER = "#f59e0b";
-const RED = "#ef4444";
-
-function noticeStyle(tone: string): React.CSSProperties {
-  return {
-    padding: "9px 11px",
-    borderRadius: "var(--radius-control)",
-    border: `1px solid ${tint(tone, 0.333)}`,
-    background: tint(tone, 0.08),
-    color: tone,
-    fontSize: 12,
-    lineHeight: 1.45,
-  };
 }

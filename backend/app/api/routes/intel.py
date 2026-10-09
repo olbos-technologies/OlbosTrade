@@ -10,12 +10,13 @@ from __future__ import annotations
 
 import asyncio
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from app.api.deps import require_api_key
 
 from app.services.event_risk_service import _days_to_next_earnings
+from app.api.tier_deps import cap_watchlist, cap_watchlists
 from app.services.intel import watchlist_service as wl
 from app.services.intel.catalyst_calendar import get_calendar
 from app.services.intel.provider_registry import registry
@@ -46,37 +47,54 @@ class AddSymbol(BaseModel):
 
 
 @router.get("/watchlists")
-async def watchlists():
-    return {"watchlists": await wl.list_watchlists()}
+async def watchlists(request: Request):
+    # Capped on the way OUT, not filtered in the query. Watchlists are shared
+    # (they carry no user_id — see the hybrid tenancy note in config.py), so
+    # there is no per-user row to restrict; what a tier buys is how much of
+    # the shared list you can see.
+    return {"watchlists": cap_watchlists(request, await wl.list_watchlists())}
 
 
 @router.get("/watchlists/{slug}")
-async def watchlist_detail(slug: str):
+async def watchlist_detail(slug: str, request: Request):
     w = await wl.get_watchlist(slug)
     if not w:
         raise HTTPException(404, "Watchlist not found")
-    return w
+    return cap_watchlist(request, w)
+
+
+# EVERY route that returns a watchlist caps it, writes included.
+#
+# The first version capped only the two GETs, which is not a cap at all: these
+# three hand back the same serialised payload, so a Free caller could POST a
+# symbol — or DELETE one — and read every symbol out of the response. The
+# limit was one request away from being decorative. Raised by review.
+#
+# The cap therefore belongs to the PAYLOAD, not to the verb. test_intel.py's
+# test_every_watchlist_route_caps_its_payload enumerates the registered routes
+# so the next one added cannot quietly skip it.
 
 
 @router.post("/watchlists", dependencies=[Depends(require_api_key)])
-async def create_watchlist(body: CreateWatchlist):
-    return await wl.create_watchlist(body.name, body.description, body.symbols)
+async def create_watchlist(body: CreateWatchlist, request: Request):
+    return cap_watchlist(
+        request, await wl.create_watchlist(body.name, body.description, body.symbols))
 
 
 @router.post("/watchlists/{slug}/symbols", dependencies=[Depends(require_api_key)])
-async def add_symbol(slug: str, body: AddSymbol):
+async def add_symbol(slug: str, body: AddSymbol, request: Request):
     w = await wl.add_symbol(slug, body.symbol, body.asset_class)
     if not w:
         raise HTTPException(404, "Watchlist not found")
-    return w
+    return cap_watchlist(request, w)
 
 
 @router.delete("/watchlists/{slug}/symbols/{symbol}", dependencies=[Depends(require_api_key)])
-async def remove_symbol(slug: str, symbol: str):
+async def remove_symbol(slug: str, symbol: str, request: Request):
     w = await wl.remove_symbol(slug, symbol)
     if not w:
         raise HTTPException(404, "Watchlist not found")
-    return w
+    return cap_watchlist(request, w)
 
 
 @router.delete("/watchlists/{slug}", dependencies=[Depends(require_api_key)])

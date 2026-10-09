@@ -16,6 +16,7 @@ from pydantic import BaseModel
 from decimal import Decimal
 
 from app.api.deps import require_api_key
+from app.api.tier_deps import require_broker_access
 from app.api.rate_limit import rate_limit
 from app.broker.ibkr_coordinator import Priority, ibkr_coordinator
 from app.services.execution_mode import ExecutionMode, execution_mode_manager
@@ -387,6 +388,20 @@ async def get_kill_switch():
     return {"engaged": _is_kill_switch_active()}
 
 
+def _sanitize_kill_switch_errors(errors: list) -> list[str]:
+    """Reduce engage()'s raw error strings to a safe, still-useful label.
+
+    engage() formats these as "<stage>_<symbol>: <str(exc)>" — the stage and
+    symbol are operationally necessary (which position did not flatten), the
+    exception text is not, and on an unauthenticated route it is a disclosure.
+    Keep everything up to the first colon; drop the rest.
+    """
+    out: list[str] = []
+    for e in errors or []:
+        label = str(e).split(":", 1)[0].strip()
+        out.append(label or "unknown_error")
+    return out
+
 @router.post("/kill-switch")
 async def set_kill_switch(body: KillSwitchRequest):
     """
@@ -398,8 +413,37 @@ async def set_kill_switch(body: KillSwitchRequest):
     """
     if body.engaged:
         _kill_switch.set()
-        await kill_switch_service.engage("manual via trade-desk API")
+        result = await kill_switch_service.engage("manual via trade-desk API")
         logger.warning("KILL SWITCH ENGAGED via API — all order submission halted")
+        # Return what engage() actually DID, not just that it ran. Engaging is
+        # the only bulk-flatten path this app has, and the report is the only
+        # evidence the flatten happened: engage() attempts every step even when
+        # an earlier one fails, so it can pause the scheduler, fail to reach
+        # the broker, and still come back a "success". Worse, a second engage
+        # on an already-engaged switch returns at the top having flattened
+        # NOTHING. Collapsing all of that to {"engaged": true} told an operator
+        # watching positions stay open that the close-all had worked.
+        return {
+            "engaged": _is_kill_switch_active(),
+            "already_engaged": result.get("status") == "already_engaged",
+            "positions_flattened": result.get("positions_flattened", 0),
+            # positions_flattened counts every non-rejected order, including
+            # `submitted` (no fill yet), `partial` (residual exposure) and
+            # `cancelled`. Only `filled` means the position is actually gone,
+            # so the per-status tally travels with it — reporting the count
+            # alone would tell an operator the book is flat when it is not.
+            "flatten_statuses": result.get("flatten_statuses", {}),
+            "orders_cancelled": result.get("orders_cancelled", 0),
+            # Error LABELS, not raw exception text. This endpoint has no
+            # require_api_key by design (emergency stop), and the frontend can
+            # serve without Basic Auth when DASH_USER/DASH_PASS are blank — so
+            # an unauthenticated caller reaches this response. engage() builds
+            # its errors from str(exc), which carries broker internals,
+            # database DSNs and stack detail. The operator needs to know THAT
+            # something failed and roughly where; the full text belongs in the
+            # server log, which is already written by engage().
+            "errors": _sanitize_kill_switch_errors(result.get("errors", [])),
+        }
     else:
         result = await kill_switch_service.reset(body.authorization_code or "")
         if not result.get("reset"):
@@ -416,7 +460,7 @@ async def get_execution_mode():
     return execution_mode_manager.summary()
 
 
-@router.post("/execution-mode", dependencies=[Depends(require_api_key), Depends(rate_limit)])
+@router.post("/execution-mode", dependencies=[Depends(require_api_key), Depends(rate_limit), Depends(require_broker_access)])
 async def set_execution_mode(body: SetExecutionModeRequest):
     try:
         mode = ExecutionMode(body.mode)
@@ -714,7 +758,7 @@ async def evaluate_options(req: OptionsEvaluateRequest):
     }
 
 
-@router.post("/approve/{signal_id}", dependencies=[Depends(require_api_key), Depends(rate_limit)])
+@router.post("/approve/{signal_id}", dependencies=[Depends(require_api_key), Depends(rate_limit), Depends(require_broker_access)])
 async def approve_signal(signal_id: str):
     """User approves a pending signal → executes order."""
     signal = await _resolve_pending_approval(signal_id, "approved")
@@ -775,7 +819,7 @@ async def _resolve_rotation_review(review_id: str, resolution: str) -> Optional[
 
 
 @router.post("/rotation-review/{review_id}/approve",
-             dependencies=[Depends(require_api_key), Depends(rate_limit)])
+             dependencies=[Depends(require_api_key), Depends(rate_limit), Depends(require_broker_access)])
 async def approve_rotation_review(review_id: str):
     """Approve a replacement: close the incumbent, then enter the challenger.
 
@@ -849,7 +893,7 @@ async def approve_rotation_review(review_id: str):
 
 
 @router.post("/rotation-review/{review_id}/reject",
-             dependencies=[Depends(require_api_key), Depends(rate_limit)])
+             dependencies=[Depends(require_api_key), Depends(rate_limit), Depends(require_broker_access)])
 async def reject_rotation_review(review_id: str):
     """Decline a replacement. Nothing is closed and nothing is entered."""
     review = await _resolve_rotation_review(review_id, "rejected")
@@ -864,7 +908,7 @@ async def reject_rotation_review(review_id: str):
     return out
 
 
-@router.post("/reject/{signal_id}", dependencies=[Depends(require_api_key), Depends(rate_limit)])
+@router.post("/reject/{signal_id}", dependencies=[Depends(require_api_key), Depends(rate_limit), Depends(require_broker_access)])
 async def reject_signal(signal_id: str):
     """User rejects a pending signal — no order sent."""
     signal = await _resolve_pending_approval(signal_id, "rejected")
@@ -932,7 +976,7 @@ async def reject_all_pending():
 
 # ── Manual trade ──────────────────────────────────────────────────────────────
 
-@router.post("/manual-trade", dependencies=[Depends(require_api_key), Depends(rate_limit)])
+@router.post("/manual-trade", dependencies=[Depends(require_api_key), Depends(rate_limit), Depends(require_broker_access)])
 async def manual_trade(req: ManualTradeRequest):
     """
     Force a manual equity order — bypasses signal scoring and IV filters
@@ -965,7 +1009,7 @@ class ClosePositionRequest(BaseModel):
     limit_price: Optional[float] = None
 
 
-@router.post("/close-position", dependencies=[Depends(require_api_key), Depends(rate_limit)])
+@router.post("/close-position", dependencies=[Depends(require_api_key), Depends(rate_limit), Depends(require_broker_access)])
 async def close_position(req: ClosePositionRequest):
     """
     Manually close an open position — the operator's own "I want out now"
@@ -1044,7 +1088,7 @@ class CloseUntrackedPositionRequest(BaseModel):
     limit_price: Optional[float] = None
 
 
-@router.post("/close-untracked-position", dependencies=[Depends(require_api_key), Depends(rate_limit)])
+@router.post("/close-untracked-position", dependencies=[Depends(require_api_key), Depends(rate_limit), Depends(require_broker_access)])
 async def close_untracked_position(req: CloseUntrackedPositionRequest):
     """
     Close a live broker equity position that has no matching DB Trade row —
@@ -2016,7 +2060,7 @@ def _require_options_spread(req: "ScanSignalRequest") -> dict:
     return spread
 
 
-@router.post("/signal", dependencies=[Depends(require_api_key), Depends(rate_limit)])
+@router.post("/signal", dependencies=[Depends(require_api_key), Depends(rate_limit), Depends(require_broker_access)])
 async def submit_scan_signal(req: ScanSignalRequest):
     """
     Submit a signal from scan panel / Equity Desk for execution routing.

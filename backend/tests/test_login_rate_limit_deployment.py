@@ -88,62 +88,125 @@ def read(name: str) -> str:
 
 
 class TestTheRunningStackCanSeeTheCaller:
-    def test_hetzner_backend_runs_with_proxy_headers(self):
+    """The trust rule moved out of uvicorn and into the app (issue #60).
+
+    The three tests that used to live here asserted --proxy-headers and
+    --forwarded-allow-ips=*, and each of them was right for the deployment as
+    it stood. That deployment was wrong: peer-address trust cannot separate
+    the frontend from the rest of docker_default, so the only setting that
+    worked at all was one that trusted every container on it.
+
+    So these now assert the opposite, and the pairing is what matters — the
+    wildcard must be GONE and the secret must be WIRED. Either half alone is a
+    broken stack: no wildcard and no secret is one shared bucket, and the
+    wildcard returning alongside the secret is the forgery hole reopened.
+    """
+
+    def test_the_hetzner_backend_no_longer_trusts_by_peer_address(self):
         block = service_block(read("docker-compose.hetzner.yml"), "backend")
-        assert "--proxy-headers" in block, (
-            "the Hetzner backend no longer passes --proxy-headers, so uvicorn "
-            "ignores X-Forwarded-For and every caller shares one login "
-            "rate-limit bucket: ten failed logins lock out everybody"
+        assert "--forwarded-allow-ips" not in block, (
+            "--forwarded-allow-ips is back on the Hetzner backend. This service "
+            "joins the shared docker_default network (it must — IBKR_HOST "
+            "resolves there), so any value permissive enough to trust the "
+            "frontend also trusts every other container on it, and a CIDR "
+            "matches nothing because uvicorn 0.29 compares trusted hosts by "
+            "exact string. Trust belongs with the proxy secret. See issue #60."
+        )
+        assert "--proxy-headers" not in block, (
+            "--proxy-headers is back on the Hetzner backend. It would overwrite "
+            "request.client.host from X-Forwarded-For before the app sees it, "
+            "so client_ip() could no longer tell a vouched-for header from a "
+            "forged one — the secret check becomes decoration."
         )
 
-    def test_hetzner_backend_actually_trusts_the_frontend(self):
-        """--proxy-headers alone does nothing here, which is easy to miss.
+    def test_both_services_are_given_the_SAME_shared_secret(self):
+        """The same interpolation, not merely the same variable name.
 
-        uvicorn defaults forwarded_allow_ips to "127.0.0.1". The frontend
-        reaches the backend over the Docker network from a container address,
-        never from loopback, so with --proxy-headers but no
-        --forwarded-allow-ips uvicorn parses the header and then discards it as
-        untrusted. The limiter falls straight back to one shared bucket, and
-        the command still LOOKS correct.
-
-        Caught in review: the guard above passes on that half-configured
-        command, so deleting only this flag left the tests green and the
-        limiter broken.
+        A name-only check passes when the backend reads
+        ${TRUSTED_PROXY_SECRET} and the frontend reads some other variable —
+        the stack boots, the secrets differ, no request ever matches, and
+        every caller silently falls back to the proxy bucket. That is the
+        failure this guard exists to prevent, so it has to compare the VALUE
+        each service is given. Raised in review on #63; this is the fourth
+        time a guard in this file checked something adjacent to the invariant
+        rather than the invariant.
         """
-        block = service_block(read("docker-compose.hetzner.yml"), "backend")
-        assert "--forwarded-allow-ips=*" in block, (
-            "the Hetzner backend does not pass --forwarded-allow-ips=*, so "
-            "uvicorn falls back to trusting 127.0.0.1 only, ignores the "
-            "frontend's X-Forwarded-For (the frontend connects from a Docker "
-            "address, never loopback), and every caller is back in one login "
-            "rate-limit bucket"
+        compose = read("docker-compose.hetzner.yml")
+        interpolations = {}
+        for service in ("backend", "frontend"):
+            block = service_block(compose, service)
+            line = next((l for l in block.splitlines()
+                         if "TRUSTED_PROXY_SECRET" in l), None)
+            assert line, (
+                f"the {service} service does not receive TRUSTED_PROXY_SECRET, "
+                "so the frontend cannot vouch for X-Forwarded-For (or the "
+                "backend cannot check that it did) and every caller shares one "
+                "login rate-limit bucket"
+            )
+            m = re.search(r"\$\{(TRUSTED_PROXY_SECRET[^}]*)\}", line)
+            assert m, (
+                f"{service} does not interpolate TRUSTED_PROXY_SECRET from the "
+                f"environment: {line.strip()!r}"
+            )
+            interpolations[service] = m.group(1)
+
+        assert interpolations["backend"] == interpolations["frontend"], (
+            "the two services interpolate DIFFERENT expressions "
+            f"({interpolations!r}), so the secret the frontend sends is not the "
+            "one the backend checks — the stack boots and the limiter is dead"
         )
 
-    def test_the_trusted_ips_value_is_the_one_that_works(self):
-        """Asserting the option NAME is not enough, which is the third time.
+    def test_the_secret_is_required_rather_than_defaulted(self):
+        """`:-` would let the stack boot silently degraded.
 
-        `--forwarded-allow-ips=127.0.0.1` contains the option and trusts
-        nothing that can actually reach this backend, so a regression to it
-        satisfies a name-only check while silently restoring the shared bucket.
-        A CIDR is the same trap for a different reason: uvicorn 0.29 matches
-        with `client_host in self.trusted_hosts`, an exact string comparison,
-        so `--forwarded-allow-ips=172.16.0.0/12` never matches anything.
-
-        The value is load-bearing, so the value is what gets asserted. Changing
-        it deliberately should mean changing this test and its reasoning, not
-        discovering later that the limiter quietly stopped working.
+        TRUSTED_PROXY_CIDR defaults to empty on purpose — unset there means
+        trust nobody, which is safe. Unset HERE means the rate limit stops
+        being per-caller, which is the bug this whole thread is about, so the
+        stack should refuse to start instead.
         """
-        block = service_block(read("docker-compose.hetzner.yml"), "backend")
-        match = re.search(r"--forwarded-allow-ips=(\S+)", block)
-        assert match, "no --forwarded-allow-ips value found at all"
-        assert match.group(1) == "*", (
-            f"--forwarded-allow-ips is {match.group(1)!r}, not '*'. uvicorn 0.29 "
-            "compares trusted hosts by exact string, so anything other than '*' "
-            "must equal the frontend container's address exactly — and that is "
-            "assigned by Docker at runtime. A CIDR or 127.0.0.1 here does not "
-            "scope the trust, it removes it: the frontend's X-Forwarded-For is "
-            "ignored and every caller shares one login rate-limit bucket. See "
-            "issue #60 for the topology-independent replacement."
+        compose = read("docker-compose.hetzner.yml")
+        for service in ("backend", "frontend"):
+            block = service_block(compose, service)
+            line = next(l for l in block.splitlines() if "TRUSTED_PROXY_SECRET" in l)
+            assert ":?" in line, (
+                f"{service} defaults TRUSTED_PROXY_SECRET instead of requiring "
+                f"it: {line.strip()!r}. An unset secret boots a stack whose "
+                "login limiter buckets every caller together."
+            )
+
+    def test_the_proxy_actually_sends_the_secret_ON_THE_API_ROUTE(self):
+        """Present in the file is not the same as emitted on the route.
+
+        Finding the header name anywhere in the script passes even after
+        ${SECRET_HEADER} is deleted from the /api location — nginx then sends
+        no secret, the backend ignores X-Forwarded-For, and the guard stays
+        green while the deployed trust chain is broken. Raised in review
+        on #63.
+
+        So this asserts the two halves that actually carry it: the /api proxy
+        line emits the variable, and the variable is built from
+        TRUSTED_PROXY_SECRET with the right header name.
+        """
+        entrypoint = read("frontend/docker-entrypoint.sh")
+
+        api_line = next((l for l in entrypoint.splitlines()
+                         if "location /api" in l), None)
+        assert api_line, "the /api location block is gone from the entrypoint"
+        assert "${SECRET_HEADER}" in api_line, (
+            "the /api proxy line no longer emits ${SECRET_HEADER}, so nginx "
+            f"sends no proxy secret and the backend ignores X-Forwarded-For: "
+            f"{api_line.strip()!r}"
+        )
+
+        assign = next((l for l in entrypoint.splitlines()
+                       if l.strip().startswith("SECRET_HEADER=")
+                       and "proxy_set_header" in l), None)
+        assert assign, "SECRET_HEADER is never built into a proxy_set_header"
+        assert "X-Olbos-Proxy-Secret" in assign, (
+            f"SECRET_HEADER does not set the header the backend checks: {assign.strip()!r}"
+        )
+        assert "TRUSTED_PROXY_SECRET" in assign, (
+            f"SECRET_HEADER is not driven by TRUSTED_PROXY_SECRET: {assign.strip()!r}"
         )
 
     def test_hetzner_backend_is_not_directly_reachable(self):
@@ -156,15 +219,63 @@ class TestTheRunningStackCanSeeTheCaller:
             "Remove the port, or scope the trusted proxies."
         )
 
-    def test_the_uvicorn_flags_it_overrides_are_not_lost(self):
-        """`command:` replaces the image CMD wholesale, so the flags the
-        Dockerfile set have to be repeated or they silently disappear."""
+    #: (flag, required value); None means a bare flag that takes no value.
+    #:
+    #: The VALUE is the invariant, not the flag. `"--workers" in source` is
+    #: satisfied by `--workers 2` — the precise regression the docstring below
+    #: calls out as the one that hurts quietly. This guard asserted the label
+    #: and not the value until Copilot caught it on PR #63.
+    UVICORN_FLAGS = (
+        ("--host", "0.0.0.0"),
+        ("--port", "8000"),
+        ("--workers", "1"),
+        ("--loop", "uvloop"),
+        ("--access-log", None),
+    )
+
+    def test_the_uvicorn_flags_reach_uvicorn_however_they_get_there(self):
+        """Guards the invariant, not the mechanism that currently satisfies it.
+
+        `command:` replaces the image CMD WHOLESALE, so any override has to
+        repeat every flag or it silently drops them. The Hetzner stack used to
+        carry one (for --proxy-headers) and therefore had to repeat them;
+        removing that override for issue #60 handed the job back to the
+        Dockerfile. Asserting against the compose block alone would now fail
+        for a stack that is correct, and asserting against the Dockerfile alone
+        would miss a future override that forgets them.
+
+        --workers 1 is the one that would hurt quietly: IBKR allows a single
+        connection per client id, so a second worker is a broker fight, not a
+        slow endpoint.
+        """
         block = service_block(read("docker-compose.hetzner.yml"), "backend")
-        for flag in ("--workers", "--loop", "--access-log", "--host", "--port"):
-            assert flag in block, (
-                f"{flag} was dropped when `command:` overrode the image CMD — "
-                f"compare against backend/Dockerfile"
+        overrides = "command:" in block
+        source = block if overrides else read("backend/Dockerfile")
+        where = "the compose command: override" if overrides else "backend/Dockerfile"
+
+        # Both carriers tokenise alike once quotes, commas and line
+        # continuations are gone: the Dockerfile's JSON exec form
+        # ("--workers", "1") and a compose shell string (--workers 1).
+        tokens = re.sub(r"""["',\\]""", " ", source).split()
+
+        for flag, value in self.UVICORN_FLAGS:
+            at = [i for i, t in enumerate(tokens) if t == flag]
+            assert at, (
+                f"{flag} is missing from {where}. `command:` replaces the image "
+                f"CMD wholesale, so an override must repeat every flag the "
+                f"Dockerfile sets."
             )
+            if value is None:
+                continue
+            # Every occurrence, not just the first: a second one further down
+            # is what actually reaches uvicorn.
+            for i in at:
+                actual = tokens[i + 1] if i + 1 < len(tokens) else None
+                assert actual == value, (
+                    f"{where} passes `{flag} {actual}`, not `{flag} {value}`. "
+                    f"A presence check on {flag} alone passes for any value, "
+                    f"which is how a wrong one ships unnoticed."
+                )
 
 
 class TestStacksThatExposeTheBackendDoNotTrustTheHeader:

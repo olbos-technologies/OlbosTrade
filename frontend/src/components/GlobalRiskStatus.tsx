@@ -273,6 +273,7 @@ export default function GlobalRiskStatus() {
     <div
       role="region"
       aria-label="Capital-at-risk status"
+      className="global-risk-status"
       style={{
         display: "flex",
         // One scrolling line on a phone instead of three wrapped rows.

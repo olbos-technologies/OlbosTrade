@@ -15,6 +15,7 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import "../landing.css";
+import BrandWordmark from "../components/BrandWordmark";
 
 function NavLink({ href, children }: { href: string; children: React.ReactNode }) {
   return <a href={href}>{children}</a>;
@@ -49,7 +50,7 @@ function Metric({ label, value, placeholder = true }: { label: string; value: st
   );
 }
 
-type Plan = {
+export type Plan = {
   name: string;
   price: string;
   period: string;
@@ -60,12 +61,30 @@ type Plan = {
   featured?: boolean;
 };
 
-// All plans currently open the same unauthenticated /terminal — there is no
-// billing or Free/Pro/Elite gate in this repository yet. Capability lists
-// below describe the intended tier split (signals-only vs. broker-connected
-// execution), shown honestly and marked as planned / not enforced until
-// auth + billing ship.
-const PLANS: Plan[] = [
+// Every plan CTA points at /request-access, not at /terminal.
+//
+// They used to open the terminal directly, which was the honest thing while
+// the terminal was open to anyone. With AUTH_ENABLED on it stopped being
+// honest: the button sent a visitor to a sign-in screen for an account they
+// have no way to obtain, which is a dead end dressed as a call to action.
+//
+// Tier is still assigned by the operator — there is no billing in this
+// repository — so all three cards lead to the same queue. The limits below
+// ARE enforced now: backend/app/services/tier_limits.py is the table the
+// API reads, and test_tier_limits_match_the_landing_page parses this file
+// and fails if the two disagree. Editing a number here without editing it
+// there breaks the build, which is the point — a pricing card that
+// overstates what the API grants is a product defect, not a typo.
+// EXPORTED so the account Profile screen renders these same rows rather than a
+// copy of them. A copy is what drifted: #79 shipped a hand-written summary
+// claiming Pro gets 25 watchlist symbols and Elite gets full history, when the
+// table below says Full watchlist and 5 years for both. Wrong about what
+// someone is paying for, in the one screen that exists to tell them.
+//
+// Keep the array HERE. backend/tests/test_tier_limits.py parses this file by
+// path and fails if these numbers disagree with tier_limits.py, so this stays
+// the single verified source and Profile inherits that guarantee.
+export const PLANS: Plan[] = [
   {
     name: "Free",
     price: "$0",
@@ -79,12 +98,12 @@ const PLANS: Plan[] = [
       { label: "Connect your broker (Copilot execution)", included: false },
     ],
     limits: [
-      { feature: "Watchlist coverage", limit: "1 ticker (planned)" },
-      { feature: "Signal delay", limit: "End of day (planned)" },
-      { feature: "Historical data", limit: "1 year (planned)" },
+      { feature: "Watchlist coverage", limit: "1 ticker" },
+      { feature: "Signal delay", limit: "End of day" },
+      { feature: "Historical data", limit: "1 year" },
       { feature: "Broker connections", limit: "None" },
     ],
-    cta: { label: "Open paper terminal", href: "/terminal", internal: true },
+    cta: { label: "Request access", href: "/request-access", internal: true },
   },
   {
     name: "Pro",
@@ -99,12 +118,12 @@ const PLANS: Plan[] = [
       { label: "Connect your broker (Copilot execution)", included: false },
     ],
     limits: [
-      { feature: "Watchlist coverage", limit: "Full watchlist (planned)" },
-      { feature: "Signal delay", limit: "Live (planned)" },
-      { feature: "Historical data", limit: "5 years (planned)" },
+      { feature: "Watchlist coverage", limit: "Full watchlist" },
+      { feature: "Signal delay", limit: "Live" },
+      { feature: "Historical data", limit: "5 years" },
       { feature: "Broker connections", limit: "None" },
     ],
-    cta: { label: "Open paper terminal", href: "/terminal", internal: true },
+    cta: { label: "Request access", href: "/request-access", internal: true },
     featured: true,
   },
   {
@@ -119,12 +138,12 @@ const PLANS: Plan[] = [
       { label: "Fully unattended Autopilot execution", included: false },
     ],
     limits: [
-      { feature: "Watchlist coverage", limit: "Full watchlist (planned)" },
-      { feature: "Signal delay", limit: "Live (planned)" },
-      { feature: "Historical data", limit: "5 years (planned)" },
-      { feature: "Broker connections", limit: "1 (planned)" },
+      { feature: "Watchlist coverage", limit: "Full watchlist" },
+      { feature: "Signal delay", limit: "Live" },
+      { feature: "Historical data", limit: "5 years" },
+      { feature: "Broker connections", limit: "Your own broker" },
     ],
-    cta: { label: "Open paper terminal", href: "/terminal", internal: true },
+    cta: { label: "Request access", href: "/request-access", internal: true },
   },
 ];
 
@@ -136,8 +155,8 @@ export default function Landing() {
       <header className="landing-nav">
         <div className="landing-container landing-nav-row">
           <span style={{ display: "inline-flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-            <img src="/favicon-32x32.png" alt="" width={24} height={24} />
-            <span className="landing-wordmark">OLBOS</span>
+            <img src="/olbos-o-sm.webp" alt="" width={26} height={24} />
+            <BrandWordmark className="landing-wordmark" height={15} />
           </span>
           <nav
             id="landing-nav-links"
@@ -152,12 +171,14 @@ export default function Landing() {
           </nav>
           <div className="landing-nav-actions">
             <Link className="landing-signin" to="/terminal">Sign In</Link>
-            {/* Two labels, one shown at a time by CSS. The full label measures
-                173px — most of the phone nav row's budget. See the
-                .landing-nav-actions note in landing.css. */}
-            <Link className="landing-cta-btn landing-nav-cta" to="/terminal">
-              <span className="landing-cta-full">Start Paper Trading</span>
-              <span className="landing-cta-compact">Start Free</span>
+            {/* One label now. This carried two — "Start Paper Trading" and a
+                compact "Start Free" swapped by CSS — because the full label
+                measures 173px, most of the phone nav row's budget. "Sign Up"
+                is about a third of that, so the swap has nothing left to do
+                and the markup, the CSS and three tests that existed only to
+                keep it working all go away with it. */}
+            <Link className="landing-cta-btn landing-nav-cta" to="/request-access">
+              Sign Up
             </Link>
             <button
               type="button"
@@ -177,26 +198,35 @@ export default function Landing() {
         {/* ── Hero ──────────────────────────────────────────────────────── */}
         <section className="landing-section landing-hero" id="product">
           <div className="landing-container">
-            <img
-              className="landing-hero-banner"
-              src="/olbos-hero.png"
-              alt="Olbos Trade — Algorithmic Trading System"
-              width={1024}
-              height={559}
-            />
-            <div className="landing-eyebrow">Systematic Options Execution</div>
+            <div className="landing-eyebrow">Systematic Options &amp; Equity Execution</div>
             <h1 className="landing-h1">
-              Systematic options execution with risk controls built into every decision.
+              Systematic options and equity execution with risk controls built into every decision.
             </h1>
+            {/* Crypto's claim changed in #84 and this sentence had to change
+                with it. It used to read "planned and not yet supported", which
+                was true when there was no venue, no data feed and no
+                instrument model. Phase 1 added a scanner: 12 symbols on daily
+                bars, signals recorded to signal_outcomes and resolved against
+                forward price. So "not supported" is now false — the app has a
+                Crypto Signals page a new user can open.
+
+                What did NOT change is the part that matters: there is no order
+                path. run_crypto_scan() never reaches handle_signal, no crypto
+                module imports an execution symbol, and two tests hold that
+                line. "Signals-only ... no order path" is the whole truth and
+                claims nothing beyond it — no track record is implied, because
+                none exists yet. Same rule the numbers follow: say what exists,
+                label what does not. */}
             <p className="landing-lede">
               Olbos Trading System runs a rules-based options and equity workflow — regime
               detection, a trained signal model, and a fail-closed risk gate — in front of every
               trade decision. Nothing executes without passing guardrails, and every signal shows
-              where it came from. Currently in paper-trading evaluation; live capital requires a
-              validated track record first.
+              where it came from. Crypto is signals-only — scanned and tracked for forward
+              outcomes, with no order path. Currently in paper-trading evaluation; live capital
+              requires a validated track record first.
             </p>
             <div className="landing-hero-ctas">
-              <Link className="landing-cta-btn" to="/terminal">Start Paper Trading</Link>
+              <Link className="landing-cta-btn" to="/request-access">Start Paper Trading</Link>
               <a className="landing-cta-btn secondary" href="#risk">See risk controls</a>
             </div>
 
@@ -287,10 +317,10 @@ export default function Landing() {
             <div className="landing-eyebrow">Pricing</div>
             <h2 className="landing-h2">Free to explore. Pro and Elite when billing ships.</h2>
             <p className="landing-lede">
-              There is no signup or billing system wired up yet — every plan opens the same
-              paper terminal today, including Manual, Copilot, and Autopilot controls. The
-              Pro ($29) and Elite ($99) prices and limits below are the intended future tiers,
-              shown honestly and marked as planned / not enforced.
+              The limits below are enforced by the API today. What is not wired up is
+              billing: there is no card to enter, and your tier is set by hand when your
+              access request is approved. The Pro ($29) and Elite ($99) prices are the
+              intended future pricing, and nothing charges you for anything yet.
             </p>
             <div className="pricing-grid">
               {PLANS.map((plan) => (
@@ -374,10 +404,11 @@ export default function Landing() {
           <div className="landing-container">
             <h2 className="landing-h2">Start in paper. Prove the edge before it's live.</h2>
             <p className="landing-lede" style={{ margin: "0 auto 28px" }}>
-              The terminal opens directly into paper trading — no live order can be placed until
-              the account and environment are explicitly switched to live.
+              Accounts open in paper trading — no live order can be placed until the account and
+              environment are explicitly switched to live. Access is invite-only; a person reviews
+              every request.
             </p>
-            <Link className="landing-cta-btn" to="/terminal">Start Paper Trading</Link>
+            <Link className="landing-cta-btn" to="/request-access">Start Paper Trading</Link>
           </div>
         </section>
       </main>
@@ -386,8 +417,8 @@ export default function Landing() {
         <div className="landing-container">
           <div className="landing-footer-row">
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <img src="/favicon-32x32.png" alt="" width={18} height={18} />
-              <span className="landing-wordmark" style={{ fontSize: 15 }}>OLBOS</span>
+              <img src="/olbos-o-sm.webp" alt="" width={19} height={18} />
+              <BrandWordmark className="landing-wordmark" height={11} />
               <span style={{ width: 1, height: 12, background: "var(--line-dim)" }} />
               <span style={{
                 fontFamily: "var(--mono)", fontSize: 9, fontWeight: 500,

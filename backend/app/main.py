@@ -98,6 +98,7 @@ from app.api.routes import alerts
 from app.api.routes import ibkr_live
 from app.api.routes import forecasts
 from app.api.routes import signal_research
+from app.api.routes import crypto as crypto_routes
 from app.core.config import settings
 
 logger = get_logger(__name__)
@@ -230,6 +231,19 @@ SIGNAL_OUTCOMES_GUARD_S = 600
 from app.api.routes import auth as auth_routes  # noqa: E402
 app.include_router(auth_routes.router)
 
+# Two routers, on two prefixes. The public one is allowlisted in auth_deps;
+# the operator one must not be, and lives under /api/admin/ so that it cannot
+# be reached by a path-based allowlist entry. See the module docstring.
+from app.api.routes import access_requests as access_request_routes  # noqa: E402
+app.include_router(access_request_routes.router)
+app.include_router(access_request_routes.admin_router)
+
+# Per-user broker credentials. Own prefix, and deliberately NOT under
+# /api/ibkr or any broker-specific path: it is where a user connects any
+# broker, and today that is Alpaca.
+from app.api.routes import broker_connections as broker_connection_routes  # noqa: E402
+app.include_router(broker_connection_routes.router)
+
 app.include_router(backtest.router,    prefix="/api/backtest",    tags=["Backtest"])
 app.include_router(strategy.router,    prefix="/api/strategy",    tags=["Strategy"])
 app.include_router(alpha_edge.router,  prefix="/api/alpha-edge",  tags=["Alpha Edge"])
@@ -258,11 +272,39 @@ app.include_router(alerts.notif_router,prefix="/api/notifications",tags=["Notifi
 app.include_router(ibkr_live.router,   prefix="/api/ibkr",         tags=["IBKR Live Data"])
 app.include_router(forecasts.router,   prefix="/api/forecasts",    tags=["Probabilistic Intelligence"])
 app.include_router(signal_research.router, prefix="/api/signal-research", tags=["Signal Research"])
+app.include_router(crypto_routes.router, prefix="/api/crypto",    tags=["Crypto"])
 
+
+# ── Startup ─────────────────────────────────────────────────────────────────
+
+def _log_auth_posture() -> None:
+    """Report the resolved authentication mode, once, at startup."""
+    if settings.auth_enabled:
+        logger.info(
+            "AUTH: application authentication is ON — sessions required, "
+            "tier limits enforced. SECRET_KEY is %s.",
+            "set" if settings.secret_key else "NOT SET (operator routes are open)",
+        )
+        if not settings.secret_key:
+            logger.warning(
+                "AUTH_ENABLED=true but SECRET_KEY is empty — operator-key "
+                "routes fall open. Set SECRET_KEY in backend/.env.prod."
+            )
+        return
+
+    logger.warning(
+        "AUTH: application authentication is OFF (AUTH_ENABLED is false or "
+        "unset). This instance relies entirely on whatever sits in front of "
+        "it — nginx Basic Auth and the X-Api-Key operator key. Access "
+        "requests and /claim return 404, and every caller resolves to "
+        "unlimited tier limits. Do not remove Basic Auth while this reads OFF."
+    )
 
 # ── Startup / shutdown (called from the lifespan context manager above) ─────
 async def _on_startup() -> None:
     global _current_regime, _greeks_tracker
+
+    _log_auth_posture()
 
     # 1. Initialize broker and connect
     try:
@@ -410,6 +452,7 @@ async def _background_scheduler() -> None:
 
     equity_interval_s  = settings.equity_signal_interval_minutes * 60
     options_interval_s = 30 * 60   # 30 minutes
+    crypto_interval_s  = settings.crypto_signal_interval_minutes * 60
     regime_interval_s  = 30 * 60   # 30 minutes
     greeks_interval_s  = 60        # 1 minute
     fills_interval_s   = 30        # 30 seconds
@@ -439,6 +482,11 @@ async def _background_scheduler() -> None:
     # (startup already ran regime + equity scan)
     last_equity  = _now
     last_options = _now
+    # 0.0, not _now, unlike equity/options: there is no crypto counterpart to
+    # the startup equity scan, so waiting a full interval after boot would mean
+    # a restart silently costs a scan cycle of crypto coverage. The scan is
+    # read-only and cheap, so running it on the first tick is free.
+    last_crypto  = 0.0
     last_regime  = _now
     last_greeks  = 0.0   # Greeks update on first tick is fine (lightweight)
     last_fills   = 0.0
@@ -517,6 +565,18 @@ async def _background_scheduler() -> None:
                     )
                 last_equity = now
 
+            # Crypto signal scan — READ-ONLY (phase 1). Deliberately NOT gated
+            # on _current_regime the way the equity branch above is: that regime
+            # is SPY/VIX-derived and says nothing about crypto, so gating on it
+            # would be borrowing an unrelated market's verdict. Nothing here can
+            # execute (see crypto_scan.py), so there is no risk for a regime
+            # gate to manage — it is a measurement job, and suppressing
+            # measurement during a stressed equity tape would throw away the
+            # most informative crypto observations in the sample.
+            if settings.crypto_enabled and now - last_crypto >= crypto_interval_s:
+                await _guarded(_run_crypto_scan(), "crypto_scan", 120)
+                last_crypto = now
+
             # Every 30 min: options spread signal scan across the whole
             # watchlist (if regime allows) — see _run_options_scan_watchlist's
             # docstring for why every symbol reuses SPY's regime as a shared
@@ -551,6 +611,14 @@ async def _background_scheduler() -> None:
                 # step is a DB read that returns early when nothing is
                 # missing a stop, so the usual cost is one query.
                 await _guarded(_backfill_equity_stops(), "stop_backfill", 45)
+
+                # And its mirror image, on the same tick and for the same
+                # reason. The backfill above handles a POSITION WITHOUT AN
+                # ORDER; this handles an ORDER WITHOUT A POSITION. Both are
+                # created by reconciliation — one adopts, the other closes —
+                # so both belong behind it rather than on timers of their own
+                # drifting in and out of phase.
+                await _guarded(_sweep_orphaned_orders(), "orphan_sweep", 45)
 
             # Every 20 min: refresh the rotation-scoped correlation cluster
             # cache (position_rotation.py's cluster-membership tiebreaker
@@ -885,6 +953,20 @@ async def _record_options_rejection(
         regime=regime_name,
         evidence=evidence,
     )
+
+
+async def _run_crypto_scan() -> None:
+    """
+    Scheduler entry point for the read-only crypto scan.
+
+    A thin wrapper rather than a direct call so the scan itself lives in a
+    service module that tests can import without pulling in main.py's app,
+    lifespan and 150-odd route imports — and so main.py keeps depending on
+    services rather than the reverse.
+    """
+    from app.services.crypto_scan import run_crypto_scan
+
+    await run_crypto_scan()
 
 
 async def _run_equity_scan() -> None:
@@ -2333,6 +2415,103 @@ async def _poll_fills() -> None:
         logger.debug("_poll_fills: %s", exc)  # non-fatal
 
 
+async def _sweep_orphaned_orders() -> None:
+    """Cancel resting orders on symbols the broker holds no position in.
+
+    The reconciliation loop above already cancels the bracket of anything IT
+    books closed, by iterating the `closed_symbols` set it just built. That
+    prevents new orphans arriving by one path and cannot see an orphan that
+    already exists — from a manual close in TWS, a close booked while this
+    process was down, a path predating that fix, or its own swallowed cancel
+    failure ("the orphan survives to the next pass", where no later pass looks
+    at it again).
+
+    Production proved the difference. The canceller landed 2026-08-28 after 20
+    orphans across ASML/EXC/INTU/MU. On 2026-09-19 there were 18, on three of
+    the same tickers, still resting — roughly $176k of potential unintended
+    exposure on a $100k book. An orphaned stop is not dormant: both legs of a
+    short's bracket are BUYs, so with nothing to close, a touch OPENS a
+    position instead of exiting one.
+
+    Event-triggered cleanup could not fix that. This is state-triggered: it
+    reads the book every reconciliation interval and acts on what is there,
+    regardless of how it got there.
+
+    Every rule inside fails toward leaving the order alone — see the module
+    docstring. Failures are logged, never raised: this runs behind
+    reconciliation and must not take the tick with it.
+    """
+    from app.broker.broker_factory import get_broker
+    from app.services.orphan_order_sweep import sweep_orphaned_orders
+
+    report = await sweep_orphaned_orders(get_broker(), dry_run=False)
+
+    if report.get("nothing_to_do"):
+        return
+    if report.get("status") == "skipped":
+        # Expected in normal operation (cached book, disconnected broker), so
+        # debug rather than warning — except the per-pass limit, which means
+        # the book looks nothing like expectations and someone should look.
+        if "exceeds the" in (report.get("reason") or ""):
+            logger.warning("orphan sweep refused to act: %s | %s",
+                           report.get("reason"), report.get("by_symbol"))
+        else:
+            logger.debug("orphan sweep skipped: %s", report.get("reason"))
+        return
+    if report.get("status") != "ok":
+        logger.warning("orphan sweep did not run: %s", report.get("reason"))
+        return
+
+    logger.warning(
+        "orphan sweep: %d of %d resting order(s) with no position confirmed "
+        "cancelled: %s",
+        len(report.get("confirmed_cancelled") or []), report.get("requested", 0),
+        report.get("by_symbol"),
+    )
+
+    if not report.get("verified"):
+        # The post-cancel read fell back to cache, so nothing is confirmed.
+        # Saying so beats an optimistic count: the next pass will re-check.
+        logger.warning(
+            "orphan sweep could not verify the cancels — the post-cancel read "
+            "was not a live one. Treat this pass as unconfirmed.",
+        )
+
+    if report.get("still_open"):
+        # IBKR accepted the cancel and the order is still in the book. That is
+        # the 2026-08-29 failure mode, where cancelling in TWS reported nothing
+        # and changed nothing. Worth an error: the exposure is still live.
+        logger.error(
+            "orphan sweep: %s still in the order book after cancel — the "
+            "unintended-position risk is NOT cleared",
+            report["still_open"],
+        )
+
+    if report.get("not_found"):
+        # Already gone from the broker's book. Benign if someone else
+        # cancelled it; NOT benign if it filled.
+        logger.warning(
+            "orphan sweep: %s were already gone from the order book — "
+            "cancelled elsewhere, or filled",
+            report["not_found"],
+        )
+
+    if report.get("possible_fills"):
+        # A not_found order whose symbol now HAS a position. That is the
+        # unintended position opening — the exact outcome this sweep exists to
+        # prevent — so it is an error, not a footnote.
+        logger.error(
+            "orphan sweep: %s now hold a position after an orphaned order went "
+            "missing — an orphan may have FILLED and opened an unintended "
+            "position. Check the book by hand.",
+            report["possible_fills"],
+        )
+
+    if report.get("errored"):
+        logger.error("orphan sweep: broker refused to cancel %s",
+                     report["errored"])
+
+
 async def _update_portfolio_greeks() -> None:
     global _greeks_tracker
     if _greeks_tracker is None:
@@ -2407,6 +2586,33 @@ async def _check_signal_outcomes() -> None:
             summary["tickers_covered"], summary["tickers_total"],
             summary["truncated"], summary["elapsed_s"],
         )
+
+    # Second pass: fill in full-window excursions for rows that resolved before
+    # enough bars existed to measure one. The pass above writes a resolution the
+    # moment a barrier is touched — right for the operator, but it means a
+    # signal that resolved on day 2 was measured over two bars and would be
+    # rejected as incomplete forever, because nothing selects a resolved row
+    # again. Without this, uncensored MFE never accumulates and the censoring
+    # ceiling never lifts.
+    #
+    # Its own budget, and failures are swallowed: this is an enrichment of data
+    # that is already correct, so it must never take the outcome pass down with
+    # it.
+    try:
+        from app.services.signal_outcome_tracker import enrich_incomplete_excursions
+        enriched = await enrich_incomplete_excursions(
+            budget_s=SIGNAL_OUTCOMES_DEADLINE_S,
+        )
+        if enriched["enriched"] > 0:
+            logger.info(
+                "Excursion enrichment: candidates=%d enriched=%d completed=%d "
+                "tickers=%d truncated=%s elapsed=%.1fs",
+                enriched["candidates"], enriched["enriched"],
+                enriched["completed"], enriched["tickers_covered"],
+                enriched["truncated"], enriched["elapsed_s"],
+            )
+    except Exception as exc:
+        logger.warning("Excursion enrichment failed (outcomes are unaffected): %s", exc)
 
 
 async def _reconcile_positions() -> None:
@@ -2703,7 +2909,22 @@ async def _backfill_equity_stops() -> None:
 
 
 # ── Health check ────────────────────────────────────────────────────────────
+#
+# TWO PATHS, ONE HANDLER, and the second one is not redundant.
+#
+# The frontend proxy forwards /api to this service and nothing else, so
+# /health is reachable only from INSIDE the container — the docker healthcheck
+# can use it; an external monitor through the domain cannot. auth_deps'
+# allowlist has named /api/health since the default-deny work went in, but no
+# such route existed, so anything probing it got a 404 from an allowlist entry
+# that promised otherwise. scripts/paper_e2e_smoke.sh already hedged by
+# falling back to /health, which is a sign someone met this and worked around
+# it rather than fixing it.
+#
+# Both are in PUBLIC_EXACT: a health probe cannot hold a session, and a
+# healthcheck that 401s marks a working container unhealthy.
 @app.get("/health", tags=["System"])
+@app.get("/api/health", tags=["System"])
 async def health_check() -> dict[str, str]:
     """Returns 200 OK when the service is up."""
     return {"status": "ok", "broker": settings.broker}

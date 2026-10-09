@@ -26,7 +26,6 @@ import asyncio
 import sys
 import time
 from collections import Counter
-from decimal import Decimal
 
 sys.path.insert(0, "/app")
 
@@ -38,6 +37,7 @@ from app.services.signal_outcome_tracker import (  # noqa: E402
     DEFAULT_MAX_HOLD_DAYS,
     _fetch_daily_bars,
     _resolve_one,
+    _resolved_payload,
 )
 
 WRITE_CHUNK = 1000
@@ -86,18 +86,18 @@ async def main(apply: bool) -> None:
             if res is None:
                 local["unresolved"] += 1
                 continue
-            status, exit_price, resolved_at, days, mfe, mae = res
+            # Built by the tracker's own mapping rather than repeated here.
+            # This script used to carry a parallel copy, which is exactly why
+            # it drifted: _resolve_one grew from six return values to nine and
+            # the copy kept unpacking six, so the backfill would have died with
+            # ValueError on its first resolved row — and nothing caught it,
+            # because scripts/ is not under test. Sharing the mapping means the
+            # new excursion columns are persisted here too, for free.
+            payload = _resolved_payload(row.id, res)
+            status = payload["status"]
             local[status] += 1
-            days_by_status.setdefault(status, []).append(days)
-            payloads.append({
-                "id": row.id,
-                "status": status,
-                "exit_price": Decimal(str(round(exit_price, 4))),
-                "resolved_at": resolved_at,
-                "days_to_resolve": days,
-                "max_favorable_pct": Decimal(str(round(mfe, 4))),
-                "max_adverse_pct": Decimal(str(round(mae, 4))),
-            })
+            days_by_status.setdefault(status, []).append(payload["days_to_resolve"])
+            payloads.append(payload)
         outcomes.update(local)
         print(f"  [{i}/{len(by_ticker)}] {ticker}: {dict(local)}", flush=True)
 

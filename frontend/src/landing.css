@@ -32,13 +32,12 @@
   gap: 28px;
   height: 64px;
 }
+/* Outlines now (see components/BrandWordmark). Same artwork the terminal
+   header uses, so the brand reads identically across marketing and product.
+   The gold glow that used to sit here is gone with it: at this size it
+   thickened the letterforms it was meant to flatter. */
 .landing-wordmark {
-  font-family: var(--brand-font);
-  font-size: 20px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
   color: var(--brand);
-  text-shadow: 0 0 10px rgba(212, 175, 55, 0.3);
   flex-shrink: 0;
 }
 .landing-nav-links {
@@ -51,10 +50,14 @@
 }
 .landing-nav-links a:hover { color: var(--ink); }
 .landing-nav-actions { display: flex; align-items: center; gap: 14px; flex-shrink: 0; }
-/* The nav CTA carries both labels; only one is displayed at a time. */
-.landing-cta-compact { display: none; }
-.landing-signin { font-family: var(--sans); font-size: 13px; color: var(--ink-dim); }
-.landing-signin:hover { color: var(--ink); }
+/* Element + class, because the `.landing a { color: inherit }` reset above
+   is (0,1,1) and a bare `.landing-signin` at (0,1,0) loses to it — so this
+   rendered at --ink and its hover state was a no-op. The nav links beside
+   it are unaffected: they take their colour from .landing-nav-links on the
+   container, which the reset does not override. */
+.landing-signin { font-family: var(--sans); font-size: 13px; }
+a.landing-signin { color: var(--ink-dim); }
+a.landing-signin:hover { color: var(--ink); }
 
 .landing-nav-toggle {
   display: none;
@@ -105,7 +108,7 @@
   margin-bottom: 14px;
 }
 .landing-h1 {
-  font-family: var(--sans);
+  font-family: var(--display);
   font-size: 44px;
   font-weight: 600;
   line-height: 1.15;
@@ -113,8 +116,19 @@
   max-width: 720px;
   margin-bottom: 20px;
 }
+/* The short gold rule under the hero headline. An ::after rather than markup
+   because .landing-h1 is used exactly once — if a second headline ever takes
+   the class, this wants to become its own element instead. */
+.landing-h1::after {
+  content: "";
+  display: block;
+  width: 72px;
+  height: 2px;
+  background: var(--brand);
+  margin-top: 24px;
+}
 .landing-h2 {
-  font-family: var(--sans);
+  font-family: var(--display);
   font-size: 28px;
   font-weight: 600;
   letter-spacing: -0.01em;
@@ -131,14 +145,6 @@
 
 /* ── Hero ────────────────────────────────────────────────────────────── */
 .landing-hero { padding-top: 72px; }
-.landing-hero-banner {
-  display: block;
-  width: 100%;
-  max-width: 620px;
-  height: auto;
-  margin: 0 0 40px;
-  filter: drop-shadow(0 0 44px rgba(212, 175, 55, 0.10));
-}
 .landing-hero-ctas { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 56px; }
 
 .pipeline {
@@ -353,14 +359,15 @@
      360px is the most common Android viewport, so the public marketing page
      scrolled sideways there.
 
-     Two changes, because either alone is fragile:
-       1. A compact label on phones, so the row fits with room to spare
-          rather than by a rounding error.
+     Two changes were made, because either alone is fragile:
+       1. A shorter label, so the row fits with room to spare rather than by
+          a rounding error. This began as a CSS swap between a full and a
+          compact span; the CTA is now simply "Sign Up" and the swap, its
+          spans and the rule that styled them are gone.
        2. Real shrinkability, so no future label length can push the
           document wide again — the row runs out of space before the
-          viewport does. */
-  .landing-nav-cta .landing-cta-full { display: none; }
-  .landing-nav-cta .landing-cta-compact { display: inline; }
+          viewport does. This is the part that must not be removed: it is
+          what keeps a longer label from re-creating the original bug. */
 
   .landing-nav-row { min-width: 0; }
   .landing-nav-actions { flex-shrink: 1; }
@@ -370,7 +377,6 @@
     white-space: nowrap;
     text-overflow: ellipsis;
   }
-  .landing-nav-cta > span { overflow: hidden; text-overflow: ellipsis; }
 
   .landing-h1 { font-size: 26px; }
   .pipeline, .landing-grid-4 { grid-template-columns: 1fr; }

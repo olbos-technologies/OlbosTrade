@@ -94,9 +94,16 @@ Desk + Options Desk (tools inside desk) + Copilot Queue + Positions; optionally
 later Orders + Execution Monitor + Trade Replay + TradeIntent/Evaluation + feature
 flags + paper-mode validation path.
 
-**Deferred / non-goals:** See §17. Multi-tenant SaaS auth, live futures, naked
-shorts, 0DTE Autopilot, social/marketplace, LLM→broker, full institutional OMS
-replacement, broad unrelated refactors.
+**Deferred / non-goals:** See §17. Live futures, naked shorts, 0DTE Autopilot,
+social/marketplace, LLM→broker, full institutional OMS replacement, broad
+unrelated refactors.
+
+> **Superseded 2026-10-05.** "Multi-tenant SaaS auth" was listed here as a
+> non-goal. `docs/adr/0001-broker-connection-ownership.md` is now Accepted: an
+> organization owns a broker connection, and every user gets a personal
+> organization. Roles, invitations and multi-member organizations remain
+> deferred — only the *ownership key* is decided. This plan is not authoritative
+> on tenancy; `MASTER_ARCHITECTURE.md` and the ADRs are.
 
 ---
 
@@ -408,7 +415,8 @@ Paper E2E checklist owned by Claude Code Stage 5 (spec §21).
 - Full institutional OMS replacement
 - Unlicensed data redistribution
 - Broad repository refactor unrelated to Trade Desk
-- Multi-tenant auth/RBAC/billing (SaaS expansion later)
+- Multi-member orgs, RBAC and billing (roles/invitations still deferred; the
+  ownership key itself is decided in ADR-0001, Accepted 2026-10-05)
 - Replacing IBKR adapter or ChartWorkstation SVG engine
 - Second submit path beside `_execute_signal`
 - Complex event bus before REST polling + existing IBKR quote WS are insufficient

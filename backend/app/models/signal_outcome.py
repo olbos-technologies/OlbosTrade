@@ -58,8 +58,37 @@ class SignalOutcome(Base):
     # Best/worst move seen toward the target while the signal was pending —
     # the equity Trade row equivalent of mfe/mae, computed as % of entry
     # price so it's comparable across tickers.
+    # CENSORED AT RESOLUTION. The tracker stops updating these the moment the
+    # signal resolves, so a target_hit row's max_favorable_pct is capped at its
+    # own target — it records that the signal reached 2.0R, never whether it
+    # would have gone on to 3.0R. Meaning deliberately unchanged, so rows from
+    # before and after the uncensored columns stay comparable on this field.
     max_favorable_pct: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 4), nullable=True)
     max_adverse_pct:   Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 4), nullable=True)
+
+    # UNCENSORED, over a fixed max_hold_days window from entry, regardless of
+    # when the signal resolved. This is what makes target placement answerable:
+    # _censoring_ceiling_r() exists solely because max_favorable_pct stops
+    # looking at the target, and a row with a complete measurement here no
+    # longer constrains that ceiling.
+    #
+    # The window is fixed rather than "to the end of history" so rows stay
+    # comparable — a variable look-ahead gives recent signals a shorter window
+    # and quietly understates them.
+    #
+    # NULL on every row resolved before this shipped. That NULL is the marker
+    # separating measurable rows from unmeasurable ones — do NOT backfill it
+    # from max_favorable_pct, which would launder a censored number into the
+    # column whose whole purpose is to be uncensored.
+    mfe_full_pct: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 4), nullable=True)
+    mae_full_pct: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 4), nullable=True)
+
+    # Bars the uncensored measurement actually covered. A signal resolved
+    # yesterday has a day or two of history, so its "full" excursion is itself
+    # censored — by data availability rather than by the target. Aggregations
+    # must require full_window_days >= max_hold_days (see _is_uncensored), or
+    # this fix only moves the censoring somewhere harder to see.
+    full_window_days: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
     # Indicator snapshot at signal generation — the feature set a future ML
     # pass would train on. Stored as plain columns (not JSON) so they're

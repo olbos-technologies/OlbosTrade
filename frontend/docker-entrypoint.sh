@@ -51,6 +51,23 @@ else
     echo "[entrypoint]   Behind Caddy, all callers share one bucket: set TRUSTED_PROXY_CIDR to Caddy's subnet."
 fi
 
+# Proves to the backend that a request came through THIS proxy, so it can
+# believe the X-Forwarded-For set just below. See backend/app/api/rate_limit.py
+# client_ip() and issue #60: the backend shares the external docker_default
+# network with Caddy and the IBKR gateway, so peer address cannot tell the
+# frontend apart from anything else on it. A secret can.
+#
+# Unset = the backend ignores X-Forwarded-For and buckets every caller
+# together. docker-compose.hetzner.yml requires the variable for that reason.
+SECRET_HEADER=""
+if [ -n "$TRUSTED_PROXY_SECRET" ]; then
+    SECRET_HEADER="proxy_set_header X-Olbos-Proxy-Secret \"$TRUSTED_PROXY_SECRET\";"
+    echo "[entrypoint] Proxy secret set — backend will trust this proxy's X-Forwarded-For."
+else
+    echo "[entrypoint] WARNING: TRUSTED_PROXY_SECRET not set — the backend will ignore"
+    echo "[entrypoint]   X-Forwarded-For, so every caller shares one login rate-limit bucket."
+fi
+
 AUTH_BLOCK=""
 if [ -n "$DASH_USER" ] && [ -n "$DASH_PASS" ]; then
     htpasswd -bc /etc/nginx/.htpasswd "$DASH_USER" "$DASH_PASS" >/dev/null 2>&1
@@ -75,7 +92,7 @@ ${REAL_IP_BLOCK}
     # own OPTION_CHAIN coordinator timeout (120s, market_data.py) — without
     # this, nginx would 504 the connection before the backend's own timeout
     # (and its clean error body) ever gets a chance to fire.
-    location /api         { proxy_pass http://olbostrade-backend:8000; proxy_set_header Host \$host; proxy_set_header X-Forwarded-For \$remote_addr; proxy_read_timeout 130s; proxy_send_timeout 130s; }
+    location /api         { proxy_pass http://olbostrade-backend:8000; proxy_set_header Host \$host; proxy_set_header X-Forwarded-For \$remote_addr; ${SECRET_HEADER} proxy_read_timeout 130s; proxy_send_timeout 130s; }
     location /docs        { proxy_pass http://olbostrade-backend:8000; }
     location /openapi.json { proxy_pass http://olbostrade-backend:8000; }
     location /ws {
@@ -84,11 +101,22 @@ ${REAL_IP_BLOCK}
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection "upgrade";
     }
-    # Hashed build assets (filename changes every build) can cache forever;
-    # index.html can't — it's what points browsers at the current hash, so a
-    # cached copy silently keeps a tab on an old build after every deploy.
-    location ~* \.(js|css|woff2?|png|jpg|jpeg|gif|svg|ico)\$ {
-        add_header Cache-Control "public, max-age=31536000, immutable" always;
+    # Vite's HASHED output only. The filename changes every build, so a copy
+    # cached forever can never be the wrong one.
+    #
+    # ^~ so this wins over the regex below without depending on their order.
+    location ^~ /assets/ {
+        add_header Cache-Control "public, max-age=31536000, immutable";
+        try_files \$uri =404;
+    }
+
+    # Files copied verbatim out of public/ — the favicons and the hero image.
+    # These keep the SAME NAME across builds, so immutable would pin whatever
+    # was cached first for a year: replace the hero image and nobody sees the new
+    # one until 2027. The old rule matched them with the hashed assets and the
+    # comment above only ever described /assets/.
+    location ~* \.(png|jpg|jpeg|gif|svg|ico|webp|woff2?)\$ {
+        add_header Cache-Control "public, max-age=3600, must-revalidate";
         try_files \$uri =404;
     }
     location / {

@@ -1,3 +1,4 @@
+import { summarizeKillSwitchReport } from "../utils/killSwitchReport";
 import React, { useEffect, useState } from "react";
 import { useRisk } from "../hooks/useRisk";
 import { api, getOperatorApiKey, setOperatorApiKey } from "../api/client";
@@ -196,6 +197,8 @@ export default function RiskMonitor() {
   const [ks, setKs] = useState<any>(null);
   const [ksBusy, setKsBusy] = useState(false);
   const [ksError, setKsError] = useState<string | null>(null);
+  // What the last engage actually did — see engageKs.
+  const [ksReport, setKsReport] = useState<any>(null);
   const [resetCode, setResetCode] = useState("");
   const [operatorKey, setOperatorKey] = useState(() => getOperatorApiKey());
   const [sectionsError, setSectionsError] = useState(false);
@@ -260,13 +263,37 @@ export default function RiskMonitor() {
   // trade-desk endpoint's own handler already clears both together on
   // engage and on reset — this just routes both buttons through it.
   const engageKs = async () => {
-    setKsBusy(true); setKsError(null);
-    try { await api.setTradeDeskKillSwitch(true); await loadKs(); }
+    setKsBusy(true); setKsError(null); setKsReport(null);
+    try {
+      // Keep the report. Engaging is this app's only bulk-flatten path, and
+      // engage() runs every step even when an earlier one fails — it can pause
+      // the scheduler, never reach the broker, and still return normally. An
+      // engage on an ALREADY-engaged switch flattens nothing at all. Throwing
+      // the counts away left this page asserting "positions flattened" on no
+      // evidence, which is the one claim an operator must not have to take on
+      // faith.
+      const res: any = await api.setTradeDeskKillSwitch(true);
+      setKsReport(res);
+      // Trust the POST's own answer for engaged state before the refresh.
+      // loadKs() swallows its errors, so a failed follow-up GET used to leave
+      // `ks` null — and since the report renders inside the ksEngaged branch,
+      // the flatten result vanished even though the switch WAS engaged and the
+      // response already said so authoritatively. The GET is a best-effort
+      // refresh, not the source of truth for a call that just succeeded.
+      if (res && typeof res.engaged === "boolean") setKs(res);
+      await loadKs();
+    }
     catch (e: any) { setKsError(e?.message || "Failed to engage kill switch"); }
     finally { setKsBusy(false); }
   };
 
   const resetKs = async () => {
+    // Clear the previous engagement's report. It was only cleared when THIS
+    // component started another engage, so after a reset it lingered in state
+    // — and if the switch was later engaged elsewhere (the risk.py route, or
+    // another operator), polling flipped ksEngaged true and these stale counts
+    // rendered as if they described the new engagement. Caught in review on #64.
+    setKsReport(null);
     const code = resetCode.trim();
     if (!code) {
       setKsError("Enter the kill-switch reset authorization code.");
@@ -475,8 +502,51 @@ export default function RiskMonitor() {
                   <div style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--red)", fontWeight: 700, letterSpacing: "0.08em" }}>
                     ⚡ KILL SWITCH ENGAGED — TRADING HALTED
                   </div>
+                  {ksReport && (
+                    <div style={{ fontFamily: "var(--mono)", fontSize: 11, lineHeight: 1.7 }}>
+                      {ksReport.already_engaged ? (
+                        <span style={{ color: "var(--amber)" }}>
+                          Already engaged — this press flattened nothing. Reset
+                          first if you need positions closed.
+                        </span>
+                      ) : (
+                        (() => {
+                          // Logic lives in utils/killSwitchReport.ts so it can
+                          // be tested — this rendering is safety-critical and
+                          // was going out uncovered.
+                          const s = summarizeKillSwitchReport(ksReport);
+                          return (
+                            <span style={{ color: "var(--ink-dim)" }}>
+                              Sent <b style={{ color: "var(--ink)" }}>{s.sent}</b> closing order(s),
+                              cancelled <b style={{ color: "var(--ink)" }}>{ksReport.orders_cancelled ?? "?"}</b> open order(s).
+                              {" "}
+                              <b style={{ color: s.allClosed ? "var(--green)" : "var(--amber)" }}>
+                                {s.filled} filled
+                              </b>
+                              {s.working.length > 0 && (
+                                <span style={{ color: "var(--amber)" }}>
+                                  {" "}— {s.working.join(", ")}; those positions are NOT closed yet.
+                                  Verify at the broker.
+                                </span>
+                              )}
+                            </span>
+                          );
+                        })()
+                      )}
+                      {Array.isArray(ksReport.errors) && ksReport.errors.length > 0 && (
+                        <div style={{ color: "var(--red)", marginTop: 6 }}>
+                          {ksReport.errors.length} error(s) — positions may still be open:
+                          <ul style={{ margin: "4px 0 0 16px" }}>
+                            {ksReport.errors.map((err: string, i: number) => (
+                              <li key={i}>{String(err)}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  )}
                   <p style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--ink-dim)", lineHeight: 1.7 }}>
-                    All orders were cancelled and positions flattened. Reset only
+                    Verify against the broker before relying on this. Reset only
                     after manual review. Enter the server reset code
                     (KILL_SWITCH_RESET_CODE) — it is never stored in this app.
                   </p>

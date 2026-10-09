@@ -1,6 +1,11 @@
 /**
  * Broker Gateway — live IBKR connection + capabilities from /api/market/broker.
- * The connect/disconnect controls live in Settings; this is the read-only ops view.
+ *
+ * This is the PLATFORM's broker, configured by the operator through the
+ * backend's environment, and this view is read-only. A user's own broker
+ * account is a different thing entirely and lives in MyBrokers.tsx, on the
+ * next tab — the line at the bottom of this page used to point at a
+ * "Settings → Brokers" screen that did not exist.
  */
 import React, { useEffect, useState } from "react";
 import { Badge } from "../../components/ui";
@@ -148,7 +153,7 @@ export default function BrokerGateway() {
       </div>
 
       <div style={{ marginTop: 14, fontFamily: "var(--mono)", fontSize: 11, color: "var(--ink-faint)", borderLeft: "2px solid var(--line-dim)", paddingLeft: 10, maxWidth: 520 }}>
-        Connection is managed in Settings → Brokers. IBKR live ports are 4001 (Gateway) / 7496 (TWS); anything else is treated as paper.
+        This is the platform's own broker connection. To connect your own account, use the My Brokers tab. IBKR live ports are 4001 (Gateway) / 7496 (TWS); anything else is treated as paper.
       </div>
 
       <div style={{ marginTop: 24, maxWidth: 520 }}>

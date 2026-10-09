@@ -148,7 +148,7 @@ export default function CspScreener() {
         margin: "10px 0",
       }}>
         <StatTile variant="divider" size="sm" label="Env" value={(ctx?.environment || "—").toUpperCase()} tone="var(--amber)" />
-        <StatTile variant="divider" size="sm" label="Risk Profile" value={(ctx?.trading_mode || "—").toUpperCase()} tone="var(--cyan)" />
+        <StatTile variant="divider" size="sm" label="Trading style" value={(ctx?.trading_mode || "—").toUpperCase()} tone="var(--cyan)" />
         <StatTile variant="divider" size="sm" label="Profile" value={profile.toUpperCase()} />
         <StatTile variant="divider" size="sm" label="Buying power" value={ctx ? fmtUsd(ctx.buying_power) : "—"} />
         <StatTile variant="divider" size="sm" label="Heat" value={ctx ? `${ctx.portfolio_heat_pct}%` : "—"}
@@ -174,7 +174,7 @@ export default function CspScreener() {
         <div className="instrument-card" style={{ padding: 14 }}>
           <div className="kicker" style={{ marginBottom: 12 }}>Filters</div>
 
-          <label style={{ fontSize: 12, color: "var(--ink-dim)" }}>Risk profile</label>
+          <label style={{ fontSize: 12, color: "var(--ink-dim)" }}>Screener risk filter</label>
           <select value={profile} onChange={(e) => setProfile(e.target.value as RiskProfile)}
             style={{ width: "100%", margin: "4px 0 12px" }}>
             <option value="conservative">Conservative</option>

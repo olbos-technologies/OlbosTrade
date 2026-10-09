@@ -1,5 +1,10 @@
 import React from "react";
 import TabBar from "../components/TabBar";
+// My Brokers used to live here. It moved to AccountCenter: this group is
+// platform operations, and a screen holding a user's own Alpaca keys sat
+// directly beneath "Broker Connections" — the platform's own broker — which
+// made the two most confusable things in the app adjacent and near-identically
+// named.
 import BrokerGateway from "./data/BrokerGateway";
 import MarketData from "./data/MarketData";
 import DataQuality from "./data/DataQuality";

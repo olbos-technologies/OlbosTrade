@@ -1,0 +1,291 @@
+/* Credential screens — sign in, request access, redeem a setup token.
+
+   These used to be a plain centred box: correct, and visibly not part of the
+   product someone had just been reading about. Landing page to sign-up was a
+   hand-off between two different-looking sites, at exactly the moment a
+   visitor is deciding whether this is a serious piece of software.
+
+   So this borrows landing.css's language rather than inventing a third one —
+   the same gold wordmark, the same mono eyebrow, the same accent-bordered
+   button, the same bg-2 card on a line-dim border. Tokens come from index.css,
+   as they do there.
+
+   What it deliberately does NOT borrow is the landing page's section rhythm:
+   88px of breathing room is right for a page you scroll and wrong for a form
+   you came to fill in. */
+
+.auth-page {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--sans);
+}
+
+.auth-page a { color: inherit; text-decoration: none; }
+
+/* Both selectors below name the element as well as the class, and that is not
+   decoration. The reset above is `.auth-page a` — specificity (0,1,1) — so a
+   bare `.auth-link { color: … }` at (0,1,0) LOSES to it and every link
+   silently inherits its parent's colour instead.
+   Verified in Chromium: .auth-note .auth-link computed rgb(107,122,144),
+   which is --ink-faint, where --accent #3b82f6 was intended.
+   It is invisible in jsdom, which does not compute the cascade, and hard to
+   catch by eye because both colours read as "greyish blue" at 11px on a dark
+   background. test_auth_css_link_specificity guards it. */
+.auth-page a.auth-link { color: var(--accent); }
+.auth-page a.auth-nav-link { color: var(--ink-dim); }
+.auth-page a.auth-nav-link:hover { color: var(--ink); }
+
+/* ── Nav ─────────────────────────────────────────────────────────────── */
+/* Same treatment as .landing-nav. Its job here is orientation: someone who
+   arrived on a bare /claim link from a chat message needs to see whose
+   product this is before they type a password into it. */
+.auth-nav {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: rgba(8, 14, 26, 0.86);
+  backdrop-filter: blur(6px);
+  border-bottom: 1px solid var(--line-dim);
+}
+.auth-nav-row {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 0 24px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.auth-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+/* Outlines now (see components/BrandWordmark). Same artwork the terminal
+   header uses, so the brand reads identically across marketing and product.
+   The gold glow that used to sit here is gone with it: at this size it
+   thickened the letterforms it was meant to flatter. */
+.auth-wordmark {
+  color: var(--brand);
+}
+.auth-nav-link {
+  font-family: var(--sans);
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+/* ── Layout ──────────────────────────────────────────────────────────── */
+.auth-main {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+}
+.auth-layout {
+  width: 100%;
+  max-width: 940px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 400px;
+  gap: 56px;
+  align-items: center;
+}
+
+/* ── Pitch column ────────────────────────────────────────────────────── */
+/* The pearl O, Login only. Sized in CSS as well as on the element so the
+   reserved box matches before the image loads and the pitch does not jump.
+   The asset is 2x (206x192) for retina. */
+.auth-mark {
+  display: block;
+  width: 103px;
+  height: 96px;
+  margin: 0 0 22px;
+}
+@media (max-width: 760px) {
+  /* The layout stacks here and the mark is competing with the form for the
+     first screen, so it steps down rather than pushing the fields below the
+     fold. 64px still clears the ~48px floor where its detail survives. */
+  .auth-mark { width: 69px; height: 64px; margin-bottom: 16px; }
+}
+.auth-eyebrow {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 14px;
+}
+.auth-h1 {
+  font-family: var(--display);
+  font-size: 32px;
+  font-weight: 600;
+  line-height: 1.18;
+  letter-spacing: -0.01em;
+  margin: 0 0 16px;
+}
+.auth-lede {
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--ink-dim);
+  margin: 0;
+  max-width: 460px;
+}
+.auth-points {
+  list-style: none;
+  padding: 0;
+  margin: 24px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+.auth-point {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-family: var(--sans);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink-dim);
+}
+/* Same glyph and accent as .pricing-card-capability-mark, so an included
+   capability reads the same here as it does on the pricing table. */
+.auth-point-mark {
+  flex-shrink: 0;
+  width: 14px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--accent);
+  margin-top: 1px;
+}
+
+/* ── Card ────────────────────────────────────────────────────────────── */
+.auth-card {
+  background: var(--bg-2);
+  border: 1px solid var(--line-dim);
+  border-radius: var(--radius-card);
+  box-shadow: var(--raised-bezel);
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.auth-card-title {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  text-align: center;
+  margin: 0;
+}
+
+/* ── Fields ──────────────────────────────────────────────────────────── */
+.auth-field { display: flex; flex-direction: column; gap: 6px; }
+.auth-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+.auth-input,
+.auth-textarea {
+  border-radius: var(--radius-control);
+  border: 1px solid var(--line-dim);
+  background: var(--bg-1);
+  color: var(--ink);
+  font-family: var(--sans);
+  width: 100%;
+  /* 16px: anything smaller makes iOS Safari zoom the page on focus, which on
+     a phone leaves the form half off-screen behind the keyboard. */
+  font-size: 16px;
+  transition: border-color var(--motion-fast);
+}
+.auth-input { height: 44px; padding: 0 12px; }
+.auth-textarea {
+  min-height: 88px;
+  padding: 10px 12px;
+  resize: vertical;
+  line-height: 1.45;
+}
+.auth-input:focus,
+.auth-textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--cyan-dim);
+}
+.auth-input:disabled,
+.auth-textarea:disabled { color: var(--ink-faint); }
+.auth-input.mono { font-family: var(--mono); font-size: 13px; }
+
+/* ── Button ──────────────────────────────────────────────────────────── */
+/* .landing-cta-btn's colours, full width and 44px tall: >= 44px is a real tap
+   target on a phone, and these are the only controls on the screen. */
+.auth-submit {
+  height: 44px;
+  width: 100%;
+  border-radius: var(--radius-control);
+  background: var(--fill-active);
+  border: 1px solid var(--accent);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--motion-fast), border-color var(--motion-fast);
+}
+.auth-submit:hover:not(:disabled) { background: var(--cyan-dim); }
+.auth-submit:disabled { cursor: not-allowed; opacity: 0.55; }
+.auth-submit.busy {
+  cursor: progress;
+  opacity: 1;
+  background: var(--bg-3);
+  border-color: var(--line-dim);
+  color: var(--ink-faint);
+}
+
+/* ── Notes and notices ───────────────────────────────────────────────── */
+.auth-note {
+  font-family: var(--sans);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--ink-faint);
+  text-align: center;
+  margin: 0;
+}
+.auth-note.left { text-align: left; }
+.auth-link:hover { text-decoration: underline; }
+
+/* Tone colours are applied inline via tint(), not here: the palette is
+   mid-migration between var() tokens and literals, and color-mix is the only
+   form that works for both. See utils/tint.ts. */
+.auth-notice {
+  padding: 9px 11px;
+  border-radius: var(--radius-control);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+/* ── Responsive ──────────────────────────────────────────────────────── */
+/* Below 860px the pitch stacks above the card rather than beside it. It stays
+   visible rather than being hidden: on /claim it is the only thing telling
+   someone what the token in their hand is for. */
+@media (max-width: 860px) {
+  .auth-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 32px;
+    max-width: 420px;
+  }
+  .auth-h1 { font-size: 26px; }
+  .auth-main { padding: 32px 16px; }
+}
+@media (max-width: 420px) {
+  .auth-card { padding: 22px 18px; }
+  .auth-nav-row { padding: 0 16px; }
+}

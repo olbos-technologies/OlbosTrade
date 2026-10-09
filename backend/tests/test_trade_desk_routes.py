@@ -94,7 +94,15 @@ async def test_fetch_portfolio_state_fail_closed():
 async def test_kill_switch_get_set():
     td._kill_switch.clear()
     assert (await get_kill_switch())["engaged"] is False
-    with patch.object(td.kill_switch_service, "engage", new=AsyncMock(return_value={})), \
+    # engage() must return a REPORT, not a bare AsyncMock. The route reads its
+    # counts, statuses and errors now (PR #64) — a mock whose return_value is a
+    # MagicMock made `result.get("errors")` yield a MagicMock, which is not
+    # iterable. The old route discarded the result entirely, so this passed
+    # while asserting nothing about the payload.
+    _report = {"positions_flattened": 0, "orders_cancelled": 0,
+               "flatten_statuses": {}, "errors": []}
+    with patch.object(td.kill_switch_service, "engage",
+                      new=AsyncMock(return_value=_report)), \
          patch.object(td.kill_switch_service, "reset",
                       new=AsyncMock(return_value={"reset": True})):
         out = await set_kill_switch(KillSwitchRequest(engaged=True))

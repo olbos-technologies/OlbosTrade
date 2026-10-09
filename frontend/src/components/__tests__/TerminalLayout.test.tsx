@@ -142,6 +142,26 @@ describe("TerminalLayout ticker strip", () => {
     expect(screen.getByText(/engage kill switch\?/i)).toBeInTheDocument();
   });
 
+  it("applies desk-shell class when the V2 desk shell is active", async () => {
+    const { container } = render(
+      <TerminalLayout activePage="paper" onNav={() => {}} isDeskV2Shell>
+        <div>page content</div>
+      </TerminalLayout>
+    );
+    await waitFor(() => expect(screen.getByText("page content")).toBeInTheDocument());
+    expect(container.querySelector(".app-shell")?.className).toContain("app-shell--desk");
+  });
+
+  it("does not apply desk-shell class for non-V2 desk pages", async () => {
+    const { container } = render(
+      <TerminalLayout activePage="trade:overview" onNav={() => {}}>
+        <div>page content</div>
+      </TerminalLayout>
+    );
+    await waitFor(() => expect(screen.getByText("page content")).toBeInTheDocument());
+    expect(container.querySelector(".app-shell")?.className).toBe("app-shell");
+  });
+
   // ── Execution-mode toggle: a safety control must never show an unconfirmed
   // state ────────────────────────────────────────────────────────────────────
   // Found in production 2026-08-27: the route is api-key gated and the browser
@@ -160,6 +180,18 @@ describe("TerminalLayout ticker strip", () => {
     await waitFor(() => expect(screen.getByText("page content")).toBeInTheDocument());
   };
 
+  /**
+   * Request AUTOPILOT the way an operator now has to: click the chip, then
+   * confirm in the gate (PLAN Batch 5.4 — entering unattended execution takes a
+   * second deliberate act). The chip alone no longer calls the API, so a test
+   * that only clicks it queues a mock nothing consumes, which then leaks into
+   * the next test.
+   */
+  const requestAutopilot = () => {
+    fireEvent.click(screen.getByRole("button", { name: /^autopilot$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /enable autopilot/i }));
+  };
+
   const pressed = (name: RegExp) =>
     screen.getByRole("button", { name }).getAttribute("aria-pressed");
 
@@ -171,7 +203,7 @@ describe("TerminalLayout ticker strip", () => {
     await renderShell();
     expect(pressed(/^manual$/i)).toBe("true");
 
-    fireEvent.click(screen.getByRole("button", { name: /^autopilot$/i }));
+    requestAutopilot();
 
     await waitFor(() =>
       expect(screen.getByTestId("exec-mode-error")).toBeInTheDocument()
@@ -187,7 +219,7 @@ describe("TerminalLayout ticker strip", () => {
       .mockRejectedValueOnce(new Error("403 Forbidden"));
 
     await renderShell();
-    fireEvent.click(screen.getByRole("button", { name: /^autopilot$/i }));
+    requestAutopilot();
 
     const alert = await screen.findByRole("alert");
     // "Change failed" alone leaves the operator to infer the current state —
@@ -203,7 +235,7 @@ describe("TerminalLayout ticker strip", () => {
       .mockResolvedValueOnce({ mode: "copilot" });
 
     await renderShell();
-    fireEvent.click(screen.getByRole("button", { name: /^autopilot$/i }));
+    requestAutopilot();
 
     // Guards against re-introducing optimism: autopilot was requested, the
     // server said copilot, and copilot is what must show.

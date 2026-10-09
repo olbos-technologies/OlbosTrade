@@ -1,5 +1,5 @@
 /**
- * Trade Desk header — environment, mode, risk profile, broker, P&L, kill switch.
+ * Trade Desk header — environment, mode, trading style, broker, P&L, kill switch.
  * Read-only display + mode switch via existing APIs. Paper/Live always labeled (not color-only).
  */
 
@@ -7,16 +7,29 @@ import React, { useEffect, useState } from "react";
 import { api } from "../api/client";
 import KillSwitchButton from "../components/KillSwitchButton";
 
-type Snap = { label: string; value: string; tone?: "ok" | "warn" | "crit" | "muted" };
+type Snap = {
+  label: string;
+  value: string;
+  tone?: "ok" | "warn" | "crit" | "muted";
+  /**
+   * What happens to this chip on a phone.
+   *
+   * "always" stays on the collapsed line; "expand" is revealed by the toggle.
+   * Expressed as data on the chip rather than :nth-child in the stylesheet,
+   * because the rail is a hand-ordered list and an nth-child rule silently
+   * hides the wrong metric the moment somebody reorders it.
+   */
+  priority?: "always" | "expand";
+};
 
-function Chip({ label, value, tone = "muted" }: Snap) {
+function Chip({ label, value, tone = "muted", priority = "expand" }: Snap) {
   const color =
     tone === "ok" ? "var(--green)" :
     tone === "warn" ? "var(--amber)" :
     tone === "crit" ? "var(--red)" :
     "var(--ink)";
   return (
-    <div className="instrument-chip">
+    <div className="instrument-chip" data-priority={priority}>
       <span className="instrument-chip-label">{label}</span>
       <span className="instrument-chip-value" style={{ color }}>{value}</span>
     </div>
@@ -35,6 +48,8 @@ export default function TradeDeskHeader() {
   const [drawdown, setDrawdown] = useState("—");
   const [ks, setKs] = useState<"Engaged" | "Clear" | "Unknown">("Unknown");
   const [regime, setRegime] = useState("—");
+  /** Phone only: the rail collapses to three facts plus the kill switch. */
+  const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -149,7 +164,7 @@ export default function TradeDeskHeader() {
 
   return (
     <header
-      className="instrument-rail"
+      className={`instrument-rail${expanded ? " instrument-rail--expanded" : ""}`}
       style={{
         display: "flex",
         alignItems: "stretch",
@@ -158,23 +173,43 @@ export default function TradeDeskHeader() {
       }}
       aria-label="Trade Desk status"
     >
+      {/*
+        PRIORITY IS THE MOBILE STORY. On a phone this rail was 124px of a
+        844px screen and the positions table underneath got 133px — the data
+        the page exists for was 16% of the display. Three facts stay on the
+        collapsed line and the rest are a tap away.
+
+        Session is the one worth keeping because it already carries three
+        things at once: environment, risk style and execution mode.
+      */}
       <Chip
         label="Session"
         value={sessionLabel}
         tone={env === "Live" ? "crit" : envTone}
+        priority="always"
       />
+      <Chip label="Day P&L" value={dayPnl} tone={dayPnlTone} priority="always" />
       <Chip label="Broker" value={`${broker} · ${brokerStatus}`} tone={brokerTone} />
       <Chip label="Regime" value={regime} />
-      <Chip label="Day P&L" value={dayPnl} tone={dayPnlTone} />
       <Chip label="Risk budget" value={heat} />
       <Chip label="Drawdown" value={drawdown} />
       <Chip label="Kill switch" value={ks} tone={ksTone} />
+      <button
+        type="button"
+        className="instrument-rail-toggle"
+        aria-expanded={expanded}
+        onClick={() => setExpanded(v => !v)}
+      >
+        {expanded ? "Less" : "More"}
+      </button>
       <div style={{ flex: 1, minWidth: 8 }} />
-      <div style={{
-        display: "flex", flexDirection: "column", alignItems: "stretch",
-        justifyContent: "center", gap: 4, padding: "4px 8px",
-        minWidth: 168, maxWidth: 200, flex: "0 1 200px",
-      }}>
+      {/*
+        The kill switch is NEVER collapsed. It is the control that stops
+        trading, and hiding a safety control behind a disclosure toggle to
+        save 40px is the wrong trade at any screen size — the same reasoning
+        that keeps it out of the tier gate.
+      */}
+      <div className="instrument-rail-kill">
         <KillSwitchButton variant="panel" />
       </div>
     </header>

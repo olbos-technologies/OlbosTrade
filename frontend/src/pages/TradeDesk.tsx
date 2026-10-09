@@ -15,6 +15,7 @@ import ExecutionMonitor from "../trade-desk/execution/ExecutionMonitor";
 import type { TradeDeskTab } from "../trade-desk/TradeDeskTabs";
 import { useTerminalNav } from "../components/TerminalNavContext";
 import HoldToConfirmButton from "../components/HoldToConfirmButton";
+import { canClosePosition, isCloseableType, isDbOnly } from "../utils/closeablePosition";
 import { Button } from "../components/ui";
 import ManualTradePanel from "../trade-desk/orders/ManualTradePanel";
 import { tint } from "../utils/tint";
@@ -73,7 +74,12 @@ function ExecModeBar() {
   ];
 
   return (
-    <div style={{
+    /* exec-mode-row: this is a no-wrap flex row whose content measures 446px.
+       At 390px it just fits; at 360px — a very common Android viewport — and
+       at 320px the AUTOPILOT button is clipped mid-word, which is what the
+       phone screenshot showed. On phones it becomes a full-width segmented
+       control instead (index.css, the 760px block). */
+    <div className="exec-mode-row" style={{
       display: "flex", alignItems: "center", gap: 8,
       padding: "6px 16px", background: "var(--bg-3)",
       borderBottom: "1px solid var(--line-dim)",
@@ -494,16 +500,39 @@ export default function TradeDesk({
   const onNav = useTerminalNav();
   const [closingId, setClosingId] = useState<string | null>(null);
   const [closeMsg, setCloseMsg] = useState<string | null>(null);
+  const [closeFailed, setCloseFailed] = useState(false);
+
+  /**
+   * Turn a close failure into something the operator can act on.
+   *
+   * The 403 is the one worth naming. /api/trade-desk/close-position requires
+   * X-Api-Key, the browser only sends it when the operator key is in
+   * sessionStorage, and sessionStorage dies with the tab — so the common way
+   * to hit this is simply to have reopened the terminal. The hold-to-confirm
+   * animation still completes normally, which makes a rejected close look
+   * exactly like a dead button.
+   */
+  const closeFailureMessage = (e: any): string => {
+    if (e?.status === 403) {
+      return "operator API key missing or wrong — re-enter it on Risk Monitor " +
+             "(it is session-scoped and is cleared when the tab closes)";
+    }
+    if (e?.status === 429) return "rate limited — wait a moment and hold again";
+    return e?.message || "close failed";
+  };
 
   const closePosition = async (id: string, symbol: string) => {
     setClosingId(id);
     setCloseMsg(null);
+    setCloseFailed(false);
     try {
       const res: any = await api.closePosition(id);
+      setCloseFailed(false);
       setCloseMsg(`${symbol}: ${res.status === "filled" ? "closed" : `order ${res.status}`}`);
       refresh();
     } catch (e: any) {
-      setCloseMsg(`${symbol}: ${e?.message || "close failed"}`);
+      setCloseFailed(true);
+      setCloseMsg(`${symbol}: ${closeFailureMessage(e)}`);
     } finally {
       setClosingId(null);
     }
@@ -515,12 +544,15 @@ export default function TradeDesk({
   const closeUntrackedPosition = async (symbol: string) => {
     setClosingId(symbol);
     setCloseMsg(null);
+    setCloseFailed(false);
     try {
       const res: any = await api.closeUntrackedPosition(symbol);
+      setCloseFailed(false);
       setCloseMsg(`${symbol}: ${res.status === "filled" ? "closed" : `order ${res.status}`}`);
       refresh();
     } catch (e: any) {
-      setCloseMsg(`${symbol}: ${e?.message || "close failed"}`);
+      setCloseFailed(true);
+      setCloseMsg(`${symbol}: ${closeFailureMessage(e)}`);
     } finally {
       setClosingId(null);
     }
@@ -675,14 +707,36 @@ export default function TradeDesk({
         {tab === "positions" && (
           <div>
             {closeMsg && (
-              <div style={{
-                padding: "8px 16px", fontFamily: "var(--mono)", fontSize: 11,
-                color: "var(--amber)", borderBottom: "1px solid var(--line-dim)",
-              }}>
+              // Sticky, not static: this sits above the table, so a result for
+              // a row further down used to render off-screen. A rejected close
+              // then looked identical to a button that did nothing — the hold
+              // animation completes either way.
+              <div
+                role={closeFailed ? "alert" : "status"}
+                style={{
+                  position: "sticky", top: 0, zIndex: 2,
+                  padding: "8px 16px", fontFamily: "var(--mono)", fontSize: 11,
+                  color: closeFailed ? "var(--red)" : "var(--green)",
+                  background: "var(--bg)",
+                  borderBottom: `1px solid ${closeFailed ? "var(--red)" : "var(--line-dim)"}`,
+                }}
+              >
                 {closeMsg}
               </div>
             )}
-          <table className="t-table">
+          {/*
+            t-table--cards: on a phone this eleven-column table gets about
+            35px per column at 390px, which is unreadable — the reason the
+            positions list could not be used on mobile at all.
+
+            The reflow is done in CSS (index.css, the 760px block) rather than
+            by rendering a different component. Every cell keeps its place in
+            the DOM and every piece of close-position logic — canClose,
+            canCloseUntracked, the hold-to-confirm buttons, the "not at
+            broker" fallbacks — is untouched, so a presentation change cannot
+            alter which positions can be closed or how.
+          */}
+          <table className="t-table t-table--cards">
             <thead><tr>
               {["Symbol","Type","Strategy","Entry Credit","Unreal P&L","MFE","MAE","Hold Days","Status","Mode","Action"].map(h => (
                 <HintedTh key={h} label={h} />
@@ -701,8 +755,13 @@ export default function TradeDesk({
                 // to silently show a fabricated "+$0" instead of the real
                 // "unavailable" state MFE/MAE already show correctly below.
                 const pnl: number | null | undefined = p.unrealized_pnl;
-                const isEquity = p.spread_type === "equity_long" || p.spread_type === "equity_short";
-                const canClose = isEquity && !!p.id;
+                // Both halves live in utils/closeablePosition.ts, which is
+                // pinned to close_position()'s allowlist by a test. This gate
+                // was equity-only and had not moved when the backend gained
+                // options support, so every options row rendered the "close
+                // via broker" placeholder and offered no button at all — which
+                // an operator reads as a button that does nothing.
+                const canClose = canClosePosition(p);
                 // A broker position with no matching DB Trade row (e.g. an
                 // order-placement timeout that filled after the app already
                 // gave up on it) — asset_type now comes from the broker's
@@ -711,19 +770,19 @@ export default function TradeDesk({
                 const canCloseUntracked = p.tracked === false && !p.id && p.asset_type === "equity";
                 return (
                   <tr key={i}>
-                    <td className="mono" style={{ color: "var(--ink)" }}>{p.symbol || p.underlying || "—"}</td>
-                    <td><Badge text={p.asset_type?.toUpperCase() || "OPTIONS"} color="var(--ink-dim)" /></td>
-                    <td className="mono" style={{ fontSize: 10 }}>{p.strategy?.replace(/_/g," ").toUpperCase() || "—"}</td>
-                    <td className="mono">${(p.credit_received ?? p.entry_credit ?? p.avg_cost ?? 0).toFixed(2)}</td>
-                    <td className="mono" style={{ color: pnl == null ? "var(--ink-faint)" : pnl >= 0 ? "var(--green)" : "var(--red)" }}>
+                    <td data-col="symbol" className="mono" style={{ color: "var(--ink)" }}>{p.symbol || p.underlying || "—"}</td>
+                    <td data-col="type"><Badge text={p.asset_type?.toUpperCase() || "OPTIONS"} color="var(--ink-dim)" /></td>
+                    <td data-col="strategy" className="mono" style={{ fontSize: 10 }}>{p.strategy?.replace(/_/g," ").toUpperCase() || "—"}</td>
+                    <td data-col="credit" data-label="Entry" className="mono">${(p.credit_received ?? p.entry_credit ?? p.avg_cost ?? 0).toFixed(2)}</td>
+                    <td data-col="pnl" className="mono" style={{ color: pnl == null ? "var(--ink-faint)" : pnl >= 0 ? "var(--green)" : "var(--red)" }}>
                       {fmtDollars(pnl)}
                     </td>
-                    <td className="mono" style={{ color: "var(--green)" }}>{fmtDollars(p.mfe_pnl)}</td>
-                    <td className="mono" style={{ color: "var(--red)" }}>{fmtDollars(p.mae_pnl)}</td>
-                    <td className="mono">{p.hold_days != null ? `${p.hold_days}d` : "—"}</td>
-                    <td><Badge text="OPEN" color="var(--ink-dim)" /></td>
-                    <td><span className={`mode-badge ${p.trading_mode || "balanced"}`}>{p.trading_mode || "balanced"}</span></td>
-                    <td style={{ minWidth: 90 }}>
+                    <td data-col="mfe" data-label="MFE" className="mono" style={{ color: "var(--green)" }}>{fmtDollars(p.mfe_pnl)}</td>
+                    <td data-col="mae" data-label="MAE" className="mono" style={{ color: "var(--red)" }}>{fmtDollars(p.mae_pnl)}</td>
+                    <td data-col="hold" data-label="Held" className="mono">{p.hold_days != null ? `${p.hold_days}d` : "—"}</td>
+                    <td data-col="status"><Badge text="OPEN" color="var(--ink-dim)" /></td>
+                    <td data-col="mode"><span className={`mode-badge ${p.trading_mode || "balanced"}`}>{p.trading_mode || "balanced"}</span></td>
+                    <td data-col="action" style={{ minWidth: 90 }}>
                       {canClose ? (
                         <HoldToConfirmButton
                           label="Hold to close"
@@ -742,7 +801,9 @@ export default function TradeDesk({
                         />
                       ) : (
                         <span style={{ fontFamily: "var(--mono)", fontSize: 9, color: "var(--ink-faint)" }}>
-                          {isEquity ? "no trade id" : "close via broker"}
+                          {isDbOnly(p)
+                            ? "not at broker"
+                            : isCloseableType(p) ? "no trade id" : "close via broker"}
                         </span>
                       )}
                     </td>
@@ -760,7 +821,7 @@ export default function TradeDesk({
         {/* P&L BREAKDOWN */}
         {tab === "pnl" && <PnLBreakdown />}
 
-        {/* RISK PROFILE */}
+        {/* TRADING STYLE */}
         {tab === "mode" && (
           <div style={{ padding: 20, maxWidth: 720 }}>
             <div className="panel-title" style={{ marginBottom: 16 }}>Market Regime & Trading Style</div>
@@ -769,7 +830,7 @@ export default function TradeDesk({
               padding: "8px 12px", marginBottom: 20,
               lineHeight: 1.7,
             }}>
-              Risk Profile controls position sizing, strategy selection, and risk budget.<br />
+              Trading style controls position sizing, strategy selection, and risk budget.<br />
               Execution Mode (bar above) controls whether trades need your approval.<br />
               In AUTOPILOT, both must be set — the system will trade within your guardrail limits.
             </div>

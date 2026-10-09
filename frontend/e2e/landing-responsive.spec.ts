@@ -36,73 +36,82 @@ test.describe("landing page fits every phone", () => {
 });
 
 test.describe("nav CTA label", () => {
-  test("phones get the compact label, desktop keeps the full one", async ({ page }) => {
+  /**
+   * There used to be TWO labels here — a full "Start Paper Trading" and a
+   * compact "Start Free" that CSS swapped at the phone breakpoint — and these
+   * tests checked that the right one showed at each width.
+   *
+   * The CTA is now a single "Sign Up", about a third of the width, so the swap
+   * has nothing left to do and the spans are gone from the markup. What still
+   * matters is that ONE label renders at every width: the failure the swap
+   * created was both labels being in the DOM at once, which made textContent
+   * read "Start Paper TradingStart Free" and announced that to a screen
+   * reader. A future edit that reintroduces a second span would bring that
+   * back, so this keeps checking for it rather than being deleted.
+   */
+  for (const width of [360, 1280]) {
+    test(`renders exactly one label at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 844 });
+      await page.goto("/");
+      const cta = page.locator(".landing-nav-cta");
+
+      // useInnerText, because textContent would concatenate a hidden second
+      // label instead of reporting what is on screen — the exact hole the
+      // two-label version of this test existed to close.
+      await expect(cta).toHaveText("Sign Up", { useInnerText: true });
+      await expect(cta).toHaveAccessibleName("Sign Up");
+    });
+  }
+
+  test("the label-swap markup is gone, not merely unused", async ({ page }) => {
     await page.setViewportSize({ width: 360, height: 844 });
     await page.goto("/");
-    const cta = page.locator(".landing-nav-cta");
-
-    // useInnerText matters here and is the whole point of the assertion: both
-    // labels are in the DOM and CSS hides one, so textContent is always
-    // "Start Paper TradingStart Free" and a default toHaveText would pass no
-    // matter which label is actually on screen.
-    await expect(cta).toHaveText("Start Free", { useInnerText: true });
-
-    await page.setViewportSize({ width: 1280, height: 900 });
-    await expect(cta).toHaveText("Start Paper Trading", { useInnerText: true });
-  });
-
-  test("announces exactly one label to a screen reader", async ({ page }) => {
-    // Both labels are in the DOM and CSS hides one. display: none content is
-    // excluded from the accessible name, so this must not read as the two
-    // labels concatenated.
-    await page.setViewportSize({ width: 360, height: 844 });
-    await page.goto("/");
-    await expect(page.locator(".landing-nav-cta")).toHaveAccessibleName("Start Free");
-
-    await page.setViewportSize({ width: 1280, height: 900 });
-    await expect(page.locator(".landing-nav-cta")).toHaveAccessibleName("Start Paper Trading");
+    await page.waitForSelector(".landing-nav-cta");
+    await expect(page.locator(".landing-nav-cta .landing-cta-full")).toHaveCount(0);
+    await expect(page.locator(".landing-nav-cta .landing-cta-compact")).toHaveCount(0);
   });
 });
 
 test.describe("the shrink guard, not just the shorter label", () => {
   /**
-   * The compact label alone would be a fix that works until someone lengthens
-   * the copy. The load-bearing part is that the row can actually shrink.
+   * A short label alone would be a fix that works until someone lengthens the
+   * copy. The load-bearing part is that the row can actually SHRINK.
    *
-   * This forces the full desktop label back on at the narrowest supported
-   * width — the exact thing the guard exists to survive. Mutation-checked when
-   * written: removing `.landing-nav-actions { flex-shrink: 1 }` takes the
-   * document to 362px against a 320px viewport and fails this test.
+   * The old version of this forced the long label back on with a CSS override
+   * that flipped the two swap spans. Those spans no longer exist, so the long
+   * label is injected directly into the CTA instead — same purpose, and it
+   * now tests the real element rather than a span that was only ever there
+   * for the swap.
    */
-  const FORCE_LONG_LABEL = `
-    @media (max-width: 600px) {
-      .landing-nav-cta .landing-cta-full { display: inline !important; }
-      .landing-nav-cta .landing-cta-compact { display: none !important; }
-    }
-  `;
+  const LONG_LABEL = "Start Paper Trading Right Now";
+
+  async function forceLongLabel(page: import("@playwright/test").Page) {
+    await page.waitForSelector(".landing-nav-cta");
+    await page.locator(".landing-nav-cta").evaluate((el, text) => {
+      el.textContent = text;
+    }, LONG_LABEL);
+  }
 
   test("a long CTA label cannot push the document wider than the viewport", async ({ page }) => {
     await page.setViewportSize({ width: 320, height: 844 });
     await page.goto("/");
-    await page.waitForSelector(".landing-nav-cta");
-    await page.addStyleTag({ content: FORCE_LONG_LABEL });
+    await forceLongLabel(page);
     await expectNoHorizontalOverflow(page, 320);
   });
 
   test("a long CTA label ellipsizes rather than being hard-clipped", async ({ page }) => {
     await page.setViewportSize({ width: 320, height: 844 });
     await page.goto("/");
-    await page.waitForSelector(".landing-nav-cta");
-    await page.addStyleTag({ content: FORCE_LONG_LABEL });
+    await forceLongLabel(page);
 
-    const label = page.locator(".landing-nav-cta .landing-cta-full");
+    const label = page.locator(".landing-nav-cta");
     const { rendered, natural } = await label.evaluate((el) => ({
       rendered: Math.ceil(el.getBoundingClientRect().width),
       natural: el.scrollWidth,
     }));
 
-    // The span must shrink below its own text width. It can, because its
-    // overflow: hidden makes the flex automatic minimum size resolve to 0
+    // The CTA must shrink below its own text width. It can, because
+    // min-width: 0 makes the flex automatic minimum size resolve to 0
     // (css-flexbox-1 §4.5) — which is what lets text-overflow produce an
     // ellipsis instead of the text simply being cut off by the parent.
     expect(

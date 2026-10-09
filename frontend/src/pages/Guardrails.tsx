@@ -181,14 +181,14 @@ export default function Guardrails() {
         {tab === "status" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
 
-            {/* Active risk profile banner */}
+            {/* Active trading style banner */}
             <div className="instrument-card" style={{
               border: `1px solid ${badgeColor}`,
               padding: "14px 20px",
               display: "flex", alignItems: "center", justifyContent: "space-between",
             }}>
               <div>
-                <div className="kicker" style={{ marginBottom: 4 }}>Active Risk Profile</div>
+                <div className="kicker" style={{ marginBottom: 4 }}>Active Trading Style</div>
                 <div style={{ fontFamily: "var(--mono)", fontSize: 20, fontWeight: 700, color: badgeColor, textTransform: "uppercase" }}>
                   {modeName}
                 </div>

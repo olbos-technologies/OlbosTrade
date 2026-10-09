@@ -11,12 +11,18 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 # Import all models so Alembic can detect them
 from app.core.database import Base  # noqa: F401
 from app.models import (  # noqa: F401
+    access_request,
     backtest_result,
+    broker_connection,
     journal_entry,
+    messaging,
+    oms_order,
+    organization,
     position,
     research_experiment,
     risk_state,
     trade,
+    trade_intent,
     user,
 )
 

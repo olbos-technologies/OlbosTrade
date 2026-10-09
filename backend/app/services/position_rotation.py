@@ -397,6 +397,77 @@ async def close_options_trade(
         time_in_force="DAY",
     )
 
+    # Size this close from the BROKER's live legs, never from the DB row.
+    #
+    # Two separate hazards, and the first fix only covered one of them:
+    #
+    #   1. The position may not exist at all. paper_trade.py emits DB-only rows
+    #      (source="db_only", tracked=True) for open Trade rows with no matching
+    #      broker position, carrying a valid id and valid strikes. A closing
+    #      combo for a position nobody holds is an OPENING trade.
+    #
+    #   2. The SIZE may be wrong. `trade.quantity` is the DB's belief. A partial
+    #      fill or drift can leave one contract live while the row still says
+    #      two — and a 2-lot mirrored combo against a 1-lot position closes one
+    #      and opens one in the opposite direction.
+    #
+    # close_equity_trade() has guarded both since 2026-08-26, after exactly this
+    # drift was root-caused in production: it takes side and size from
+    # get_equity_positions() and refuses a flat symbol. The first pass at this
+    # guard cited that precedent and then only checked existence, which is the
+    # half of the lesson that was never the point. Caught in review on PR #64.
+    #
+    # Both legs must be live. A combo needs both; if one has expired, been
+    # assigned or been closed separately, the mirrored order is not a close of
+    # anything and refusing is the safe direction — the operator can still
+    # flatten at the broker.
+    def _same(a, b) -> bool:
+        """Tolerant equality for strikes and expirations across adapters."""
+        if a is None or b is None:
+            return False
+        try:
+            return Decimal(str(a)) == Decimal(str(b))
+        except Exception:
+            return str(a)[:10] == str(b)[:10]
+
+    live = await broker.get_positions()
+
+    def _leg_qty(strike) -> int:
+        for p in live:
+            if (getattr(p, "asset_type", "option") == "option"
+                    and p.underlying == ticker
+                    and (getattr(p, "option_type", None) or "").lower() == spread_type
+                    and _same(getattr(p, "strike", None), strike)
+                    and _same(getattr(p, "expiration", None), expiration)):
+                return abs(int(p.quantity or 0))
+        return 0
+
+    live_short = _leg_qty(short_strike)
+    live_long = _leg_qty(long_strike)
+
+    if live_short == 0 or live_long == 0:
+        raise RuntimeError(
+            f"{ticker} {spread_type} {short_strike}/{long_strike} exp {expiration} "
+            f"is not fully live at the broker (short={live_short}, long={live_long}) "
+            f"— refusing to submit a closing combo for it (trade_id={trade_id}). "
+            f"The DB row is open; the broker is not holding both legs. Submitting "
+            f"this would OPEN exposure, not close it. Flatten at the broker."
+        )
+
+    live_qty = min(live_short, live_long)
+    if live_qty != qty:
+        # Close what is actually held. Going smaller leaves the operator with
+        # less than they asked to close, which is recoverable; going larger
+        # reverses into a new position, which is not.
+        logger.warning(
+            "options close %s: DB says %d contract(s), broker holds %d "
+            "(short=%d long=%d) — closing the live size",
+            ticker, qty, live_qty, live_short, live_long,
+        )
+        qty = live_qty
+        order.legs[0].quantity = qty
+        order.legs[1].quantity = qty
+
     cancelled = await broker.cancel_open_orders(ticker)
     result = await ibkr_coordinator.submit(
         Priority.P0,

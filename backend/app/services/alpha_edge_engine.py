@@ -271,7 +271,14 @@ async def compute_equity_alpha_edge(ticker: str, broker=None) -> AlphaEdgeResult
     try:
         async with AsyncSessionLocal() as session:
             anchor = (await session.execute(
-                select(SignalOutcome).where(SignalOutcome.ticker == ticker)
+                # Equity only: Alpha Edge is an equity orchestrator, and while a
+                # crypto symbol's DASH form cannot collide with an equity ticker
+                # today, that is an accident of naming rather than a constraint
+                # anything enforces. The filter states the intent.
+                select(SignalOutcome).where(
+                    SignalOutcome.ticker == ticker,
+                    SignalOutcome.asset_type == "equity",
+                )
                 .order_by(SignalOutcome.generated_at.desc()).limit(1)
             )).scalars().first()
         if anchor is not None:

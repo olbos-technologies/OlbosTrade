@@ -40,60 +40,64 @@ services:
       dockerfile: Dockerfile
     container_name: olbostrade-backend
     restart: unless-stopped
-    # Overrides the image CMD to add --proxy-headers. Without it uvicorn
-    # ignores X-Forwarded-For entirely, so request.client.host is the frontend
-    # nginx for EVERY request and the login rate limiter (10 attempts / 5 min,
-    # api/rate_limit.py) puts every client in one shared bucket: ten failed
-    # logins from anyone locked out everyone for five minutes.
+    # NO --proxy-headers here, deliberately, and that is the fix rather than
+    # an omission. uvicorn's ProxyHeadersMiddleware decides whether to believe
+    # X-Forwarded-For by PEER ADDRESS, and this service joins olbos_default
+    # (the shared external docker_default network) because that is where
+    # IBKR_HOST=ibkr-gateway resolves. Peer address therefore cannot separate
+    # the frontend from Caddy, the gateway, or anything else on that network,
+    # so the only workable setting was --forwarded-allow-ips=*: every
+    # container there could name its own IP and duck its own rate limit. A
+    # CIDR was not an alternative — uvicorn 0.29 matches trusted hosts by
+    # exact string, so a subnet silently matches nothing.
     #
-    # WHAT "*" DOES AND DOES NOT BUY YOU. uvicorn 0.29 with always-trust takes
-    # x_forwarded_for_hosts[0] — the leftmost entry, which is normally
-    # client-controlled and would make the limit worse than useless. What stops
-    # that here is the frontend: it sets `X-Forwarded-For $remote_addr` —
-    # $remote_addr, NOT $proxy_add_x_forwarded_for — so it OVERWRITES whatever
-    # the client sent with the address it actually observed. A header arriving
-    # from the frontend is a single value written by the proxy, never by the
-    # caller.
+    # The trust decision moved into the application, where it can be made on
+    # PROVENANCE instead: the frontend sets X-Olbos-Proxy-Secret alongside the
+    # X-Forwarded-For it overwrites, and rate_limit.client_ip() believes the
+    # header only when that secret matches. Network layout stops mattering.
+    # Issue #60.
     #
-    # THE LIMIT OF THAT ARGUMENT, and it is a real one. An earlier version of
-    # this comment claimed that because the backend publishes no host port,
-    # "every request has already been through the frontend". That does not
-    # follow, and it is wrong: this service also joins `olbos_default` (the
-    # shared external `docker_default` network) — it has to, because that is
-    # where IBKR_HOST=ibkr-gateway resolves. Any container on that network can
-    # open a socket straight to uvicorn:8000 and forge X-Forwarded-For, and so
-    # evade its own login rate limit. "Not reachable from the host network" is
-    # not the same claim as "only reachable from the frontend".
-    #
-    # That residual risk is a container already running on the operator's own
-    # private Docker network — a far higher bar than the bug this fixes, which
-    # any internet caller could trigger: without --proxy-headers EVERY client
-    # shares one bucket, so ten failed logins locked out the operator too. Net
-    # improvement, but the guarantee is weaker than trust-the-proxy-only, and a
-    # topology change (another container joining docker_default) silently
-    # widens it. Closing it properly means not depending on network topology at
-    # all — e.g. the frontend setting a shared-secret header that the limiter
-    # requires before it believes X-Forwarded-For — which is an application
-    # change, not a compose change.
-    #
-    # Do NOT copy this flag to docker-compose.yml or docker-compose.prod.yml:
-    # both publish the backend port (8001:8000 and 8000:8000), so any client on
-    # the host network could connect directly and forge the header. The flag is
-    # per-stack for exactly that reason.
-    #
-    # A CIDR cannot be used instead: uvicorn 0.29 matches trusted hosts by
-    # exact string (`client_host in self.trusted_hosts`), so
-    # --forwarded-allow-ips=172.16.0.0/12 would never match and would silently
-    # disable the fix rather than scope it.
-    command: >
-      uvicorn app.main:app
-      --host 0.0.0.0 --port 8000
-      --workers 1 --loop uvloop --access-log
-      --proxy-headers --forwarded-allow-ips=*
+    # Required, not defaulted: without it the backend ignores X-Forwarded-For
+    # and every caller behind the proxy shares one login bucket — ten failed
+    # logins lock out everybody. Both services read the same variable.
     env_file:
       - backend/.env.prod
     environment:
       DATABASE_URL: postgresql+asyncpg://olbosquant:${OLBOSTRADE_DB_PASSWORD}@olbostrade-db:5432/olbostrade
+      TRUSTED_PROXY_SECRET: "${TRUSTED_PROXY_SECRET:?set TRUSTED_PROXY_SECRET in backend/.env.prod, generated with openssl rand -hex 32}"
+      # REQUIRED, with no default, and that is the whole point.
+      #
+      # settings.auth_enabled defaults to False in config.py — deliberately, so
+      # a single-operator install keeps working on nginx Basic Auth alone. But
+      # that default is dangerous HERE, because an absent or misspelled line in
+      # .env.prod is indistinguishable from AUTH_ENABLED=false: the stack comes
+      # up healthy, the site works, and application auth is simply off.
+      #
+      # The documented rollout is to ship app auth BEHIND Basic Auth, verify
+      # it, and only then remove Basic Auth. A silent false is exactly the
+      # failure that lets you take down the outer wall while the inner one was
+      # never up — and the site looks identical either way.
+      #
+      # So compose refuses to start rather than guess. Same contract as
+      # TRUSTED_PROXY_SECRET above; the app's own default is unchanged for
+      # anyone running outside this compose file.
+      AUTH_ENABLED: "${AUTH_ENABLED:?set AUTH_ENABLED=true or AUTH_ENABLED=false in backend/.env.prod — it must be an explicit choice, see deploy/hetzner/README.md}"
+
+      # Encrypts users' own broker API credentials at rest. Passed through
+      # WITHOUT the :? guard that AUTH_ENABLED carries, and the difference is
+      # deliberate: a missing AUTH_ENABLED is indistinguishable from "security
+      # off", so the stack must refuse to start. A missing key here just means
+      # broker connections are unavailable — the routes answer 503 and every
+      # other feature is untouched. Requiring it would take an install down
+      # over a feature it may not use.
+      #
+      # Generate with:
+      #   docker exec olbostrade-backend python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+      #
+      # Rotating it makes every STORED broker credential undecryptable — users
+      # must reconnect. That is why it is its own variable and not derived
+      # from SECRET_KEY, which is rotated routinely.
+      BROKER_ENCRYPTION_KEY: "${BROKER_ENCRYPTION_KEY:-}"
     volumes:
       # Trained models are not committed (see .gitignore) and the build context
       # is ./backend, so nothing puts a .pkl inside the image. Mounting the
@@ -108,7 +112,19 @@ services:
       - olbostrade_internal
       - olbos_default        # joins existing Caddy network
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/api/guardrails/status || exit 1"]
+      # /health, NOT /api/guardrails/status.
+      #
+      # guardrails/status is not in auth_deps.PUBLIC_EXACT, so with
+      # AUTH_ENABLED=true every probe got a 401, curl -fsS failed, and the
+      # container could never become healthy — which then blocked the
+      # frontend, whose depends_on requires a healthy backend. The site went
+      # down on deploy for that reason and nothing else; the backend itself
+      # was serving fine.
+      #
+      # It survived this long because a container already running does not
+      # re-evaluate depends_on: the breakage only surfaced when the stack was
+      # recreated. test_healthchecks_probe_public_routes.py now pins it.
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -117,7 +133,36 @@ services:
       resources:
         limits:
           cpus: "1.5"
-          memory: 1500M
+          # 1500M killed this container five times between 2026-09-14 and
+          # 2026-09-17, unnoticed, because `restart: unless-stopped` brought it
+          # back each time:
+          #
+          #   Memory cgroup out of memory: Killed process ... (uvicorn)
+          #   anon-rss:1530596kB   constraint=CONSTRAINT_MEMCG
+          #
+          # CONSTRAINT_MEMCG, not the host: the machine is a CX33 with 7771M
+          # and had gigabytes free through every one of those kills. The
+          # container was strangled by its own cap while the box sat idle.
+          #
+          # This is headroom, NOT a diagnosis. At rest the backend sits around
+          # 322M, so something grows it ~1.2G and we do not yet know whether
+          # that is a leak or one heavy job — in one case it went from a
+          # restart to dead in two minutes. Install the sampler to find out:
+          #
+          #     bash deploy/hetzner/install_mem_sampler.sh
+          #
+          # It is NOT installed by this file or by update.sh — it is a host
+          # cron, same as install_backup_cron.sh. Until someone runs it there
+          # is no memory history, and this cap is a guess with headroom rather
+          # than a fix. If kills continue at 3000M, the number was never the
+          # problem and raising it again will not help.
+          #
+          # Budget (see tests/test_hetzner_memory_budget.py): this file's
+          # limits total 4280M — 4024M plus Caddy's 256M, which moved INTO this
+          # file on 2026-09-19 and so is now counted here rather than as a
+          # neighbour. ibkr-gateway is the only container left sharing the host
+          # from another compose project.
+          memory: 3000M
     logging:
       driver: "json-file"
       options:
@@ -149,11 +194,26 @@ services:
       # file's alias for it, and `docker network inspect` does not know it.)
       # Never widen this to a range a real client could originate from.
       - TRUSTED_PROXY_CIDR=${TRUSTED_PROXY_CIDR:-}
-    # Publish a host port for direct IP access (http://<server-ip>:8080) when no
-    # domain is set up. Caddy (when used) still reaches it over the internal
-    # network; this just additionally exposes it on the host.
+      # The same value the backend requires — it is how the backend knows a
+      # request came through this proxy and its X-Forwarded-For can be
+      # believed. See backend/app/api/rate_limit.py client_ip(), issue #60.
+      - "TRUSTED_PROXY_SECRET=${TRUSTED_PROXY_SECRET:?set TRUSTED_PROXY_SECRET in backend/.env.prod, generated with openssl rand -hex 32}"
+    # Bound to LOOPBACK, not 0.0.0.0. Caddy reaches this container over the
+    # docker_default network, not through the host port, so publishing it
+    # publicly buys nothing and costs a plain-HTTP route into the same app —
+    # one on which DASH_USER/DASH_PASS credentials travel base64-encoded and
+    # the Trade Desk's own 403 message invites an operator to paste SECRET_KEY.
+    #
+    # Do NOT "fix" this back to "8080:3000" to regain direct IP access, and do
+    # not reach for `ufw deny 8080` as the alternative: Docker's DNAT and
+    # FORWARD rules are traversed before UFW's, so a published port stays
+    # reachable whatever `ufw status` reports. The loopback bind removes the
+    # exposure at the listener, which is the only layer that actually holds.
+    #
+    # Direct access still works, over SSH, from on the host:
+    #   ssh -L 8080:localhost:8080 root@<server-ip>   # then http://localhost:8080
     ports:
-      - "8080:3000"
+      - "127.0.0.1:8080:3000"
     depends_on:
       backend:
         condition: service_healthy
@@ -202,15 +262,72 @@ services:
         max-size: "20m"
         max-file: "3"
 
+  # ── Reverse proxy / TLS ─────────────────────────────────────────────────────
+  # Adopted from the deleted OlbosTerminal stack on 2026-09-19. It had been the
+  # last thing running from that project, so this app's TLS, its ports 80/443
+  # and the network it reaches ibkr-gateway over all depended on a compose file
+  # for an application that no longer existed — and the obvious cleanup command
+  # in that directory (`docker compose down`) would have removed the
+  # docker_default network, cutting the broker connection.
+  caddy:
+    image: caddy:2-alpine
+    container_name: olbostrade-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    # Port 8081 was published by the previous owner and is deliberately NOT
+    # carried over. It served the app over plain HTTP on every interface, and
+    # its number is the one ARCHITECTURE_AUDIT.md recorded as the production
+    # URL — a misattribution that cost an afternoon during the 2026-09-17
+    # outage, because the port was real but belonged to a different stack.
+    volumes:
+      - ./deploy/hetzner/Caddyfile:/etc/caddy/Caddyfile:ro
+      - olbostrade_caddy_data:/data
+      - olbostrade_caddy_config:/config
+    networks:
+      - olbos_default        # must reach olbostrade-frontend by container name
+    depends_on:
+      frontend:
+        condition: service_started
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "3"
+
 volumes:
   olbostrade_pgdata:
     external: true
     name: olbosquant_olbosquant_pgdata   # pinned to the original external volume (see NOTE above)
   olbostrade_archive:
+  # The TLS certificates and ACME account live here. Both are pinned to the
+  # volumes the previous stack created, exactly as olbostrade_pgdata is above:
+  # declaring fresh ones would make Caddy re-issue from Let's Encrypt, and the
+  # per-name rate limit is measured in hours. `docker volume ls` shows them as
+  # docker_caddy-data / docker_caddy-config — the `docker_` prefix is Compose's
+  # project prefix, taken from the old /root/OlbosTerminal/docker directory.
+  olbostrade_caddy_data:
+    external: true
+    name: docker_caddy-data
+  olbostrade_caddy_config:
+    external: true
+    name: docker_caddy-config
 
 networks:
   olbostrade_internal:
     driver: bridge
   olbos_default:
     external: true
-    name: docker_default    # the network Caddy is already on (created by the olbos app)
+    # Kept EXTERNAL deliberately, even though this stack now owns Caddy.
+    # ibkr-gateway sits on this network too and belongs to a third compose
+    # project, and IBKR_HOST=ibkr-gateway resolves over it — so `docker compose
+    # down` here must never take it with them. The name keeps its historical
+    # `docker_` prefix because renaming a network means recreating every
+    # container attached to it, ibkr-gateway included.
+    name: docker_default

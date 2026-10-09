@@ -28,6 +28,7 @@ import RiskCenter,     { TABS as RISK_TABS,     TAB_PAGE_KEYS as RISK_KEYS,     
 import SystemCenter,   { TABS as SYSTEM_TABS,   TAB_PAGE_KEYS as SYSTEM_KEYS,   DEFAULT_TAB as SYSTEM_DEFAULT }   from "../../pages/SystemCenter";
 import ResearchCenter, { TABS as RESEARCH_TABS, TAB_PAGE_KEYS as RESEARCH_KEYS, DEFAULT_TAB as RESEARCH_DEFAULT } from "../../pages/ResearchCenter";
 import SignalsCenter,  { TABS as SIGNALS_TABS,  TAB_PAGE_KEYS as SIGNALS_KEYS,  DEFAULT_TAB as SIGNALS_DEFAULT }  from "../../pages/SignalsCenter";
+import AccountCenter,  { TABS as ACCOUNT_TABS,  TAB_PAGE_KEYS as ACCOUNT_KEYS,  DEFAULT_TAB as ACCOUNT_DEFAULT }  from "../../pages/AccountCenter";
 import TradeDesk,      { TAB_PAGE_KEYS as DESK_KEYS, DEFAULT_TAB as DESK_DEFAULT } from "../../pages/TradeDesk";
 
 type TabDef = { key: string; label: string };
@@ -44,6 +45,7 @@ const HUBS: Array<{
   { name: "SystemCenter",   component: SystemCenter   as never, tabs: SYSTEM_TABS,   keys: SYSTEM_KEYS, defaultTab: SYSTEM_DEFAULT },
   { name: "ResearchCenter", component: ResearchCenter as never, tabs: RESEARCH_TABS, keys: RESEARCH_KEYS, defaultTab: RESEARCH_DEFAULT },
   { name: "SignalsCenter",  component: SignalsCenter  as never, tabs: SIGNALS_TABS,  keys: SIGNALS_KEYS, defaultTab: SIGNALS_DEFAULT },
+  { name: "AccountCenter",  component: AccountCenter  as never, tabs: ACCOUNT_TABS,  keys: ACCOUNT_KEYS, defaultTab: ACCOUNT_DEFAULT },
   // The legacy desk is registered only when trade_desk_v2 is off; with the flag
   // on, the same keys render TradeDeskV2 instead. Check it against the registry
   // it actually appears in.

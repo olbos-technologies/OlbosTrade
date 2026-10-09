@@ -63,6 +63,21 @@ def _fake_result(ticker: str):
     )
 
 
+
+class _AnonRequest:
+    """Enough of an HTTPConnection for the tier clamp on these handlers.
+
+    run_equity_backtest now takes the connection so it can clamp start_date to
+    the caller's plan — see app/api/tier_deps.py. These tests call the handler
+    directly rather than over HTTP, so they supply the connection themselves.
+    Carrying no user means "auth is off", which is the state these tests
+    already assumed and the state that applies no limits.
+    """
+
+    def __init__(self):
+        self.state = type("S", (), {"user": None})()
+
+
 @pytest.mark.asyncio
 async def test_run_equity_route_rejects_blank_ticker():
     from app.api.routes.backtest import run_equity_backtest, EquityBacktestRunRequest
@@ -70,7 +85,7 @@ async def test_run_equity_route_rejects_blank_ticker():
 
     req = EquityBacktestRunRequest(ticker="   ", start_date="2024-01-01", end_date="2024-06-30")
     with pytest.raises(HTTPException) as exc_info:
-        await run_equity_backtest(req)
+        await run_equity_backtest(req, _AnonRequest())
     assert exc_info.value.status_code == 400
 
 
@@ -87,7 +102,7 @@ async def test_run_equity_route_queues_then_completes():
          patch("app.services.data_fetcher.DataFetcher", return_value=object()), \
          patch("app.services.backtester.Backtester.run_equity",
                new=AsyncMock(return_value=_fake_result("AAPL"))):
-        resp = await run_equity_backtest(req)
+        resp = await run_equity_backtest(req, _AnonRequest())
 
         assert resp["status"] == "queued"
         assert resp["strategy"] == "equity:AAPL"
@@ -166,7 +181,7 @@ async def test_run_equity_route_marks_failed_on_exception():
          patch("app.services.data_fetcher.DataFetcher", return_value=object()), \
          patch("app.services.backtester.Backtester.run_equity",
                new=AsyncMock(side_effect=ValueError("No OHLCV data returned for ZZZZ"))):
-        resp = await run_equity_backtest(req)
+        resp = await run_equity_backtest(req, _AnonRequest())
         run_id = resp["run_id"]
         await tasks[0]
 

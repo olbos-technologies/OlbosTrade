@@ -89,7 +89,32 @@ once reviewed.
 | Frontend type check (`tsc --noEmit`) | **Clean** — no errors |
 | Frontend test suite (`vitest`) | **Green** — 9 files / 64 tests pass |
 | Frontend production build | **Succeeds** — see bundle-size note below |
-| Production server (`46.224.0.213:8081`) | **Healthy** — `/api/health` ok, kill switch clear, no new errors in `docker logs` beyond pre-existing IBKR market-data-subscription warnings (unrelated to app code) |
+| Production server (`https://trade.olbos.us`) | **Healthy** — `/api/health` ok, kill switch clear, no new errors in `docker logs` beyond pre-existing IBKR market-data-subscription warnings (unrelated to app code) |
+
+> **Correction (2026-09-17):** the production row above read `:8081` until
+> today. The published port has been `8080:3000` in `docker-compose.hetzner.yml`
+> since that file was first committed, and the running server publishes 8080 —
+> so this line was wrong when written, not stale. It cost real time during an
+> outage: the operator's bookmark pointed at `:8081`, the app appeared dead from
+> the browser, and the wrong port also led the investigation toward "the server
+> config has diverged from the repo" when it had not — this document had.
+> `backend/tests/test_docs_use_the_published_port.py` now fails on any doc that
+> names a port the compose file does not publish.
+>
+> **Second correction (2026-09-19):** the row then named the server's public IP
+> with port 8080, which was accurate when written and is not any more.
+> (Spelling that address out here would trip the guard below, correctly — it
+> cannot distinguish a URL quoted as history from one offered as instruction,
+> and an exemption for quoted history is exactly the hole real drift would hide
+> in. Rewording costs a sentence; a bypass costs the guard.) The frontend's host port
+> is now bound to loopback (`127.0.0.1:8080:3000`), so that address answers only
+> from on the server — a reader following it from anywhere else gets a hang, the
+> same "app looks dead" failure as `:8081`, arrived at from the opposite
+> direction: right port, no longer reachable. The row names the HTTPS URL
+> instead, which is what a reader should actually open. The guard was extended
+> at the same time to distinguish a published port from a loopback-bound one,
+> because the original version could not tell them apart and would have gone on
+> passing this line.
 
 **But "runs smoothly" and "safe for real capital" are different questions.**
 The six P0 findings from the 2026-07-16 pass were genuinely fixed (verified

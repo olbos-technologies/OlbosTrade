@@ -109,6 +109,15 @@ class KillSwitch:
             "scheduler_paused": False,
             "orders_cancelled": 0,
             "positions_flattened": 0,
+            # Per-status tally of the closing orders. positions_flattened
+            # counts every non-rejected result, so `submitted` (accepted, no
+            # fill yet) and `partial` (residual exposure the caller MUST
+            # handle) and `cancelled` all land in it. That number alone cannot
+            # tell an operator whether the book is actually flat, which is the
+            # only question that matters during a kill-switch event. Kept as-is
+            # for the logs and the GuardrailEvent audit note; this is what the
+            # UI should report.
+            "flatten_statuses": {},
             "db_persisted": False,
             "errors": [],
         }
@@ -252,6 +261,9 @@ class KillSwitch:
                 logger.error("Kill switch: flatten REJECTED for %s — %s", symbol, msg)
                 return
             results["positions_flattened"] += 1
+            results["flatten_statuses"][str(status)] = (
+                results["flatten_statuses"].get(str(status), 0) + 1
+            )
             logger.info("Kill switch: flattened %s (status=%s)", symbol, status)
         except Exception as exc:
             results["errors"].append(f"flatten_{symbol}: {exc}")
@@ -274,6 +286,9 @@ class KillSwitch:
                 logger.error("Kill switch: equity flatten REJECTED for %s — %s", symbol, msg)
                 return
             results["positions_flattened"] += 1
+            results["flatten_statuses"][str(status)] = (
+                results["flatten_statuses"].get(str(status), 0) + 1
+            )
             logger.info("Kill switch: flattened equity %s (status=%s)", symbol, status)
         except Exception as exc:
             results["errors"].append(f"flatten_equity_{symbol}: {exc}")

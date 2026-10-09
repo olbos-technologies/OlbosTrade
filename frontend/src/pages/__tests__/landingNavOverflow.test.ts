@@ -143,32 +143,29 @@ describe("landing nav cannot overflow a phone viewport", () => {
     ).toBe(true);
   });
 
-  it("swaps the CTA to the compact label on phones", () => {
-    expect(has(phone, ".landing-nav-cta .landing-cta-full", "display", "none")).toBe(true);
-    expect(has(phone, ".landing-nav-cta .landing-cta-compact", "display", "inline")).toBe(true);
-  });
-
-  it("hides the compact label everywhere else", () => {
-    // Outside the phone block, so desktop shows the full label only. Checked
-    // against the stylesheet minus the phone block, or this passes on the
-    // media-query rule above.
-    const outsidePhone = LANDING_CSS.replace(phone, "");
-    expect(has(outsidePhone, ".landing-cta-compact", "display", "none")).toBe(true);
-  });
-
-  it("renders both labels so the CSS has something to swap", () => {
+  it("carries a single short label, so nothing needs swapping", () => {
+    // This file used to check a two-label swap: "Start Paper Trading" shown
+    // on desktop and a compact "Start Free" on phones, because the full label
+    // measures 173px — most of the phone nav row's budget.
+    //
+    // The CTA is now "Sign Up", roughly a third of that width, so the swap
+    // has nothing to do and the spans, their CSS and three tests went with
+    // it. What still matters is that the label stays SHORT: the overflow
+    // tests above pass because the row can shrink, not because any label is
+    // small, and a future edit back to a long label would re-create the
+    // original bug with no swap left to rescue it.
     render(React.createElement(MemoryRouter, null, React.createElement(Landing)));
-    // Exactly one nav CTA, carrying both spellings. In a browser one of the
-    // two is display: none, so the accessible name is a single label —
-    // verified in Chromium at 360px ("Start Free") and 1280px ("Start Paper
-    // Trading"). jsdom applies no CSS, so both read out here.
+
     const nav = document.querySelector(".landing-nav-cta");
     expect(nav, ".landing-nav-cta is gone — the phone CSS has no target").not.toBeNull();
-    expect(nav!.querySelector(".landing-cta-full")?.textContent).toBe("Start Paper Trading");
-    expect(nav!.querySelector(".landing-cta-compact")?.textContent).toBeTruthy();
-    // The desktop label must stay reachable by name for the existing
-    // Landing tests and for anyone auditing the marketing copy.
-    expect(screen.getAllByRole("link", { name: /start paper trading/i }).length).toBeGreaterThan(0);
+
+    const label = (nav!.textContent || "").trim();
+    expect(label).toBe("Sign Up");
+    expect(label.length).toBeLessThanOrEqual(12);
+
+    // The swap machinery is gone from the markup, not merely unused.
+    expect(nav!.querySelector(".landing-cta-full")).toBeNull();
+    expect(nav!.querySelector(".landing-cta-compact")).toBeNull();
   });
 
   it("would actually catch a regression", () => {
@@ -190,9 +187,13 @@ describe("landing nav cannot overflow a phone viewport", () => {
     // ...and the rule it should NOT have touched is still intact.
     expect(has(dropMinWidth, ".landing-nav-actions", "flex-shrink", "1")).toBe(true);
 
-    const dropSwap = phone.replace(/\.landing-nav-cta \.landing-cta-compact[^}]*\}/, "");
-    expect(dropSwap).not.toBe(phone);
-    expect(has(dropSwap, ".landing-nav-cta .landing-cta-compact", "display", "inline")).toBe(false);
+    // Was a mutation of the label-swap rule, which no longer exists — the CTA
+    // carries one short label now. Re-aimed at the nav toggle, which is the
+    // other rule this media query must carry: without it the hamburger never
+    // appears and the links row cannot collapse at all.
+    const dropToggle = phone.replace(/\.landing-nav-toggle\s*\{[^}]*\}/, "");
+    expect(dropToggle).not.toBe(phone);
+    expect(has(dropToggle, ".landing-nav-toggle", "display", "inline-flex")).toBe(false);
   });
 
   it("does not pass on a stylesheet that merely mentions the properties", () => {

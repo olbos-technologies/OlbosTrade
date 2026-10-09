@@ -42,6 +42,57 @@ export function apiAuthHeaders(extra?: HeadersInit): HeadersInit {
   return headers;
 }
 
+/**
+ * An HTTP failure, with the status kept as a field rather than baked into a
+ * string.
+ *
+ * Callers need to branch on it: a 403 from a mutate route means the operator
+ * API key is missing or stale and the fix is to re-enter it, which is a wholly
+ * different message from "the broker rejected this order". Parsing that back
+ * out of "API error 403: Forbidden" is not something call sites should be
+ * doing.
+ */
+export class ApiError extends Error {
+  readonly status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
+/**
+ * Build an ApiError from a failed response, preferring the server's own words.
+ *
+ * FastAPI puts the useful half in {"detail": ...}; res.statusText is
+ * "Forbidden", which tells an operator nothing they can act on. The body is
+ * read defensively — an error response is not guaranteed to be JSON (nginx
+ * returns HTML for a 502), and a parse failure here would replace a real
+ * status with an unrelated SyntaxError.
+ */
+async function apiError(res: Response): Promise<ApiError> {
+  let detail = "";
+  try {
+    const body = await res.json();
+    if (typeof body?.detail === "string") detail = body.detail;
+    else if (body?.detail) detail = JSON.stringify(body.detail);
+  } catch {
+    /* not JSON — statusText it is */
+  }
+  const why = detail || res.statusText || "request failed";
+  // The status stays IN the message as well as on the field.
+  //
+  // `.status` is the right thing to branch on and callers are being moved to
+  // it, but several still classify by substring — RotationReviewPanel keys
+  // 403/423/409/404 to four different "nothing was closed because…" messages,
+  // and TerminalLayout keys 403 to the operator-key hint. A detail-only
+  // message silently downgraded all of those to generic failure text, which
+  // was a regression introduced by this very refactor and caught in review on
+  // PR #64. Keeping the prefix costs nothing and means no caller loses its
+  // meaning on a deploy boundary.
+  return new ApiError(res.status, `${res.status}: ${why}`);
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     ...options,
@@ -53,7 +104,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     credentials: "same-origin",
     headers: apiAuthHeaders(options?.headers),
   });
-  if (!res.ok) throw new Error(`API error ${res.status}: ${res.statusText}`);
+  if (!res.ok) throw await apiError(res);
   return res.json();
 }
 
@@ -275,9 +326,23 @@ export const api = {
   getModeDetail:         (mode: string) => request(`/api/analytics/mode/${mode}`),
   getSignalScoreImpact:  ()             => request("/api/analytics/signal-score-impact"),
 
+  // ── Crypto (phase 1: read-only signals, no execution) ───────────────────────
+  getCryptoWatchlist: () => request<CryptoWatchlist>("/api/crypto/watchlist"),
+  getCryptoSignals:   (params?: { limit?: number; routable_only?: boolean }) => {
+    const q = new URLSearchParams();
+    if (params?.limit != null) q.set("limit", String(params.limit));
+    if (params?.routable_only) q.set("routable_only", "true");
+    const qs = q.toString();
+    return request<CryptoSignalList>(`/api/crypto/signals${qs ? `?${qs}` : ""}`);
+  },
+  runCryptoScan: () => request<CryptoScanSummary>("/api/crypto/scan", { method: "POST" }),
+
   // ── Signal Research (forward-outcome tracking) ──────────────────────────────
-  getSignalOutcomes:    () => request("/api/signal-research/outcomes"),
-  getSignalOutcomesRaw: (params?: { limit?: number; status?: string }) => {
+  // asset_type is passed explicitly rather than relying on the backend default,
+  // so which population these numbers describe is visible at the call site.
+  getSignalOutcomes:    (assetType: string = "equity") =>
+    request(`/api/signal-research/outcomes?asset_type=${encodeURIComponent(assetType)}`),
+  getSignalOutcomesRaw: (params?: { limit?: number; status?: string; asset_type?: string }) => {
     const q = params
       ? "?" + new URLSearchParams(
           Object.fromEntries(Object.entries(params).filter(([, v]) => v !== undefined)) as any
@@ -295,7 +360,157 @@ export const api = {
     return request<{ count: number; results: any[] }>(`/api/options-flow${q}`);
   },
   getOptionsFlowSummary: () => request<any>("/api/options-flow/summary"),
+
+  // ── Broker connections (a user's OWN broker account) ────────────────────────
+  // Note what these never carry back: the API key and secret go UP and are
+  // never returned. The list shows key_last4, which the server stores in the
+  // clear precisely so that a read-only screen never has to decrypt anything.
+  listBrokerConnections: () =>
+    request<BrokerConnectionList>("/api/brokers/connections"),
+  connectBroker: (body: ConnectBrokerRequest) =>
+    request<ConnectBrokerResponse>("/api/brokers/connections", {
+      method: "POST", body: JSON.stringify(body),
+    }),
+  verifyBrokerConnection: (id: string) =>
+    request<{ ok: boolean; verified: boolean; detail?: string }>(
+      `/api/brokers/connections/${encodeURIComponent(id)}/verify`, { method: "POST" }),
+  disconnectBroker: (id: string) =>
+    request<{ ok: boolean; detail: string }>(
+      `/api/brokers/connections/${encodeURIComponent(id)}`, { method: "DELETE" }),
+
+  // ── Account (the signed-in person, not the platform) ───────────────────────
+  // These routes shipped in #70/#72 with no UI at all: until now the only
+  // account surface in the app was the status-bar menu, so there was no way
+  // to change a password without a shell on the server.
+  getMe: () => request<{ user: AccountUser }>("/api/auth/me"),
+  changePassword: (body: { current_password: string; new_password: string }) =>
+    request<{ ok: boolean; other_sessions_revoked: number }>(
+      "/api/auth/password", { method: "POST", body: JSON.stringify(body) }),
+  listSessions: () => request<{ sessions: AccountSession[] }>("/api/auth/sessions"),
+  revokeSession: (id: string) =>
+    request<{ ok: boolean }>(
+      `/api/auth/sessions/${encodeURIComponent(id)}/revoke`, { method: "POST" }),
 };
+
+export interface AccountUser {
+  id: string;
+  email: string;
+  tier: string;
+}
+
+export interface AccountSession {
+  id: string;
+  created_at: string;
+  last_seen_at: string | null;
+  user_agent: string | null;
+  ip: string | null;
+  /** The session making this request. Never offered a revoke button — use
+   *  Sign out for that, which also clears the cookie. */
+  current: boolean;
+}
+
+/** Mirrors backend auth_service. A shorter cap here would reject a password
+ *  the server would have accepted, with a message blaming the user. */
+export const MIN_PASSWORD_LEN = 12;
+export const MAX_PASSWORD_LEN = 1024;
+
+export interface CryptoWatchlist {
+  enabled: boolean;
+  /** Always "disabled" in phase 1 — the scan has no path to the order layer. */
+  execution: string;
+  phase: number;
+  symbols: { symbol: string; alpaca_symbol: string }[];
+  count: number;
+  min_confidence: number;
+  scan_interval_minutes: number;
+  max_position_pct: number;
+  engine_version: string;
+  data_source: string;
+}
+
+export interface CryptoSignal {
+  id: string;
+  ticker: string;
+  asset_type: "crypto";
+  action: "BUY" | "SELL" | "HOLD";
+  confidence: number;
+  generated_at: string;
+  routable: boolean;
+  regime: string;
+  reasons?: Record<string, unknown>;
+  trade_plan?: {
+    entry_price?: number;
+    stop_price?: number;
+    target_price?: number;
+    target_move_pct?: number;
+    risk_reward?: number;
+  };
+  indicators?: {
+    rsi?: number;
+    macd?: number;
+    bb_pct_b?: number;
+    atr?: number;
+    volume_ratio?: number;
+  };
+  opportunity_score?: { score: number; components: Record<string, number> } | null;
+  outcome_id?: string;
+}
+
+export interface CryptoSignalList {
+  enabled: boolean;
+  execution: string;
+  signals: CryptoSignal[];
+  total: number;
+}
+
+export interface CryptoScanSummary {
+  enabled: boolean;
+  scanned: number;
+  signals: number;
+  routable: number;
+  recorded: number;
+  skipped_insufficient_bars: number;
+  skipped_unrepresentable_price: number;
+  errors: number;
+}
+
+export interface BrokerConnection {
+  id: string;
+  broker: string;
+  environment: "paper" | "live";
+  label: string;
+  key_last4: string;
+  status: "active" | "revoked";
+  created_at: string | null;
+  last_verified_at: string | null;
+  verified: boolean;
+}
+
+export interface BrokerConnectionList {
+  connections: BrokerConnection[];
+  /** False until per-user order routing ships. The UI says so rather than
+   *  letting a user assume their orders already go to their own account. */
+  execution_routing_enabled: boolean;
+  note?: string;
+}
+
+export interface ConnectBrokerRequest {
+  broker: string;
+  environment: string;
+  api_key: string;
+  secret_key: string;
+  label?: string;
+}
+
+export interface ConnectBrokerResponse {
+  ok: boolean;
+  connection: BrokerConnection;
+  verification: Record<string, unknown> | null;
+  /** Set when the broker could not be REACHED — not when it said no. A
+   *  rejected key never reaches the database, so it never reaches here. */
+  unverified_reason: string | null;
+  execution_routing_enabled: boolean;
+}
 
 /** Build the absolute WebSocket URL for the options-flow live stream. */
 export function optionsFlowWsUrl(params?: Record<string, string | number | undefined>): string {

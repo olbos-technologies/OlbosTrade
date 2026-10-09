@@ -126,17 +126,20 @@ export default function RotationReviewPanel({
       onResolved?.();
     } catch (err: any) {
       const msg = String(err?.message || err);
+      // ApiError carries the status as a field; the substring checks below
+      // remain for non-ApiError throws. `is()` prefers the field.
+      const is = (code: number) => err?.status === code || msg.includes(String(code));
       // Lead with what did NOT happen — the operator's first question after a
       // failed approve is whether anything was sent.
       setErrors((e) => ({
         ...e,
-        [id]: msg.includes("403")
+        [id]: is(403)
           ? "REFUSED — nothing closed. Needs Operator API Key: Risk → paste SECRET_KEY → Save."
-          : msg.includes("423")
+          : is(423)
           ? "REFUSED — nothing closed. Kill switch is engaged."
-          : msg.includes("409")
+          : is(409)
           ? "STALE — nothing closed. The position already closed since this review was raised."
-          : msg.includes("404")
+          : is(404)
           ? "GONE — nothing closed. This review was already approved or rejected."
           : `FAILED — ${msg}`,
       }));

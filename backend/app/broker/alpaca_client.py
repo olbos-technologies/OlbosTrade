@@ -120,19 +120,61 @@ class AlpacaClient(BrokerInterface):
     supports_options: bool = True
     supports_equities: bool = True
 
-    def __init__(self) -> None:
-        self._trading_base = settings.alpaca_base_url.rstrip("/")
+    def __init__(
+        self,
+        *,
+        api_key: Optional[str] = None,
+        secret_key: Optional[str] = None,
+        base_url: Optional[str] = None,
+        connection_id: Optional[str] = None,
+        connection_version: Optional[int] = None,
+    ) -> None:
+        """Credentials are arguments now, with the operator settings as the
+        default — so `AlpacaClient()` behaves exactly as it always has.
+
+        Passing them in is what makes one process able to act for more than
+        one organization (MASTER_ARCHITECTURE §21 Phase 2, "connection-scoped
+        Alpaca clients"). Alpaca authenticates per request with no session, so
+        a per-connection client is just a different set of headers; IBKR
+        cannot work this way, which is why that stays a per-customer stack.
+
+        `connection_id` and `connection_version` are carried, not used here.
+        §8 has the worker revalidate the version immediately before submitting:
+        an order evaluated against one set of credentials must not execute
+        against another. A client that does not know which connection it came
+        from cannot be checked that way.
+        """
+        self._trading_base = (base_url or settings.alpaca_base_url).rstrip("/")
         self._data_base = DATA_BASE_URL
         self._headers = {
-            "APCA-API-KEY-ID": settings.alpaca_api_key,
-            "APCA-API-SECRET-KEY": settings.alpaca_secret_key,
+            "APCA-API-KEY-ID": api_key if api_key is not None else settings.alpaca_api_key,
+            "APCA-API-SECRET-KEY": (
+                secret_key if secret_key is not None else settings.alpaca_secret_key
+            ),
         }
+        self.connection_id = connection_id
+        self.connection_version = connection_version
         # No persistent connection to lose — every call is an independent
         # authenticated HTTPS request. True here so the scheduler's generic
         # `getattr(broker, "_connected", False)` reconnect check (main.py)
         # treats this broker as always connected — there's nothing to
         # reconnect; a failed call just raises on that call.
         self._connected = True
+
+    def __repr__(self) -> str:
+        """Never the key.
+
+        §24's Phase 2 exit criterion is that "credentials never appear in
+        browser, logs, or events". The default dataclass-ish repr would put
+        _headers -- and therefore a live trading secret -- into any log line
+        that interpolated this object, which is the kind of leak nobody writes
+        deliberately and everybody writes accidentally.
+        """
+        env = "paper" if "paper" in self._trading_base.lower() else "live"
+        return (f"AlpacaClient(env={env}, connection_id={self.connection_id}, "
+                f"version={self.connection_version})")
+
+    __str__ = __repr__
 
     async def _get(self, base: str, path: str, params: Optional[dict] = None) -> dict | list:
         async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT_SECONDS) as client:
