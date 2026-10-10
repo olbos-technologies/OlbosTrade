@@ -1484,7 +1484,7 @@ export default function TerminalLayout({ children, activePage, onNav, isDeskV2Sh
         safety display: it is hidden here solely because the HALT button sits
         a few pixels above it, not because it stopped mattering.
       */
-      className={`app-shell${isDeskV2Shell ? " app-shell--desk" : ""}`}
+      className={`app-shell${isDeskV2Shell ? " app-shell--desk" : ""}${activePage === "equity" ? " app-shell--signals" : ""}`}
       style={{ display: "flex", flexDirection: "column", overflow: "hidden" }}
     >
       <ErrorBoundary label="Ticker strip">

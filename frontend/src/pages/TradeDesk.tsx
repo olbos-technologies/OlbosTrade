@@ -46,7 +46,7 @@ const fmtCapture = (value: number | null | undefined) =>
   value == null ? "—" : `${(value * 100).toFixed(0)}%`;
 
 // ── Execution Mode Selector ───────────────────────────────────────────────────
-function ExecModeBar() {
+function ExecModeBar({ hideOnMobile = false }: { hideOnMobile?: boolean }) {
   const [mode, setMode]     = useState<ExecMode>("manual");
   const [saving, setSaving] = useState(false);
 
@@ -79,7 +79,7 @@ function ExecModeBar() {
        at 320px the AUTOPILOT button is clipped mid-word, which is what the
        phone screenshot showed. On phones it becomes a full-width segmented
        control instead (index.css, the 760px block). */
-    <div className="exec-mode-row" style={{
+    <div className={`exec-mode-row${hideOnMobile ? " exec-mode-row--mobile-hidden" : ""}`} style={{
       display: "flex", alignItems: "center", gap: 8,
       padding: "6px 16px", background: "var(--bg-3)",
       borderBottom: "1px solid var(--line-dim)",
@@ -606,8 +606,10 @@ export default function TradeDesk({
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
 
-      {/* Execution mode bar — always visible */}
-      <ExecModeBar />
+      {/* On a phone the Positions workspace prioritizes the holdings list.
+          Execution state remains visible in the terminal trigger and Desk
+          session rail; the full selector stays available everywhere else. */}
+      <ExecModeBar hideOnMobile={tab === "positions"} />
 
       {/* Tab bar */}
       <div style={{

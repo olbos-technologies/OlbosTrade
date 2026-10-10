@@ -615,8 +615,8 @@ export default function EquitySignals() {
     <div className="page-shell" style={{ maxWidth: 1200 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <AssetToggle tab={tab} onChange={setTab} />
-        <div style={{ flex: 1, minWidth: 220 }}><BrokerStatus /></div>
-        <div style={{ flex: 1, minWidth: 220 }}><PortfolioGreeks /></div>
+        <div className="signal-feed-context" style={{ flex: 1, minWidth: 220 }}><BrokerStatus /></div>
+        <div className="signal-feed-context" style={{ flex: 1, minWidth: 220 }}><PortfolioGreeks /></div>
       </div>
 
       {tab === "equities" ? <EquitySignalsGrid /> : <OptionsSignals />}

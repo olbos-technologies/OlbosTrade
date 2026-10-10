@@ -70,6 +70,21 @@ test("every duplicated status lamp is hidden on the desk", async ({ page }) => {
   expect(visible).toBe(0);
 });
 
+test("positions hides the redundant execution selector and prioritizes holdings", async ({ page }) => {
+  await openDesk(page);
+  await page.locator(".mobile-bottom-nav")
+    .getByRole("button", { name: "Positions", exact: true }).click();
+
+  const selector = page.locator(".exec-mode-row--mobile-hidden");
+  await expect(selector).toHaveCount(1);
+  await expect(selector).toHaveCSS("display", "none");
+
+  // Removing the selector must not remove the operator's mode awareness: the
+  // Trade Desk Session chip directly above still carries execution state.
+  await expect(page.getByText("Session", { exact: true })).toBeVisible();
+  await expect(page.locator(".t-table--cards")).toBeVisible();
+});
+
 test("the /terminal/paper alias dedupes too", async ({ page }) => {
   await stubBackend(page, SIGNED_IN);
   await page.setViewportSize(PHONE);
