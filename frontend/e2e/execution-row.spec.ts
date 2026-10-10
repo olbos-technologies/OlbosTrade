@@ -11,18 +11,27 @@
  * so the clipping is invisible to vitest by construction.
  */
 
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import { stubBackend, SIGNED_IN } from "./helpers";
+
+async function openExecutionSwitcher(page: Page, width: number) {
+  await stubBackend(page, SIGNED_IN);
+  await page.setViewportSize({ width, height: 844 });
+  await page.goto("/terminal/dashboard");
+  await page.waitForSelector(".mobile-bottom-nav");
+  await page.locator(".mobile-bottom-nav")
+    .getByRole("button", { name: "Positions", exact: true }).click();
+
+  // Positions intentionally suppresses this duplicate control on phones so
+  // holdings get the screen. Switch to another legacy desk panel to verify
+  // the selector remains readable and tappable everywhere it is displayed.
+  await page.getByRole("button", { name: "Desk signals", exact: true }).click();
+  await page.waitForSelector(".exec-mode-row");
+}
 
 for (const width of [390, 360, 320]) {
   test(`execution switcher is not clipped at ${width}px`, async ({ page }) => {
-    await stubBackend(page, SIGNED_IN);
-    await page.setViewportSize({ width, height: 844 });
-    await page.goto("/terminal/dashboard");
-    await page.waitForSelector(".mobile-bottom-nav");
-    await page.locator(".mobile-bottom-nav")
-      .getByRole("button", { name: "Positions", exact: true }).click();
-    await page.waitForSelector(".exec-mode-row");
+    await openExecutionSwitcher(page, width);
 
     const row = page.locator(".exec-mode-row");
     const { scrollW, clientW } = await row.evaluate((el) => ({
@@ -43,13 +52,7 @@ for (const width of [390, 360, 320]) {
 }
 
 test("each mode button is a real touch target", async ({ page }) => {
-  await stubBackend(page, SIGNED_IN);
-  await page.setViewportSize({ width: 360, height: 844 });
-  await page.goto("/terminal/dashboard");
-  await page.waitForSelector(".mobile-bottom-nav");
-  await page.locator(".mobile-bottom-nav")
-    .getByRole("button", { name: "Positions", exact: true }).click();
-  await page.waitForSelector(".exec-mode-row");
+  await openExecutionSwitcher(page, 360);
 
   const heights = await page.evaluate(() =>
     [...document.querySelectorAll(".exec-mode-row button")]

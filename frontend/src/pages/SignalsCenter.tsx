@@ -53,7 +53,7 @@ export const TAB_PAGE_KEYS = {
 export default function SignalsCenter({ initialTab = DEFAULT_TAB }: { initialTab?: string }) {
   const [tab, setTab] = useTabRoute(initialTab, TAB_PAGE_KEYS);
   return (
-    <div>
+    <div className={`signals-center${tab === "signals" ? " signals-center--live" : ""}`}>
       <TabBar tabs={TABS} active={tab} onChange={setTab} label="Signal views" />
       <ErrorBoundary label="Signals">
         {tab === "alpha-edge" ? <AlphaEdgePanel />
