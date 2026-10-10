@@ -1,8 +1,8 @@
 /**
- * Signed-in identity and sign-out, for the status bar.
+ * Signed-in identity and sign-out, shown inside the Account navigation group.
  *
  * Renders nothing at all when auth is disabled — on a single-operator install
- * there is no identity to show, and an empty "account" affordance that does
+ * there is no identity to show, and an empty account affordance that does
  * nothing is worse than no affordance.
  */
 
@@ -29,13 +29,11 @@ export default function UserMenu() {
 
   /**
    * The menu is portalled to <body> and positioned from the button's rect,
-   * rather than absolutely positioned inside the status bar.
+   * rather than absolutely positioned inside navigation chrome.
    *
-   * On mobile .instrument-status is a horizontal scroller — overflow-x: auto,
-   * overflow-y: hidden — and the menu opens ABOVE it, outside that box. The
-   * ancestor clipped it completely: verified in Chromium at 390px, the menu
-   * painted nothing at all, which made Sign out unreachable on a phone. Since
-   * that is the only way to sign out, the control has to escape the scroller.
+   * The Account group lives inside the scrollable sidebar on phones. Portalling
+   * keeps the menu from being clipped by that container and makes Sign out
+   * reachable at every sidebar scroll position.
    */
   const place = useCallback(() => {
     const r = wrapRef.current?.getBoundingClientRect();
@@ -60,8 +58,8 @@ export default function UserMenu() {
     document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey);
     window.addEventListener("resize", place);
-    // The status bar scrolls sideways on mobile; capture:true catches that
-    // scroll too, so the menu tracks its button instead of detaching from it.
+    // capture:true catches sidebar scrolling too, so the menu tracks its
+    // button instead of detaching from it.
     window.addEventListener("scroll", place, true);
     return () => {
       document.removeEventListener("mousedown", onDown);
