@@ -71,7 +71,7 @@ export default function TradeDeskV2({ initialTab }: { initialTab?: string }) {
       body = <CopilotQueue />;
       break;
     case "positions":
-      body = <TradeDesk initialTab="positions" routeTabsToUrl={false} />;
+      body = <TradeDesk initialTab="positions" routeTabsToUrl={false} embedded />;
       break;
     case "orders":
       body = <OrdersWorkspace />;
