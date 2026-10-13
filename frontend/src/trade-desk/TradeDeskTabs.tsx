@@ -2,7 +2,7 @@
  * Trade Desk primary tabs — workspace switch without full-page remount of shell chrome.
  */
 
-import React from "react";
+import React, { useEffect, useRef } from "react";
 
 export type TradeDeskTab =
   | "overview"
@@ -63,11 +63,24 @@ export default function TradeDeskTabs({
   active,
   onChange,
   badges,
+  ensureActiveVisible = false,
 }: {
   active: TradeDeskTab;
   onChange: (tab: TradeDeskTab) => void;
   badges?: Partial<Record<TradeDeskTab, number | string>>;
+  /** Keep the selected tab in view when this tablist scrolls horizontally. */
+  ensureActiveVisible?: boolean;
 }) {
+  const activeRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (!ensureActiveVisible) return;
+    const selected = activeRef.current;
+    if (selected && typeof selected.scrollIntoView === "function") {
+      selected.scrollIntoView({ block: "nearest", inline: "center" });
+    }
+  }, [active, ensureActiveVisible]);
+
   const moveFocus = (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
     event.preventDefault();
@@ -90,6 +103,7 @@ export default function TradeDeskTabs({
         const badge = badges?.[t.key];
         return (
           <button
+            ref={on ? activeRef : undefined}
             type="button"
             role="tab"
             aria-selected={on}

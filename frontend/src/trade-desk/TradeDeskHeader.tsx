@@ -10,6 +10,7 @@ import KillSwitchButton from "../components/KillSwitchButton";
 type Snap = {
   label: string;
   value: string;
+  compactValue?: string;
   tone?: "ok" | "warn" | "crit" | "muted";
   /**
    * What happens to this chip on a phone.
@@ -22,7 +23,7 @@ type Snap = {
   priority?: "always" | "expand";
 };
 
-function Chip({ label, value, tone = "muted", priority = "expand" }: Snap) {
+function Chip({ label, value, compactValue, tone = "muted", priority = "expand" }: Snap) {
   const color =
     tone === "ok" ? "var(--green)" :
     tone === "warn" ? "var(--amber)" :
@@ -31,7 +32,12 @@ function Chip({ label, value, tone = "muted", priority = "expand" }: Snap) {
   return (
     <div className="instrument-chip" data-priority={priority}>
       <span className="instrument-chip-label">{label}</span>
-      <span className="instrument-chip-value" style={{ color }}>{value}</span>
+      <span className="instrument-chip-value instrument-chip-value--desktop" style={{ color }}>{value}</span>
+      {compactValue && (
+        <span className="instrument-chip-value instrument-chip-value--mobile" style={{ color }}>
+          {compactValue}
+        </span>
+      )}
     </div>
   );
 }
@@ -179,12 +185,14 @@ export default function TradeDeskHeader() {
         the page exists for was 16% of the display. Three facts stay on the
         collapsed line and the rest are a tap away.
 
-        Session is the one worth keeping because it already carries three
-        things at once: environment, risk style and execution mode.
+        Session is the one worth keeping because it carries environment and
+        broker on mobile. Execution mode stays in the header trigger and the
+        position card carries its trading style, avoiding repeated state.
       */}
       <Chip
         label="Session"
         value={sessionLabel}
+        compactValue={`${env.toUpperCase()} · ${broker}`}
         tone={env === "Live" ? "crit" : envTone}
         priority="always"
       />
@@ -198,9 +206,11 @@ export default function TradeDeskHeader() {
         type="button"
         className="instrument-rail-toggle"
         aria-expanded={expanded}
+        aria-label={expanded ? "Hide additional desk status" : "Show additional desk status"}
+        title={expanded ? "Hide additional status" : "Show additional status"}
         onClick={() => setExpanded(v => !v)}
       >
-        {expanded ? "Less" : "More"}
+        {expanded ? "×" : "•••"}
       </button>
       <div style={{ flex: 1, minWidth: 8 }} />
       {/*

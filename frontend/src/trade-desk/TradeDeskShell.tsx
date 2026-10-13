@@ -53,6 +53,16 @@ export default function TradeDeskShell({
       {!useMobileChrome && (
         <TradeDeskTabs active={tab} onChange={onTabChange} badges={badges} />
       )}
+      {useMobileChrome && (
+        <nav aria-label="Trade Desk mobile workspaces" className="trade-desk-mobile-tabs">
+          <TradeDeskTabs
+            active={tab}
+            onChange={onTabChange}
+            badges={badges}
+            ensureActiveVisible
+          />
+        </nav>
+      )}
       <main
         id="trade-desk-main"
         tabIndex={-1}
@@ -61,11 +71,6 @@ export default function TradeDeskShell({
       >
         {children}
       </main>
-      {useMobileChrome && (
-        <nav aria-label="Trade Desk mobile workspaces" className="trade-desk-mobile-tabs">
-          <TradeDeskTabs active={tab} onChange={onTabChange} badges={badges} />
-        </nav>
-      )}
     </div>
   );
 }

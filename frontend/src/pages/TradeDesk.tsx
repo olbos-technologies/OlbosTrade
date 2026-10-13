@@ -15,6 +15,7 @@ import ExecutionMonitor from "../trade-desk/execution/ExecutionMonitor";
 import type { TradeDeskTab } from "../trade-desk/TradeDeskTabs";
 import { useTerminalNav } from "../components/TerminalNavContext";
 import HoldToConfirmButton from "../components/HoldToConfirmButton";
+import BottomSheet from "../components/BottomSheet";
 import { canClosePosition, isCloseableType, isDbOnly } from "../utils/closeablePosition";
 import { Button } from "../components/ui";
 import ManualTradePanel from "../trade-desk/orders/ManualTradePanel";
@@ -491,7 +492,8 @@ const EMPTY_TAB_KEYS: Readonly<Partial<Record<Tab, string>>> = Object.freeze({})
 export default function TradeDesk({
   initialTab = DEFAULT_TAB,
   routeTabsToUrl = true,
-}: { initialTab?: Tab; routeTabsToUrl?: boolean }) {
+  embedded = false,
+}: { initialTab?: Tab; routeTabsToUrl?: boolean; embedded?: boolean }) {
   const { positions, lastSignal, cycleLog, loading, runCycle, refresh } = usePaperTrade();
   const [tab, setTab] = useTabRoute<Tab>(
     initialTab,
@@ -501,6 +503,7 @@ export default function TradeDesk({
   const [closingId, setClosingId] = useState<string | null>(null);
   const [closeMsg, setCloseMsg] = useState<string | null>(null);
   const [closeFailed, setCloseFailed] = useState(false);
+  const [closeReview, setCloseReview] = useState<{ position: any; untracked: boolean } | null>(null);
 
   /**
    * Turn a close failure into something the operator can act on.
@@ -603,8 +606,28 @@ export default function TradeDesk({
     { key: "manual",    label: "Manual Trade" },
   ];
 
+  const positionRows = positions || [];
+  const knownPositionPnl = positionRows.reduce((sum: number, position: any) =>
+    typeof position.unrealized_pnl === "number" && Number.isFinite(position.unrealized_pnl)
+      ? sum + position.unrealized_pnl
+      : sum, 0);
+  const allPositionPnlKnown = positionRows.length > 0 && positionRows.every((position: any) =>
+    typeof position.unrealized_pnl === "number" && Number.isFinite(position.unrealized_pnl));
+
+  const confirmReviewedClose = () => {
+    if (!closeReview) return;
+    const position = closeReview.position;
+    const symbol = position.symbol || position.underlying || "?";
+    setCloseReview(null);
+    if (closeReview.untracked) void closeUntrackedPosition(symbol);
+    else void closePosition(position.id, symbol);
+  };
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
+    <div
+      className={`trade-desk-panel${embedded ? " trade-desk-panel--embedded" : ""}`}
+      style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}
+    >
 
       {/* On a phone the Positions workspace prioritizes the holdings list.
           Execution state remains visible in the terminal trigger and Desk
@@ -612,7 +635,7 @@ export default function TradeDesk({
       <ExecModeBar hideOnMobile={tab === "positions"} />
 
       {/* Tab bar */}
-      <div style={{
+      <div className="legacy-desk-tabbar" style={{
         display: "flex", alignItems: "center", gap: 12,
         padding: "6px 16px", borderBottom: "1px solid var(--line-dim)",
         background: "var(--bg-2)",
@@ -708,6 +731,22 @@ export default function TradeDesk({
         {/* POSITIONS */}
         {tab === "positions" && (
           <div>
+            <div className="positions-summary" aria-label="Open positions summary">
+              <div>
+                <span className="positions-summary__label">Positions</span>
+                <strong>{positionRows.length}</strong>
+              </div>
+              <div>
+                <span className="positions-summary__label">Open P&amp;L</span>
+                <strong style={{
+                  color: !allPositionPnlKnown
+                    ? "var(--ink-faint)"
+                    : knownPositionPnl >= 0 ? "var(--green)" : "var(--red)",
+                }} title={allPositionPnlKnown ? undefined : "Total unavailable because one or more broker marks are missing"}>
+                  {allPositionPnlKnown ? fmtDollars(knownPositionPnl) : "—"}
+                </strong>
+              </div>
+            </div>
             {closeMsg && (
               // Sticky, not static: this sits above the table, so a result for
               // a row further down used to render off-screen. A rejected close
@@ -732,11 +771,10 @@ export default function TradeDesk({
             positions list could not be used on mobile at all.
 
             The reflow is done in CSS (index.css, the 760px block) rather than
-            by rendering a different component. Every cell keeps its place in
-            the DOM and every piece of close-position logic — canClose,
-            canCloseUntracked, the hold-to-confirm buttons, the "not at
-            broker" fallbacks — is untouched, so a presentation change cannot
-            alter which positions can be closed or how.
+            by rendering a different list. Every cell keeps its place in the
+            DOM. Close eligibility is unchanged; the action now opens a review
+            sheet, where hold-to-confirm provides the destructive-action
+            friction after the operator has verified the broker position.
           */}
           <table className="t-table t-table--cards">
             <thead><tr>
@@ -745,11 +783,11 @@ export default function TradeDesk({
               ))}
             </tr></thead>
             <tbody>
-              {(positions || []).length === 0 ? (
+              {positionRows.length === 0 ? (
                 <tr><td colSpan={11} style={{ textAlign: "center", padding: 40, color: "var(--ink-dim)", fontSize: 12 }}>
                   No open positions
                 </td></tr>
-              ) : (positions || []).map((p: any, i: number) => {
+              ) : positionRows.map((p: any, i: number) => {
                 // unrealized_pnl requires a live broker mark (paper_trade.py
                 // only sets it when the IBKR position was matched to a
                 // current price) — absent whenever the broker is
@@ -770,37 +808,68 @@ export default function TradeDesk({
                 // own contract type for these, not a DB field, so it's
                 // reliable even with no DB row to read.
                 const canCloseUntracked = p.tracked === false && !p.id && p.asset_type === "equity";
+                const adopted = String(p.strategy || "").toLowerCase() === "adopted_untracked";
+                const symbol = p.symbol || p.underlying || "?";
+                const entryValue = p.credit_received ?? p.entry_credit ?? p.avg_cost;
                 return (
                   <tr key={i}>
-                    <td data-col="symbol" className="mono" style={{ color: "var(--ink)" }}>{p.symbol || p.underlying || "—"}</td>
+                    <td data-col="symbol" className="mono" style={{ color: "var(--ink)" }}>{symbol}</td>
                     <td data-col="type"><Badge text={p.asset_type?.toUpperCase() || "OPTIONS"} color="var(--ink-dim)" /></td>
-                    <td data-col="strategy" className="mono" style={{ fontSize: 10 }}>{p.strategy?.replace(/_/g," ").toUpperCase() || "—"}</td>
-                    <td data-col="credit" data-label="Entry" className="mono">${(p.credit_received ?? p.entry_credit ?? p.avg_cost ?? 0).toFixed(2)}</td>
+                    <td data-col="strategy" className="mono" style={{ fontSize: 10 }}>
+                      {adopted ? (
+                        <span
+                          className="position-tracking-warning"
+                          title="Adopted from the broker; entry and excursion history may be incomplete"
+                        >
+                          ⚠ Adopted from broker · history may be incomplete
+                        </span>
+                      ) : (p.strategy?.replace(/_/g," ").toUpperCase() || "—")}
+                    </td>
+                    <td data-col="credit" data-label="Entry" className="mono">
+                      {typeof entryValue === "number" && Number.isFinite(entryValue)
+                        ? `$${entryValue.toFixed(2)}` : "—"}
+                    </td>
                     <td data-col="pnl" className="mono" style={{ color: pnl == null ? "var(--ink-faint)" : pnl >= 0 ? "var(--green)" : "var(--red)" }}>
                       {fmtDollars(pnl)}
                     </td>
-                    <td data-col="mfe" data-label="MFE" className="mono" style={{ color: "var(--green)" }}>{fmtDollars(p.mfe_pnl)}</td>
-                    <td data-col="mae" data-label="MAE" className="mono" style={{ color: "var(--red)" }}>{fmtDollars(p.mae_pnl)}</td>
+                    <td
+                      data-col="mfe"
+                      data-label="Best"
+                      aria-label={`Best unrealized P&L: ${fmtDollars(p.mfe_pnl)}`}
+                      title="Maximum favorable excursion — best unrealized P&L"
+                      className="mono"
+                      style={{ color: "var(--green)" }}
+                    >{fmtDollars(p.mfe_pnl)}</td>
+                    <td
+                      data-col="mae"
+                      data-label="Worst"
+                      aria-label={`Worst unrealized P&L: ${fmtDollars(p.mae_pnl)}`}
+                      title="Maximum adverse excursion — worst unrealized P&L"
+                      className="mono"
+                      style={{ color: "var(--red)" }}
+                    >{fmtDollars(p.mae_pnl)}</td>
                     <td data-col="hold" data-label="Held" className="mono">{p.hold_days != null ? `${p.hold_days}d` : "—"}</td>
                     <td data-col="status"><Badge text="OPEN" color="var(--ink-dim)" /></td>
                     <td data-col="mode"><span className={`mode-badge ${p.trading_mode || "balanced"}`}>{p.trading_mode || "balanced"}</span></td>
                     <td data-col="action" style={{ minWidth: 90 }}>
                       {canClose ? (
-                        <HoldToConfirmButton
-                          label="Hold to close"
-                          confirmingLabel="Closing"
-                          holdMs={1200}
+                        <Button
+                          danger
                           disabled={closingId === p.id}
-                          onConfirm={() => closePosition(p.id, p.symbol || p.underlying || "?")}
-                        />
+                          aria-label={`Review close ${symbol}`}
+                          onClick={() => setCloseReview({ position: p, untracked: false })}
+                        >
+                          Close…
+                        </Button>
                       ) : canCloseUntracked ? (
-                        <HoldToConfirmButton
-                          label="Hold to close"
-                          confirmingLabel="Closing"
-                          holdMs={1200}
-                          disabled={closingId === (p.symbol || p.underlying)}
-                          onConfirm={() => closeUntrackedPosition(p.symbol || p.underlying)}
-                        />
+                        <Button
+                          danger
+                          disabled={closingId === symbol}
+                          aria-label={`Review close ${symbol}`}
+                          onClick={() => setCloseReview({ position: p, untracked: true })}
+                        >
+                          Close…
+                        </Button>
                       ) : (
                         <span style={{ fontFamily: "var(--mono)", fontSize: 9, color: "var(--ink-faint)" }}>
                           {isDbOnly(p)
@@ -814,6 +883,53 @@ export default function TradeDesk({
               })}
             </tbody>
           </table>
+
+          <BottomSheet
+            open={closeReview != null}
+            onClose={() => setCloseReview(null)}
+            title={closeReview ? `Review close · ${closeReview.position.symbol || closeReview.position.underlying || "Position"}` : "Review close"}
+            subtitle="A close order changes the live broker account"
+            labelledBy="position-close-review-title"
+          >
+            {closeReview && (() => {
+              const p = closeReview.position;
+              const symbol = p.symbol || p.underlying || "?";
+              const adopted = String(p.strategy || "").toLowerCase() === "adopted_untracked";
+              const entryValue = p.credit_received ?? p.entry_credit ?? p.avg_cost;
+              return (
+                <div className="position-close-review">
+                  {(adopted || closeReview.untracked) && (
+                    <div className="position-close-review__warning" role="note">
+                      This position was discovered at the broker. Its entry and excursion history may be incomplete.
+                    </div>
+                  )}
+                  <dl className="position-close-review__facts">
+                    <div><dt>Symbol</dt><dd>{symbol}</dd></div>
+                    <div><dt>Asset</dt><dd>{p.asset_type?.toUpperCase() || "OPTIONS"}</dd></div>
+                    <div><dt>Quantity</dt><dd>{p.quantity ?? "Entire open position"}</dd></div>
+                    <div><dt>Order</dt><dd>Market close request</dd></div>
+                    <div><dt>Scope</dt><dd>Entire open position</dd></div>
+                    <div><dt>Entry / avg cost</dt><dd>{typeof entryValue === "number" && Number.isFinite(entryValue) ? `$${entryValue.toFixed(2)}` : "—"}</dd></div>
+                    <div><dt>Open P&amp;L</dt><dd>{fmtDollars(p.unrealized_pnl)}</dd></div>
+                    <div><dt>Best / worst</dt><dd>{fmtDollars(p.mfe_pnl)} / {fmtDollars(p.mae_pnl)}</dd></div>
+                  </dl>
+                  <p className="position-close-review__notice">
+                    Review the broker and quantity above. A market order can fill away from the displayed mark.
+                  </p>
+                  <div className="position-close-review__actions">
+                    <Button onClick={() => setCloseReview(null)}>Cancel</Button>
+                    <HoldToConfirmButton
+                      label="Hold to submit market close"
+                      confirmingLabel="Submitting"
+                      holdMs={1500}
+                      disabled={closingId === (closeReview.untracked ? symbol : p.id)}
+                      onConfirm={confirmReviewedClose}
+                    />
+                  </div>
+                </div>
+              );
+            })()}
+          </BottomSheet>
           </div>
         )}
 

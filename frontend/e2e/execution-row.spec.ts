@@ -17,6 +17,12 @@ import { stubBackend, SIGNED_IN } from "./helpers";
 async function openExecutionSwitcher(page: Page, width: number) {
   await stubBackend(page, SIGNED_IN);
   await page.setViewportSize({ width, height: 844 });
+  // This suite exercises the legacy selector itself. In the shipping V2 desk,
+  // Positions is embedded and its redundant legacy tab row is intentionally
+  // hidden; the global header trigger owns mode switching there.
+  await page.addInitScript(() => {
+    try { localStorage.setItem("olbos.flags.trade_desk_v2", "0"); } catch { /* ignore */ }
+  });
   await page.goto("/terminal/dashboard");
   await page.waitForSelector(".mobile-bottom-nav");
   await page.locator(".mobile-bottom-nav")

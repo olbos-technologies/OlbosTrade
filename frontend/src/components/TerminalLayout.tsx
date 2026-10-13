@@ -776,13 +776,14 @@ function TickerStrip({ onToggle, sidebarExpanded, isMobile }: {
 
     return (
       <div style={{ display: "flex", flexDirection: "column", flexShrink: 0 }}>
-        <div style={{
+        <div className="mobile-terminal-header" style={{
           display: "flex", alignItems: "center", gap: 8,
           height: 48, padding: "0 4px 0 0",
           background: "var(--bg-2)", borderBottom: "1px solid var(--line-dim)",
           fontFamily: "var(--mono)", fontSize: 11,
         }}>
           <button
+            className="mobile-nav-trigger"
             onClick={onToggle}
             aria-label="Toggle navigation"
             style={{
@@ -847,7 +848,7 @@ function TickerStrip({ onToggle, sidebarExpanded, isMobile }: {
           </button>
         </div>
 
-        <div style={{
+        <div className="mobile-market-ticker" style={{
           height: 26, overflow: "hidden", position: "relative",
           background: "var(--bg-2)", borderBottom: "1px solid var(--line-dim)",
           fontFamily: "var(--mono)", fontSize: 10, display: "flex", alignItems: "center",
