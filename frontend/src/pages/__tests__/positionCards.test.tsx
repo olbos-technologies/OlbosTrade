@@ -16,10 +16,9 @@
  *
  * ── Why the DOM was not rewritten ─────────────────────────────────────────
  *
- * The reflow is pure CSS over the same table markup. Every branch of the
- * close-position logic — canClose, canCloseUntracked, the hold-to-confirm
- * buttons, the "not at broker" and "no trade id" fallbacks — is untouched, so
- * a presentation change cannot alter which positions can be closed.
+ * The reflow is pure CSS over the same table markup. Close eligibility stays
+ * on the row; a review sheet now separates choosing a position from submitting
+ * the destructive market-close request.
  */
 
 import { describe, expect, it } from "vitest";
@@ -91,8 +90,8 @@ describe("positions render as cards on a phone", () => {
 
   it("labels the bare numbers, since the header row is hidden", () => {
     // "$4.20  +$300  -$120" with no header is three unexplained figures.
-    for (const [col, label] of [["credit", "Entry"], ["mfe", "MFE"],
-                                ["mae", "MAE"], ["hold", "Held"]] as const) {
+    for (const [col, label] of [["credit", "Entry"], ["mfe", "Best"],
+                                ["mae", "Worst"], ["hold", "Held"]] as const) {
       expect(TSX, `${col} has no data-label`).toContain(`data-label="${label}"`);
     }
     expect(phone).toMatch(/content:\s*attr\(data-label\)/);
@@ -101,6 +100,20 @@ describe("positions render as cards on a phone", () => {
   it("gives the close control a real touch target", () => {
     const rule = phone.match(/\.t-table--cards td\[data-col="action"\] button\s*\{[^}]*\}/)?.[0] || "";
     expect(rule).toMatch(/min-height:\s*44px/);
+  });
+
+  it("summarizes the book and explains broker-adopted history", () => {
+    expect(TSX).toContain('className="positions-summary"');
+    expect(TSX).toContain('className="position-tracking-warning"');
+    expect(TSX).toContain("history may be incomplete");
+    expect(phone).toMatch(/\.positions-summary\s*\{[^}]*display:\s*flex/);
+  });
+
+  it("reviews a close before the hold-to-submit action", () => {
+    expect(TSX).toContain("Review close ${symbol}");
+    expect(TSX).toContain('className="position-close-review"');
+    expect(TSX).toContain('label="Hold to submit market close"');
+    expect(TSX).toContain("Market close request");
   });
 
   it("stays inside the phone breakpoint", () => {

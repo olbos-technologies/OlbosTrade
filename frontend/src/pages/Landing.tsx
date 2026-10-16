@@ -154,10 +154,7 @@ export default function Landing() {
     <div className="landing">
       <header className="landing-nav">
         <div className="landing-container landing-nav-row">
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-            <img src="/olbos-o-sm.webp" alt="" width={26} height={24} />
-            <BrandWordmark className="landing-wordmark" height={15} />
-          </span>
+          <BrandWordmark className="landing-wordmark" height={32} />
           <nav
             id="landing-nav-links"
             className={`landing-nav-links${menuOpen ? " open" : ""}`}
@@ -417,8 +414,7 @@ export default function Landing() {
         <div className="landing-container">
           <div className="landing-footer-row">
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <img src="/olbos-o-sm.webp" alt="" width={19} height={18} />
-              <BrandWordmark className="landing-wordmark" height={11} />
+              <BrandWordmark className="landing-wordmark" height={22} />
               <span style={{ width: 1, height: 12, background: "var(--line-dim)" }} />
               <span style={{
                 fontFamily: "var(--mono)", fontSize: 9, fontWeight: 500,

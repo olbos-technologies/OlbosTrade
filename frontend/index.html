@@ -4,25 +4,9 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Olbos</title>
-    <!-- .ico first for old browsers, then the SVG: anything that understands
-         image/svg+xml prefers it and gets a crisp mark at any zoom or DPI.
-         The PNGs stay as the fallback rung between them. The favicon trio
-         (.ico, .svg, both PNGs) are one drawing — public/favicon.svg,
-         rasterised from it rather than redrawn.
-
-         apple-touch-icon is the SAME mark — the pearl-and-gold O, as used in
-         every lockup — but a DIFFERENT DRAWING of it. It is the photographic
-         render: pearl body, gold ribbons, real depth. That detail only exists
-         above ~48px, and it renders at 180px on an iOS home screen, which is
-         the one place in this product a logo is drawn that large. favicon.svg
-         is the flat two-stroke drawing of the same O, because downsampling
-         the render to 16px produces a muddy ring.
-
-         So the two are not inconsistent and must not be reconciled in either
-         direction: do not regenerate the favicon from the render (muddy), and
-         do not flatten the app icon to favicon.svg (throws away the only
-         reason the render exists). test_favicon_assets.py pins both, on
-         measured distinct-colour counts. -->
+    <!-- The angular silver-and-gold O is shared by every brand surface. The
+         SVG is simplified for crisp 16px rendering; PNG/ICO fallbacks and the
+         180px app icon retain the richer metallic treatment. -->
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />

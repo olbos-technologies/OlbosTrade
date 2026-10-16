@@ -13,10 +13,9 @@
  * here would pass against both. Same constraint as landingNavOverflow.test.ts,
  * and the same answer: assert the rules, and leave the geometry to Playwright.
  *
- * The scoping is what matters. These bands are hidden ONLY on the desk and
- * ONLY on phones, because everywhere else they are the single place that state
- * appears — and the kill lamp is a safety display, dropped here solely because
- * the HALT button sits a few pixels above it.
+ * The scoping is what matters. These bands are hidden only in a shell that
+ * deliberately supplies or retains equivalent safety context: the desk rail,
+ * or the focused mobile Signals feed (which keeps the bottom status lamps).
  */
 
 import { describe, expect, it } from "vitest";
@@ -82,17 +81,14 @@ describe("duplicated status bands are hidden on the desk, on phones only", () =>
       .toMatch(/display:\s*none\s*!important/);
   });
 
-  it("scopes both rules to the desk, never globally", () => {
-    // A rule without .app-shell--desk would blank these bands on every page,
-    // where they are the only place this state is shown.
-    for (const sel of [".global-risk-status", ".status-dup"]) {
-      const idx = phone.indexOf(sel);
-      expect(idx).toBeGreaterThan(-1);
-      const lineStart = phone.lastIndexOf("\n", idx);
-      const selector = phone.slice(lineStart + 1, idx + sel.length);
-      expect(selector, `${sel} is hidden without scoping it to the desk`)
-        .toContain(".app-shell--desk");
-    }
+  it("never hides either safety band with a global phone rule", () => {
+    // Signals intentionally hides the larger risk strip while retaining the
+    // bottom lamps; the desk hides both because its rail replaces both. What
+    // must never return is a bare selector that blanks every phone page.
+    expect(phone).not.toMatch(/(?:^|\n)\s*\.global-risk-status\s*\{[^}]*display:\s*none/);
+    expect(phone).not.toMatch(/(?:^|\n)\s*\.status-dup\s*\{[^}]*display:\s*none/);
+    expect(phone).toMatch(/\.app-shell--signals\s+\.global-risk-status\s*\{[^}]*display:\s*none/);
+    expect(phone).not.toMatch(/\.app-shell--signals\s+\.status-dup\s*\{[^}]*display:\s*none/);
   });
 
   it("would catch the rules being dropped", () => {

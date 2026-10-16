@@ -26,8 +26,16 @@ import { stubBackend, SIGNED_IN } from "./helpers";
 
 const PHONE = { width: 390, height: 844 };
 
-async function openDesk(page: Page) {
+async function openDesk(page: Page, positions?: unknown[]) {
   await stubBackend(page, SIGNED_IN);
+  if (positions) {
+    await page.route("**/api/paper-trade/positions", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ positions }),
+      }));
+  }
   await page.setViewportSize(PHONE);
   await page.goto("/terminal/dashboard");
   await page.waitForSelector(".mobile-bottom-nav");
@@ -68,6 +76,92 @@ test("every duplicated status lamp is hidden on the desk", async ({ page }) => {
     [...document.querySelectorAll(".status-dup")]
       .filter(e => getComputedStyle(e).display !== "none").length);
   expect(visible).toBe(0);
+});
+
+test("positions hides the redundant execution selector and prioritizes holdings", async ({ page }) => {
+  await openDesk(page);
+  await page.locator(".mobile-bottom-nav")
+    .getByRole("button", { name: "Positions", exact: true }).click();
+
+  const selector = page.locator(".exec-mode-row--mobile-hidden");
+  await expect(selector).toHaveCount(1);
+  await expect(selector).toHaveCSS("display", "none");
+
+  // The shell-level strip is the one workspace navigator on mobile. The
+  // legacy panel's second Overview / Signals / Positions row is redundant.
+  const legacyTabs = page.locator(".trade-desk-panel--embedded .legacy-desk-tabbar");
+  await expect(legacyTabs).toHaveCount(1);
+  await expect(legacyTabs).toHaveCSS("display", "none");
+
+  // The market marquee looked like an empty band in the first viewport. It is
+  // hidden only on the desk; other terminal pages keep their market context.
+  await expect(page.locator(".mobile-market-ticker")).toHaveCSS("display", "none");
+
+  const strip = page.locator(".trade-desk-mobile-tabs");
+  const deskMain = page.locator(".trade-desk-shell > main");
+  const order = await page.evaluate(() => {
+    const nav = document.querySelector(".trade-desk-mobile-tabs");
+    const main = document.querySelector(".trade-desk-shell > main");
+    return !!nav && !!main && Boolean(nav.compareDocumentPosition(main) & Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+  expect(order, "the workspace selector should precede the content it changes").toBe(true);
+
+  const activeTab = strip.getByRole("tab", { name: "Positions", exact: true });
+  await expect(activeTab).toBeVisible();
+  const bounds = await activeTab.evaluate((el) => {
+    const tab = el.getBoundingClientRect();
+    const scroller = el.parentElement!.getBoundingClientRect();
+    return { left: tab.left, right: tab.right, scrollerLeft: scroller.left, scrollerRight: scroller.right };
+  });
+  expect(bounds.left).toBeGreaterThanOrEqual(bounds.scrollerLeft - 1);
+  expect(bounds.right).toBeLessThanOrEqual(bounds.scrollerRight + 1);
+
+  const navLabel = page.locator('.mobile-bottom-nav__tab[aria-label="Positions"] .mobile-bottom-nav__label');
+  await expect(navLabel).toHaveText("Positions");
+  const labelFits = await navLabel.evaluate((el) => el.scrollWidth <= el.clientWidth + 1);
+  expect(labelFits, "Positions must not paint as POSITIO…").toBe(true);
+
+  // Removing the selector must not remove the operator's mode awareness: the
+  // Trade Desk Session chip directly above still carries execution state.
+  await expect(page.getByText("Session", { exact: true })).toBeVisible();
+  await expect(page.locator(".positions-summary")).toBeVisible();
+  await expect(page.locator(".t-table--cards")).toBeVisible();
+  await expect(deskMain).toBeVisible();
+});
+
+test("a position close is reviewed before hold-to-submit", async ({ page }) => {
+  await openDesk(page, [{
+    id: "trade-adbe",
+    symbol: "ADBE",
+    asset_type: "equity",
+    spread_type: "equity_long",
+    strategy: "adopted_untracked",
+    tracked: true,
+    quantity: 4,
+    avg_cost: 231.59,
+    unrealized_pnl: -433,
+    mfe_pnl: 12,
+    mae_pnl: -1153,
+    hold_days: 6,
+    trading_mode: "balanced",
+  }]);
+  await page.locator(".mobile-bottom-nav")
+    .getByRole("button", { name: "Positions", exact: true }).click();
+
+  await expect(page.getByLabel("Open positions summary")).toContainText("1");
+  await expect(page.getByLabel("Open positions summary")).toContainText("-$433");
+  await expect(page.getByText(/Adopted from broker/)).toBeVisible();
+
+  // Choosing Close is reversible and opens a review. Submission still needs
+  // an intentional hold after the operator verifies symbol and quantity.
+  await page.getByRole("button", { name: "Review close ADBE" }).click();
+  const dialog = page.getByRole("dialog", { name: /Review close · ADBE/ });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText("Market close request");
+  await expect(dialog).toContainText("Entire open position");
+  await expect(dialog).toContainText("history may be incomplete");
+  await expect(dialog.getByRole("button", { name: "Hold to submit market close" })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Cancel" })).toBeVisible();
 });
 
 test("the /terminal/paper alias dedupes too", async ({ page }) => {
