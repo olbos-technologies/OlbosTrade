@@ -9,12 +9,15 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import select, func, and_, case
+from starlette.requests import HTTPConnection
 
+from app.api.scope_deps import scope_or_401
 from app.broker.broker_factory import get_broker
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.models.trade import Trade
 from app.services.trade_identity import asset_class_from_trade, position_identity_key
+from app.services.trade_scope import owned_by
 
 router = APIRouter()
 
@@ -55,8 +58,13 @@ def _hold_days_utc(entry: Optional[datetime]) -> Optional[int]:
 # ── Portfolio summary ─────────────────────────────────────────────────────────
 
 @router.get("/portfolio")
-async def get_portfolio():
-    """Live account summary from broker merged with DB P&L stats."""
+async def get_portfolio(conn: HTTPConnection):
+    """Live account summary from broker merged with DB P&L stats.
+
+    The DB half is scoped to the caller: win rate, total P&L and open count
+    describe *their* trades. The broker half is not scoped and cannot be —
+    it is one account at one broker, read straight from it.
+    """
     broker_data: dict = {}
     try:
         broker = get_broker()
@@ -79,23 +87,25 @@ async def get_portfolio():
             # reliable broker exit price are stored with pnl=NULL — including them
             # in the denominator would understate the win rate (a NULL is never a
             # win) and misrepresent total trades.
+            org_id = await scope_or_401(session, conn)
             stats = (await session.execute(
                 select(
                     func.count(Trade.id).label("count"),
                     func.coalesce(func.sum(Trade.pnl), 0).label("total_pnl"),
                     func.coalesce(func.sum(case((Trade.pnl > 0, 1), else_=0)), 0).label("wins"),
-                ).where(Trade.status == "closed", Trade.pnl.isnot(None))
+                ).where(owned_by(org_id), Trade.status == "closed", Trade.pnl.isnot(None))
             )).one()
 
             today = date.today()
             trades_today = (await session.execute(
                 select(func.count(Trade.id)).where(
+                    owned_by(org_id),
                     and_(Trade.status == "closed", func.date(Trade.exit_date) == today)
                 )
             )).scalar() or 0
 
             open_count = (await session.execute(
-                select(func.count(Trade.id)).where(Trade.status == "open")
+                select(func.count(Trade.id)).where(owned_by(org_id), Trade.status == "open")
             )).scalar() or 0
 
         total_trades = int(stats.count or 0)
@@ -119,6 +129,13 @@ async def get_portfolio():
                 if acct_value is not None else None
             ),
         }}
+    except HTTPException:
+        # The scope resolution above raises HTTPException(401) when auth is
+        # on and the request carries no identity. HTTPException IS an
+        # Exception, so without this the handler below would swallow the
+        # refusal and answer with an empty, successful-looking payload —
+        # a failed read wearing the costume of a safe value.
+        raise
     except Exception as exc:
         return {"portfolio": {**broker_data, "db_error": str(exc)}}
 
@@ -126,8 +143,16 @@ async def get_portfolio():
 # ── Live positions ─────────────────────────────────────────────────────────────
 
 @router.get("/positions")
-async def get_positions():
-    """Live broker positions merged with DB trade metadata."""
+async def get_positions(conn: HTTPConnection):
+    """Live broker positions merged with DB trade metadata.
+
+    The DB lookup is scoped, so a position held at the broker but owned by
+    another organization arrives with no metadata attached rather than with
+    someone else's. It does NOT disappear from the list: the broker read is
+    the source of what is actually held, and silently dropping a real
+    position from a positions view is the one failure mode worse than
+    showing it bare.
+    """
     try:
         broker = get_broker()
         broker_positions = await broker.get_positions()
@@ -139,13 +164,23 @@ async def get_positions():
 
     try:
         async with AsyncSessionLocal() as session:
-            result = await session.execute(select(Trade).where(Trade.status == "open"))
+            org_id = await scope_or_401(session, conn)
+            result = await session.execute(
+                select(Trade).where(owned_by(org_id), Trade.status == "open")
+            )
             # Key by (underlying, equity|options) — not bare underlying — so
             # SPY shares and a SPY spread do not clobber each other.
             db_trades = {
                 position_identity_key(t.underlying, asset_class_from_trade(t)): t
                 for t in result.scalars().all()
             }
+    except HTTPException:
+        # The scope resolution above raises HTTPException(401) when auth is
+        # on and the request carries no identity. HTTPException IS an
+        # Exception, so without this the handler below would swallow the
+        # refusal and answer with an empty, successful-looking payload —
+        # a failed read wearing the costume of a safe value.
+        raise
     except Exception:
         db_trades = {}
 
@@ -281,6 +316,7 @@ async def get_positions():
 
 @router.get("/history")
 async def get_trade_history(
+    conn:   HTTPConnection,
     limit:  int = Query(50, le=500),
     offset: int = Query(0),
     status: Optional[str] = Query(None, description="open | closed | all"),
@@ -288,13 +324,17 @@ async def get_trade_history(
     """Trade history from DB, newest first."""
     try:
         async with AsyncSessionLocal() as session:
-            q = select(Trade).order_by(Trade.entry_date.desc()).offset(offset).limit(limit)
+            org_id = await scope_or_401(session, conn)
+            q = (select(Trade).where(owned_by(org_id))
+                 .order_by(Trade.entry_date.desc()).offset(offset).limit(limit))
             if status and status != "all":
                 q = q.where(Trade.status == status)
 
             trades = (await session.execute(q)).scalars().all()
 
-            count_q = select(func.count(Trade.id))
+            # The total must be scoped the same way, or the pager reports a
+            # page count from rows the caller will never be shown.
+            count_q = select(func.count(Trade.id)).where(owned_by(org_id))
             if status and status != "all":
                 count_q = count_q.where(Trade.status == status)
             total = (await session.execute(count_q)).scalar() or 0
@@ -330,6 +370,13 @@ async def get_trade_history(
             "offset": offset,
             "limit":  limit,
         }
+    except HTTPException:
+        # The scope resolution above raises HTTPException(401) when auth is
+        # on and the request carries no identity. HTTPException IS an
+        # Exception, so without this the handler below would swallow the
+        # refusal and answer with an empty, successful-looking payload —
+        # a failed read wearing the costume of a safe value.
+        raise
     except Exception as exc:
         return {"trades": [], "total": 0, "error": str(exc)}
 

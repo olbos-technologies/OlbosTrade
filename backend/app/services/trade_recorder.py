@@ -53,6 +53,14 @@ class TradeRecorder:
         regime:                str,
         approved_by:           str,
         dispatch_id:           str,
+        # Whose position this is. REQUIRED, keyword-only and with no default:
+        # a default would silently file every trade in one scope, and the one
+        # value that looks like a safe default (None) is the single-operator
+        # scope, so it would attribute a tenant's position to the operator.
+        # Callers resolve it with services/trade_scope.py — from the request
+        # for a user-initiated entry, or `autonomous_scope` for one the
+        # background scanner started, which refuses rather than guessing.
+        organization_id:       "uuid.UUID | None",
         net_fill_price:        Optional[float] = None,
         spread_width:          Optional[float] = None,
         target_price:          Optional[float] = None,
@@ -122,6 +130,7 @@ class TradeRecorder:
                     # ── Trade row ──────────────────────────────────────────────
                     trade = Trade(
                         id=trade_id,
+                        organization_id=organization_id,
                         strategy=strategy,
                         underlying=underlying,
                         spread_type=option_type or "equity",

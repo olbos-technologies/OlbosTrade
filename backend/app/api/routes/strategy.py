@@ -1,6 +1,11 @@
 """Strategy config and signal routes."""
 from __future__ import annotations
 
+from starlette.requests import HTTPConnection
+
+from app.api.scope_deps import scope_or_401
+from app.core.database import AsyncSessionLocal
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional
@@ -144,19 +149,29 @@ async def get_signal_explanation(signal_id: str):
         return {"signal_id": signal_id, "explanation": None, "error": str(exc)}
 
 
-async def _evaluate_health(min_sample: int):
-    """Shared loader: grade every strategy from closed trades + promoted baselines."""
+async def _evaluate_health(min_sample: int, org_id):
+    """Shared loader: grade every strategy from one owner's closed trades.
+
+    Scoped because a strategy grade is computed from trade outcomes: left
+    desk-wide, a tenant's health panel is a summary of everyone's results,
+    and a strategy's sample_size reveals how much other people are trading.
+    The promoted-baseline rows are shared configuration, not trades, and
+    stay unscoped.
+    """
     from app.core.config import settings
     from app.core.database import AsyncSessionLocal
     from app.models.trade import Trade
     from app.models.research_experiment import ResearchExperiment
     from app.services.research_lab import baselines_from_experiments, PROMOTED
     from app.services.strategy_health import evaluate_all
+    from app.services.trade_scope import owned_by
     from sqlalchemy import select
 
     async with AsyncSessionLocal() as session:
         trades = (await session.execute(
-            select(Trade).where(Trade.status == "closed", Trade.pnl.isnot(None))
+            select(Trade).where(owned_by(org_id),
+                                Trade.status == "closed",
+                                Trade.pnl.isnot(None))
         )).scalars().all()
         promoted = (await session.execute(
             select(ResearchExperiment).where(ResearchExperiment.stage == PROMOTED)
@@ -172,7 +187,7 @@ async def _evaluate_health(min_sample: int):
                         overrides=overrides, min_sample=min_sample)
 
 
-async def _load_registry_cards(min_sample: int = 20) -> list[dict]:
+async def _load_registry_cards(min_sample: int, org_id) -> list[dict]:
     """
     Merge seeded StrategyProfile rows (static eligibility/lifecycle
     metadata — see migration 0022) with live health from the same
@@ -188,7 +203,7 @@ async def _load_registry_cards(min_sample: int = 20) -> list[dict]:
         profiles = (await session.execute(select(StrategyProfile))).scalars().all()
 
     try:
-        health = await _evaluate_health(min_sample)
+        health = await _evaluate_health(min_sample, org_id)
     except Exception:
         health = []
     health_by_strategy = {h.strategy: h for h in health}
@@ -220,15 +235,19 @@ async def _load_registry_cards(min_sample: int = 20) -> list[dict]:
 
 
 @router.get("/registry")
-async def get_strategy_registry(min_sample: int = 20):
+async def get_strategy_registry(conn: HTTPConnection, min_sample: int = 20):
     """Strategy Cards data: seeded profile metadata merged with live health."""
-    cards = await _load_registry_cards(min_sample)
+    async with AsyncSessionLocal() as _scope_db:
+        org_id = await scope_or_401(_scope_db, conn)
+    cards = await _load_registry_cards(min_sample, org_id)
     return {"strategies": cards, "total": len(cards)}
 
 
 @router.get("/registry/{strategy_id}")
-async def get_strategy_registry_one(strategy_id: str, min_sample: int = 20):
-    cards = await _load_registry_cards(min_sample)
+async def get_strategy_registry_one(strategy_id: str, conn: HTTPConnection, min_sample: int = 20):
+    async with AsyncSessionLocal() as _scope_db:
+        org_id = await scope_or_401(_scope_db, conn)
+    cards = await _load_registry_cards(min_sample, org_id)
     for card in cards:
         if card["strategy_id"] == strategy_id:
             return card
@@ -236,15 +255,17 @@ async def get_strategy_registry_one(strategy_id: str, min_sample: int = 20):
 
 
 @router.get("/health")
-async def get_strategy_health(min_sample: int = 20):
+async def get_strategy_health(conn: HTTPConnection, min_sample: int = 20):
     """
     Per-strategy health: live win rate / expectancy / drawdown vs. baseline, a
     0–100 score, a degradation grade (healthy / watch / degraded /
     insufficient_data), and a recommended action. Suspended strategies accept no
     new entries.
     """
+    async with AsyncSessionLocal() as _scope_db:
+        org_id = await scope_or_401(_scope_db, conn)
     try:
-        health = await _evaluate_health(min_sample)
+        health = await _evaluate_health(min_sample, org_id)
     except Exception as exc:
         return {"strategies": [], "error": str(exc)}
     suspended = [h.strategy for h in health if h.status == "degraded"]
@@ -256,15 +277,17 @@ async def get_strategy_health(min_sample: int = 20):
 
 
 @router.get("/meta")
-async def get_meta_strategy(min_sample: int = 20):
+async def get_meta_strategy(conn: HTTPConnection, min_sample: int = 20):
     """
     Meta-strategy decisions: given the active regime + each strategy's health,
     which strategies are active and at what allocation tilt. Feeds the Capital
     Allocation Engine.
     """
     from app.services.meta_strategy import decide, active_strategies
+    async with AsyncSessionLocal() as _scope_db:
+        org_id = await scope_or_401(_scope_db, conn)
     try:
-        health = await _evaluate_health(min_sample)
+        health = await _evaluate_health(min_sample, org_id)
     except Exception as exc:
         return {"regime": None, "decisions": [], "error": str(exc)}
 

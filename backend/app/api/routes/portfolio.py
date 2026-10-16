@@ -5,8 +5,11 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from starlette.requests import HTTPConnection
 
 from app.api.deps import require_api_key
+from app.api.scope_deps import scope_or_401
+from app.services.trade_scope import owned_by
 
 from app.services.account_state import get_account_value
 
@@ -14,8 +17,15 @@ router = APIRouter()
 
 
 @router.get("/heat")
-async def portfolio_heat():
-    """Portfolio heat (% of capital at risk), exposures, and concentration flags."""
+async def portfolio_heat(conn: HTTPConnection):
+    """Portfolio heat (% of capital at risk), exposures, and concentration flags.
+
+    This is the *display* of the caller's own heat. It is not the gate: the
+    guardrail that refuses an entry reads `_portfolio_heat_fraction` in
+    `trade_desk.py`, which stays desk-wide on purpose — see the note there.
+    So this number can be lower than the one that blocks an entry, and that
+    is the intended relationship, not a bug.
+    """
     from sqlalchemy import select
     from app.core.database import AsyncSessionLocal
     from app.models.trade import Trade
@@ -28,8 +38,9 @@ async def portfolio_heat():
     positions: list[dict] = []
     try:
         async with AsyncSessionLocal() as session:
+            org_id = await scope_or_401(session, conn)
             open_trades = (await session.execute(
-                select(Trade).where(Trade.status == "open")
+                select(Trade).where(owned_by(org_id), Trade.status == "open")
             )).scalars().all()
         for t in open_trades:
             positions.append({
@@ -38,6 +49,13 @@ async def portfolio_heat():
                 "risk_basis": position_risk_basis(t),
                 "sector": sector_for(t.underlying),
             })
+    except HTTPException:
+        # The scope resolution above raises HTTPException(401) when auth is
+        # on and the request carries no identity. HTTPException IS an
+        # Exception, so without this the handler below would swallow the
+        # refusal and answer with an empty, successful-looking payload —
+        # a failed read wearing the costume of a safe value.
+        raise
     except Exception as exc:
         return {"error": str(exc),
                 **compute_portfolio_risk([], account_value)}
@@ -46,7 +64,7 @@ async def portfolio_heat():
 
 
 @router.get("/open-orders")
-async def portfolio_open_orders():
+async def portfolio_open_orders(conn: HTTPConnection):
     """Resting broker orders, and which open positions have no stop.
 
     Read-only: it reads the order book, it never places, modifies or cancels
@@ -69,6 +87,15 @@ async def portfolio_open_orders():
     from app.models.trade import Trade
     from app.broker.broker_factory import get_broker
     from app.broker.ibkr_coordinator import Priority, ibkr_coordinator
+
+    # Establish the caller BEFORE reading anything. The order book is
+    # broker-wide — one account, every tenant's resting orders — and the two
+    # early returns below would otherwise hand back the broker's own shape
+    # without ever asking who is calling. The route sits behind the auth
+    # allowlist too; this is the layer that does not depend on a path list
+    # staying correct.
+    async with AsyncSessionLocal() as _scope_db:
+        org_id = await scope_or_401(_scope_db, conn)
 
     broker = get_broker()
     if not hasattr(broker, "get_open_orders"):
@@ -95,8 +122,15 @@ async def portfolio_open_orders():
     try:
         async with AsyncSessionLocal() as session:
             open_trades = (await session.execute(
-                select(Trade).where(Trade.status == "open")
+                select(Trade).where(owned_by(org_id), Trade.status == "open")
             )).scalars().all()
+    except HTTPException:
+        # The scope resolution above raises HTTPException(401) when auth is
+        # on and the request carries no identity. HTTPException IS an
+        # Exception, so without this the handler below would swallow the
+        # refusal and answer with an empty, successful-looking payload —
+        # a failed read wearing the costume of a safe value.
+        raise
     except Exception as exc:
         return {"available": True, "source": source, "orders": orders,
                 "positions_error": f"{type(exc).__name__}: {exc}"}
@@ -291,7 +325,7 @@ async def portfolio_allocation(method: str = "blended"):
 
 
 @router.get("/correlation")
-async def portfolio_correlation():
+async def portfolio_correlation(conn: HTTPConnection):
     """
     Correlation clusters across open positions' underlyings — flags when
     distinct tickers move together enough to behave as one concentrated
@@ -326,9 +360,17 @@ async def portfolio_correlation():
 
     try:
         async with AsyncSessionLocal() as session:
+            org_id = await scope_or_401(session, conn)
             open_trades = (await session.execute(
-                select(Trade).where(Trade.status == "open")
+                select(Trade).where(owned_by(org_id), Trade.status == "open")
             )).scalars().all()
+    except HTTPException:
+        # The scope resolution above raises HTTPException(401) when auth is
+        # on and the request carries no identity. HTTPException IS an
+        # Exception, so without this the handler below would swallow the
+        # refusal and answer with an empty, successful-looking payload —
+        # a failed read wearing the costume of a safe value.
+        raise
     except Exception as exc:
         return {**empty, "status": "error", "error": str(exc)}
 
@@ -381,7 +423,7 @@ async def portfolio_correlation():
 
 
 @router.get("/rotation-performance")
-async def portfolio_rotation_performance():
+async def portfolio_rotation_performance(conn: HTTPConnection):
     """
     Rotation-performance ledger — aggregate stats on the closed side of
     every position_rotation.py rotation close. Reports honestly on
@@ -404,9 +446,18 @@ async def portfolio_rotation_performance():
 
     try:
         async with AsyncSessionLocal() as session:
+            org_id = await scope_or_401(session, conn)
             rows = (await session.execute(
-                select(Trade).where(Trade.exit_reason == "position_rotation")
+                select(Trade).where(owned_by(org_id),
+                                    Trade.exit_reason == "position_rotation")
             )).scalars().all()
+    except HTTPException:
+        # The scope resolution above raises HTTPException(401) when auth is
+        # on and the request carries no identity. HTTPException IS an
+        # Exception, so without this the handler below would swallow the
+        # refusal and answer with an empty, successful-looking payload —
+        # a failed read wearing the costume of a safe value.
+        raise
     except Exception as exc:
         return {**empty, "status": "error", "error": str(exc)}
 

@@ -10,8 +10,11 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select, func, and_, case
+from starlette.requests import HTTPConnection
 
 from app.api.deps import require_api_key, require_api_key_configured
+from app.api.scope_deps import scope_or_401
+from app.services.trade_scope import owned_by
 from app.api.rate_limit import rate_limit
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
@@ -53,9 +56,20 @@ def _serialize_reconciliation_snapshot(snapshot: ReconciliationSnapshot) -> dict
 
 
 @router.get("/portfolio-state")
-async def get_portfolio_state():
+async def get_portfolio_state(conn: HTTPConnection):
     """
     Real portfolio state: account value from broker + guardrail metrics from DB.
+
+    The DB metrics are the caller's own — open count, realised P&L and the
+    consecutive-loss streak. Left desk-wide they would be a plain cross-tenant
+    channel: one tenant's losing streak is visible in another's risk panel.
+
+    This is a *display*, not the gate. The guardrail that refuses an entry
+    reads `trade_desk._fetch_portfolio_state`, which stays desk-wide because
+    the limits in TRADING_POLICY.md (5 concurrent positions, 2% daily loss)
+    are per-account caps on one broker account; dividing them per tenant would
+    multiply the desk's real exposure by the tenant count. So these numbers
+    can read lower than the ones that block an entry.
     """
     try:
         from app.broker.broker_factory import get_broker
@@ -97,13 +111,14 @@ async def get_portfolio_state():
                 )
             )).scalar() or 0)
 
+            org_id = await scope_or_401(session, conn)
             open_count = int((await session.execute(
-                select(func.count(Trade.id)).where(Trade.status == "open")
+                select(func.count(Trade.id)).where(owned_by(org_id), Trade.status == "open")
             )).scalar() or 0)
 
             # Consecutive losses — count backwards from most recent closed trade
             recent = (await session.execute(
-                select(Trade.pnl).where(Trade.status == "closed")
+                select(Trade.pnl).where(owned_by(org_id), Trade.status == "closed")
                 .order_by(Trade.exit_date.desc()).limit(20)
             )).scalars().all()
             consecutive_losses = 0
@@ -141,6 +156,13 @@ async def get_portfolio_state():
                 **({"broker_error": broker_error} if broker_error else {}),
             }
         }
+    except HTTPException:
+        # The scope resolution above raises HTTPException(401) when auth is
+        # on and the request carries no identity. HTTPException IS an
+        # Exception, so without this the handler below would swallow the
+        # refusal and answer with an empty, successful-looking payload —
+        # a failed read wearing the costume of a safe value.
+        raise
     except Exception as exc:
         return {"state": {"error": str(exc)}}
 
@@ -408,8 +430,8 @@ def _trade_to_scenario_position(t, spot: float, spot_iv: float = 0.25) -> dict:
 
 
 @router.get("/scenarios")
-async def get_scenarios():
-    """Stress the open book under the standard shock set (crash, vol spike, …)."""
+async def get_scenarios(conn: HTTPConnection):
+    """Stress the caller's open book under the standard shock set."""
     import asyncio
 
     from app.services import spot_price_cache
@@ -417,8 +439,9 @@ async def get_scenarios():
 
     try:
         async with AsyncSessionLocal() as session:
+            org_id = await scope_or_401(session, conn)
             open_trades = (await session.execute(
-                select(Trade).where(Trade.status == "open")
+                select(Trade).where(owned_by(org_id), Trade.status == "open")
             )).scalars().all()
 
         underlyings = sorted({t.underlying for t in open_trades})
@@ -446,6 +469,13 @@ async def get_scenarios():
         result = run_all(positions, capital=settings.starting_capital)
         result["excluded_symbols"] = excluded_symbols
         return result
+    except HTTPException:
+        # The scope resolution above raises HTTPException(401) when auth is
+        # on and the request carries no identity. HTTPException IS an
+        # Exception, so without this the handler below would swallow the
+        # refusal and answer with an empty, successful-looking payload —
+        # a failed read wearing the costume of a safe value.
+        raise
     except Exception as exc:
         return {"error": str(exc), "scenarios": [], "worst_scenario": None, "worst_pnl": 0.0}
 

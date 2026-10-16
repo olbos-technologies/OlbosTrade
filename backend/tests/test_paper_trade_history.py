@@ -17,6 +17,13 @@ import pytest
 
 from app.api.routes.paper_trade import get_trade_history
 
+from conftest import single_operator_conn
+
+# Batch E2 gave these routes a `conn` so they can resolve a trade scope; with
+# auth disabled it is never read. See conftest.single_operator_conn.
+_CONN = single_operator_conn()
+
+
 
 def _trade(*, status, entry_date, exit_date=None):
     t = MagicMock()
@@ -68,7 +75,7 @@ async def test_history_does_not_crash_when_an_open_trade_is_present():
     session = _session_for([open_trade])
 
     with patch("app.api.routes.paper_trade.AsyncSessionLocal", return_value=session):
-        result = await get_trade_history(limit=50, offset=0, status=None)
+        result = await get_trade_history(_CONN, limit=50, offset=0, status=None)
 
     assert "error" not in result
     assert result["total"] == 1
@@ -84,7 +91,7 @@ async def test_history_computes_hold_days_for_closed_trade():
     session = _session_for([closed_trade])
 
     with patch("app.api.routes.paper_trade.AsyncSessionLocal", return_value=session):
-        result = await get_trade_history(limit=50, offset=0, status=None)
+        result = await get_trade_history(_CONN, limit=50, offset=0, status=None)
 
     assert result["trades"][0]["hold_days"] == 7
 
@@ -101,7 +108,7 @@ async def test_history_mixed_open_and_closed_trades_both_compute_cleanly():
     session = _session_for([open_trade, closed_trade])
 
     with patch("app.api.routes.paper_trade.AsyncSessionLocal", return_value=session):
-        result = await get_trade_history(limit=50, offset=0, status=None)
+        result = await get_trade_history(_CONN, limit=50, offset=0, status=None)
 
     assert "error" not in result
     assert result["total"] == 2
@@ -113,6 +120,6 @@ async def test_history_mixed_open_and_closed_trades_both_compute_cleanly():
 async def test_history_empty_result_returns_cleanly():
     session = _session_for([])
     with patch("app.api.routes.paper_trade.AsyncSessionLocal", return_value=session):
-        result = await get_trade_history(limit=50, offset=0, status=None)
+        result = await get_trade_history(_CONN, limit=50, offset=0, status=None)
 
     assert result == {"trades": [], "total": 0, "offset": 0, "limit": 50}

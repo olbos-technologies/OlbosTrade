@@ -22,6 +22,37 @@ environment variables.**
 - Three guard tests in `test_update_script_deploys_in_order.py` pin it: the
   script never pulls, a stale checkout refuses, a current one proceeds.
 
+### Trades are scoped to their owner (Batch E2 steps 1, 2, 3, 5)
+
+**No migration beyond 0041, which arrives with this work. No new environment
+variables.** Behaviour change for an operator running with
+`AUTH_ENABLED=true`; no visible change in single-operator mode, where the
+scope is `organization_id IS NULL` and that matches every existing row.
+
+- Nine route modules read `trades` through shared, unscoped queries. They now
+  filter on the caller's organization via `trade_scope.owned_by`: open
+  positions, trade history and its total, portfolio heat, open orders,
+  correlation, rotation performance, scenarios, portfolio state, performance
+  and mode analytics, strategy health, and the research assistant's context.
+- **Closing someone else's trade answers 404, not 403.** Ownership is part of
+  the lookup rather than a check after it, so a foreign id and a nonexistent
+  one are indistinguishable — a 403 confirms the row exists — and no order is
+  submitted on the way to the refusal.
+- Several of these handlers wrap their work in `except Exception`, which
+  catches `HTTPException`. Each scoped handler now re-raises it, so a 401
+  cannot come back as an empty, successful-looking payload. In a
+  single-operator deployment the rows it would otherwise have returned are
+  every open position.
+- `/portfolio/open-orders` establishes the caller **before** reading the
+  broker-wide order book, not after.
+- **The risk gate deliberately stays desk-wide.** `TRADING_POLICY.md`'s limits
+  are caps on one broker account; dividing them per tenant would multiply real
+  exposure by the tenant count. The displays of those numbers are scoped, so
+  they can read lower than the figure that blocks an entry.
+- Still unscoped, deliberately (Batch E2 steps 4 and 6): fill polling,
+  excursion tracking, stop backfill and position reconciliation process every
+  row regardless of owner.
+
 ## Unreleased — The duplicate-position guard is no longer a bare read
 
 **Requires a migration (0040). `deploy/hetzner/update.sh` now applies it from

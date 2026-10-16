@@ -139,3 +139,24 @@ async def _stop_services_owning_background_tasks():
     """
     yield
     await _stop_background_task_owners()
+
+
+def single_operator_conn(user_id=None):
+    """An HTTPConnection stand-in for a route that now resolves a trade scope.
+
+    Batch E2 gave nine route modules a `conn` parameter so they can ask who is
+    calling. These tests call the handlers directly, so FastAPI never supplies
+    one. With `auth_enabled` false — the default in this suite —
+    `owner_scope` returns the single-operator scope (None) without reading
+    `conn` or the session at all, so this stub is deliberately inert: it
+    exists to satisfy the signature, not to simulate a tenant.
+
+    Cross-tenant behaviour is NOT tested through this helper. It needs real
+    rows and a real predicate, so it lives in the PostgreSQL isolation tests
+    with their own connection stub and an explicitly pinned scope.
+    """
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        state=SimpleNamespace(user={"id": str(user_id)} if user_id else {})
+    )

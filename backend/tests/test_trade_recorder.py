@@ -44,6 +44,7 @@ async def test_record_fill_success_returns_trade_id():
     rec = TradeRecorder()
     with patch("app.core.database.AsyncSessionLocal", return_value=session):
         tid = await rec.record_fill(
+            organization_id=None,   # single-operator scope
             strategy="bull_put_spread", underlying="SPY", option_type="put",
             short_strike=450, long_strike=445, expiration=date(2025, 6, 20),
             entry_credit=1.50, quantity=1, signal_score=0.8, iv_rank=40,
@@ -71,6 +72,7 @@ async def test_record_fill_tags_real_risk_mode_not_approver():
     with patch("app.core.database.AsyncSessionLocal", return_value=session), \
          patch("app.services.trading_mode.trading_mode_manager", fake_manager):
         tid = await rec.record_fill(
+            organization_id=None,   # single-operator scope
             strategy="bull_put_spread", underlying="SPY", option_type="put",
             short_strike=450, long_strike=445, expiration=date(2025, 6, 20),
             entry_credit=1.50, quantity=1, signal_score=0.8, iv_rank=40,
@@ -89,6 +91,7 @@ async def test_record_fill_db_failure_returns_none():
     rec = TradeRecorder()
     with patch("app.core.database.AsyncSessionLocal", return_value=session):
         tid = await rec.record_fill(
+            organization_id=None,   # single-operator scope
             strategy="equity", underlying="AAPL", option_type="equity_long",
             short_strike=0, long_strike=0, expiration=date(2025, 1, 1),
             entry_credit=150, quantity=10, signal_score=0.7, iv_rank=0,
@@ -179,6 +182,7 @@ async def test_record_fill_pending_status_persisted():
     rec = TradeRecorder()
     with patch("app.core.database.AsyncSessionLocal", return_value=session):
         tid = await rec.record_fill(
+            organization_id=None,   # single-operator scope
             strategy="bull_put_spread", underlying="QQQ", option_type="put",
             short_strike=400, long_strike=395, expiration=date(2025, 6, 20),
             entry_credit=2.98, quantity=4, signal_score=0.8, iv_rank=40,

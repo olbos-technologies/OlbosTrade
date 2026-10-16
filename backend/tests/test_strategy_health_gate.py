@@ -11,6 +11,13 @@ import pytest
 from app.services.guardrails import PortfolioState
 from app.services.strategy_health import StrategyHealth, DEGRADED, HEALTHY
 
+from conftest import single_operator_conn
+
+# Batch E2 gave these routes a `conn` so they can resolve a trade scope; with
+# auth disabled it is never read. See conftest.single_operator_conn.
+_CONN = single_operator_conn()
+
+
 
 @pytest.fixture(autouse=True)
 def _market_always_open():
@@ -141,7 +148,7 @@ async def test_route_returns_graded_strategies():
                          entry_date=date(2024, 1, 3), exit_date=date(2024, 1, 4))
                for _ in range(5)])
     with patch("app.core.database.AsyncSessionLocal", return_value=_db_session(rows)):
-        out = await get_strategy_health(min_sample=20)
+        out = await get_strategy_health(_CONN, min_sample=20)
     assert out["total_strategies"] == 1
     assert out["strategies"][0]["strategy"] == "bull_put_spread"
     assert "suspended" in out
@@ -151,7 +158,7 @@ async def test_route_returns_graded_strategies():
 async def test_route_handles_db_error():
     from app.api.routes.strategy import get_strategy_health
     with patch("app.core.database.AsyncSessionLocal", side_effect=Exception("boom")):
-        out = await get_strategy_health()
+        out = await get_strategy_health(_CONN)
     assert out["strategies"] == [] and "error" in out
 
 
@@ -163,7 +170,7 @@ async def test_meta_route_returns_decisions():
     import app.main as m
     m._current_regime = NS(regime=NS(value="normal_mean_revert"))
     with patch.object(strat_mod, "_evaluate_health", new=AsyncMock(return_value=health)):
-        out = await strat_mod.get_meta_strategy(min_sample=20)
+        out = await strat_mod.get_meta_strategy(_CONN, min_sample=20)
     assert out["regime"] == "normal_mean_revert"
     assert "bull_put_spread" in out["active_strategies"]
     assert out["decisions"][0]["strategy"] == "bull_put_spread"
@@ -174,5 +181,5 @@ async def test_meta_route_handles_error():
     from app.api.routes import strategy as strat_mod
     with patch.object(strat_mod, "_evaluate_health",
                       new=AsyncMock(side_effect=Exception("down"))):
-        out = await strat_mod.get_meta_strategy()
+        out = await strat_mod.get_meta_strategy(_CONN)
     assert out["decisions"] == [] and "error" in out

@@ -84,7 +84,7 @@ async def test_tracked_equity_position_includes_asset_type_hold_days_mode_and_ex
     with patch("app.api.routes.paper_trade.get_broker", return_value=broker), \
          patch("app.api.routes.paper_trade.AsyncSessionLocal", return_value=session), \
          patch("yfinance.Tickers", side_effect=RuntimeError("no network in tests")):
-        result = await get_positions()
+        result = await get_positions(_CONN)
 
     pos = result["positions"][0]
     assert pos["asset_type"] == "equity"
@@ -116,7 +116,7 @@ async def test_tracked_options_position_reports_options_asset_type():
     with patch("app.api.routes.paper_trade.get_broker", return_value=broker), \
          patch("app.api.routes.paper_trade.AsyncSessionLocal", return_value=session), \
          patch("yfinance.Tickers", side_effect=RuntimeError("no network in tests")):
-        result = await get_positions()
+        result = await get_positions(_CONN)
 
     assert result["positions"][0]["asset_type"] == "options"
 
@@ -134,7 +134,7 @@ async def test_untracked_broker_position_has_no_db_derived_fields():
     with patch("app.api.routes.paper_trade.get_broker", return_value=broker), \
          patch("app.api.routes.paper_trade.AsyncSessionLocal", return_value=session), \
          patch("yfinance.Tickers", side_effect=RuntimeError("no network in tests")):
-        result = await get_positions()
+        result = await get_positions(_CONN)
 
     pos = result["positions"][0]
     assert pos["tracked"] is False
@@ -160,7 +160,7 @@ async def test_db_only_fallback_position_includes_asset_type():
 
     with patch("app.api.routes.paper_trade.get_broker", return_value=broker), \
          patch("app.api.routes.paper_trade.AsyncSessionLocal", return_value=session):
-        result = await get_positions()
+        result = await get_positions(_CONN)
 
     pos = result["positions"][0]
     assert pos["source"] == "db_only"
@@ -178,6 +178,13 @@ async def test_db_only_fallback_position_includes_asset_type():
 from datetime import datetime, timedelta, timezone as _tz
 
 from app.api.routes.paper_trade import _hold_days_utc
+
+from conftest import single_operator_conn
+
+# Batch E2 gave these routes a `conn` so they can resolve a trade scope; with
+# auth disabled it is never read. See conftest.single_operator_conn.
+_CONN = single_operator_conn()
+
 
 
 def test_hold_days_counts_utc_calendar_days():

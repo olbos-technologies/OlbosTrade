@@ -27,6 +27,19 @@ class Trade(Base):
         String(50), nullable=False,
         comment="bull_put_spread | bear_call_spread | iron_condor | bull_call_debit_spread"
     )
+    # Who owns this position. NULLABLE and staying that way: a pre-ownership
+    # trade's owner is not recoverable from the row (approved_by holds a role
+    # label like "user" or "reconciler_adopt", never an identity), and nothing
+    # links a trade to the broker_connections row that executed it. NOT NULL
+    # would force migration 0041 to invent an owner for every historical trade.
+    #
+    # NULL is a SCOPE, not a wildcard: it is the single-operator scope, and
+    # matches exactly the rows 0041 declined to guess an owner for. Querying it
+    # as "no filter when None" would reinstate the shared query this removes —
+    # see app/services/trade_scope.py.
+    organization_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True, index=True
+    )
     underlying: Mapped[str] = mapped_column(String(10), nullable=False)
     spread_type: Mapped[str] = mapped_column(String(50), nullable=False)
 

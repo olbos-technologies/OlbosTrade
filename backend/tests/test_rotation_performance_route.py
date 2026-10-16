@@ -8,6 +8,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from conftest import single_operator_conn
+
+# Batch E2 gave these routes a `conn` so they can resolve a trade scope; with
+# auth disabled it is never read. See conftest.single_operator_conn.
+_CONN = single_operator_conn()
+
+
 
 def _trade(underlying, pnl, regime="normal_mean_revert", exit_reason="position_rotation",
            entry_date=datetime(2026, 8, 1), exit_date=datetime(2026, 8, 3)):
@@ -32,7 +39,7 @@ async def test_zero_rotations_returns_empty_shape():
     from app.api.routes import portfolio as pmod
 
     with patch("app.core.database.AsyncSessionLocal", return_value=_trades_session([])):
-        out = await pmod.portfolio_rotation_performance()
+        out = await pmod.portfolio_rotation_performance(_CONN)
 
     assert out["status"] == "no_rotations_yet"
     assert out["total"] == 0
@@ -48,7 +55,7 @@ async def test_normal_case_computes_correct_aggregates():
         _trade("MSFT", -20.0),
     ]
     with patch("app.core.database.AsyncSessionLocal", return_value=_trades_session(trades)):
-        out = await pmod.portfolio_rotation_performance()
+        out = await pmod.portfolio_rotation_performance(_CONN)
 
     assert out["status"] == "ok"
     assert out["total"] == 2
@@ -70,7 +77,7 @@ async def test_query_filters_on_position_rotation_exit_reason():
     trades = [_trade("AAPL", 50.0, exit_reason="position_rotation")]
     session = _trades_session(trades)
     with patch("app.core.database.AsyncSessionLocal", return_value=session):
-        out = await pmod.portfolio_rotation_performance()
+        out = await pmod.portfolio_rotation_performance(_CONN)
 
     assert out["status"] == "ok"
     assert out["total"] == 1
@@ -87,7 +94,7 @@ async def test_unknown_pnl_rows_are_skipped():
 
     trades = [_trade("AAPL", None), _trade("MSFT", 10.0)]
     with patch("app.core.database.AsyncSessionLocal", return_value=_trades_session(trades)):
-        out = await pmod.portfolio_rotation_performance()
+        out = await pmod.portfolio_rotation_performance(_CONN)
 
     assert out["status"] == "ok"
     assert out["total"] == 1
@@ -99,7 +106,7 @@ async def test_db_failure_returns_graceful_error():
     from app.api.routes import portfolio as pmod
 
     with patch("app.core.database.AsyncSessionLocal", side_effect=Exception("db down")):
-        out = await pmod.portfolio_rotation_performance()
+        out = await pmod.portfolio_rotation_performance(_CONN)
 
     assert out["status"] == "error"
     assert "db down" in out["error"]

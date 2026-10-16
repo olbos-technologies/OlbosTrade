@@ -34,6 +34,19 @@ def _owned_by(org_id):
     return JournalEntry.organization_id == org_id
 
 
+def _owned_by_trade(org_id):
+    """`trade_scope.owned_by`, re-exported so the two filters stay adjacent.
+
+    Journal entries and trades are separate tables with separate ownership
+    columns (migrations 0039 and 0041) and separate filters. This alias exists
+    so a reader of this module sees which of the two each query uses, instead
+    of one bare `owned_by` that could plausibly be either.
+    """
+    from app.services.trade_scope import owned_by
+
+    return owned_by(org_id)
+
+
 async def _scope(session, conn: HTTPConnection):
     """Resolve the caller's scope, turning a missing identity into a 401."""
     try:
@@ -77,7 +90,15 @@ async def _load_all(conn: HTTPConnection) -> list[JournalEntryOut]:
         trade_ids = [e.trade_id for e in entries if e.trade_id]
         trade_map: dict = {}
         if trade_ids:
-            rows = (await session.execute(select(Trade).where(Trade.id.in_(trade_ids)))).scalars().all()
+            # Scoped as well as filtered by id. Today this changes nothing —
+            # you only reach a trade id through a journal entry you own, which
+            # the query above already scoped — but it is the unscoped read
+            # sitting inside a scoped route that Batch E's own analysis
+            # flagged: it becomes a leak the moment anyone adds a trade-first
+            # query here, and that future reader has no reason to notice.
+            rows = (await session.execute(
+                select(Trade).where(_owned_by_trade(org_id), Trade.id.in_(trade_ids))
+            )).scalars().all()
             trade_map = {t.id: t for t in rows}
     return [_to_out(e, trade_map.get(e.trade_id)) for e in entries]
 

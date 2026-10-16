@@ -842,7 +842,7 @@ async def approve_signal(signal_id: str, conn: HTTPConnection):
     if signal is None:
         raise HTTPException(404, "Signal not found in pending queue")
 
-    result = await _execute_signal(signal, approved_by="user")
+    result = await _execute_signal(signal, approved_by="user", conn=conn)
     await _log_execution({
         **result,
         "signal_id": signal_id,
@@ -903,7 +903,7 @@ async def _resolve_rotation_review(review_id: str, resolution: str) -> Optional[
 
 @router.post("/rotation-review/{review_id}/approve",
              dependencies=[Depends(require_api_key), Depends(rate_limit), Depends(require_broker_access)])
-async def approve_rotation_review(review_id: str):
+async def approve_rotation_review(review_id: str, conn: HTTPConnection):
     """Approve a replacement: close the incumbent, then enter the challenger.
 
     Everything here is deliberate rather than convenient:
@@ -935,9 +935,14 @@ async def approve_rotation_review(review_id: str):
     from app.models.trade import Trade
     from app.services.position_rotation import ROTATION_CLOSED_BY, close_equity_trade, close_options_trade
 
+    from app.api.scope_deps import scope_or_401
+    from app.services.trade_scope import owned_by
+
     async with AsyncSessionLocal() as session:
+        org_id = await scope_or_401(session, conn)
         trade = (await session.execute(
-            select(Trade).where(Trade.id == incumbent_trade_id,
+            select(Trade).where(owned_by(org_id),
+                                Trade.id == incumbent_trade_id,
                                 Trade.status == "open")
         )).scalars().first()
     if trade is None:
@@ -961,7 +966,9 @@ async def approve_rotation_review(review_id: str):
         raise HTTPException(502, f"Incumbent close failed, challenger not entered: {exc}")
 
     challenger = review.get("challenger_signal") or {}
-    entry_result = await _execute_signal(challenger, approved_by=f"rotation_review:{review_id}")
+    entry_result = await _execute_signal(
+        challenger, approved_by=f"rotation_review:{review_id}", conn=conn,
+    )
 
     out = {
         "kind": "ROTATION_REVIEW",
@@ -1066,7 +1073,7 @@ async def reject_all_pending():
 # ── Manual trade ──────────────────────────────────────────────────────────────
 
 @router.post("/manual-trade", dependencies=[Depends(require_api_key), Depends(rate_limit), Depends(require_broker_access)])
-async def manual_trade(req: ManualTradeRequest):
+async def manual_trade(req: ManualTradeRequest, conn: HTTPConnection):
     """
     Force a manual equity order — bypasses signal scoring and IV filters
     but must still pass all risk guardrails (kill switch + loss limits + trade cap).
@@ -1085,7 +1092,7 @@ async def manual_trade(req: ManualTradeRequest):
         "manual":     True,
         "order_type": req.order_type,
     }
-    result = await _execute_signal(signal, approved_by="manual")
+    result = await _execute_signal(signal, approved_by="manual", conn=conn)
     if result.get("result") == "error":
         raise HTTPException(500, result.get("error", "execution error"))
     await _log_execution(result)
@@ -1099,7 +1106,7 @@ class ClosePositionRequest(BaseModel):
 
 
 @router.post("/close-position", dependencies=[Depends(require_api_key), Depends(rate_limit), Depends(require_broker_access)])
-async def close_position(req: ClosePositionRequest):
+async def close_position(req: ClosePositionRequest, conn: HTTPConnection):
     """
     Manually close an open position — the operator's own "I want out now"
     action, independent of the automated profit-target/stop-loss exit.
@@ -1116,8 +1123,10 @@ async def close_position(req: ClosePositionRequest):
     (put/call) close via a market-order mirrored combo — see
     close_options_trade()'s docstring for why LMT isn't supported there yet.
     """
+    from app.api.scope_deps import scope_or_401
     from app.core.database import AsyncSessionLocal
     from app.models.trade import Trade
+    from app.services.trade_scope import owned_by
     from sqlalchemy import select
 
     try:
@@ -1125,9 +1134,15 @@ async def close_position(req: ClosePositionRequest):
     except ValueError:
         raise HTTPException(400, "Invalid trade_id")
 
+    # Ownership goes IN the lookup, not in a check after it. A foreign trade
+    # id and a nonexistent one therefore answer identically — 404 — because a
+    # 403 would confirm the row exists, which is itself the disclosure. There
+    # is also no window in which someone else's position is loaded into this
+    # handler before being refused.
     async with AsyncSessionLocal() as session:
+        org_id = await scope_or_401(session, conn)
         trade = (await session.execute(
-            select(Trade).where(Trade.id == trade_uuid)
+            select(Trade).where(owned_by(org_id), Trade.id == trade_uuid)
         )).scalar_one_or_none()
 
     if trade is None:
@@ -1178,7 +1193,7 @@ class CloseUntrackedPositionRequest(BaseModel):
 
 
 @router.post("/close-untracked-position", dependencies=[Depends(require_api_key), Depends(rate_limit), Depends(require_broker_access)])
-async def close_untracked_position(req: CloseUntrackedPositionRequest):
+async def close_untracked_position(req: CloseUntrackedPositionRequest, conn: HTTPConnection):
     """
     Close a live broker equity position that has no matching DB Trade row —
     e.g. a fill the app lost track of after an order-placement timeout (the
@@ -1193,15 +1208,23 @@ async def close_untracked_position(req: CloseUntrackedPositionRequest):
     Equity only, same deliberate scope limit as /close-position — closing a
     real 2-leg options position needs mirrored-spread submission logic.
     """
+    from app.api.scope_deps import scope_or_401
     from app.core.database import AsyncSessionLocal
     from app.models.trade import Trade
+    from app.services.trade_scope import owned_by
     from sqlalchemy import select
 
     ticker = req.symbol.upper()
 
+    # Scoped so the 409 below cannot name another tenant's trade id back to this
+    # caller. The refusal is still correct within the caller's own scope: if
+    # they have a tracked open trade on this ticker, they must close it by id.
     async with AsyncSessionLocal() as session:
+        org_id = await scope_or_401(session, conn)
         existing = (await session.execute(
-            select(Trade).where(Trade.underlying == ticker, Trade.status == "open")
+            select(Trade).where(owned_by(org_id),
+                                Trade.underlying == ticker,
+                                Trade.status == "open")
         )).scalar_one_or_none()
     if existing is not None:
         raise HTTPException(
@@ -1277,7 +1300,11 @@ async def get_execution_log(limit: int = 50):
 
 # ── Internal execution helper ──────────────────────────────────────────────────
 
-async def _execute_signal(signal: dict, approved_by: str = "autopilot") -> dict:
+async def _execute_signal(
+    signal: dict,
+    approved_by: str = "autopilot",
+    conn: "HTTPConnection | None" = None,
+) -> dict:
     """
     Single fail-closed order pipeline. ALL order entry points must call this.
     Stages (in order — no stage may be skipped):
@@ -1289,7 +1316,9 @@ async def _execute_signal(signal: dict, approved_by: str = "autopilot") -> dict:
       1d. Strategy health (non-manual; fail-open on error)
       2. Guardrail risk check (fail closed — DB error = refused)
       2b. Portfolio gate — concentration / max positions / heat (Step 8)
-      3. Duplicate guard
+      2c. Ownership scope — whose position this is (fail closed: an entry
+          whose owner cannot be established is refused, not guessed)
+      3. Duplicate guard (scoped to that owner)
       3b. Cooldown after close (fail closed on DB error)
       4. Broker submission (+ account mode + margin)
       5. Fill-confirmed recording (CRITICAL alert on failure)
@@ -1601,10 +1630,48 @@ async def _execute_signal(signal: dict, approved_by: str = "autopilot") -> dict:
         if quantity <= 0:
             return _skipped("zero_size")
 
-    # ── Stage 3: Duplicate guard ───────────────────────────────────────────────
-    # Key on (underlying, asset class) so SPY equity and SPY options can coexist.
+    # ── Stage 2c: Ownership scope ──────────────────────────────────────────────
+    # Whose position is this? Everything below — the duplicate read, the claim,
+    # and the trade row itself — is scoped by the answer, so it is resolved
+    # once, here, before any of them.
+    #
+    # Two sources, because this pipeline has two kinds of caller. A request
+    # carries an authenticated identity. The background scanner does not:
+    # handle_signal() calls this in AUTOPILOT mode with no request at all, so
+    # there is nobody to ask. autonomous_scope() answers it only when the
+    # answer is unambiguous and raises otherwise.
+    #
+    # FAIL CLOSED, and this is a deliberate behaviour change: an entry whose
+    # owner cannot be established is REFUSED rather than filed under a guess.
+    # A missed automated entry costs an opportunity; a position attributed to
+    # the wrong tenant puts one customer's capital behind another's signal.
     try:
         from app.core.database import AsyncSessionLocal
+        from app.services.trade_scope import (
+            AmbiguousOwner, autonomous_scope, claim_scope, owned_by, request_scope,
+        )
+
+        async with AsyncSessionLocal() as _scope_db:
+            if conn is not None:
+                _org = await request_scope(_scope_db, conn)
+            else:
+                _org = await autonomous_scope(_scope_db)
+    except AmbiguousOwner as _amb:
+        logger.error("Entry refused for %s — owner is ambiguous: %s", ticker, _amb)
+        return _blocked(f"owner_ambiguous: {_amb}")
+    except PermissionError as _perm:
+        # Auth is on and the request carries no identity. Answering with the
+        # single-operator scope would act on another tenant's positions.
+        logger.error("Entry refused for %s — no authenticated owner: %s", ticker, _perm)
+        return _blocked(f"owner_unauthenticated: {_perm}")
+    except Exception as _scope_exc:
+        logger.error("Entry refused for %s — scope unresolved: %s", ticker, _scope_exc)
+        return _blocked(f"owner_scope_error: {_scope_exc}")
+
+    # ── Stage 3: Duplicate guard ───────────────────────────────────────────────
+    # Key on (owner, underlying, asset class) so SPY equity and SPY options can
+    # coexist, and so one organization's position does not block another's.
+    try:
         from app.models.trade import Trade
         from app.services.trade_identity import asset_class_from_signal, asset_class_from_trade
         from sqlalchemy import select
@@ -1613,6 +1680,7 @@ async def _execute_signal(signal: dict, approved_by: str = "autopilot") -> dict:
         async def _open_trade_for(db) -> object | None:
             rows = (await db.execute(
                 select(Trade).where(
+                    owned_by(_org),
                     Trade.underlying == ticker,
                     Trade.status.in_(["open", "pending"]),
                 )
@@ -1643,7 +1711,9 @@ async def _execute_signal(signal: dict, approved_by: str = "autopilot") -> dict:
         # causes on separate reasons so each is provable on its own.
         try:
             _claim = await position_claim.try_claim(
-                ticker, wanted, dispatch_id=signal.get("dispatch_id"),
+                ticker, wanted,
+                scope=claim_scope(_org),
+                dispatch_id=signal.get("dispatch_id"),
             )
         except Exception as _claim_exc:
             logger.error(
@@ -1703,6 +1773,13 @@ async def _execute_signal(signal: dict, approved_by: str = "autopilot") -> dict:
                 rows = (await _db.execute(
                     select(Trade)
                     .where(
+                        # Scoped for the same reason the duplicate guard above
+                        # is: a cooldown says "do not re-enter the position
+                        # *you* just closed". Tenant A closing SPY is not a
+                        # reason to refuse tenant B's first entry, and leaving
+                        # this global would also tell B that somebody closed
+                        # SPY recently.
+                        owned_by(_org),
                         Trade.underlying == ticker,
                         Trade.status == "closed",
                         Trade.exit_date.isnot(None),
@@ -1872,6 +1949,7 @@ async def _execute_signal(signal: dict, approved_by: str = "autopilot") -> dict:
                 from app.services.trade_recorder import trade_recorder
                 equity_direction = "equity_short" if action.upper() == "SELL" else "equity_long"
                 recorded = await trade_recorder.record_fill(
+                    organization_id=_org,
                     strategy="equity",
                     underlying=ticker,
                     option_type=equity_direction,
@@ -1935,6 +2013,7 @@ async def _execute_signal(signal: dict, approved_by: str = "autopilot") -> dict:
             # Stage 5: fill recording — CRITICAL on failure (filled but unrecorded is dangerous)
             from app.services.trade_recorder import trade_recorder
             recorded = await trade_recorder.record_fill(
+                organization_id=_org,
                 strategy="equity",
                 underlying=ticker,
                 option_type=equity_direction,
@@ -2041,6 +2120,7 @@ async def _execute_signal(signal: dict, approved_by: str = "autopilot") -> dict:
                 # comment for the full asyncio.shield() explanation.
                 from app.services.trade_recorder import trade_recorder
                 recorded = await trade_recorder.record_fill(
+                    organization_id=_org,
                     strategy=strategy,
                     underlying=ticker,
                     option_type=opt_type,
@@ -2101,6 +2181,7 @@ async def _execute_signal(signal: dict, approved_by: str = "autopilot") -> dict:
             # Stage 5: fill recording — CRITICAL on failure
             from app.services.trade_recorder import trade_recorder
             recorded = await trade_recorder.record_fill(
+                organization_id=_org,
                 strategy=strategy,
                 underlying=ticker,
                 option_type=opt_type,

@@ -22,6 +22,13 @@ from app.api.routes.trade_desk import (
 from app.services.execution_mode import ExecutionMode
 from app.services.guardrails import PortfolioState
 
+from conftest import single_operator_conn
+
+# Batch E2 gave these routes a `conn` so they can resolve a trade scope; with
+# auth disabled it is never read. See conftest.single_operator_conn.
+_CONN = single_operator_conn()
+
+
 
 @pytest.fixture(autouse=True)
 def _market_open():
@@ -266,7 +273,7 @@ async def test_manual_trade_success_logs():
     with patch.object(td, "_execute_signal",
                       new=AsyncMock(return_value={"result": "submitted", "ticker": "AAPL"})), \
          patch.object(td, "_log_execution", new=AsyncMock()) as log_mock:
-        out = await manual_trade(ManualTradeRequest(ticker="aapl", action="buy", shares=5))
+        out = await manual_trade(ManualTradeRequest(ticker="aapl", action="buy", shares=5), _conn())
     assert out["result"] == "submitted"
     log_mock.assert_awaited_once()
 
@@ -276,7 +283,7 @@ async def test_manual_trade_error_raises():
     with patch.object(td, "_execute_signal",
                       new=AsyncMock(return_value={"result": "error", "error": "boom"})):
         with pytest.raises(Exception):
-            await manual_trade(ManualTradeRequest(ticker="aapl", action="buy", shares=5))
+            await manual_trade(ManualTradeRequest(ticker="aapl", action="buy", shares=5), _conn())
 
 
 # ── close_position (manual close, separate from _execute_signal) ──────────────
@@ -312,7 +319,7 @@ def _open_options_trade(spread_type="put", quantity=2):
 @pytest.mark.asyncio
 async def test_close_position_invalid_trade_id_raises():
     with pytest.raises(Exception):
-        await close_position(ClosePositionRequest(trade_id="not-a-uuid"))
+        await close_position(ClosePositionRequest(trade_id="not-a-uuid"), _CONN)
 
 
 @pytest.mark.asyncio
@@ -321,7 +328,7 @@ async def test_close_position_not_found_raises():
     with patch("app.core.database.AsyncSessionLocal", return_value=session):
         with pytest.raises(Exception):
             await close_position(ClosePositionRequest(
-                trade_id="11111111-1111-1111-1111-111111111111"))
+                trade_id="11111111-1111-1111-1111-111111111111"), _CONN)
 
 
 @pytest.mark.asyncio
@@ -330,7 +337,7 @@ async def test_close_position_already_closed_raises():
     with patch("app.core.database.AsyncSessionLocal", return_value=session):
         with pytest.raises(Exception):
             await close_position(ClosePositionRequest(
-                trade_id="11111111-1111-1111-1111-111111111111"))
+                trade_id="11111111-1111-1111-1111-111111111111"), _CONN)
 
 
 @pytest.mark.asyncio
@@ -339,7 +346,7 @@ async def test_close_position_invalid_spread_type_raises_400():
     with patch("app.core.database.AsyncSessionLocal", return_value=session):
         with pytest.raises(Exception):
             await close_position(ClosePositionRequest(
-                trade_id="11111111-1111-1111-1111-111111111111"))
+                trade_id="11111111-1111-1111-1111-111111111111"), _CONN)
 
 
 @pytest.mark.asyncio
@@ -355,7 +362,7 @@ async def test_close_position_options_routes_to_close_options_trade():
          patch("app.services.position_rotation.close_equity_trade") as close_eq_mock, \
          patch.object(td, "_log_execution", new=AsyncMock()):
         out = await close_position(ClosePositionRequest(
-            trade_id="11111111-1111-1111-1111-111111111111"))
+            trade_id="11111111-1111-1111-1111-111111111111"), _CONN)
 
     close_opt_mock.assert_awaited_once()
     close_eq_mock.assert_not_called()
@@ -371,7 +378,7 @@ async def test_close_position_options_missing_strikes_raises_400():
          patch("app.broker.broker_factory.get_broker", return_value=MagicMock()):
         with pytest.raises(Exception):
             await close_position(ClosePositionRequest(
-                trade_id="11111111-1111-1111-1111-111111111111"))
+                trade_id="11111111-1111-1111-1111-111111111111"), _CONN)
 
 
 @pytest.mark.asyncio
@@ -386,7 +393,7 @@ async def test_close_position_options_broker_rejection_raises_502():
          patch("app.broker.broker_factory.get_broker", return_value=broker):
         with pytest.raises(Exception):
             await close_position(ClosePositionRequest(
-                trade_id="11111111-1111-1111-1111-111111111111"))
+                trade_id="11111111-1111-1111-1111-111111111111"), _CONN)
 
 
 @pytest.mark.asyncio
@@ -413,7 +420,7 @@ async def test_close_position_long_submits_sell_and_cancels_bracket():
          patch("app.services.trade_recorder.trade_recorder.record_exit",
                new=AsyncMock(return_value=True)) as record_mock:
         out = await close_position(ClosePositionRequest(
-            trade_id="11111111-1111-1111-1111-111111111111"))
+            trade_id="11111111-1111-1111-1111-111111111111"), _CONN)
 
     exec_mock.assert_not_called()
     broker.cancel_open_orders.assert_awaited_once_with("AAPL")
@@ -442,7 +449,7 @@ async def test_close_position_short_submits_buy():
          patch("app.broker.broker_factory.get_broker", return_value=broker), \
          patch.object(td, "_log_execution", new=AsyncMock()):
         out = await close_position(ClosePositionRequest(
-            trade_id="11111111-1111-1111-1111-111111111111"))
+            trade_id="11111111-1111-1111-1111-111111111111"), _CONN)
 
     assert broker.place_equity_order.await_args.kwargs["side"] == "BUY"
     assert out["status"] == "submitted"
@@ -460,7 +467,7 @@ async def test_close_position_broker_rejection_raises():
          patch("app.broker.broker_factory.get_broker", return_value=broker):
         with pytest.raises(Exception):
             await close_position(ClosePositionRequest(
-                trade_id="11111111-1111-1111-1111-111111111111"))
+                trade_id="11111111-1111-1111-1111-111111111111"), _CONN)
 
 
 @pytest.mark.asyncio

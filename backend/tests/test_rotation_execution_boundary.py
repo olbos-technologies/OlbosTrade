@@ -59,6 +59,18 @@ def _broker():
 
 # ── Barrier 1: the close functions refuse rotation without approval ──────────
 
+
+def _conn(user: dict | None = None):
+    """Stand-in for the HTTPConnection the route now takes.
+
+    approve_rotation_review passes it to _execute_signal, which resolves the
+    owning organization from it. An empty state models auth disabled — the
+    single-operator scope.
+    """
+    from types import SimpleNamespace
+    return SimpleNamespace(state=SimpleNamespace(user=user or {}))
+
+
 @pytest.mark.asyncio
 async def test_rotation_cannot_close_the_incumbent_equity():
     b = _broker()
@@ -386,7 +398,7 @@ async def test_approval_is_single_use():
     import app.api.routes.trade_desk as td
     with patch.object(td, "_resolve_rotation_review", new=AsyncMock(return_value=None)):
         with pytest.raises(HTTPException) as exc:
-            await td.approve_rotation_review("rev-1")
+            await td.approve_rotation_review("rev-1", _conn())
     assert exc.value.status_code == 404
 
 
@@ -401,7 +413,7 @@ async def test_approval_refused_while_kill_switch_engaged():
          patch("app.services.position_rotation.close_equity_trade",
                new=AsyncMock()) as close_eq:
         with pytest.raises(HTTPException) as exc:
-            await td.approve_rotation_review("rev-1")
+            await td.approve_rotation_review("rev-1", _conn())
     assert exc.value.status_code == 423
     close_eq.assert_not_called()
 
@@ -420,7 +432,7 @@ async def test_approval_refused_when_incumbent_already_closed():
          patch("app.services.position_rotation.close_equity_trade",
                new=AsyncMock()) as close_eq:
         with pytest.raises(HTTPException) as exc:
-            await td.approve_rotation_review("rev-1")
+            await td.approve_rotation_review("rev-1", _conn())
     assert exc.value.status_code == 409
     close_eq.assert_not_called()
 
@@ -443,7 +455,7 @@ async def test_a_failed_close_does_not_enter_the_challenger():
                new=AsyncMock(side_effect=RuntimeError("broker rejected"))), \
          patch.object(td, "_execute_signal", new=AsyncMock()) as execute:
         with pytest.raises(HTTPException) as exc:
-            await td.approve_rotation_review("rev-1")
+            await td.approve_rotation_review("rev-1", _conn())
     assert exc.value.status_code == 502
     execute.assert_not_called()
 
@@ -464,7 +476,7 @@ async def test_approval_closes_incumbent_with_a_token_then_enters_challenger():
                new=AsyncMock(return_value={"ticker": "MRVL", "status": "filled"})) as close_eq, \
          patch.object(td, "_execute_signal",
                       new=AsyncMock(return_value={"result": "submitted"})) as execute:
-        out = await td.approve_rotation_review("rev-1")
+        out = await td.approve_rotation_review("rev-1", _conn())
 
     assert out["result"] == "approved"
     # The token is the review id, which exists only after the atomic

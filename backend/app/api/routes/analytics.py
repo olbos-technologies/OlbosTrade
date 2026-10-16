@@ -2,11 +2,16 @@
 Analytics API routes — performance breakdown by trading mode.
 """
 
+import uuid
 from datetime import date
 from typing import Optional
 from fastapi import APIRouter, Query
+from starlette.requests import HTTPConnection
 
+from app.api.scope_deps import scope_or_401
+from app.core.database import AsyncSessionLocal
 from app.services.mode_analytics import ModeAnalyticsEngine, ModeTrade
+from app.services.trade_scope import owned_by
 from app.core.config import settings
 
 router = APIRouter()
@@ -14,17 +19,28 @@ engine = ModeAnalyticsEngine(starting_capital=settings.starting_capital)
 
 
 async def _load_trades_from_db(
+    org_id: Optional[uuid.UUID],
     date_from: Optional[date] = None,
     date_to: Optional[date] = None,
 ) -> list[ModeTrade]:
-    """Load closed trades from DB and convert to ModeTrade records."""
+    """Load one owner's closed trades and convert to ModeTrade records.
+
+    `org_id` is a required positional, and deliberately NOT resolved in here.
+    Everything below runs inside a bare `except Exception: return []`, so a
+    401 raised in this function would be swallowed and an unauthenticated
+    caller would receive an empty analytics page instead of a refusal — a
+    failed read wearing the costume of a safe value. Each route resolves the
+    scope before calling, outside that try.
+
+    Passing `None` means the single-operator scope (the rows migration 0041
+    left unattributed), not "every row".
+    """
     try:
-        from app.core.database import AsyncSessionLocal
         from app.models.trade import Trade
         from sqlalchemy import select
 
         async with AsyncSessionLocal() as session:
-            query = select(Trade).where(Trade.status == "closed")
+            query = select(Trade).where(owned_by(org_id), Trade.status == "closed")
             result = await session.execute(query)
             db_trades = result.scalars().all()
 
@@ -66,6 +82,7 @@ async def _load_trades_from_db(
 
 @router.get("/by-mode")
 async def get_analytics_by_mode(
+    conn: HTTPConnection,
     date_from: Optional[date] = Query(None),
     date_to:   Optional[date] = Query(None),
 ):
@@ -73,7 +90,9 @@ async def get_analytics_by_mode(
     Full performance breakdown by trading mode.
     Returns win rate, P&L, Sharpe, expectancy for each mode.
     """
-    trades = await _load_trades_from_db(date_from, date_to)
+    async with AsyncSessionLocal() as session:
+        org_id = await scope_or_401(session, conn)
+    trades = await _load_trades_from_db(org_id, date_from, date_to)
     comparison = engine.compute_comparison(trades, date_from, date_to)
 
     return {
@@ -118,9 +137,11 @@ async def get_analytics_by_mode(
 
 
 @router.get("/mode/{mode_name}")
-async def get_mode_detail(mode_name: str):
+async def get_mode_detail(mode_name: str, conn: HTTPConnection):
     """Deep dive into a single mode's performance."""
-    trades = await _load_trades_from_db()
+    async with AsyncSessionLocal() as session:
+        org_id = await scope_or_401(session, conn)
+    trades = await _load_trades_from_db(org_id)
     mode_trades = [t for t in trades if t.mode == mode_name]
 
     if not mode_trades:
@@ -152,7 +173,7 @@ async def get_mode_detail(mode_name: str):
 
 
 @router.get("/performance")
-async def get_performance():
+async def get_performance(conn: HTTPConnection):
     """
     Portfolio-wide performance over closed trades.
 
@@ -164,14 +185,19 @@ async def get_performance():
     them, so the figures read as covering the whole book when they did not.
     """
     from app.services.performance_analytics import compute_performance
-    from app.core.database import AsyncSessionLocal
     from app.models.trade import Trade
     from sqlalchemy import select
+
+    # Outside the try below for the same reason _load_trades_from_db takes its
+    # scope as an argument: that except returns a zeroed performance object,
+    # which would present a refusal as a flat, measured book.
+    async with AsyncSessionLocal() as session:
+        org_id = await scope_or_401(session, conn)
 
     try:
         async with AsyncSessionLocal() as session:
             trades = (await session.execute(
-                select(Trade).where(Trade.status == "closed")
+                select(Trade).where(owned_by(org_id), Trade.status == "closed")
             )).scalars().all()
         rows = [{"pnl": float(t.pnl) if t.pnl is not None else None,
                  "entry_date": t.entry_date, "exit_date": t.exit_date}
@@ -225,7 +251,7 @@ def _bucket_by_score(trades: list) -> dict:
 
 
 @router.get("/signal-score-impact")
-async def get_signal_score_impact(regime: Optional[str] = Query(None)):
+async def get_signal_score_impact(conn: HTTPConnection, regime: Optional[str] = Query(None)):
     """
     Shows whether higher signal scores actually predict better outcomes.
     This validates whether the AI model is working.
@@ -239,7 +265,9 @@ async def get_signal_score_impact(regime: Optional[str] = Query(None)):
     once per distinct regime present in the data, added alongside the
     unfiltered ``by_score_bucket`` rather than a separate ledger endpoint.
     """
-    trades = await _load_trades_from_db()
+    async with AsyncSessionLocal() as session:
+        org_id = await scope_or_401(session, conn)
+    trades = await _load_trades_from_db(org_id)
     if regime:
         trades = [t for t in trades if t.regime == regime]
     if len(trades) < 10:

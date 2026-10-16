@@ -21,6 +21,13 @@ import pytest
 
 from app.api.routes.portfolio import portfolio_open_orders
 
+from conftest import single_operator_conn
+
+# Batch E2 gave these routes a `conn` so they can resolve a trade scope; with
+# auth disabled it is never read. See conftest.single_operator_conn.
+_CONN = single_operator_conn()
+
+
 
 def _order(symbol="MRVL", order_type="STP", remaining=599.0, **kw):
     o = {
@@ -56,7 +63,7 @@ async def _call(order_result, trades):
          patch("app.core.database.AsyncSessionLocal", return_value=_session(trades)), \
          patch("app.broker.ibkr_coordinator.ibkr_coordinator.submit",
                new=AsyncMock(return_value=order_result)):
-        return await portfolio_open_orders()
+        return await portfolio_open_orders(_CONN)
 
 
 # ── the reassuring-wrong-answer guard ────────────────────────────────────────
@@ -155,7 +162,7 @@ async def test_broker_failure_reports_unavailable_rather_than_empty():
     with patch("app.broker.broker_factory.get_broker", return_value=broker), \
          patch("app.broker.ibkr_coordinator.ibkr_coordinator.submit",
                new=AsyncMock(side_effect=ConnectionError("not connected"))):
-        out = await portfolio_open_orders()
+        out = await portfolio_open_orders(_CONN)
 
     assert out["available"] is False
     assert "not connected" in out["reason"]
@@ -167,6 +174,6 @@ async def test_broker_failure_reports_unavailable_rather_than_empty():
 async def test_broker_without_an_order_book_says_so():
     broker = MagicMock(spec=[])   # no get_open_orders attribute
     with patch("app.broker.broker_factory.get_broker", return_value=broker):
-        out = await portfolio_open_orders()
+        out = await portfolio_open_orders(_CONN)
     assert out["available"] is False
     assert "order book" in out["reason"]

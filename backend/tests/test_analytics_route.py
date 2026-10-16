@@ -12,6 +12,13 @@ import pytest
 from app.api.routes import analytics
 from app.services.mode_analytics import ModeTrade
 
+from conftest import single_operator_conn
+
+# Batch E2 gave these routes a `conn` so they can resolve a trade scope; with
+# auth disabled it is never read. See conftest.single_operator_conn.
+_CONN = single_operator_conn()
+
+
 
 def _trade(pnl, score, regime=None, ticker="AAPL"):
     return ModeTrade(
@@ -31,7 +38,7 @@ async def test_signal_score_impact_includes_by_regime_when_unfiltered():
     # applies before any bucketing, filtered or not.
     trades = _trades(10, regime="low_vol_trending") + _trades(10, regime="high_vol")
     with patch("app.api.routes.analytics._load_trades_from_db", return_value=trades):
-        result = await analytics.get_signal_score_impact(regime=None)
+        result = await analytics.get_signal_score_impact(_CONN, regime=None)
 
     assert "by_regime" in result
     assert set(result["by_regime"].keys()) == {"low_vol_trending", "high_vol"}
@@ -41,7 +48,7 @@ async def test_signal_score_impact_includes_by_regime_when_unfiltered():
 async def test_signal_score_impact_regime_filter_scopes_trades():
     trades = _trades(10, regime="low_vol_trending") + _trades(10, regime="high_vol")
     with patch("app.api.routes.analytics._load_trades_from_db", return_value=trades):
-        result = await analytics.get_signal_score_impact(regime="low_vol_trending")
+        result = await analytics.get_signal_score_impact(_CONN, regime="low_vol_trending")
 
     # Filtered result must not recurse into another by_regime breakdown.
     assert "by_regime" not in result
@@ -53,7 +60,7 @@ async def test_signal_score_impact_regime_filter_scopes_trades():
 async def test_signal_score_impact_regime_filter_below_minimum_returns_message():
     trades = _trades(3, regime="crisis")
     with patch("app.api.routes.analytics._load_trades_from_db", return_value=trades):
-        result = await analytics.get_signal_score_impact(regime="crisis")
+        result = await analytics.get_signal_score_impact(_CONN, regime="crisis")
 
     assert "message" in result
     assert result["correlation"] is None
