@@ -345,7 +345,7 @@ export default function Dashboard() {
   };
 
   return (
-    <div style={{ display: "grid", gridTemplateRows: "auto auto auto 1fr auto", height: "100%", overflow: "auto", gap: 0 }}>
+    <div style={{ display: "grid", gridAutoRows: "max-content", alignContent: "start", height: "100%", minHeight: 0, overflow: "auto", gap: 0 }}>
 
       {showWelcome && (
         <ErrorBoundary label="Welcome">
@@ -407,7 +407,7 @@ export default function Dashboard() {
       </div>
 
       {/* Main panels */}
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 320px", gap: 12, margin: "0 12px 12px", overflow: isMobile ? "visible" : "hidden" }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 320px", gap: 12, margin: "0 12px 12px", minHeight: 440, overflow: "visible" }}>
 
         {/* Left: equity + positions */}
         <div className="instrument-card" style={{ display: "flex", flexDirection: "column", overflow: "hidden" }}>
