@@ -321,6 +321,47 @@ Two scoping decisions were made rather than deferred:
   book is broker-wide and the route had two early returns ahead of any DB
   access, so it could answer before establishing who was asking.
 | 4 | per-organization background workers with explicit scope | **high** — §3, §4 |
+
+**Steps 4 and 6 are implemented**, with one boundary left in place. §3's
+recommendation (option A, scope passed as a parameter) is what shipped:
+`worker_scope.for_each_scope` resolves the `(broker, owner)` pair and
+`PositionReconciler(broker, *, organization_id)` has no default, so an
+unscoped reconciliation cannot be written — only chosen in words.
+
+What §4 did not anticipate, and is the real constraint on step 6:
+
+* **`get_broker()` is a process-wide singleton** driven by `settings.broker`.
+  There was no per-organization broker in use anywhere.
+  `broker/connection_scoped.py` can build one and says in its own docstring
+  that it is "NOT WIRED"; step 6 wires it for reconciliation only.
+* **IBKR has no per-organization form in this process.** Its gateway is a
+  single logged-in session and `IBKR_CLIENT_ID` multiplexes onto the same
+  account, so per-organization IBKR is a container per organization —
+  infrastructure, not application code. An organization whose only connection
+  is IBKR raises `BrokerUnresolved` rather than being read against the
+  operator's own account, which would be the same cross-tenant comparison by
+  another route.
+* **An owner with no resolvable broker is skipped, never defaulted.** This is
+  the single most important line in `worker_scope`: falling back to the
+  singleton is exactly the bug §4 describes, and `BrokerUnresolved` makes it
+  unreachable by accident.
+
+**The order-submitting workers are deliberately NOT per-owner.**
+`stop_backfill` places stop orders and `orphan_order_sweep` cancels them.
+Reconciliation is read-only, so running it against a customer's connection
+reads their account; those two would *submit and cancel orders in it* on a
+timer, which the open operating-model ADR does not permit. They stay on the
+operator's own broker, and
+`test_the_order_submitting_workers_still_use_the_operators_own_broker` pins
+that so it cannot drift silently. **This is the one piece of steps 4 and 6
+still waiting on an owner decision.**
+
+One read is deliberately left unscoped inside an otherwise scoped worker: the
+fills poller's pre-cancel check that no trade still holds a symbol. Scoping it
+would turn "somebody still holds this" into "I do not hold this", and the
+second answer *permits* the cancel — so a position recorded under another
+owner but resting in the same broker account would lose its protective order.
+The unscoped read is strictly the more conservative one.
 | 5 | scope the duplicate read, then `position_claims.scope` | medium — must follow 3 |
 | 6 | reconciler takes `(broker, organization)` | **high** — §4 |
 

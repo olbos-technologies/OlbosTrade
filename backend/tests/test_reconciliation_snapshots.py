@@ -29,7 +29,7 @@ def _db_result_with_trades(trades):
 async def test_reconcile_and_record_persists_clean_snapshot():
     broker = MagicMock()
     broker.get_positions = AsyncMock(return_value=[])
-    reconciler = PositionReconciler(broker)
+    reconciler = PositionReconciler(broker, organization_id=None)
 
     with patch("app.services.position_reconciler.AsyncSessionLocal") as mock_db:
         mock_session = MagicMock()
@@ -54,7 +54,7 @@ async def test_reconcile_and_record_persists_error_snapshot_on_drift():
     broker.get_positions = AsyncMock(
         return_value=[make_position("SPY240119P00450000", "SPY")]
     )
-    reconciler = PositionReconciler(broker)
+    reconciler = PositionReconciler(broker, organization_id=None)
 
     with patch("app.services.position_reconciler.AsyncSessionLocal") as mock_db:
         mock_session = MagicMock()

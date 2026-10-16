@@ -35,12 +35,55 @@ MAX_ATTEMPTS = 3
 RETRY_BASE_SECONDS = 2.0
 
 
-async def reconcile_once(*, broker=None, settle_seconds: int | None = None) -> dict:
+async def reconcile_all_scopes(*, settle_seconds: int | None = None) -> dict:
+    """One sweep per owner, each against that owner's own broker.
+
+    Batch E2 step 6. The claim sweep has the same shape as position
+    reconciliation and the same failure: a release happens when the broker
+    says ABSENT past the settle window, and a broker that was never asked
+    about a claim says ABSENT about it. So sweeping tenant B's claims against
+    tenant A's broker would release B's in-flight positions back to the
+    duplicate guard as free — the guard would then admit a second entry on a
+    position that is already being opened, which is the exact race #102 added
+    claims to close.
+
+    An owner whose broker cannot be resolved is skipped, leaving the claims
+    blocked. Blocked is the safe direction: it refuses new entries on those
+    positions rather than permitting duplicates.
+    """
+    from app.core.database import AsyncSessionLocal
+    from app.services.trade_scope import claim_scope
+    from app.services.worker_scope import for_each_scope
+
+    results: dict = {}
+
+    async def _sweep(scoped) -> None:
+        results[scoped.organization_id] = await reconcile_once(
+            broker=scoped.broker,
+            scope=claim_scope(scoped.organization_id),
+            settle_seconds=settle_seconds,
+        )
+
+    summary = await for_each_scope(AsyncSessionLocal, _sweep, job="position_claims")
+    summary["per_scope"] = {
+        ("single-operator" if k is None else str(k)): v for k, v in results.items()
+    }
+    return summary
+
+
+async def reconcile_once(*, broker=None, scope: str | None = None,
+                         settle_seconds: int | None = None) -> dict:
     """Run one sweep, retrying a bounded number of times if nothing answered.
 
     Returns the last sweep's counts, plus `attempts`. Never raises: a
     reconciliation failure must not take down startup or stop the scheduler,
     and a claim left blocked is the safe direction.
+
+    `scope` restricts the sweep to one owner's claims and must be paired with
+    that owner's broker — see `reconcile_all_scopes`, which is what the
+    scheduler calls. Left None, this sweeps every scope, which is why the
+    no-broker path below is safe: `lookup_for(None)` answers INDETERMINATE for
+    everything and INDETERMINATE releases nothing.
     """
     from app.services.claim_lookup import lookup_for
 
@@ -56,6 +99,8 @@ async def reconcile_once(*, broker=None, settle_seconds: int | None = None) -> d
 
     lookup = lookup_for(broker)
     kwargs = {} if settle_seconds is None else {"settle_seconds": settle_seconds}
+    if scope is not None:
+        kwargs["scope"] = scope
 
     counts: dict = {}
     for attempt in range(1, MAX_ATTEMPTS + 1):
@@ -144,5 +189,5 @@ async def reconcile_at_startup() -> None:
     first periodic tick would mean carrying that block for no reason.
     """
     logger.info("Reconciling unresolved position claims at startup")
-    counts = await reconcile_once()
+    counts = await reconcile_all_scopes()
     logger.info("Startup claim reconciliation complete: %s", counts)

@@ -16,6 +16,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+# Batch E2 steps 4 and 6 split each trade-touching worker into a sweep that
+# resolves (broker, owner) pairs and a body that does the work for one pair.
+# These tests exercise the body, which is what they always exercised: one
+# broker against the rows the session returns. `single_operator_work` builds
+# the pair they were implicitly using. The sweep has its own tests against
+# real rows in test_worker_scope_pg.py.
+from conftest import single_operator_work
+
 
 def _equity_position(symbol, quantity, avg_cost=100.0):
     return SimpleNamespace(symbol=symbol, quantity=quantity, avg_cost=Decimal(str(avg_cost)))
@@ -53,7 +61,7 @@ async def test_adopts_genuinely_untracked_long_equity_position():
     with patch("app.broker.broker_factory.get_broker", return_value=broker), \
          patch("app.core.database.AsyncSessionLocal", return_value=session), \
          patch("app.services.observability.observability") as mock_obs:
-        await _adopt_untracked_positions(["MRVL"])
+        await _adopt_untracked_positions(["MRVL"], scoped=single_operator_work(broker))
 
     session.add.assert_called_once()
     trade = session.add.call_args.args[0]
@@ -82,7 +90,7 @@ async def test_adopts_short_equity_position_with_negative_quantity():
     with patch("app.broker.broker_factory.get_broker", return_value=broker), \
          patch("app.core.database.AsyncSessionLocal", return_value=session), \
          patch("app.services.observability.observability"):
-        await _adopt_untracked_positions(["SNDK"])
+        await _adopt_untracked_positions(["SNDK"], scoped=single_operator_work(broker))
 
     trade = session.add.call_args.args[0]
     assert trade.spread_type == "equity_short"
@@ -102,7 +110,7 @@ async def test_skips_ticker_already_covered_by_concurrent_open_trade():
     with patch("app.broker.broker_factory.get_broker", return_value=broker), \
          patch("app.core.database.AsyncSessionLocal", return_value=session), \
          patch("app.services.observability.observability") as mock_obs:
-        await _adopt_untracked_positions(["AAPL"])
+        await _adopt_untracked_positions(["AAPL"], scoped=single_operator_work(broker))
 
     session.add.assert_not_called()
     mock_obs.incr.assert_not_called()
@@ -123,7 +131,7 @@ async def test_skips_ticker_not_found_among_live_equity_positions():
     with patch("app.broker.broker_factory.get_broker", return_value=broker), \
          patch("app.core.database.AsyncSessionLocal", return_value=session), \
          patch("app.services.observability.observability") as mock_obs:
-        await _adopt_untracked_positions(["SPY"])  # not among live equity positions
+        await _adopt_untracked_positions(["SPY"], scoped=single_operator_work(broker))  # not among live equity positions
 
     session.add.assert_not_called()
     mock_obs.incr.assert_not_called()
@@ -138,7 +146,7 @@ async def test_broker_fetch_failure_adopts_nothing_and_does_not_raise():
 
     with patch("app.broker.broker_factory.get_broker", return_value=broker), \
          patch("app.services.observability.observability") as mock_obs:
-        await _adopt_untracked_positions(["MRVL"])  # must not raise
+        await _adopt_untracked_positions(["MRVL"], scoped=single_operator_work(broker))  # must not raise
 
     mock_obs.incr.assert_not_called()
 
@@ -153,14 +161,19 @@ async def test_reconcile_positions_calls_adopt_when_untracked_and_flag_on():
         quantity_mismatch_tickers=[],
     ))
 
-    with patch("app.broker.broker_factory.get_broker", return_value=MagicMock()), \
+    with patch("app.services.worker_scope.scopes_with_open_trades",
+               new=AsyncMock(return_value=[None])), \
+         patch("app.broker.broker_factory.get_broker", return_value=MagicMock()), \
          patch("app.services.position_reconciler.PositionReconciler", return_value=mock_reconciler), \
          patch("app.services.observability.observability"), \
          patch("app.core.config.settings.reconciliation_auto_adopt_untracked", True), \
          patch("app.main._adopt_untracked_positions", new=AsyncMock()) as mock_adopt:
         await _reconcile_positions()
 
-    mock_adopt.assert_called_once_with(["MRVL"])
+    assert mock_adopt.await_count == 1
+    assert mock_adopt.await_args.args[0] == ["MRVL"]
+    # the pair the sweep ran for travels with the call
+    assert mock_adopt.await_args.kwargs['scoped'].organization_id is None
 
 
 @pytest.mark.asyncio
@@ -173,7 +186,9 @@ async def test_reconcile_positions_skips_adopt_when_flag_off():
         quantity_mismatch_tickers=[],
     ))
 
-    with patch("app.broker.broker_factory.get_broker", return_value=MagicMock()), \
+    with patch("app.services.worker_scope.scopes_with_open_trades",
+               new=AsyncMock(return_value=[None])), \
+         patch("app.broker.broker_factory.get_broker", return_value=MagicMock()), \
          patch("app.services.position_reconciler.PositionReconciler", return_value=mock_reconciler), \
          patch("app.services.observability.observability"), \
          patch("app.core.config.settings.reconciliation_auto_adopt_untracked", False), \
@@ -193,7 +208,9 @@ async def test_reconcile_positions_skips_adopt_when_nothing_untracked():
         quantity_mismatch_tickers=[],
     ))
 
-    with patch("app.broker.broker_factory.get_broker", return_value=MagicMock()), \
+    with patch("app.services.worker_scope.scopes_with_open_trades",
+               new=AsyncMock(return_value=[None])), \
+         patch("app.broker.broker_factory.get_broker", return_value=MagicMock()), \
          patch("app.services.position_reconciler.PositionReconciler", return_value=mock_reconciler), \
          patch("app.services.observability.observability"), \
          patch("app.main._adopt_untracked_positions", new=AsyncMock()) as mock_adopt:

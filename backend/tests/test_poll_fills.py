@@ -32,6 +32,14 @@ import pytest
 import app.main as m
 from app.services.trade_recorder import trade_recorder
 
+# Batch E2 steps 4 and 6 split each trade-touching worker into a sweep that
+# resolves (broker, owner) pairs and a body that does the work for one pair.
+# These tests exercise the body, which is what they always exercised: one
+# broker against the rows the session returns. `single_operator_work` builds
+# the pair they were implicitly using. The sweep has its own tests against
+# real rows in test_worker_scope_pg.py.
+from conftest import single_operator_work
+
 
 def _db_session(trades):
     session = AsyncMock()
@@ -75,7 +83,7 @@ async def test_stale_pending_trade_cancelled_on_first_observation():
          patch("app.core.database.AsyncSessionLocal", return_value=_db_session([trade])), \
          patch.object(trade_recorder, "cancel_pending", new=AsyncMock()) as cancel, \
          patch.object(trade_recorder, "confirm_fill", new=AsyncMock()) as confirm:
-        await m._poll_fills()
+        await m._poll_fills_for_scope(single_operator_work())
 
     cancel.assert_awaited_once()
     assert cancel.await_args.kwargs["trade_id"] == trade.id
@@ -93,7 +101,7 @@ async def test_recent_pending_trade_not_cancelled_yet():
          patch("app.core.database.AsyncSessionLocal", return_value=_db_session([trade])), \
          patch.object(trade_recorder, "cancel_pending", new=AsyncMock()) as cancel, \
          patch.object(trade_recorder, "confirm_fill", new=AsyncMock()) as confirm:
-        await m._poll_fills()
+        await m._poll_fills_for_scope(single_operator_work())
 
     cancel.assert_not_called()
     confirm.assert_not_called()
@@ -119,7 +127,7 @@ async def test_pending_trade_with_live_position_confirmed_not_cancelled():
          patch("app.core.database.AsyncSessionLocal", return_value=_db_session([trade])), \
          patch.object(trade_recorder, "cancel_pending", new=AsyncMock()) as cancel, \
          patch.object(trade_recorder, "confirm_fill", new=AsyncMock()) as confirm:
-        await m._poll_fills()
+        await m._poll_fills_for_scope(single_operator_work())
 
     confirm.assert_awaited_once_with(trade_id=trade.id, quantity=100.0)
     cancel.assert_not_called()
@@ -164,7 +172,7 @@ async def test_disconnected_broker_skips_reconciliation_entirely():
          patch("app.core.database.AsyncSessionLocal", return_value=_db_session(trades)), \
          patch.object(trade_recorder, "record_close_unknown", new=AsyncMock()) as close_unknown, \
          patch.object(trade_recorder, "record_exit", new=AsyncMock()) as record_exit:
-        await m._poll_fills()
+        await m._poll_fills_for_scope(single_operator_work())
 
     broker.get_positions.assert_not_called()  # never even reached
     close_unknown.assert_not_called()
@@ -185,7 +193,7 @@ async def test_connected_ibkr_broker_still_reconciles_normally():
     with patch("app.broker.broker_factory.get_broker", return_value=broker), \
          patch("app.core.database.AsyncSessionLocal", return_value=_db_session([trade])), \
          patch.object(trade_recorder, "cancel_pending", new=AsyncMock()) as cancel:
-        await m._poll_fills()
+        await m._poll_fills_for_scope(single_operator_work())
 
     broker.get_positions.assert_awaited_once()
     cancel.assert_awaited_once()
@@ -246,7 +254,7 @@ async def test_broker_detected_close_cancels_the_orphaned_bracket():
          patch.object(trade_recorder, "record_exit", new=AsyncMock()) as rec, \
          patch("app.services.unified_risk.emotion_guard._persist_to_db",
                new=AsyncMock()):
-        await m._poll_fills()
+        await m._poll_fills_for_scope(single_operator_work())
 
     rec.assert_awaited_once()
     assert rec.await_args.kwargs["exit_reason"] == "position_closed_at_broker"
@@ -270,7 +278,7 @@ async def test_cancel_skipped_while_another_trade_is_still_open_on_the_symbol():
          patch.object(trade_recorder, "record_exit", new=AsyncMock()), \
          patch("app.services.unified_risk.emotion_guard._persist_to_db",
                new=AsyncMock()):
-        await m._poll_fills()
+        await m._poll_fills_for_scope(single_operator_work())
 
     broker.cancel_open_orders.assert_not_called()
 
@@ -292,7 +300,7 @@ async def test_symbol_the_broker_still_holds_is_never_cancelled():
          patch.object(trade_recorder, "update_excursion", new=AsyncMock()), \
          patch("app.services.unified_risk.emotion_guard._persist_to_db",
                new=AsyncMock()):
-        await m._poll_fills()
+        await m._poll_fills_for_scope(single_operator_work())
 
     cancelled = [c.args[0] for c in broker.cancel_open_orders.await_args_list]
     assert cancelled == ["INTU"]
@@ -312,7 +320,7 @@ async def test_unfilled_pending_order_is_cancelled_at_the_broker_too():
          patch("app.core.database.AsyncSessionLocal",
                return_value=_sequenced_session([trade], [])), \
          patch.object(trade_recorder, "cancel_pending", new=AsyncMock()) as cancel:
-        await m._poll_fills()
+        await m._poll_fills_for_scope(single_operator_work())
 
     cancel.assert_awaited_once()
     broker.cancel_open_orders.assert_awaited_once_with("ASML")
@@ -333,7 +341,7 @@ async def test_a_failed_cancel_does_not_abort_reconciliation():
          patch.object(trade_recorder, "record_exit", new=AsyncMock()) as rec, \
          patch("app.services.unified_risk.emotion_guard._persist_to_db",
                new=AsyncMock()):
-        await m._poll_fills()   # must not raise
+        await m._poll_fills_for_scope(single_operator_work())   # must not raise
 
     rec.assert_awaited_once()
     broker.cancel_open_orders.assert_awaited_once()

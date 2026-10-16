@@ -242,13 +242,31 @@ async def get_reconciliation_history(limit: int = 20):
 
 
 @router.post("/reconciliation/run", dependencies=[Depends(require_api_key), Depends(rate_limit)])
-async def run_reconciliation():
+async def run_reconciliation(conn: HTTPConnection):
     """
-    Force a fresh reconciliation against the active broker and persist the result.
-    """
-    from app.broker.broker_factory import get_broker
+    Force a fresh reconciliation against the caller's broker and persist it.
 
-    reconciler = PositionReconciler(get_broker())
+    Scoped to the caller, and the broker comes from the same place the scope
+    does (`worker_scope.broker_for_scope`) rather than from the process
+    singleton. Those two have to agree: reconciling the operator's broker
+    against an organization's trades is the cross-tenant comparison step 6
+    exists to remove, and doing it from a route is no safer than doing it on
+    a timer.
+
+    An organization with no reconcilable broker gets a 409 rather than a
+    comparison against somebody else's account.
+    """
+    from app.core.database import AsyncSessionLocal as _Session
+    from app.services.worker_scope import BrokerUnresolved, broker_for_scope
+
+    async with _Session() as _db:
+        org_id = await scope_or_401(_db, conn)
+        try:
+            scoped = await broker_for_scope(_db, org_id)
+        except BrokerUnresolved as exc:
+            raise HTTPException(409, f"No reconcilable broker for this account: {exc}")
+
+    reconciler = PositionReconciler(scoped.broker, organization_id=org_id)
     try:
         result = await reconciler.reconcile_and_record(source="operator")
         return {
@@ -570,7 +588,7 @@ async def get_margin():
 
 
 @router.get("/reconciliation")
-async def get_reconciliation():
+async def get_reconciliation(conn: HTTPConnection):
     """
     Broker-vs-DB position reconciliation status (non-raising).
 
@@ -578,10 +596,25 @@ async def get_reconciliation():
     DB phantoms (open in DB, not at broker), and quantity mismatches so the UI
     can flag a "needs reconcile" state without halting trading.
     """
-    from app.broker.broker_factory import get_broker
+    from app.core.database import AsyncSessionLocal as _Session
     from app.services.position_reconciler import PositionReconciler
+    from app.services.worker_scope import BrokerUnresolved, broker_for_scope
 
-    res = await PositionReconciler(get_broker()).check()
+    async with _Session() as _db:
+        org_id = await scope_or_401(_db, conn)
+        try:
+            scoped = await broker_for_scope(_db, org_id)
+        except BrokerUnresolved as exc:
+            # Non-raising route: report the gap instead of 409-ing a status
+            # panel. "We cannot check" must not render as "clean".
+            return {
+                "clean": False, "broker_position_count": 0,
+                "db_open_trade_count": 0, "untracked_at_broker": [],
+                "phantom_in_db": [], "warnings": [f"broker_unresolved: {exc}"],
+                "checked_at": datetime.now(timezone.utc).isoformat(),
+            }
+
+    res = await PositionReconciler(scoped.broker, organization_id=org_id).check()
     return {
         "clean":                 res.clean,
         "broker_position_count": res.broker_position_count,

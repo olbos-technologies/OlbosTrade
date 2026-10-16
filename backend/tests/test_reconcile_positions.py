@@ -36,7 +36,9 @@ async def test_clean_reconciliation_does_not_alert():
     mock_reconciler = MagicMock()
     mock_reconciler.check = AsyncMock(return_value=_result(clean=True))
 
-    with patch("app.broker.broker_factory.get_broker", return_value=MagicMock()), \
+    with patch("app.services.worker_scope.scopes_with_open_trades",
+               new=AsyncMock(return_value=[None])), \
+         patch("app.broker.broker_factory.get_broker", return_value=MagicMock()), \
          patch("app.services.position_reconciler.PositionReconciler", return_value=mock_reconciler), \
          patch("app.services.observability.observability") as mock_obs:
         await _reconcile_positions()
@@ -57,7 +59,9 @@ async def test_untracked_broker_position_alerts_but_does_not_engage_kill_switch(
         return_value=_result(clean=False, untracked_at_broker=["AAPL"])
     )
 
-    with patch("app.broker.broker_factory.get_broker", return_value=MagicMock()), \
+    with patch("app.services.worker_scope.scopes_with_open_trades",
+               new=AsyncMock(return_value=[None])), \
+         patch("app.broker.broker_factory.get_broker", return_value=MagicMock()), \
          patch("app.services.position_reconciler.PositionReconciler", return_value=mock_reconciler), \
          patch("app.services.observability.observability") as mock_obs, \
          patch("app.services.kill_switch.kill_switch_service") as mock_ks:
@@ -79,7 +83,9 @@ async def test_phantom_in_db_also_alerts():
         return_value=_result(clean=False, phantom_in_db=["ghost-trade-id"])
     )
 
-    with patch("app.broker.broker_factory.get_broker", return_value=MagicMock()), \
+    with patch("app.services.worker_scope.scopes_with_open_trades",
+               new=AsyncMock(return_value=[None])), \
+         patch("app.broker.broker_factory.get_broker", return_value=MagicMock()), \
          patch("app.services.position_reconciler.PositionReconciler", return_value=mock_reconciler), \
          patch("app.services.observability.observability") as mock_obs:
         await _reconcile_positions()

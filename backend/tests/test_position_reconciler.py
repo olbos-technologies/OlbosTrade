@@ -30,7 +30,7 @@ def mock_broker():
 @pytest.mark.asyncio
 async def test_reconcile_clean_no_positions(mock_broker):
     """No broker positions + no DB trades = clean."""
-    reconciler = PositionReconciler(mock_broker)
+    reconciler = PositionReconciler(mock_broker, organization_id=None)
     with patch("app.services.position_reconciler.AsyncSessionLocal") as mock_db:
         mock_session = MagicMock()
         mock_session.execute = AsyncMock(return_value=MagicMock(
@@ -50,7 +50,7 @@ async def test_reconcile_untracked_broker_position_raises(mock_broker):
     mock_broker.get_positions = AsyncMock(
         return_value=[make_position("SPY240119P00450000", "SPY")]
     )
-    reconciler = PositionReconciler(mock_broker)
+    reconciler = PositionReconciler(mock_broker, organization_id=None)
     with patch("app.services.position_reconciler.AsyncSessionLocal") as mock_db:
         mock_session = MagicMock()
         mock_session.execute = AsyncMock(return_value=MagicMock(
@@ -80,7 +80,7 @@ def _wire_db(mock_db_ctx, trades):
 # ── check() — non-raising status for dashboards ────────────────────────────────
 @pytest.mark.asyncio
 async def test_check_clean_no_positions(mock_broker):
-    reconciler = PositionReconciler(mock_broker)
+    reconciler = PositionReconciler(mock_broker, organization_id=None)
     with patch("app.services.position_reconciler.AsyncSessionLocal") as mock_db:
         _wire_db(mock_db, [])
         res = await reconciler.check()
@@ -93,7 +93,7 @@ async def test_check_untracked_does_not_raise(mock_broker):
     mock_broker.get_positions = AsyncMock(
         return_value=[make_position("SPY240119P00450000", "SPY")]
     )
-    reconciler = PositionReconciler(mock_broker)
+    reconciler = PositionReconciler(mock_broker, organization_id=None)
     with patch("app.services.position_reconciler.AsyncSessionLocal") as mock_db:
         _wire_db(mock_db, [])
         res = await reconciler.check()
@@ -104,7 +104,7 @@ async def test_check_untracked_does_not_raise(mock_broker):
 async def test_check_phantom_reported(mock_broker):
     mock_broker.get_positions = AsyncMock(return_value=[])
     t = MagicMock(); t.underlying = "QQQ"; t.quantity = 1
-    reconciler = PositionReconciler(mock_broker)
+    reconciler = PositionReconciler(mock_broker, organization_id=None)
     with patch("app.services.position_reconciler.AsyncSessionLocal") as mock_db:
         _wire_db(mock_db, [t])
         res = await reconciler.check()
@@ -117,7 +117,7 @@ async def test_check_quantity_mismatch_warns(mock_broker):
         return_value=[make_position("SPY240119P00450000", "SPY", qty=-2)]
     )
     t = MagicMock(); t.underlying = "SPY"; t.quantity = 1
-    reconciler = PositionReconciler(mock_broker)
+    reconciler = PositionReconciler(mock_broker, organization_id=None)
     with patch("app.services.position_reconciler.AsyncSessionLocal") as mock_db:
         _wire_db(mock_db, [t])
         res = await reconciler.check()
@@ -129,7 +129,7 @@ async def test_check_quantity_mismatch_warns(mock_broker):
 async def test_check_broker_error_fails_loud_not_raise():
     b = MagicMock()
     b.get_positions = AsyncMock(side_effect=Exception("disconnected"))
-    res = await PositionReconciler(b).check()
+    res = await PositionReconciler(b, organization_id=None).check()
     assert res.clean is False and any("broker_unavailable" in w for w in res.warnings)
 
 
@@ -137,7 +137,7 @@ async def test_check_broker_error_fails_loud_not_raise():
 async def test_reconcile_phantom_db_trade_warns_not_raises(mock_broker):
     """DB has open trade but broker has no position — warn, don't halt."""
     mock_broker.get_positions = AsyncMock(return_value=[])
-    reconciler = PositionReconciler(mock_broker)
+    reconciler = PositionReconciler(mock_broker, organization_id=None)
 
     mock_trade = MagicMock()
     mock_trade.underlying = "SPY"
@@ -162,7 +162,7 @@ async def test_reconcile_matching_positions_is_clean(mock_broker):
     mock_broker.get_positions = AsyncMock(
         return_value=[make_position("SPY240119P00450000", "SPY")]
     )
-    reconciler = PositionReconciler(mock_broker)
+    reconciler = PositionReconciler(mock_broker, organization_id=None)
 
     mock_trade = MagicMock()
     mock_trade.underlying = "SPY"
