@@ -953,6 +953,15 @@ summary span[aria-hidden="true"] { display: inline-block; transition: transform 
   position: relative;
   display: block;
   width: 100%;
+  /* A card is never a flexible filler. `.mission-list` is a flex column, so
+     inside a height-constrained list (the Copilot queue caps itself at 55%)
+     the default flex-shrink:1 let 174 cards shrink from 115px to 28px each.
+     `overflow: hidden` below then clipped the title, the subtitle and the
+     Approve/Reject row, leaving thin strips — and because flex shrank the
+     items to fit, the list never overflowed, so `overflow-y: auto` had
+     nothing to scroll and no scrollbar appeared. Pinning the height is what
+     makes the list overflow and therefore scroll. */
+  flex-shrink: 0;
   text-align: left;
   padding: 14px 14px 12px;
   border: 1px solid var(--line-dim);
