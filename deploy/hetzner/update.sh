@@ -18,9 +18,39 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo "  OlbosTrade — Updating"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-echo "[1/6] Pulling latest code..."
-git pull origin main
-echo "      ✅ Code updated"
+echo "[1/6] Verifying the checkout is current..."
+# THIS SCRIPT NO LONGER PULLS, and that is the whole point of this step.
+#
+# It used to run `git pull origin main` right here — which rewrote THIS FILE
+# while bash was executing it. Bash does not read a script in one go: it reads
+# a chunk, runs it, and seeks back for more. Replace the file underneath that
+# and the next read comes from a different, longer file at a stale byte
+# offset. Reproduced at the exact sizes involved (4501 -> 6328 bytes): steps
+# 2 through 5 never ran, garbage commands executed, exit 127. Git updates the
+# file in place — same inode — so the running shell really does see it.
+#
+# A deploy that silently skips its own migration step is the worst possible
+# shape for that bug, so pulling moved OUT of the script. Pull first, then run
+# the script that the pull produced:
+#
+#   cd /opt/olbostrade
+#   git pull --ff-only origin main
+#   bash deploy/hetzner/update.sh
+#
+# Removing the pull introduces one new way to be wrong — running this against a
+# stale checkout and deploying yesterday's code while believing otherwise — so
+# that is what this step refuses. It fetches and compares, and fails closed.
+git fetch --quiet origin main
+LOCAL_SHA="$(git rev-parse HEAD)"
+REMOTE_SHA="$(git rev-parse FETCH_HEAD)"
+if [ "$LOCAL_SHA" != "$REMOTE_SHA" ]; then
+  echo "      ❌ Refusing to deploy: this checkout is not origin/main." >&2
+  echo "         HEAD        $LOCAL_SHA" >&2
+  echo "         origin/main $REMOTE_SHA" >&2
+  echo "         Run:  git pull --ff-only origin main" >&2
+  exit 1
+fi
+echo "      ✅ Deploying $LOCAL_SHA"
 
 echo "[2/6] Rebuilding containers..."
 docker compose -f docker-compose.hetzner.yml build --no-cache backend frontend

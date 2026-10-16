@@ -89,9 +89,22 @@ exit 0
 """
 
 _GIT_STUB = """#!/usr/bin/env bash
-# The script begins with `git pull origin main`. Running the real one would
-# move the checkout this test is reading from.
+# The script no longer pulls; it fetches and compares HEAD against FETCH_HEAD
+# so a stale checkout cannot be deployed by accident. This stub answers those
+# two rev-parse calls, and DEPLOY_TEST_STALE makes them disagree so the refusal
+# can be exercised.
 echo "git $*" >> "$DEPLOY_TEST_LOG"
+case "$1" in
+  rev-parse)
+    if [ "$2" = "HEAD" ]; then
+      echo "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    elif [ "${DEPLOY_TEST_STALE:-0}" = "1" ]; then
+      echo "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    else
+      echo "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    fi
+    ;;
+esac
 exit 0
 """
 
@@ -165,7 +178,8 @@ def _stub_bin(tmp_path: pathlib.Path) -> pathlib.Path:
     return bin_dir
 
 
-def _run(tmp_path: pathlib.Path, db_url: str, *, fail_migration: bool):
+def _run(tmp_path: pathlib.Path, db_url: str, *, fail_migration: bool,
+         stale: bool = False):
     root = _deploy_root(tmp_path)
     bin_dir = _stub_bin(tmp_path)
     log = tmp_path / LOG_NAME
@@ -185,6 +199,7 @@ def _run(tmp_path: pathlib.Path, db_url: str, *, fail_migration: bool):
         # alembic wants the asyncpg driver; the deploy's own URL form.
         "DEPLOY_TEST_DB_URL": db_url,
         "DEPLOY_TEST_FAIL_MIGRATION": "1" if fail_migration else "0",
+        "DEPLOY_TEST_STALE": "1" if stale else "0",
     })
 
     proc = subprocess.run(
@@ -309,3 +324,49 @@ async def test_the_deploy_test_harness_can_observe_a_failure(
 
     assert ok.returncode == 0 and bad.returncode != 0
     assert _has(ok_lines, "up -d") and not _has(bad_lines, "up -d")
+
+
+@pytest.mark.asyncio
+async def test_the_script_never_pulls(tmp_path, disposable_db):
+    """A script that rewrites itself mid-run can skip its own migration step.
+
+    `git pull` used to be step 1. Bash reads a script in chunks and seeks back
+    for more, so replacing the file underneath it means the next read comes
+    from a different, longer file at a stale offset — reproduced at the real
+    sizes as steps 2-5 never running and an exit of 127. Pulling now happens
+    before the script is invoked.
+    """
+    source = SCRIPT.read_text()
+    for line in source.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            continue          # the comment above the guard explains the bug
+        assert not stripped.startswith("git pull"), (
+            "update.sh pulls again; it would rewrite itself while running"
+        )
+
+
+@pytest.mark.asyncio
+async def test_a_stale_checkout_refuses_to_deploy(tmp_path, disposable_db):
+    """Removing the pull adds a new way to be wrong; this is the guard for it.
+
+    Without a pull inside the script, running it on an out-of-date working
+    tree would deploy yesterday's code while reporting success. HEAD must
+    match what the fetch found.
+    """
+    proc, lines = _run(tmp_path, disposable_db, fail_migration=False, stale=True)
+
+    assert proc.returncode != 0, "a stale checkout was deployed"
+    assert "Refusing to deploy" in proc.stdout + proc.stderr
+    assert not _has(lines, "build --no-cache"), "it built before checking"
+    assert not _has(lines, "up -d"), "it started containers from a stale tree"
+
+
+@pytest.mark.asyncio
+async def test_a_current_checkout_proceeds(tmp_path, disposable_db):
+    """And the guard does not block the normal case."""
+    proc, lines = _run(tmp_path, disposable_db, fail_migration=False)
+
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert _has(lines, "git fetch"), "it never checked whether it was current"
+    assert _has(lines, "up -d")

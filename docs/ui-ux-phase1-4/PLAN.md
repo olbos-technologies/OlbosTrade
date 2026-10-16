@@ -78,7 +78,9 @@ terminal shell.
 1. Implement + test locally (`frontend`: `npm test`, `npm run build`)
 2. Update `CHANGELOG.md` under Unreleased (or a dated section)
 3. Open PR / merge to `main` only when operator approves
-4. On server: `bash deploy/hetzner/update.sh` (pulls `main`, rebuilds, restarts)
+4. On server: `git pull --ff-only origin main`, then `bash deploy/hetzner/update.sh`
+   (rebuilds, migrates from the new image, restarts — the script does **not**
+   pull; see `docs/runbook.md` → Deploying)
 
 **Local run (align with `.claude/launch.json` + README):**
 - Frontend: `cd frontend && BACKEND_URL=http://127.0.0.1:8001 npm run dev -- --port 3010 --host`

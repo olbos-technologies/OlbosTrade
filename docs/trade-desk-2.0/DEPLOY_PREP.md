@@ -18,8 +18,10 @@ Also retain existing DB/Redis/broker vars per `deploy/hetzner/README.md`.
 
 ```bash
 # On server, from /opt/olbostrade
+git pull --ff-only origin main    # the script does not pull — docs/runbook.md
 bash deploy/hetzner/update.sh
-# → git pull, rebuild backend+frontend, up -d, alembic upgrade head
+# → verify checkout, rebuild backend+frontend, alembic upgrade head from the
+#   new image, then up -d
 ```
 
 Post-update smoke:
