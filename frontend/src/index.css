@@ -952,6 +952,7 @@ summary span[aria-hidden="true"] { display: inline-block; transition: transform 
 .mission-card {
   position: relative;
   display: block;
+  flex-shrink: 0;
   width: 100%;
   text-align: left;
   padding: 14px 14px 12px;
