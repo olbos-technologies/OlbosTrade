@@ -10,6 +10,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from conftest import single_operator_conn
+
+# Batch E2 gave these routes a `conn` so they can resolve a trade scope; with
+# auth disabled it is never read. See conftest.single_operator_conn.
+_CONN = single_operator_conn()
+
+
 
 def _equity_trade(underlying, spread_type="equity_long", quantity=100):
     return NS(
@@ -50,7 +57,7 @@ async def test_zero_positions_returns_zero_pnl_scenarios():
     from app.api.routes import risk as risk_mod
 
     with patch("app.api.routes.risk.AsyncSessionLocal", return_value=_trades_session([])):
-        out = await risk_mod.get_scenarios()
+        out = await risk_mod.get_scenarios(_CONN)
 
     # run_all() always returns one entry per shock (zero P&L with no
     # positions) — not an empty list; excluded_symbols is what's empty here.
@@ -70,7 +77,7 @@ async def test_equity_long_position_gets_linear_pnl_not_option_pricing():
 
     with patch("app.api.routes.risk.AsyncSessionLocal", return_value=_trades_session(trades)), \
          patch.object(risk_mod, "_fetch_spot", new=AsyncMock(return_value=150.0)):
-        out = await risk_mod.get_scenarios()
+        out = await risk_mod.get_scenarios(_CONN)
 
     crash = next(s for s in out["scenarios"] if s["scenario"] == "market_crash")
     assert crash["portfolio_pnl"] == pytest.approx(-100 * 150.0 * 0.20)
@@ -85,7 +92,7 @@ async def test_equity_short_position_gains_where_long_loses():
 
     with patch("app.api.routes.risk.AsyncSessionLocal", return_value=_trades_session(trades)), \
          patch.object(risk_mod, "_fetch_spot", new=AsyncMock(return_value=150.0)):
-        out = await risk_mod.get_scenarios()
+        out = await risk_mod.get_scenarios(_CONN)
 
     crash = next(s for s in out["scenarios"] if s["scenario"] == "market_crash")
     assert crash["portfolio_pnl"] == pytest.approx(100 * 150.0 * 0.20)
@@ -102,7 +109,7 @@ async def test_option_position_still_uses_black_scholes_kind():
 
     with patch("app.api.routes.risk.AsyncSessionLocal", return_value=_trades_session(trades)), \
          patch.object(risk_mod, "_fetch_spot", new=AsyncMock(return_value=150.0)):
-        out = await risk_mod.get_scenarios()
+        out = await risk_mod.get_scenarios(_CONN)
 
     assert "error" not in out
     assert len(out["scenarios"]) > 0
@@ -119,7 +126,7 @@ async def test_resolvable_spots_produce_real_stressed_scenarios():
 
     with patch("app.api.routes.risk.AsyncSessionLocal", return_value=_trades_session(trades)), \
          patch.object(risk_mod, "_fetch_spot", new=fake_fetch):
-        out = await risk_mod.get_scenarios()
+        out = await risk_mod.get_scenarios(_CONN)
 
     assert out["excluded_symbols"] == []
     assert len(out["scenarios"]) > 0
@@ -139,7 +146,7 @@ async def test_one_of_several_unresolvable_spots_survivors_still_stressed():
 
     with patch("app.api.routes.risk.AsyncSessionLocal", return_value=_trades_session(trades)), \
          patch.object(risk_mod, "_fetch_spot", new=fake_fetch):
-        out = await risk_mod.get_scenarios()
+        out = await risk_mod.get_scenarios(_CONN)
 
     assert len(out["excluded_symbols"]) == 1
     assert out["excluded_symbols"][0]["ticker"] == "BAD"
@@ -158,7 +165,7 @@ async def test_option_type_derived_from_spread_type_not_missing_column():
 
     with patch("app.api.routes.risk.AsyncSessionLocal", return_value=_trades_session(trades)), \
          patch.object(risk_mod, "_fetch_spot", new=AsyncMock(return_value=150.0)):
-        out = await risk_mod.get_scenarios()
+        out = await risk_mod.get_scenarios(_CONN)
 
     assert "error" not in out
     assert len(out["scenarios"]) > 0
@@ -169,7 +176,7 @@ async def test_db_failure_returns_graceful_error_not_500():
     from app.api.routes import risk as risk_mod
 
     with patch("app.api.routes.risk.AsyncSessionLocal", side_effect=Exception("db down")):
-        out = await risk_mod.get_scenarios()
+        out = await risk_mod.get_scenarios(_CONN)
 
     assert out["error"] == "db down"
     assert out["scenarios"] == []

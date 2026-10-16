@@ -935,9 +935,14 @@ async def approve_rotation_review(review_id: str, conn: HTTPConnection):
     from app.models.trade import Trade
     from app.services.position_rotation import ROTATION_CLOSED_BY, close_equity_trade, close_options_trade
 
+    from app.api.scope_deps import scope_or_401
+    from app.services.trade_scope import owned_by
+
     async with AsyncSessionLocal() as session:
+        org_id = await scope_or_401(session, conn)
         trade = (await session.execute(
-            select(Trade).where(Trade.id == incumbent_trade_id,
+            select(Trade).where(owned_by(org_id),
+                                Trade.id == incumbent_trade_id,
                                 Trade.status == "open")
         )).scalars().first()
     if trade is None:
@@ -1101,7 +1106,7 @@ class ClosePositionRequest(BaseModel):
 
 
 @router.post("/close-position", dependencies=[Depends(require_api_key), Depends(rate_limit), Depends(require_broker_access)])
-async def close_position(req: ClosePositionRequest):
+async def close_position(req: ClosePositionRequest, conn: HTTPConnection):
     """
     Manually close an open position — the operator's own "I want out now"
     action, independent of the automated profit-target/stop-loss exit.
@@ -1118,8 +1123,10 @@ async def close_position(req: ClosePositionRequest):
     (put/call) close via a market-order mirrored combo — see
     close_options_trade()'s docstring for why LMT isn't supported there yet.
     """
+    from app.api.scope_deps import scope_or_401
     from app.core.database import AsyncSessionLocal
     from app.models.trade import Trade
+    from app.services.trade_scope import owned_by
     from sqlalchemy import select
 
     try:
@@ -1127,9 +1134,15 @@ async def close_position(req: ClosePositionRequest):
     except ValueError:
         raise HTTPException(400, "Invalid trade_id")
 
+    # Ownership goes IN the lookup, not in a check after it. A foreign trade
+    # id and a nonexistent one therefore answer identically — 404 — because a
+    # 403 would confirm the row exists, which is itself the disclosure. There
+    # is also no window in which someone else's position is loaded into this
+    # handler before being refused.
     async with AsyncSessionLocal() as session:
+        org_id = await scope_or_401(session, conn)
         trade = (await session.execute(
-            select(Trade).where(Trade.id == trade_uuid)
+            select(Trade).where(owned_by(org_id), Trade.id == trade_uuid)
         )).scalar_one_or_none()
 
     if trade is None:
@@ -1180,7 +1193,7 @@ class CloseUntrackedPositionRequest(BaseModel):
 
 
 @router.post("/close-untracked-position", dependencies=[Depends(require_api_key), Depends(rate_limit), Depends(require_broker_access)])
-async def close_untracked_position(req: CloseUntrackedPositionRequest):
+async def close_untracked_position(req: CloseUntrackedPositionRequest, conn: HTTPConnection):
     """
     Close a live broker equity position that has no matching DB Trade row —
     e.g. a fill the app lost track of after an order-placement timeout (the
@@ -1195,15 +1208,23 @@ async def close_untracked_position(req: CloseUntrackedPositionRequest):
     Equity only, same deliberate scope limit as /close-position — closing a
     real 2-leg options position needs mirrored-spread submission logic.
     """
+    from app.api.scope_deps import scope_or_401
     from app.core.database import AsyncSessionLocal
     from app.models.trade import Trade
+    from app.services.trade_scope import owned_by
     from sqlalchemy import select
 
     ticker = req.symbol.upper()
 
+    # Scoped so the 409 below cannot name another tenant's trade id back to this
+    # caller. The refusal is still correct within the caller's own scope: if
+    # they have a tracked open trade on this ticker, they must close it by id.
     async with AsyncSessionLocal() as session:
+        org_id = await scope_or_401(session, conn)
         existing = (await session.execute(
-            select(Trade).where(Trade.underlying == ticker, Trade.status == "open")
+            select(Trade).where(owned_by(org_id),
+                                Trade.underlying == ticker,
+                                Trade.status == "open")
         )).scalar_one_or_none()
     if existing is not None:
         raise HTTPException(
@@ -1752,6 +1773,13 @@ async def _execute_signal(
                 rows = (await _db.execute(
                     select(Trade)
                     .where(
+                        # Scoped for the same reason the duplicate guard above
+                        # is: a cooldown says "do not re-enter the position
+                        # *you* just closed". Tenant A closing SPY is not a
+                        # reason to refuse tenant B's first entry, and leaving
+                        # this global would also tell B that somebody closed
+                        # SPY recently.
+                        owned_by(_org),
                         Trade.underlying == ticker,
                         Trade.status == "closed",
                         Trade.exit_date.isnot(None),

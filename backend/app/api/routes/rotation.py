@@ -12,6 +12,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+from starlette.requests import HTTPConnection
+
 from fastapi import APIRouter
 from pydantic import BaseModel
 
@@ -65,7 +67,7 @@ async def _account_value_for_heat(broker) -> float:
 
 
 @router.post("/dry-run")
-async def rotation_dry_run(body: DryRunRequest):
+async def rotation_dry_run(body: DryRunRequest, conn: HTTPConnection):
     """Run the full rotation workflow without submitting anything.
 
     Detect → Compare → Rotation Review → Approval → Risk Validation →
@@ -194,13 +196,19 @@ async def rotation_dry_run(body: DryRunRequest):
     incumbent_still_open = None
     if incumbent is not None:
         from sqlalchemy import select
+        from app.api.scope_deps import scope_or_401
         from app.core.database import AsyncSessionLocal
         from app.models.trade import Trade
+        from app.services.trade_scope import owned_by
         async with AsyncSessionLocal() as session:
+            org_id = await scope_or_401(session, conn)
             row = (await session.execute(
-                select(Trade).where(Trade.id == incumbent.trade_id,
+                select(Trade).where(owned_by(org_id),
+                                    Trade.id == incumbent.trade_id,
                                     Trade.status == "open")
             )).scalars().first()
+        # A foreign incumbent reads as "not open", so the dry run reports the
+        # rotation as not actionable rather than confirming the trade exists.
         incumbent_still_open = row is not None
 
     ks = _is_kill_switch_active()

@@ -292,6 +292,34 @@ Each step is independently reviewable and leaves the system correct:
 | 1 | migration: `trades.organization_id` nullable + conservative backfill | low — additive, no reads change |
 | 2 | stamp ownership at **both writers**; add scoped helper | low — new rows owned, reads still global |
 | 3 | scope the 9 route modules + 404-not-403 | medium — largest diff, mechanical |
+
+**Steps 1, 2, 3 and 5 are implemented.** Step 3 turned out to be less
+mechanical than this table predicted, in one specific way worth recording: most
+of these handlers wrap their work in `except Exception: return {…}`, and
+`HTTPException` is an `Exception`. The first version of the scoping therefore
+swallowed its own 401 and answered an unauthenticated caller with an empty,
+successful-looking payload — and in a single-operator deployment the
+unattributed rows it would otherwise have returned are *every* open position.
+Each scoped handler now re-raises `HTTPException` explicitly, and
+`test_missing_identity_with_auth_on_is_401_not_a_default_scope` is
+parametrised over all 16 scoped routes rather than the one or two a reader
+would think to check.
+
+Two scoping decisions were made rather than deferred:
+
+* **The risk gate stays desk-wide.** `_fetch_portfolio_state` and
+  `_portfolio_heat_fraction` feed the guardrail that refuses an entry. The
+  limits in `TRADING_POLICY.md` (5 concurrent positions, 2% daily loss) are
+  caps on **one broker account**; evaluating them per tenant would let N
+  tenants hold 5N positions against that account — a relaxation of a hard
+  limit, not isolation. The *displays* of those numbers are scoped, so a
+  caller's heat can read lower than the heat that blocks their entry, and
+  `test_the_risk_gate_is_still_desk_wide` pins the difference so it reads as a
+  decision. Changing it is an owner decision that should move the policy table
+  in the same commit.
+* **`/open-orders` resolves the caller before reading the broker.** The order
+  book is broker-wide and the route had two early returns ahead of any DB
+  access, so it could answer before establishing who was asking.
 | 4 | per-organization background workers with explicit scope | **high** — §3, §4 |
 | 5 | scope the duplicate read, then `position_claims.scope` | medium — must follow 3 |
 | 6 | reconciler takes `(broker, organization)` | **high** — §4 |

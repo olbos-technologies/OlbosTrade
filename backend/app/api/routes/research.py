@@ -4,6 +4,8 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timezone
 
+from starlette.requests import HTTPConnection
+
 from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import Optional
@@ -371,27 +373,59 @@ class AssistantRequest(BaseModel):
     question: str
 
 
-async def _assistant_context() -> str:
-    """Compact, grounded snapshot the LLM may reason over (no raw PII)."""
+#: Passed as `org_id` when the caller's scope could not be established at all
+#: — a database failure while resolving it, not a missing identity. It is a
+#: distinct object rather than None because None is itself a valid scope (the
+#: single-operator one), so a falsy test would quietly read the unattributed
+#: rows for a caller nobody could identify.
+SCOPE_UNKNOWN = object()
+
+
+async def _assistant_context(org_id) -> str:
+    """Compact, grounded snapshot the LLM may reason over (no raw PII).
+
+    `org_id` is required and resolved by the caller. Scoping matters more here
+    than in an ordinary read: this text is handed to a language model that
+    then answers the asker in prose, so an unscoped read does not just show
+    another tenant's trades — it lets the model paraphrase them.
+
+    `SCOPE_UNKNOWN` omits the trade section entirely and says so. The route
+    still answers — the rest of the context is not owned by anyone — but the
+    model is told the trade data is unavailable rather than being handed
+    everyone's, and rather than being handed nothing while the prose implies
+    the book is empty.
+    """
     import json
     from app.core.database import AsyncSessionLocal
     from app.models.trade import Trade
     from app.services.journal_intelligence import analyze
+    from app.services.trade_scope import owned_by
     from sqlalchemy import select
 
     parts: list[str] = []
-    try:
-        async with AsyncSessionLocal() as session:
-            trades = (await session.execute(
-                select(Trade).where(Trade.status == "closed", Trade.pnl.isnot(None))
-            )).scalars().all()
-        rows = [{"pnl": float(t.pnl), "strategy": t.strategy, "regime": t.regime
-                 if hasattr(t, "regime") else None,
-                 "signal_score": float(t.signal_score) if t.signal_score is not None else None,
-                 "entry_date": t.entry_date, "exit_date": t.exit_date} for t in trades]
-        parts.append("JOURNAL_INTELLIGENCE:\n" + json.dumps(analyze(rows), default=str))
-    except Exception as exc:
-        parts.append(f"JOURNAL_INTELLIGENCE: unavailable ({exc})")
+    if org_id is SCOPE_UNKNOWN:
+        # Skip the trade section only. The rest of the context below is
+        # system-wide (regime, feature catalogue) and belongs to nobody, so
+        # the route still answers — it just answers without a book.
+        parts.append(
+            "JOURNAL_INTELLIGENCE: unavailable (caller scope could not be "
+            "established; trade history deliberately omitted)"
+        )
+    else:
+        try:
+            async with AsyncSessionLocal() as session:
+                trades = (await session.execute(
+                    select(Trade).where(owned_by(org_id),
+                                        Trade.status == "closed",
+                                        Trade.pnl.isnot(None))
+                )).scalars().all()
+            rows = [{"pnl": float(t.pnl), "strategy": t.strategy, "regime": t.regime
+                     if hasattr(t, "regime") else None,
+                     "signal_score": float(t.signal_score) if t.signal_score is not None else None,
+                     "entry_date": t.entry_date, "exit_date": t.exit_date} for t in trades]
+            parts.append("JOURNAL_INTELLIGENCE:\n" + json.dumps(analyze(rows), default=str))
+        except Exception as exc:
+            parts.append(f"JOURNAL_INTELLIGENCE: unavailable ({exc})")
 
     try:
         from app.main import _current_regime
@@ -403,7 +437,7 @@ async def _assistant_context() -> str:
 
 
 @router.post("/assistant")
-async def research_assistant(req: AssistantRequest):
+async def research_assistant(req: AssistantRequest, conn: HTTPConnection):
     """
     Conversational research over the platform's own data. Provider-agnostic
     (Gemini by default; Claude optional). Degrades gracefully when no key is set.
@@ -414,7 +448,24 @@ async def research_assistant(req: AssistantRequest):
     if not req.question.strip():
         return {"error": "empty question"}
 
-    context = await _assistant_context()
+    from fastapi import HTTPException
+
+    from app.api.scope_deps import scope_or_401
+    from app.core.database import AsyncSessionLocal as _ScopeSession
+
+    # A missing identity must surface as the 401 scope_or_401 raises. A
+    # database failure while resolving the scope must not: this route
+    # degrades rather than 500s, and did so before it was scoped. What it
+    # must never do is fall through to an unscoped read, so the two are
+    # separated explicitly instead of sharing one except.
+    try:
+        async with _ScopeSession() as _scope_db:
+            _org = await scope_or_401(_scope_db, conn)
+    except HTTPException:
+        raise
+    except Exception:
+        _org = SCOPE_UNKNOWN
+    context = await _assistant_context(_org)
     try:
         result = generate(
             req.question, context,

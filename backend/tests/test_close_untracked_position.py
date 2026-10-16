@@ -18,8 +18,15 @@ import pytest
 
 import app.api.routes.trade_desk as td
 from app.api.routes.trade_desk import (
+
     CloseUntrackedPositionRequest, close_untracked_position,
 )
+
+from conftest import single_operator_conn
+
+# Batch E2 gave these routes a `conn` so they can resolve a trade scope; with
+# auth disabled it is never read. See conftest.single_operator_conn.
+_CONN = single_operator_conn()
 
 
 def _no_tracked_trade_session():
@@ -51,7 +58,7 @@ async def test_tracked_trade_already_open_raises_409():
     session = _tracked_trade_session()
     with patch("app.core.database.AsyncSessionLocal", return_value=session):
         with pytest.raises(Exception):
-            await close_untracked_position(CloseUntrackedPositionRequest(symbol="MRVL"))
+            await close_untracked_position(CloseUntrackedPositionRequest(symbol="MRVL"), _CONN)
 
 
 @pytest.mark.asyncio
@@ -62,7 +69,7 @@ async def test_no_broker_position_raises_404():
     with patch("app.core.database.AsyncSessionLocal", return_value=session), \
          patch("app.broker.broker_factory.get_broker", return_value=broker):
         with pytest.raises(Exception):
-            await close_untracked_position(CloseUntrackedPositionRequest(symbol="MRVL"))
+            await close_untracked_position(CloseUntrackedPositionRequest(symbol="MRVL"), _CONN)
 
 
 @pytest.mark.asyncio
@@ -73,7 +80,7 @@ async def test_zero_quantity_position_raises_404():
     with patch("app.core.database.AsyncSessionLocal", return_value=session), \
          patch("app.broker.broker_factory.get_broker", return_value=broker):
         with pytest.raises(Exception):
-            await close_untracked_position(CloseUntrackedPositionRequest(symbol="MRVL"))
+            await close_untracked_position(CloseUntrackedPositionRequest(symbol="MRVL"), _CONN)
 
 
 @pytest.mark.asyncio
@@ -84,7 +91,7 @@ async def test_options_position_raises_400():
     with patch("app.core.database.AsyncSessionLocal", return_value=session), \
          patch("app.broker.broker_factory.get_broker", return_value=broker):
         with pytest.raises(Exception):
-            await close_untracked_position(CloseUntrackedPositionRequest(symbol="MRVL"))
+            await close_untracked_position(CloseUntrackedPositionRequest(symbol="MRVL"), _CONN)
 
 
 @pytest.mark.asyncio
@@ -99,7 +106,7 @@ async def test_long_position_submits_sell_and_cancels_bracket():
     with patch("app.core.database.AsyncSessionLocal", return_value=session), \
          patch("app.broker.broker_factory.get_broker", return_value=broker), \
          patch.object(td, "_log_execution", new=AsyncMock()) as log_mock:
-        out = await close_untracked_position(CloseUntrackedPositionRequest(symbol="mrvl"))
+        out = await close_untracked_position(CloseUntrackedPositionRequest(symbol="mrvl"), _CONN)
 
     broker.cancel_open_orders.assert_awaited_once_with("MRVL")
     broker.place_equity_order.assert_awaited_once()
@@ -124,7 +131,7 @@ async def test_short_position_submits_buy():
     with patch("app.core.database.AsyncSessionLocal", return_value=session), \
          patch("app.broker.broker_factory.get_broker", return_value=broker), \
          patch.object(td, "_log_execution", new=AsyncMock()):
-        out = await close_untracked_position(CloseUntrackedPositionRequest(symbol="MRVL"))
+        out = await close_untracked_position(CloseUntrackedPositionRequest(symbol="MRVL"), _CONN)
 
     assert broker.place_equity_order.await_args.kwargs["side"] == "BUY"
     assert broker.place_equity_order.await_args.kwargs["qty"] == 20
@@ -143,4 +150,4 @@ async def test_broker_rejection_raises_502():
     with patch("app.core.database.AsyncSessionLocal", return_value=session), \
          patch("app.broker.broker_factory.get_broker", return_value=broker):
         with pytest.raises(Exception):
-            await close_untracked_position(CloseUntrackedPositionRequest(symbol="MRVL"))
+            await close_untracked_position(CloseUntrackedPositionRequest(symbol="MRVL"), _CONN)

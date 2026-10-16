@@ -8,6 +8,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from conftest import single_operator_conn
+
+# Batch E2 gave these routes a `conn` so they can resolve a trade scope; with
+# auth disabled it is never read. See conftest.single_operator_conn.
+_CONN = single_operator_conn()
+
+
 BASE = datetime(2026, 1, 1)
 
 
@@ -39,7 +46,7 @@ async def test_zero_positions_returns_insufficient_data_no_fetch():
     with patch("app.core.database.AsyncSessionLocal", return_value=_trades_session([])), \
          patch("app.services.account_state.get_account_value", new=AsyncMock(return_value=100_000.0)), \
          patch("app.main._yf_bars", new=AsyncMock()) as mock_bars:
-        out = await pmod.portfolio_correlation()
+        out = await pmod.portfolio_correlation(_CONN)
 
     assert out["status"] == "insufficient_data"
     mock_bars.assert_not_called()
@@ -52,7 +59,7 @@ async def test_one_position_returns_insufficient_data_no_fetch():
     with patch("app.core.database.AsyncSessionLocal", return_value=_trades_session([_trade("AAPL")])), \
          patch("app.services.account_state.get_account_value", new=AsyncMock(return_value=100_000.0)), \
          patch("app.main._yf_bars", new=AsyncMock()) as mock_bars:
-        out = await pmod.portfolio_correlation()
+        out = await pmod.portfolio_correlation(_CONN)
 
     assert out["status"] == "insufficient_data"
     assert "1 distinct" in out["reason"]
@@ -72,7 +79,7 @@ async def test_two_correlated_positions_produce_cluster_and_flag():
     with patch("app.core.database.AsyncSessionLocal", return_value=_trades_session(trades)), \
          patch("app.services.account_state.get_account_value", new=AsyncMock(return_value=20_000.0)), \
          patch("app.main._yf_bars", new=AsyncMock(side_effect=fake_bars)):
-        out = await pmod.portfolio_correlation()
+        out = await pmod.portfolio_correlation(_CONN)
 
     assert out["status"] == "ok"
     assert out["tickers"] == ["AAPL", "MSFT"]
@@ -96,7 +103,7 @@ async def test_one_ticker_fetch_failure_survivors_still_work():
     with patch("app.core.database.AsyncSessionLocal", return_value=_trades_session(trades)), \
          patch("app.services.account_state.get_account_value", new=AsyncMock(return_value=20_000.0)), \
          patch("app.main._yf_bars", new=AsyncMock(side_effect=fake_bars)):
-        out = await pmod.portfolio_correlation()
+        out = await pmod.portfolio_correlation(_CONN)
 
     assert out["status"] == "ok"
     assert "AAPL" in out["tickers"] and "MSFT" in out["tickers"]
@@ -112,7 +119,7 @@ async def test_db_failure_returns_graceful_error():
 
     with patch("app.core.database.AsyncSessionLocal", side_effect=Exception("db down")), \
          patch("app.services.account_state.get_account_value", new=AsyncMock(return_value=100_000.0)):
-        out = await pmod.portfolio_correlation()
+        out = await pmod.portfolio_correlation(_CONN)
 
     assert out["status"] == "error"
     assert "db down" in out["error"]

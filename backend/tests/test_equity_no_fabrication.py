@@ -20,6 +20,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from conftest import single_operator_conn
+
+# Batch E2 gave these routes a `conn` so they can resolve a trade scope; with
+# auth disabled it is never read. See conftest.single_operator_conn.
+_CONN = single_operator_conn()
+
+
 
 def _db_ok():
     session = AsyncMock()
@@ -39,7 +46,7 @@ async def _portfolio_with(broker_exc):
     # paper_trade.py does `from ... import get_broker` at module level, so the
     # name must be patched where it is bound, not at the source module.
     with patch("app.api.routes.paper_trade.get_broker", return_value=broker):
-        return (await get_portfolio())["portfolio"]
+        return (await get_portfolio(_CONN))["portfolio"]
 
 
 @pytest.mark.asyncio

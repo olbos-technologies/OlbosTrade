@@ -19,6 +19,13 @@ import pytest
 
 from app.services import rotation_preflight as pf
 
+from conftest import single_operator_conn
+
+# Batch E2 gave these routes a `conn` so they can resolve a trade scope; with
+# auth disabled it is never read. See conftest.single_operator_conn.
+_CONN = single_operator_conn()
+
+
 
 def _order(order_id=1, symbol="MRVL", protective=True, parent=None,
            action="SELL", otype="STP", remaining=599.0, stop=198.0, limit=None):
@@ -134,7 +141,7 @@ async def test_dry_run_refuses_to_rehearse_against_a_dirty_preflight():
                    "failed": ["no_orphan_orders"], "unknown": [], "checks": []})), \
          patch("app.services.position_rotation.propose_rotation_incumbent",
                new=AsyncMock()) as detect:
-        out = await rotation_dry_run(DryRunRequest(ticker="TSLA"))
+        out = await rotation_dry_run(DryRunRequest(ticker="TSLA"), _CONN)
 
     assert out["status"] == "blocked_by_preflight"
     assert out["submitted_anything"] is False
@@ -172,7 +179,7 @@ async def test_dry_run_never_submits_even_when_preflight_is_clear():
          patch("app.api.routes.trade_desk._is_kill_switch_active", return_value=False):
         out = await rotation_dry_run(DryRunRequest(
             ticker="TSLA", action="BUY", confidence=0.95, alpha_edge_score=88,
-            entry_price=100.0, stop_price=96.0, target_price=108.0, shares=10))
+            entry_price=100.0, stop_price=96.0, target_price=108.0, shares=10), _CONN)
 
     assert out["status"] == "dry_run_complete"
     assert out["submitted_anything"] is False

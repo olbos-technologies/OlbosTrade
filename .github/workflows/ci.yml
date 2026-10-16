@@ -173,7 +173,9 @@ jobs:
             tests/test_admin_claims_routes.py \
             tests/test_update_script_deploys_in_order.py \
             tests/test_approval_concurrency_pg.py \
-            tests/test_journal_isolation_pg.py
+            tests/test_journal_isolation_pg.py \
+            tests/test_trade_scope_entry_pg.py \
+            tests/test_trades_route_isolation_pg.py
           rc=$?
           set -e
           echo "pytest exit status: $rc"
