@@ -160,3 +160,31 @@ def single_operator_conn(user_id=None):
     return SimpleNamespace(
         state=SimpleNamespace(user={"id": str(user_id)} if user_id else {})
     )
+
+
+def single_operator_work(broker=None):
+    """A `worker_scope.ScopedWork` for the single-operator scope.
+
+    Batch E2 steps 4 and 6 split each trade-touching worker into a sweep that
+    resolves (broker, owner) pairs and a body that does the work for one pair.
+    These tests predate the split and were always exercising the body: one
+    broker, and whatever rows the session returned. This builds the pair they
+    were implicitly using — the process broker against the unattributed rows,
+    which is the single-operator deployment.
+
+    The sweep itself is tested separately, against real rows, in
+    test_worker_scope_pg.py: with a mocked session a per-owner loop and an
+    unscoped one are indistinguishable, which is the same reason the request
+    scoping is tested against real PostgreSQL.
+
+    Called with no broker it resolves one through `get_broker()`, so a test
+    that already patches the factory keeps working unchanged — which is how
+    most of these were written.
+    """
+    from app.services.worker_scope import ScopedWork
+
+    if broker is None:
+        from app.broker.broker_factory import get_broker
+
+        broker = get_broker()
+    return ScopedWork(organization_id=None, broker=broker, broker_source="process")

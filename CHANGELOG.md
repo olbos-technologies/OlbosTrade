@@ -1,5 +1,42 @@
 # Changelog
 
+## Unreleased — Background workers run per owner (Batch E2 steps 4 and 6)
+
+**No migration. No new environment variables.** No visible change in
+single-operator mode: the sweep visits one scope (`organization_id IS NULL`)
+against the process broker, which is exactly what ran before.
+
+- 14 scheduler jobs run with no authenticated user, and the ones touching
+  trades compared **one** broker against **every** open trade. The fills
+  poller decides whether a position is still held, so unscoped it would close
+  tenant B's trade — and write a P&L — because a position was absent from
+  tenant A's broker, where it never was. The reconciler would report B's real
+  positions as `phantom_in_db` and A's as `untracked_at_broker`, either of
+  which can drive an adopt.
+- `worker_scope.for_each_scope` now resolves a `(broker, owner)` pair per
+  owner and isolates failures per owner, so one unreachable broker no longer
+  ends the sweep for everyone. Skipped (no broker) and failed are counted
+  separately — they must not look alike in a log.
+- `PositionReconciler(broker, *, organization_id)` — required keyword, no
+  default. An unscoped reconciliation no longer constructs.
+- **The reconciler's adopt path now stamps the owner whose broker reported
+  the position.** It wrote NULL until this pairing existed, with a comment
+  saying why it could not do better.
+- The position-claim sweep is per owner too. A release happens when the
+  broker says ABSENT, and a broker never asked about a claim says ABSENT —
+  so an unscoped sweep would hand an in-flight position back to the
+  duplicate guard as free, re-opening the race #102 closed.
+- **An owner with no resolvable broker is skipped, never defaulted to the
+  operator's broker.** IBKR cannot be per-organization in this process at all
+  (single logged-in session), so such an owner is skipped rather than read
+  against the operator's own account.
+- **Still on the operator's own broker, deliberately:** `stop_backfill` and
+  `orphan_order_sweep`. They place and cancel orders, and pointing them at a
+  customer's connection would mean a timer trading in that account. A guard
+  test pins it. This is the remaining owner decision.
+- `sector_cache` and `rotation_correlation_cache` stay global — they derive
+  market data, which belongs to no tenant — and a test asserts it.
+
 ## Unreleased
 
 ### `update.sh` no longer pulls — deploying is two stages

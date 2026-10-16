@@ -10,6 +10,8 @@ import pytest
 
 from app.api.routes.risk import get_margin
 
+from conftest import single_operator_conn
+
 
 def _broker(**kw):
     # Mirrors AccountSummary's real shape, age fields included: the route
@@ -76,9 +78,15 @@ async def test_reconciliation_route_reports_status():
     )
     recon = MagicMock()
     recon.check = AsyncMock(return_value=fake)
+    from app.services.worker_scope import ScopedWork
+
     with patch("app.broker.broker_factory.get_broker", return_value=MagicMock()), \
+         patch("app.services.worker_scope.broker_for_scope",
+               new=AsyncMock(return_value=ScopedWork(
+                   organization_id=None, broker=MagicMock(),
+                   broker_source="process"))), \
          patch("app.services.position_reconciler.PositionReconciler", return_value=recon):
-        res = await get_reconciliation()
+        res = await get_reconciliation(single_operator_conn())
     assert res["clean"] is False and res["untracked_at_broker"] == ["SPY"]
     assert res["broker_position_count"] == 1 and "checked_at" in res
 

@@ -273,10 +273,21 @@ DEFAULT_SETTLE_SECONDS = 120
 async def reconcile_unresolved(
     lookup: BrokerLookup,
     *,
+    scope: Optional[str] = None,
     limit: int = 50,
     settle_seconds: int = DEFAULT_SETTLE_SECONDS,
 ) -> dict:
     """Ask the broker what became of each unresolved claim.
+
+    `scope` restricts the sweep to one owner's claims — the value
+    `trade_scope.claim_scope` produced when the claim was taken. It is
+    supplied in practice by `claim_reconciliation.reconcile_once`, which
+    pairs it with that owner's broker (Batch E2 step 6): asking tenant A's
+    broker about tenant B's claim yields ABSENT, and ABSENT past the settle
+    window RELEASES the claim — handing tenant B's in-flight position back to
+    the duplicate guard as free. Left None it sweeps every scope, which is
+    correct only when the lookup cannot answer for anyone (no broker at all,
+    where every verdict is INDETERMINATE and nothing is released).
 
     A claim is released ONLY when the broker positively states the order does
     not exist (BrokerVerdict.ABSENT) AND the claim is older than
@@ -322,7 +333,10 @@ async def reconcile_unresolved(
                     ) >= settle_seconds
                 ).label("settled"),
             )
-            .where(PositionClaim.state.in_(UNRESOLVED_STATES))
+            .where(
+                PositionClaim.state.in_(UNRESOLVED_STATES),
+                *([PositionClaim.scope == scope] if scope is not None else []),
+            )
             .order_by(PositionClaim.claimed_at)
             .limit(limit)
         )).all()

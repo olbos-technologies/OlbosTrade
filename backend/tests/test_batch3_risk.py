@@ -245,7 +245,7 @@ async def test_reconciliation_flags_doubled_position():
     broker = MagicMock()
     broker.get_positions = AsyncMock(return_value=[_mock_position("SPY", 2)])
 
-    reconciler = PositionReconciler(broker)
+    reconciler = PositionReconciler(broker, organization_id=None)
 
     with patch("app.services.position_reconciler.AsyncSessionLocal",
                return_value=_mock_session_with_trades([_mock_db_trade("SPY", 1)])):
@@ -261,7 +261,7 @@ async def test_reconciliation_clean_when_quantities_match():
     broker = MagicMock()
     broker.get_positions = AsyncMock(return_value=[_mock_position("SPY", 1)])
 
-    reconciler = PositionReconciler(broker)
+    reconciler = PositionReconciler(broker, organization_id=None)
 
     with patch("app.services.position_reconciler.AsyncSessionLocal",
                return_value=_mock_session_with_trades([_mock_db_trade("SPY", 1)])):

@@ -55,8 +55,44 @@ class PositionReconciler:
     If they disagree, halt trading and require manual resolution.
     """
 
-    def __init__(self, broker: BrokerInterface) -> None:
+    def __init__(self, broker: BrokerInterface, *,
+                 organization_id: "Optional[uuid.UUID]") -> None:
+        """A broker paired with the owner whose trades it is authoritative for.
+
+        `organization_id` is a REQUIRED keyword, which is the whole point of
+        Batch E2 step 6. This class used to take one broker and compare it
+        against every open trade in the database. With two tenants that is
+        wrong in both directions: tenant A's broker knows nothing about tenant
+        B's positions, so B's real trades come back as `phantom_in_db` and A's
+        as `untracked_at_broker` — and either can drive an adopt or halt
+        trading on data the broker was never asked about. Pairing them is the
+        only way the two outputs mean anything.
+
+        `None` is the single-operator scope: the process broker against the
+        rows migration 0041 left unattributed. It must be passed explicitly.
+        There is deliberately no default, so `PositionReconciler(broker)` no
+        longer constructs — an unscoped reconciliation cannot be written by
+        accident, only chosen in words.
+
+        Resolving the pair is `worker_scope.broker_for_scope`'s job, not this
+        class's: a class that looked up its own broker could be constructed
+        for one owner and silently read another's.
+        """
         self.broker = broker
+        self.organization_id = organization_id
+
+    @property
+    def _owned(self):
+        """This reconciler's ownership filter, so the three reads cannot drift."""
+        from app.services.trade_scope import owned_by
+
+        return owned_by(self.organization_id)
+
+    @property
+    def scope_label(self) -> str:
+        """For logs and snapshot rows — a reconciliation result is meaningless
+        without saying whose book it describes."""
+        return "single-operator" if self.organization_id is None else str(self.organization_id)
 
     async def check(self) -> ReconciliationResult:
         """
@@ -82,7 +118,7 @@ class PositionReconciler:
         try:
             async with AsyncSessionLocal() as session:
                 result = await session.execute(
-                    select(Trade).where(Trade.status == "open")
+                    select(Trade).where(self._owned, Trade.status == "open")
                 )
                 db_open_trades = result.scalars().all()
         except Exception as exc:
@@ -140,7 +176,7 @@ class PositionReconciler:
         # Fetch DB open trades
         async with AsyncSessionLocal() as session:
             result = await session.execute(
-                select(Trade).where(Trade.status == "open")
+                select(Trade).where(self._owned, Trade.status == "open")
             )
             db_open_trades: list[Trade] = result.scalars().all()
 

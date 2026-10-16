@@ -644,8 +644,8 @@ async def _background_scheduler() -> None:
             # The timeout covers the retry chain inside reconcile_once
             # (MAX_ATTEMPTS sweeps with backoff), not a single broker call.
             if now - last_claim_sweep >= claim_sweep_interval_s:
-                from app.services.claim_reconciliation import reconcile_once
-                await _guarded(reconcile_once(), "position_claims", 90)
+                from app.services.claim_reconciliation import reconcile_all_scopes
+                await _guarded(reconcile_all_scopes(), "position_claims", 90)
                 last_claim_sweep = now
 
                 # Immediately behind it, on the same tick: reconciliation is
@@ -2153,8 +2153,36 @@ def _compute_exit_price(fills: list, trade, is_equity: bool):
 
 
 async def _poll_fills() -> None:
+    """Run the fill poll once per owner, against that owner's own broker.
+
+    Batch E2 step 4. The poll decides whether a trade is still held, and it
+    decided that by comparing ONE broker's position list against every open
+    trade in the database. With two owners that is the worst version of the
+    unscoped-worker bug: a position missing from tenant A's broker because it
+    was never there closes tenant B's trade, and the close writes a P&L.
+
+    `for_each_scope` supplies the pair. A owner whose broker cannot be
+    resolved is skipped — not polled against the operator's broker — because
+    "absent from a broker that was never asked" is indistinguishable from a
+    real close at this layer, and the consequence is a fabricated exit.
     """
-    Compare live broker positions against open DB trades.
+    from app.core.database import AsyncSessionLocal
+    from app.services.worker_scope import for_each_scope
+
+    summary = await for_each_scope(
+        AsyncSessionLocal, _poll_fills_for_scope, job="poll_fills",
+    )
+    if summary["skipped"] or summary["failed"]:
+        logger.warning(
+            "poll_fills sweep: %d scope(s), %d ok, %d skipped (no broker), %d failed%s",
+            summary["scopes"], summary["ok"], summary["skipped"], summary["failed"],
+            f" — {summary['errors']}" if summary["errors"] else "",
+        )
+
+
+async def _poll_fills_for_scope(scoped) -> None:
+    """
+    Compare one owner's broker positions against that owner's open DB trades.
 
     When a position disappears from IBKR (fully closed), reconstruct the actual
     cost-to-close from IBKR execution history and record the real P&L. If a real
@@ -2165,13 +2193,13 @@ async def _poll_fills() -> None:
     try:
         import asyncio
         from datetime import datetime, timezone
-        from app.broker.broker_factory import get_broker
         from app.core.database import AsyncSessionLocal
         from app.models.trade import Trade
         from app.services.trade_recorder import trade_recorder
+        from app.services.trade_scope import owned_by
         from sqlalchemy import select
 
-        broker = get_broker()
+        broker = scoped.broker
 
         # Fail closed on a stale/disconnected broker rather than risk a mass
         # false-close. IBKRClient.get_positions() reads ib.portfolio() — a
@@ -2221,10 +2249,16 @@ async def _poll_fills() -> None:
             if sym and qty is not None:
                 live_qty[sym] = live_qty.get(sym, 0.0) + abs(float(qty))
 
-        # Load all open + pending trades from DB
+        # Load this owner's open + pending trades. Scoped, because the
+        # broker above is authoritative for exactly these rows and for no
+        # others — that pairing is what makes "missing at the broker" mean
+        # "closed" rather than "belongs to someone else".
         async with AsyncSessionLocal() as session:
             result = await session.execute(
-                select(Trade).where(Trade.status.in_(["open", "pending"]))
+                select(Trade).where(
+                    owned_by(scoped.organization_id),
+                    Trade.status.in_(["open", "pending"]),
+                )
             )
             all_trades = result.scalars().all()
 
@@ -2427,6 +2461,16 @@ async def _poll_fills() -> None:
                 # way in, and a case mismatch here would return no rows and so
                 # cancel a live position's stop. This comparison's failure mode
                 # has to be "skip the cancel", never "cancel anyway".
+                #
+                # DELIBERATELY NOT SCOPED (Batch E2 step 4). Every other trade
+                # read in this function is scoped; this one must not be.
+                # Scoping it would turn "somebody still holds this symbol"
+                # into "I do not hold this symbol", and the second answer
+                # PERMITS the cancel — so a position recorded under another
+                # owner but resting in the same broker account would lose its
+                # protective order. The unscoped read is strictly the more
+                # conservative one, and conservative is the documented
+                # requirement right above.
                 from sqlalchemy import func as _sa_func
                 async with AsyncSessionLocal() as session:
                     remaining = (await session.execute(
@@ -2671,20 +2715,37 @@ async def _reconcile_positions() -> None:
     trading for no real reason. check() only reads get_positions(), which
     is a local ib_insync cache read (see ibkr_client.py), so this is cheap
     enough to run every cycle without IBKR request-coordinator involvement.
+
+    Batch E2 step 6: this now runs ONCE PER OWNER, each against the broker
+    that is authoritative for that owner's positions, because the two outputs
+    only mean something within one scope. One owner's unreachable broker is
+    skipped and logged; it does not end the sweep for the others.
     """
-    from app.broker.broker_factory import get_broker
+    from app.core.database import AsyncSessionLocal
     from app.services.observability import observability
     from app.services.position_reconciler import PositionReconciler
+    from app.services.worker_scope import ScopedWork, for_each_scope
 
-    result = await PositionReconciler(get_broker()).check()
-    if not result.clean:
+    async def _reconcile_one(scoped: ScopedWork) -> None:
+        result = await PositionReconciler(
+            scoped.broker, organization_id=scoped.organization_id,
+        ).check()
+        if result.clean:
+            return
+
         logger.critical(
-            "Position reconciliation mismatch: untracked_at_broker=%s phantom_in_db=%s warnings=%s",
+            "Position reconciliation mismatch [scope=%s broker=%s]: "
+            "untracked_at_broker=%s phantom_in_db=%s warnings=%s",
+            scoped.organization_id or "single-operator", scoped.broker_source,
             result.untracked_at_broker, result.phantom_in_db, result.warnings,
         )
         observability.incr("reconciliation.mismatch")
         observability.event(
             "reconciliation_mismatch",
+            # The scope is part of the event, not just the log line. A
+            # mismatch count with no owner on it cannot be acted on once
+            # there is more than one book.
+            organization_id=str(scoped.organization_id) if scoped.organization_id else None,
             untracked_at_broker=result.untracked_at_broker,
             phantom_in_db=result.phantom_in_db,
             warnings=result.warnings,
@@ -2692,14 +2753,30 @@ async def _reconcile_positions() -> None:
         if result.untracked_at_broker:
             from app.core.config import settings
             if getattr(settings, "reconciliation_auto_adopt_untracked", True):
-                await _adopt_untracked_positions(result.untracked_at_broker)
+                await _adopt_untracked_positions(
+                    result.untracked_at_broker, scoped=scoped,
+                )
         if result.quantity_mismatch_tickers:
             from app.core.config import settings
             if getattr(settings, "reconciliation_auto_correct_quantity", True):
-                await _correct_quantity_mismatches(result.quantity_mismatch_tickers)
+                await _correct_quantity_mismatches(
+                    result.quantity_mismatch_tickers, scoped=scoped,
+                )
+
+    summary = await for_each_scope(
+        AsyncSessionLocal, _reconcile_one, job="reconciliation",
+    )
+    if summary["skipped"] or summary["failed"]:
+        logger.warning(
+            "reconciliation sweep: %d scope(s), %d ok, %d skipped (no broker), "
+            "%d failed%s",
+            summary["scopes"], summary["ok"], summary["skipped"],
+            summary["failed"],
+            f" — {summary['errors']}" if summary["errors"] else "",
+        )
 
 
-async def _correct_quantity_mismatches(mismatched: list[str]) -> None:
+async def _correct_quantity_mismatches(mismatched: list[str], *, scoped) -> None:
     """
     Correct a tracked Trade row's quantity when it disagrees with the
     broker's live quantity for that underlying — see
@@ -2719,13 +2796,17 @@ async def _correct_quantity_mismatches(mismatched: list[str]) -> None:
     """
     from sqlalchemy import select
 
-    from app.broker.broker_factory import get_broker
     from app.core.database import AsyncSessionLocal
     from app.models.trade import Trade
     from app.services.observability import observability
+    from app.services.trade_scope import owned_by
 
+    # `scoped` carries the broker that reported the mismatch AND the owner it
+    # belongs to. Re-reading get_broker() here would correct one owner's row
+    # from another owner's broker quantity — the mismatch was found in one
+    # scope, so the correction has to be applied in the same one.
     try:
-        positions = await get_broker().get_equity_positions()
+        positions = await scoped.broker.get_equity_positions()
     except Exception as exc:
         logger.error("correct-quantity-mismatch: could not fetch live equity positions: %s", exc)
         return
@@ -2742,6 +2823,7 @@ async def _correct_quantity_mismatches(mismatched: list[str]) -> None:
 
                 rows = (await session.execute(
                     select(Trade).where(
+                        owned_by(scoped.organization_id),
                         Trade.underlying == symbol,
                         Trade.status == "open",
                     )
@@ -2769,7 +2851,7 @@ async def _correct_quantity_mismatches(mismatched: list[str]) -> None:
         observability.event("reconciliation_quantity_corrected", tickers=corrected)
 
 
-async def _adopt_untracked_positions(untracked: list[str]) -> None:
+async def _adopt_untracked_positions(untracked: list[str], *, scoped) -> None:
     """
     Write a Trade row for each live broker equity position that has none —
     see reconciliation_auto_adopt_untracked's config docstring for why this
@@ -2799,13 +2881,13 @@ async def _adopt_untracked_positions(untracked: list[str]) -> None:
 
     from sqlalchemy import select
 
-    from app.broker.broker_factory import get_broker
     from app.core.database import AsyncSessionLocal
     from app.models.trade import Trade
     from app.services.observability import observability
+    from app.services.trade_scope import owned_by
 
     try:
-        positions = await get_broker().get_equity_positions()
+        positions = await scoped.broker.get_equity_positions()
     except Exception as exc:
         logger.error("adopt-untracked: could not fetch live equity positions: %s", exc)
         return
@@ -2815,8 +2897,12 @@ async def _adopt_untracked_positions(untracked: list[str]) -> None:
     adopted: list[str] = []
     async with AsyncSessionLocal() as session:
         async with session.begin():
+            # Scoped: the race this guards against is a concurrent entry in
+            # THIS owner's book. Another owner holding the same ticker is not
+            # a reason to skip adopting this one's untracked position.
             open_trades = (
-                await session.execute(select(Trade).where(Trade.status == "open"))
+                await session.execute(select(Trade).where(
+                    owned_by(scoped.organization_id), Trade.status == "open"))
             ).scalars().all()
             already_tracked = {str(t.underlying).upper() for t in open_trades}
 
@@ -2837,20 +2923,21 @@ async def _adopt_untracked_positions(untracked: list[str]) -> None:
 
                 price = Decimal(str(pos.avg_cost))
                 session.add(Trade(
-                    # The reconciler runs in the background with no caller, and
-                    # it is NOT organization-scoped in this change (Batch E2
-                    # step 6, deliberately held back): it compares ONE broker
-                    # against every open trade. So the organization it would
-                    # stamp here is not established — the position came from a
-                    # broker whose owner this code does not yet resolve.
+                    # Batch E2 step 6. This is the second of the two
+                    # trade-writing sites, and until now it stamped NULL with
+                    # a comment saying why it could not do better: the
+                    # reconciler took one broker and compared it against every
+                    # open trade, so the owner of a position it discovered was
+                    # genuinely not established.
                     #
-                    # Left NULL on purpose, which is the single-operator scope
-                    # and exactly what migration 0041 leaves historical rows
-                    # as. In the current single-operator deployment that is
-                    # correct. With a second tenant it would be wrong, and the
-                    # fix is step 6 — pairing (broker, organization) — not a
-                    # guess here. docs/batch-e2-trades-isolation-analysis.md §4.
-                    organization_id=None,
+                    # It is established now. `scoped` is the (broker, owner)
+                    # pair this sweep is running for, so a position the broker
+                    # reported belongs to the owner whose broker that is —
+                    # which is the only defensible answer and the reason the
+                    # pairing had to come first. NULL here still means the
+                    # single-operator scope, reached when the sweep is running
+                    # the process broker against the unattributed rows.
+                    organization_id=scoped.organization_id,
                     strategy="adopted_untracked",
                     underlying=symbol,
                     spread_type="equity_long" if pos.quantity > 0 else "equity_short",
