@@ -104,7 +104,21 @@ Several live in the backend suite because they check frontend files the frontend
 
 ## Deployment
 
-`cd /opt/olbostrade && bash deploy/hetzner/update.sh` — it runs `git pull origin main`, rebuilds `backend` and `frontend` with `--no-cache`, brings the stack up, then runs `alembic upgrade head` inside the `olbostrade-backend` container.
+Two stages, in this order:
+
+```bash
+cd /opt/olbostrade
+git pull --ff-only origin main            # stage 1 — NOT inside the script
+bash deploy/hetzner/update.sh             # stage 2
+```
+
+`update.sh` **does not pull** — it used to, and rewrote itself while bash was
+mid-execution, skipping its own migration step (see `docs/runbook.md` →
+Deploying). Its step 1 now fetches and refuses to deploy if `HEAD` is not
+`origin/main`. It then rebuilds `backend` and `frontend` with `--no-cache`,
+runs `alembic upgrade head` in a throwaway container **from the image just
+built**, and only then brings the stack up. Do not put the pull back; a guard
+test asserts its absence.
 
 Production is `docker-compose.hetzner.yml`, whose services are `backend`, `frontend`, `caddy` and `olbostrade-db` — container names differ from service names, and `docker compose` commands need the service name. Note `docker-compose.prod.yml` is a different, older stack (`nginx`, `certbot`); do not mix the two up when reading config.
 

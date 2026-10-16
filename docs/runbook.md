@@ -135,9 +135,49 @@ risk rather than reducing it.
 
 ## Deploying
 
+A deploy is **two stages, in this order**. The script does not pull; you pull,
+then you run the script the pull produced.
+
 ```bash
+# 1. update the checkout — a plain ssh command, not inside the script
+ssh root@46.224.0.213 'cd /opt/olbostrade && git pull --ff-only origin main'
+
+# 2. deploy that checkout
 ssh root@46.224.0.213 'cd /opt/olbostrade && nohup bash deploy/hetzner/update.sh > /tmp/deploy.log 2>&1 &'
 ```
+
+### Why the pull is a separate stage
+
+`update.sh` used to run `git pull origin main` as its own first step, which
+rewrote **the file bash was executing**. Bash reads a script in chunks: it
+reads some, runs it, and seeks back for more. Git updates a file in place —
+same inode — so replacing it mid-run means the next read comes from a
+different, longer file at a stale byte offset. Reproduced at the exact sizes
+involved (4501 → 6328 bytes): steps 2 through 5 never ran, garbage commands
+executed, exit 127.
+
+A deploy that silently skips its own migration step is the worst shape that
+bug could take, so the pull moved out. Step 1 of the script now **fetches and
+compares instead**, and refuses to deploy when `HEAD` is not `origin/main`:
+
+```
+[1/6] Verifying the checkout is current...
+      ❌ Refusing to deploy: this checkout is not origin/main.
+         HEAD        <sha>
+         origin/main <sha>
+         Run:  git pull --ff-only origin main
+```
+
+That is a clean exit 1 before anything is built or restarted — the old image
+keeps serving. `--ff-only` on the pull is deliberate: a deploy checkout should
+never be producing a merge commit, and if it cannot fast-forward, something is
+wrong with the checkout and not with the deploy.
+
+`backend/tests/test_update_script_deploys_in_order.py` pins all three
+properties — that the script never pulls, that a stale checkout refuses, and
+that a current one proceeds.
+
+### Running it
 
 Run it detached. A foreground deploy over SSH has repeatedly died mid-build on
 a dropped connection, leaving you unsure whether it finished. Poll instead:

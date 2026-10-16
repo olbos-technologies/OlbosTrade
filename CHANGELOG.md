@@ -1,6 +1,28 @@
 # Changelog
 
-## Unreleased — Trades are scoped to their owner (Batch E2 step 3)
+## Unreleased
+
+### `update.sh` no longer pulls — deploying is two stages
+
+**Operator-facing change to the deploy procedure. No migration, no new
+environment variables.**
+
+- `deploy/hetzner/update.sh` ran `git pull origin main` as its first step,
+  rewriting the file bash was executing. Bash reads a script in chunks and
+  seeks back for more; git replaces the file in place, so the next read came
+  from a different, longer file at a stale offset. Reproduced at the exact
+  sizes involved (4501 → 6328 bytes): steps 2–5 never ran, garbage commands
+  executed, exit 127 — a deploy that silently skipped its own migration step.
+- The pull moved out of the script. Deploys are now
+  `git pull --ff-only origin main` **then** `bash deploy/hetzner/update.sh`.
+- Step 1 of the script instead fetches and compares, and **refuses to deploy**
+  (exit 1, before anything is built or restarted) when `HEAD` is not
+  `origin/main`. It prints both SHAs and the remedy, and prints the SHA it is
+  deploying when current.
+- Three guard tests in `test_update_script_deploys_in_order.py` pin it: the
+  script never pulls, a stale checkout refuses, a current one proceeds.
+
+### Trades are scoped to their owner (Batch E2 steps 1, 2, 3, 5)
 
 **No migration beyond 0041, which arrives with this work. No new environment
 variables.** Behaviour change for an operator running with
