@@ -1,0 +1,68 @@
+<!doctype html>
+<!--
+  Source for docs/assets/olbos-banner.jpg — the README banner.
+
+  Derived from frontend/public/olbos-trade-lockup.webp (the same lockup the
+  app uses) over the app's own theme tokens, so the repo page and the product
+  agree: --bg #070c14, --bg-3 #131c2e, --brand #D4AF37, --ink-dim #9aa8bc,
+  and the --line gold hairline as the inset frame.
+
+  Regenerate (needs the repo's playwright-core and the container's Chromium):
+
+    cd docs/assets/src
+    node -e '
+      const {chromium} = require("../../../frontend/node_modules/playwright-core");
+      (async () => {
+        const b = await chromium.launch({ executablePath:
+          "/opt/pw-browsers/chromium-1194/chrome-linux/chrome" });
+        const p = await b.newPage({ viewport: { width: 1440, height: 660 } });
+        await p.goto("file://" + process.cwd() + "/olbos-banner.html");
+        await p.waitForLoadState("networkidle");
+        await p.screenshot({ path: "../olbos-banner.jpg", type: "jpeg", quality: 90 });
+        await b.close();
+      })();'
+
+  Viewport must stay 1440x660 — the height is part of the composition, not a
+  crop. The tagline uses Inter rather than --sans (IBM Plex Sans): Plex is not
+  installed in the render container, and a webfont cannot be fetched offline.
+  At 21px letterspaced caps the two are near-indistinguishable; swap it if you
+  ever render somewhere Plex is available.
+--><html><head><meta charset="utf-8"><style>
+  @page{margin:0} *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:1440px;height:660px;overflow:hidden}
+  .banner{
+    position:relative;width:1440px;height:660px;
+    background:
+      radial-gradient(900px 460px at 50% 42%, rgba(212,175,55,.085), transparent 70%),
+      linear-gradient(170deg, #131c2e 0%, #0a101c 48%, #070c14 100%);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    font-family:Inter, system-ui, sans-serif;
+  }
+  /* Dot field, echoing the original banner's texture — kept very low contrast
+     so it reads as depth rather than pattern. */
+  .banner::before{
+    content:"";position:absolute;inset:0;
+    background-image:radial-gradient(rgba(232,237,244,.055) 1px, transparent 1px);
+    background-size:26px 26px;
+    -webkit-mask-image:radial-gradient(780px 420px at 50% 46%, #000 20%, transparent 78%);
+            mask-image:radial-gradient(780px 420px at 50% 46%, #000 20%, transparent 78%);
+  }
+  /* --line, the app's gold hairline, as an inset frame. */
+  .frame{position:absolute;inset:26px;border:1px solid rgba(212,175,55,.18);border-radius:6px}
+  .frame::after{content:"";position:absolute;inset:7px;border:1px solid rgba(255,255,255,.045);border-radius:3px}
+  .lockup{position:relative;width:910px;display:block;filter:drop-shadow(0 18px 44px rgba(0,0,0,.55))}
+  .rule{position:relative;margin-top:40px;width:470px;height:1px;
+        background:linear-gradient(90deg, transparent, rgba(212,175,55,.9), transparent)}
+  .tagline{position:relative;margin-top:24px;
+    font-size:21px;font-weight:500;letter-spacing:.44em;text-indent:.44em;
+    color:#9aa8bc;text-transform:uppercase;white-space:nowrap}
+  .vignette{position:absolute;inset:0;
+    background:radial-gradient(120% 110% at 50% 45%, transparent 52%, rgba(0,0,0,.42) 100%)}
+</style></head><body>
+<div class="banner">
+  <div class="frame"></div>
+  <img class="lockup" src="../../../frontend/public/olbos-trade-lockup.webp" alt="">
+  <div class="rule"></div>
+  <div class="tagline">Algorithmic Trading System</div>
+  <div class="vignette"></div>
+</div></body></html>
