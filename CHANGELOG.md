@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased — Refined mobile Home
+
+- Phones open a compact Home with broker account value, separately labelled trade P&L, recent/older approval counts, positions, and reliable stop-coverage states.
+- Independent reads expose loading, unavailable, and stale data. Queue age is advisory and does not bypass approval validation.
+- Stop automation uses the existing Manual-mode API and reports persistence failures. Emergency controls reuse the existing kill-switch confirmation. Desktop dashboard and navigation remain intact.
+- Frontend-only: no migration, environment-variable changes, or nginx regeneration.
+
 ## Unreleased — Equity exit geometry can be swept instead of guessed
 
 **No migration. No new environment variables. No change to any shipped
@@ -53,6 +60,7 @@ choose them from a backtest, and nothing more.
   need a 25% stop distance to bind, and ATR stops are 5–11%.
 - The sweep recommends; it does not act. A person decides whether to move a
   production parameter, with the trade counts in view.
+
 
 ## Unreleased — Background workers run per owner (Batch E2 steps 4 and 6)
 

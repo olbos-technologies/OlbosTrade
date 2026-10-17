@@ -14,6 +14,7 @@ import { api }           from "../api/client";
 import { usePaperTrade } from "../hooks/usePaperTrade";
 import { useRisk }       from "../hooks/useRisk";
 import ExecutiveSummary  from "../components/ExecutiveSummary";
+import MobileHome from "./MobileHome";
 import ErrorBoundary     from "../components/ErrorBoundary";
 import WelcomeBanner, { WELCOME_DISMISS_KEY } from "../components/WelcomeBanner";
 import MetricHint, { resolveMetricHint } from "../components/MetricHint";
@@ -209,6 +210,11 @@ function filterByRange(points: ChartPoint[], range: string): ChartPoint[] {
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 export default function Dashboard() {
+  const isMobile = useIsMobile();
+  return isMobile ? <MobileHome /> : <DesktopDashboard />;
+}
+
+function DesktopDashboard() {
   const isMobile = useIsMobile();
   const { positions, portfolio, portfolioError, greeks } = usePaperTrade();
   const { guardrailStatus, portfolioState } = useRisk();
