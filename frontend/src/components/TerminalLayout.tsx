@@ -1095,7 +1095,7 @@ function Sidebar({ active, onNav, expanded, isMobile = false }: {
               background: isActive ? "var(--cyan-dim)" : isHovered ? "var(--bg-3)" : "transparent",
               border: "none",
               borderLeft: isActive ? "2px solid var(--cyan)" : "2px solid transparent",
-              color: isActive ? "var(--cyan)" : isHovered ? "var(--ink)" : "var(--ink-faint)",
+              color: isActive ? "var(--cyan)" : isHovered ? "var(--ink)" : "#aabbd0",
               cursor: "pointer", transition: "all 0.1s", overflow: "hidden", whiteSpace: "nowrap",
             }}
           >
@@ -1103,7 +1103,7 @@ function Sidebar({ active, onNav, expanded, isMobile = false }: {
             {showLabels && (
               <span style={{
                 flex: 1, textAlign: "left", fontFamily: "var(--mono)", fontSize: 11,
-                letterSpacing: "0.08em", textTransform: "uppercase",
+                letterSpacing: "0.04em", textTransform: "uppercase",
               }}>
                 {g.label}
               </span>
@@ -1120,7 +1120,7 @@ function Sidebar({ active, onNav, expanded, isMobile = false }: {
             <div style={{
               position: "absolute", left: 52, top: "50%", transform: "translateY(-50%)",
               background: "var(--bg-4)", border: "1px solid var(--line-dim)", padding: "4px 10px",
-              whiteSpace: "nowrap", fontFamily: "var(--mono)", fontSize: 10, letterSpacing: "0.1em",
+              whiteSpace: "nowrap", fontFamily: "var(--mono)", fontSize: 10, letterSpacing: "0.06em",
               textTransform: "uppercase", color: "var(--ink)", zIndex: 100, pointerEvents: "none",
             }}>
               {g.label}
@@ -1192,7 +1192,7 @@ function Sidebar({ active, onNav, expanded, isMobile = false }: {
             background: "transparent", border: "none",
             borderTop: "1px solid var(--line-dim)",
             color: "var(--ink-dim)", cursor: "pointer",
-            fontFamily: "var(--mono)", fontSize: 10, letterSpacing: "0.08em",
+            fontFamily: "var(--mono)", fontSize: 10, letterSpacing: "0.04em",
             textTransform: "uppercase",
           }}
         >
@@ -1247,7 +1247,7 @@ function Sidebar({ active, onNav, expanded, isMobile = false }: {
           <div style={{
             position: "absolute", left: 52, top: "50%", transform: "translateY(-50%)",
             background: "var(--bg-4)", border: "1px solid var(--line-dim)", padding: "4px 10px",
-            whiteSpace: "nowrap", fontFamily: "var(--mono)", fontSize: 10, letterSpacing: "0.1em",
+            whiteSpace: "nowrap", fontFamily: "var(--mono)", fontSize: 10, letterSpacing: "0.06em",
             textTransform: "uppercase", color: "var(--ink)", zIndex: 100, pointerEvents: "none",
           }}>
             System

@@ -1,108 +1,75 @@
-/**
- * News & Catalysts — filtered tape of headlines/filings for the watchlist.
- * Backed by GET /api/intel/classify/{symbol} (RSS news + SEC EDGAR filings,
- * each attached a deterministic impact classification). Read-only, doesn't
- * touch the order path. Fetched once per watchlist symbol and merged client-side
- * — the backend route is per-symbol, there's no multi-symbol endpoint yet.
- */
 import React, { useEffect, useState } from "react";
 import { UNIVERSE } from "./universe";
+import { MarketToolbar, chartHref } from "./MarketToolbar";
 
-type NewsItem = {
-  symbol: string;
-  type: "news" | "filing";
-  payload: { title?: string; link?: string; published?: string };
-  source: string;
-  as_of: string;
-  classification: {
-    category: string;
-    impact: "high" | "moderate" | "low";
-    direction: string;
-    time_sensitivity: string;
-    strategy_impact: string;
-  };
+export type NewsItem = {
+  symbol: string; type: "news" | "filing"; payload: {title?: string; link?: string; published?: string};
+  source: string; as_of: string; classification?: { impact?: string };
 };
-
-const IMPACT_COLOR: Record<string, string> = {
-  high: "var(--red)",
-  moderate: "var(--amber)",
-  low: "var(--ink-faint)",
-};
-
+export function safeNewsLink(link?: string): string | null {
+  try { const u=new URL(link || ""); return ["http:","https:"].includes(u.protocol) ? u.href : null; } catch { return null; }
+}
+export function groupNews(items: NewsItem[]) {
+  const map=new Map<string,NewsItem & { symbols:string[] }>();
+  for(const item of items) {
+    let key=safeNewsLink(item.payload?.link);
+    if(key) { const u=new URL(key); u.hash=""; [...u.searchParams.keys()].filter(k=>k.startsWith("utm_")).forEach(k=>u.searchParams.delete(k)); key=u.href; }
+    else key=`${item.type}:${item.payload?.title || ""}:${item.as_of}`;
+    const existing=map.get(key);
+    if(existing) {
+      if(!existing.symbols.includes(item.symbol)) existing.symbols.push(item.symbol);
+      const rank:Record<string,number>={ low:1, moderate:2, high:3 };
+      if((rank[item.classification?.impact || ""] || 0)>(rank[existing.classification?.impact || ""] || 0)) existing.classification=item.classification;
+    } else map.set(key,{...item,symbols:[item.symbol]});
+  }
+  return [...map.values()].sort((a,b)=>(Date.parse(b.as_of)||0)-(Date.parse(a.as_of)||0));
+}
 export default function NewsCatalysts() {
-  const [items, setItems] = useState<NewsItem[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const symbols = UNIVERSE.flatMap(g => g.symbols.map(s => s.api ?? s.sym));
-    Promise.all(
-      symbols.map(sym =>
-        fetch(`/api/intel/classify/${encodeURIComponent(sym)}?limit=5`)
-          .then(r => r.json())
-          .then(d => (d.items ?? []).map((it: Omit<NewsItem, "symbol">) => ({ ...it, symbol: d.symbol })))
-          .catch(() => [] as NewsItem[])
-      )
-    ).then(lists => {
-      const merged = (lists.flat() as NewsItem[]).sort((a, b) => (a.as_of < b.as_of ? 1 : -1));
-      setItems(merged.slice(0, 40));
-      setLoading(false);
-    });
-  }, []);
-
-  return (
-    <div style={{ padding: 16, height: "100%", overflowY: "auto" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 14, flexWrap: "wrap" }}>
-        <span className="panel-title">News &amp; Catalysts</span>
-        <span style={{ fontFamily: "var(--mono)", fontSize: 10, color: "var(--ink-faint)" }}>
-          {loading ? "loading…" : `${items.length} items · watchlist`}
-        </span>
-      </div>
-
-      <p style={{ fontSize: 13, color: "var(--ink-dim)", maxWidth: 620, lineHeight: 1.6, marginBottom: 12 }}>
-        Headlines and filings for the watchlist. Impact is a deterministic classification of the
-        headline/filing type — not a market prediction, and never a fabricated cause.
-      </p>
-
-      <table className="t-table">
-        <thead>
-          <tr>
-            <th style={{ textAlign: "left" }}>Time</th>
-            <th style={{ textAlign: "left" }}>Symbol</th>
-            <th style={{ textAlign: "left" }}>Headline</th>
-            <th style={{ textAlign: "left" }}>Type</th>
-            <th style={{ textAlign: "left" }}>Impact</th>
-          </tr>
-        </thead>
-        <tbody>
-          {!loading && items.length === 0 && (
-            <tr><td colSpan={5} className="mono" style={{ color: "var(--ink-faint)" }}>No recent items</td></tr>
-          )}
-          {items.map((it, i) => (
-            <tr key={i}>
-              <td className="mono" style={{ color: "var(--ink-faint)", fontSize: 11 }}>
-                {new Date(it.as_of).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
-              </td>
-              <td className="mono" style={{ color: "var(--cyan)" }}>{it.symbol}</td>
-              <td>
-                {it.payload.link ? (
-                  <a href={it.payload.link} target="_blank" rel="noopener noreferrer" style={{ color: "var(--ink)" }}>
-                    {it.payload.title}
-                  </a>
-                ) : it.payload.title}
-              </td>
-              <td className="mono" style={{ textTransform: "uppercase", fontSize: 10, color: "var(--ink-dim)" }}>
-                {it.type}
-              </td>
-              <td className="mono" style={{
-                color: IMPACT_COLOR[it.classification?.impact] ?? "var(--ink-dim)",
-                textTransform: "uppercase", fontSize: 11,
-              }}>
-                {it.classification?.impact ?? "—"}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
+  const [items,setItems]=useState<NewsItem[]>([]);
+  const [loading,setLoading]=useState(true), [failed,setFailed]=useState(0);
+  const [updatedAt,setUpdatedAt]=useState<number|null>(null), [revision,setRevision]=useState(0);
+  const [query,setQuery]=useState(""), [kind,setKind]=useState("all");
+  useEffect(()=>{
+    let alive=true, busy=false;
+    const load=async()=>{
+      if(busy)return; busy=true; setLoading(true);
+      const results=await Promise.all(UNIVERSE.flatMap(g=>g.symbols).map(async s=>{
+        const symbol=s.api ?? s.sym;
+        try {
+          const r=await fetch(`/api/intel/classify/${encodeURIComponent(symbol)}?limit=5`,{signal:AbortSignal.timeout(12000)});
+          if(!r.ok)throw new Error();
+          const d=await r.json();
+          if(d.error || !Array.isArray(d.items))throw new Error();
+          return {ok:true,items:d.items.map((it:Omit<NewsItem,"symbol">)=>({...it,symbol:s.sym})) as NewsItem[]};
+        }catch{return {ok:false,items:[] as NewsItem[]};}
+      }));
+      if(alive){setItems(results.flatMap(r=>r.items));setFailed(results.filter(r=>!r.ok).length);setUpdatedAt(results.some(r=>r.ok)?Date.now():null);setLoading(false);}
+      busy=false;
+    };
+    load();const t=setInterval(load,60000);
+    return()=>{alive=false;clearInterval(t);};
+  },[revision]);
+  const grouped=groupNews(items).filter(i=>(kind==="all" || i.type===kind) &&
+    (i.payload?.title+" "+i.symbols.join(" ")+" "+i.source).toLowerCase().includes(query.toLowerCase())).slice(0,40);
+  return <div className="markets-page">
+    <MarketToolbar note="event times below" title="News & events" subtitle="Watchlist headlines and filings · importance classifies event type, not expected price direction" {...{updatedAt,loading,onRefresh:()=>setRevision(n=>n+1)}}>
+      <input aria-label="Search news" placeholder="Search headline or symbol" value={query} onChange={e=>setQuery(e.target.value)} />
+      <select aria-label="News type" value={kind} onChange={e=>setKind(e.target.value)}><option value="all">All types</option><option value="news">News</option><option value="filing">Filings</option></select>
+    </MarketToolbar>
+    {failed>0 && <p className="markets-notice" role="status">{failed} symbol feeds unavailable. Results may be incomplete.</p>}
+    <p className="markets-meta" style={{color:"var(--ink-dim)",fontSize:12}}>Duplicates grouped across symbols · event times shown in your local timezone · up to 40 matching items</p>
+    <div className="markets-table-wrap"><table className="markets-table"><thead><tr><th>Time</th><th>Symbols</th><th>Headline / source</th><th>Type</th><th>Event importance</th></tr></thead><tbody>
+      {!loading && grouped.length===0 && <tr><td colSpan={5} className="markets-empty">{failed ? "News unavailable or no matching results from responding feeds." : "No matching recent items."}</td></tr>}
+      {grouped.map((it,i)=>{
+        const link=safeNewsLink(it.payload?.link), time=Date.parse(it.as_of);
+        const importance=it.classification?.impact;
+        return <tr key={link || i}><td>{Number.isFinite(time)?new Date(time).toLocaleString([],{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit",timeZoneName:"short"}):"Time unavailable"}</td>
+          <td><div className="news-tickers">{it.symbols.map(s=><a href={chartHref(s)} key={s}>{s}</a>)}</div></td>
+          <td className="news-headline">{link ? <a href={link} target="_blank" rel="noopener noreferrer">{it.payload.title || "Untitled item"}</a> : it.payload?.title || "Untitled item"}
+            <span className="news-source">{it.source || (link ? new URL(link).hostname : "Source unavailable")}</span></td>
+          <td>{it.type}</td><td style={{color:importance==="high"?"var(--amber)":"var(--ink-dim)"}}>{importance || "Unclassified"}</td>
+        </tr>;
+      })}
+    </tbody></table></div>
+  </div>;
 }

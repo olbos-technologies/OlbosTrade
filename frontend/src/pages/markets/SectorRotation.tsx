@@ -8,6 +8,7 @@
 import React, { useEffect, useState } from "react";
 import { api } from "../../api/client";
 import { changeColor } from "./universe";
+import { MarketToolbar, chartHref } from "./MarketToolbar";
 
 const TIMEFRAME_LABELS = ["1D", "1W", "1M", "3M"] as const;
 
@@ -48,6 +49,8 @@ function rankChangeCell(rc: number | null): React.ReactNode {
 }
 
 export default function SectorRotation() {
+  const [basis, setBasis] = useState("1M");
+  const [updatedAt, setUpdatedAt] = useState<number | null>(null);
   const [data, setData] = useState<SectorRotationResp | null>(null);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState(false);
@@ -56,6 +59,7 @@ export default function SectorRotation() {
     (api.getSectorRotation() as Promise<SectorRotationResp>)
       .then((d) => {
         setData(d);
+        setUpdatedAt(Date.now());
         setFetchError(false);
         setLoading(false);
       })
@@ -71,23 +75,22 @@ export default function SectorRotation() {
     return () => clearInterval(t);
   }, []);
 
-  const sectors = data?.sectors ?? [];
+  const sectors = [...(data?.sectors ?? [])].sort((a,b) => {
+    const av=a.returns?.[basis], bv=b.returns?.[basis];
+    if(av == null) return bv == null ? a.ticker.localeCompare(b.ticker) : 1;
+    if(bv == null) return -1;
+    return bv-av;
+  });
   const excluded = data?.excluded ?? [];
 
   return (
-    <div style={{ padding: 16, height: "100%", overflowY: "auto" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 14, flexWrap: "wrap" }}>
-        <span className="panel-title">Sector Rotation</span>
-        <span style={{ fontFamily: "var(--mono)", fontSize: 10, color: "var(--ink-faint)" }}>
-          {data?.rank_basis ? `ranked by ${data.rank_basis} return` : "ranked return"} · refreshes every 5m
-        </span>
-        {loading && (
-          <span style={{ marginLeft: "auto", fontFamily: "var(--mono)", fontSize: 10, color: "var(--ink-faint)" }}>
-            loading…
-          </span>
-        )}
-      </div>
-
+    <div className="markets-page">
+      <MarketToolbar note="daily closing bars" title="Sector rotation" subtitle={`Ranked by ${basis} trailing return · refreshes every 5m`} updatedAt={updatedAt} loading={loading} onRefresh={load}>
+        <select aria-label="Ranking period" value={basis} onChange={e=>setBasis(e.target.value)}>
+          {TIMEFRAME_LABELS.map(tf=><option key={tf}>{tf}</option>)}
+        </select>
+      </MarketToolbar>
+      <p style={{fontSize:12,color:"var(--ink-dim)",marginBottom:16}}>Rank change compares the server's {data?.rank_basis || "1M"} ranking with five trading days earlier. Shown only when that ranking period is selected. Return bars cap at 10%.</p>
       {fetchError || data?.error ? (
         <div style={{ padding: "14px 16px", fontFamily: "var(--mono)", fontSize: 11, color: "var(--red)" }}>
           {data?.error ? `Failed to load sector rotation: ${data.error}` : "Failed to load sector rotation."}
@@ -97,8 +100,8 @@ export default function SectorRotation() {
           No sector data available.
         </div>
       ) : (
-        <div style={{ overflowX: "auto", border: "1px solid var(--line-dim)" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: "var(--mono)", fontSize: 12 }}>
+        <div className="markets-table-wrap">
+          <table className="markets-table">
             <thead>
               <tr style={{ borderBottom: "1px solid var(--line-dim)" }}>
                 <th style={{ textAlign: "left", padding: "8px 12px", color: "var(--ink-dim)", fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase" }}>Rank</th>
@@ -112,22 +115,23 @@ export default function SectorRotation() {
               </tr>
             </thead>
             <tbody>
-              {sectors.map(s => (
+              {sectors.map((s,index) => (
                 <tr key={s.ticker} style={{ borderBottom: "1px solid var(--line-dim)" }}>
                   <td style={{ padding: "8px 12px", color: "var(--ink-faint)" }}>
-                    {s.rank ?? "—"}
+                    {s.returns?.[basis] == null ? "—" : index+1}
                   </td>
                   <td style={{ padding: "8px 12px" }}>
-                    <span style={{ fontWeight: 600, color: "var(--ink)" }}>{s.ticker}</span>{" "}
+                    <a className="ticker-link" href={chartHref(s.ticker)}>{s.ticker}</a>{" "}
                     <span style={{ fontSize: 10, color: "var(--ink-dim)" }}>{s.name}</span>
                   </td>
                   {TIMEFRAME_LABELS.map(tf => (
                     <td key={tf} style={{ padding: "8px 12px", textAlign: "right" }}>
                       {pctCell(s.returns?.[tf] ?? null)}
+                      {tf===basis && s.returns?.[tf]!=null && <div className="sector-meter"><div style={{height:"100%",width:`${Math.min(Math.abs(s.returns[tf]!) * 1000,100)}%`,background:changeColor(s.returns[tf]! * 100)}} /></div>}
                     </td>
                   ))}
                   <td style={{ padding: "8px 12px", textAlign: "right" }}>
-                    {rankChangeCell(s.rank_change)}
+                    {rankChangeCell(basis===(data?.rank_basis || "1M") ? s.rank_change : null)}
                   </td>
                 </tr>
               ))}

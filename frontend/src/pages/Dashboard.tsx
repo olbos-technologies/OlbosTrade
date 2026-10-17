@@ -15,6 +15,7 @@ import { usePaperTrade } from "../hooks/usePaperTrade";
 import { useRisk }       from "../hooks/useRisk";
 import ExecutiveSummary  from "../components/ExecutiveSummary";
 import MobileHome from "./MobileHome";
+import CommandAttention, { riskWarnings } from "../components/CommandAttention";
 import ErrorBoundary     from "../components/ErrorBoundary";
 import WelcomeBanner, { WELCOME_DISMISS_KEY } from "../components/WelcomeBanner";
 import MetricHint, { resolveMetricHint } from "../components/MetricHint";
@@ -59,7 +60,7 @@ function EquityChart({ points, loading }: { points: ChartPoint[]; loading: boole
       ctx.fillStyle = "rgba(100,116,139,0.4)";
       ctx.font = "11px 'JetBrains Mono'";
       ctx.textAlign = "center";
-      ctx.fillText("NO TRADE DATA YET — START TRADING TO SEE CURVE", W / 2, H / 2);
+      ctx.fillText("NO CLOSED-TRADE HISTORY AVAILABLE FOR THIS VIEW", W / 2, H / 2);
       return;
     }
 
@@ -234,8 +235,8 @@ function DesktopDashboard() {
   const pv = portfolio?.account_value ?? portfolio?.net_liquidation ?? 0;
   const pvDisplay = pvAvailable ? `$${(pv / 1000).toFixed(2)}k` : (portfolioError ? "UNAVAILABLE" : "—");
   const daily   = guardrailStatus?.daily_pnl   ?? portfolioState?.state?.daily_pnl   ?? portfolio?.total_pnl ?? 0;
-  const weekly  = guardrailStatus?.weekly_pnl  ?? 0;
-  const monthly = guardrailStatus?.monthly_pnl ?? 0;
+  const weekly  = guardrailStatus?.weekly_pnl;
+  const monthly = guardrailStatus?.monthly_pnl;
 
   const [range, setRange]           = useState("ALL");
   const [allPoints, setAllPoints]   = useState<ChartPoint[]>([]);
@@ -359,6 +360,8 @@ function DesktopDashboard() {
         </ErrorBoundary>
       )}
 
+      <CommandAttention guard={guardrailStatus} state={portfolioState?.state} untracked={untrackedPositions.length} portfolioUnavailable={portfolioError || !portfolio} />
+
       {/* Executive summary header */}
       <ErrorBoundary label="Executive Summary">
         <ExecutiveSummary />
@@ -368,47 +371,33 @@ function DesktopDashboard() {
       <div
         className="instrument-stat-strip"
         style={{
-          gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(8, 1fr)",
+          gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(6, minmax(0, 1fr))",
           margin: "0 12px 12px",
         }}
       >
         <StatTile
           variant="divider" size="default"
-          label="Portfolio Value" hint={hintFor("Portfolio Value")}
-          value={pvDisplay}
-          sub={portfolio?.return_pct != null ? `${portfolio.return_pct >= 0 ? "+" : ""}${portfolio.return_pct.toFixed(2)}% all-time` : undefined}
-        />
-        <StatTile
-          variant="divider" size="default"
-          label="Day P&L" hint={hintFor("Day P&L")}
-          value={`${daily >= 0 ? "+" : ""}$${Math.abs(daily).toLocaleString("en-US", { maximumFractionDigits: 0 })}`}
-          sub={portfolio?.win_rate != null ? `Win rate: ${(portfolio.win_rate * 100).toFixed(1)}%` : undefined}
-          tone={daily >= 0 ? "var(--green)" : "var(--red)"}
-          spark={dayPnlSpark}
-        />
-        <StatTile
-          variant="divider" size="default"
-          label="Week P&L" hint={hintFor("Week P&L")}
-          value={`${weekly >= 0 ? "+" : ""}$${Math.abs(weekly).toLocaleString("en-US", { maximumFractionDigits: 0 })}`}
+          label="Desk week P&L" hint={hintFor("Week P&L")}
+          value={typeof weekly === "number" ? `${weekly >= 0 ? "+" : "−"}$${Math.abs(weekly).toLocaleString("en-US", { maximumFractionDigits: 0 })}` : "—"}
           tone={weekly >= 0 ? "var(--green)" : "var(--red)"}
         />
         <StatTile
           variant="divider" size="default"
-          label="Month P&L" hint={hintFor("Month P&L")}
-          value={`${monthly >= 0 ? "+" : ""}$${Math.abs(monthly).toLocaleString("en-US", { maximumFractionDigits: 0 })}`}
+          label="Desk month P&L" hint={hintFor("Month P&L")}
+          value={typeof monthly === "number" ? `${monthly >= 0 ? "+" : "−"}$${Math.abs(monthly).toLocaleString("en-US", { maximumFractionDigits: 0 })}` : "—"}
           tone={monthly >= 0 ? "var(--green)" : "var(--red)"}
         />
         <StatTile variant="divider" size="default" label="Buying Power" hint={hintFor("Buying Power")}
           value={portfolio?.buying_power != null ? `$${(portfolio.buying_power / 1000).toFixed(1)}k` : "—"} />
         <StatTile variant="divider" size="default" label="Net Delta" hint={hintFor("Net Delta")}
-          value={(greeks?.net_delta || 0).toFixed(3)} />
+          value={typeof greeks?.net_delta === "number" ? greeks.net_delta.toFixed(3) : "—"} />
         <StatTile variant="divider" size="default" label="Net Theta (daily)" hint={hintFor("Net Theta (daily)")}
-          value={(greeks?.net_theta || 0).toFixed(3)} tone="var(--cyan)" />
+          value={typeof greeks?.net_theta === "number" ? greeks.net_theta.toFixed(3) : "—"} tone="var(--cyan)" />
         <StatTile
           variant="divider" size="default"
-          label="Open Positions" hint={hintFor("Open Positions")}
-          value={String(portfolio?.open_positions ?? managedPositions.length)}
-          sub={untrackedPositions.length > 0 ? `+${untrackedPositions.length} untracked` : undefined}
+          label="Managed positions" hint={hintFor("Open Positions")}
+          value={portfolio && !portfolioError ? String(managedPositions.length) : "—"}
+          sub={untrackedPositions.length > 0 ? `${untrackedPositions.length} untracked broker holdings` : "Olbos-managed positions only"}
         />
       </div>
 
@@ -492,7 +481,7 @@ function DesktopDashboard() {
           <div style={{ borderBottom: "1px solid var(--line-dim)" }}>
             <div className="panel-head">
               <span className="panel-title">Guardrails</span>
-              <span className={`dot ${guardrailStatus?.trading_allowed ? "live" : "dead"}`} />
+              <span className={`dot ${guardrailStatus?.trading_allowed === true && riskWarnings(guardrailStatus, portfolioState?.state).length === 0 ? "live" : "dead"}`} title="Entry checks, independent of execution mode" />
             </div>
             <div style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
               {[

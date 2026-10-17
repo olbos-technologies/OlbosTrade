@@ -19,6 +19,7 @@ import MetricHint, { resolveMetricHint } from "../components/MetricHint";
 import { Panel, StatTile, Badge, Button } from "../components/ui";
 import CandlestickChart from "../components/CandlestickChart";
 import { tint } from "../utils/tint";
+import "./markets/Markets.css";
 
 type Timeframe = "5m" | "15m" | "1h" | "1d";
 
@@ -196,7 +197,11 @@ export default function ChartWorkstation({
   const { positions, portfolio } = usePaperTrade();
   const { guardrailStatus, reconciliation, killSwitch } = useRisk();
 
-  const [internalSymbol, setInternalSymbol] = useState(controlledSymbol || "AAPL");
+  const [internalSymbol, setInternalSymbol] = useState(() => {
+    const requested = new URLSearchParams(window.location.search).get("symbol")?.toUpperCase();
+    return controlledSymbol || (requested && /^[A-Z0-9.^=:-]{1,20}$/.test(requested) ? requested : "AAPL");
+  });
+  const [focusChart, setFocusChart] = useState(false);
   const symbol = controlledSymbol ?? internalSymbol;
   const setSymbol = (next: string) => {
     if (controlledSymbol === undefined) setInternalSymbol(next);
@@ -361,14 +366,18 @@ export default function ChartWorkstation({
       ].filter((level) => level.value > 0);
 
   const actionableSignals = signals.filter((item) => item.action !== "HOLD");
-  const netLiq = portfolio?.account_value ?? portfolio?.starting_capital ?? 0;
-  const dayPnl = guardrailStatus?.daily_pnl ?? portfolio?.total_pnl ?? 0;
+  const netLiq = portfolio?.account_value ?? portfolio?.net_liquidation;
+  const dayPnl = guardrailStatus?.daily_pnl;
   const execDisplay = formatExecutionModeDisplay(execMode, Boolean(killSwitch?.active));
   const planTitle = tradePlanCardTitle(Boolean(selectedSignal), selectedSignal?.source);
 
   return (
     <div style={{ padding: compact ? 0 : 16, display: "flex", flexDirection: "column", gap: 14, height: compact ? "100%" : undefined }}>
-      {!compact && (
+      {!compact && <div className="markets-toolbar" style={{marginBottom:0}}>
+        <div><div className="markets-kicker">MARKET INTELLIGENCE</div><h1>Chart workspace</h1><p>Signal direction and model score are research inputs, not permission to execute.</p></div>
+        <div className="markets-controls"><button aria-pressed={focusChart} onClick={()=>setFocusChart(v=>!v)}>{focusChart ? "Show research panels" : "Focus chart"}</button></div>
+      </div>}
+      {!compact && !focusChart && (
       <div style={{
         display: "grid",
         gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
@@ -376,17 +385,17 @@ export default function ChartWorkstation({
       }} className="workstation-top-strip">
         {[
           { label: execDisplay.label, value: execDisplay.value, tone: execDisplay.tone },
-          { label: "Day P&L", value: fmtSigned(dayPnl), tone: dayPnl >= 0 ? "var(--green)" : "var(--red)" },
-          { label: "Portfolio", value: fmtMoney(netLiq, 2), tone: "var(--cyan)" },
-          { label: "Reconciliation", value: reconciliation?.clean ? "CLEAN" : "WATCH", tone: reconciliation?.clean ? "var(--green)" : "var(--amber)" },
+          { label: "Day P&L", value: typeof dayPnl === "number" ? fmtSigned(dayPnl) : "—", tone: dayPnl >= 0 ? "var(--green)" : "var(--red)" },
+          { label: "Portfolio", value: typeof netLiq === "number" ? fmtMoney(netLiq, 2) : "—", tone: "var(--cyan)" },
+          { label: "Reconciliation", value: !reconciliation ? "UNAVAILABLE" : reconciliation.clean ? "CLEAN" : "REVIEW", tone: reconciliation?.clean ? "var(--green)" : "var(--amber)" },
         ].map((item) => (
           <StatTile key={item.label} variant="boxed" label={item.label} hint={hintFor(item.label)} value={item.value} tone={item.tone} />
         ))}
       </div>
       )}
 
-      <div className="workstation-grid" style={compact ? { gridTemplateColumns: "1fr", flex: 1, minHeight: 0 } : undefined}>
-        {!compact && (
+      <div className="workstation-grid" style={compact || focusChart ? { gridTemplateColumns: "1fr", flex: 1, minHeight: 0 } : undefined}>
+        {!compact && !focusChart && (
         <div className="workstation-col">
           <Panel title="Market Watch" sectionStyle={{ overflow: "hidden" }}>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -522,7 +531,7 @@ export default function ChartWorkstation({
                     : <span style={{ color: "var(--ink-dim)" }}>NO SIGNAL</span>}
                 />
                 {[
-                  { label: "Confidence", value: selectedSignal ? `${Math.round(selectedSignal.confidence * 100)}%` : "—", tone: "var(--amber)" },
+                  { label: "Model score", value: selectedSignal ? `${Math.round(selectedSignal.confidence * 100)}%` : "—", tone: "var(--amber)" },
                   { label: "IV Rank", value: ivRank?.iv_rank != null ? `${Math.round(ivRank.iv_rank)}` : "—", tone: "var(--cyan)" },
                   { label: "RSI", value: selectedSignal?.indicators?.rsi != null ? selectedSignal.indicators.rsi.toFixed(1) : "—", tone: "var(--ink)" },
                   { label: "Volume x", value: selectedSignal?.indicators?.volume_ratio != null ? selectedSignal.indicators.volume_ratio.toFixed(2) : "—", tone: "var(--ink)" },
@@ -609,7 +618,7 @@ export default function ChartWorkstation({
           )}
         </div>
 
-        {!compact && (
+        {!compact && !focusChart && (
         <div className="workstation-col workstation-right">
           <SetupScannerPanel />
           <Panel
@@ -622,8 +631,8 @@ export default function ChartWorkstation({
                 padding: "10px 12px",
               }}>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-                  <span style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--green)" }}>
-                    Macro {regime?.equity_allowed ? "BULL" : "PAUSED"}
+                  <span style={{ fontFamily: "var(--mono)", fontSize: 11, color: regime?.equity_allowed === true ? "var(--green)" : "var(--amber)" }}>
+                    Macro {regime?.equity_allowed === true ? "ENTRIES ALLOWED" : regime?.equity_allowed === false ? "PAUSED" : "UNVERIFIED"}
                   </span>
                   <span style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--ink-dim)" }}>
                     VIX {regime?.vix != null ? regime.vix.toFixed(1) : "—"}
