@@ -23,8 +23,8 @@ for (const width of [820, 1280, 1971]) {
 
     const headerBox = await ticker.boundingBox();
     const groupBox = await group.boundingBox();
-    const stateBox = await ticker.getByTestId("exec-mode-state").boundingBox();
-    for (const box of [groupBox!, stateBox!]) {
+    await expect(ticker.getByTestId("exec-mode-state")).toHaveCount(0);
+    for (const box of [groupBox!]) {
       expect(box.y).toBeGreaterThanOrEqual(headerBox!.y);
       expect(box.y + box.height).toBeLessThanOrEqual(headerBox!.y + headerBox!.height);
       expect(box.x).toBeGreaterThanOrEqual(headerBox!.x);
