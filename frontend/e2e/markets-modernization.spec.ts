@@ -38,6 +38,12 @@ test("Command Center prioritizes an actual weekly loss breach",async({page})=>{
 
 test("chart symbol links and focus mode keep the chart available",async({page})=>{
   await stubBackend(page);
+  // The shell helper deliberately returns malformed empty objects. For the
+  // chart itself, model unavailable services as failures, so its own catch
+  // paths render honest unknown states instead of invalid successful payloads.
+  await page.route("**/api/**", r => r.fulfill(r.request().url().includes("/api/auth/status")
+    ? reply({auth_enabled:false,authenticated:false,user:null})
+    : {status:503,contentType:"application/json",body:"{}"}));
   await page.setViewportSize({width:1440,height:1000});
   await page.goto("/terminal/markets/chart?symbol=MSFT");
   await expect(page.getByRole("heading",{name:"Chart workspace"})).toBeVisible();
