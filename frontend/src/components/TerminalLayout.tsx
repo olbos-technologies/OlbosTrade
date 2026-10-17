@@ -901,7 +901,10 @@ function TickerStrip({ onToggle, sidebarExpanded, isMobile }: {
     <div className="instrument-ticker" style={{
       display: "flex",
       alignItems: "center",
-      height: 38,
+      // The mode control includes a visible state sentence (and may show a
+      // warning); a fixed 38px row clipped its buttons above the header.
+      minHeight: 38,
+      padding: "4px 0",
       fontFamily: "var(--mono)",
       fontSize: 11,
       flexShrink: 0,
