@@ -1,0 +1,73 @@
+/* Mobile Home is mounted only at the existing phone breakpoint. */
+.mobile-home {
+  --mh-secondary: #b7c5d8;
+  --mh-label: #99adc7;
+  width: 100%;
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 18px 14px 24px;
+  box-sizing: border-box;
+  color: #e8eef7;
+  font-family: var(--sans);
+  font-variant-numeric: tabular-nums;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.mobile-home *, .mobile-home *::before, .mobile-home *::after { box-sizing: border-box; }
+.mh-heading, .mh-line { display: flex; justify-content: space-between; align-items: center; gap: 10px; min-width: 0; }
+.mh-heading h1 { font-family: var(--sans); font-size: 27px; line-height: 1.2; letter-spacing: -.04em; margin: 4px 0 0; font-weight: 650; }
+.mh-eyebrow { color: var(--mh-label); font-size: 10px; font-weight: 650; letter-spacing: .12em; }
+.mh-card {
+  flex-shrink: 0;
+  min-width: 0;
+  border: 1px solid #263449;
+  border-radius: 16px;
+  padding: 15px;
+  background: linear-gradient(145deg, #131e30, #0e1623 75%);
+  box-shadow: 0 4px 16px rgba(0,0,0,.15);
+}
+.mobile-home p { margin: 8px 0 0; font-size: 12px; line-height: 1.55; overflow-wrap: anywhere; }
+.mobile-home button, .mobile-home summary {
+  min-height: 44px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.mobile-home button:focus-visible, .mobile-home summary:focus-visible { outline: 2px solid #79adff; outline-offset: 3px; }
+.mobile-home button:disabled { opacity: .6; cursor: default; }
+.mh-icon-button { width: 44px; border: 1px solid #30415b; border-radius: 50%; background: #142237; color: #dce9ff; font-size: 23px !important; }
+.mh-status { padding: 12px 15px; border-left: 3px solid #629fff; }
+.mh-status strong { font-size: 12px; letter-spacing: .05em; }
+.mh-environment { font-size: 10px; color: var(--mh-secondary); text-align: right; overflow-wrap: anywhere; }
+.mh-status p { font-size: 11px; margin-top: 5px; }
+.mh-account { padding: 20px 17px 15px; background: radial-gradient(ellipse at top right, #1c3555, transparent 75%), #101c2c; border-color: #355174; }
+.mh-balance { font-size: clamp(26px, 8vw, 38px); line-height: 1.2; letter-spacing: -.045em; font-weight: 650; margin: 12px 0 18px; overflow-wrap: anywhere; }
+.mh-pnl-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px; }
+.mh-pnl-grid > div { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.mh-pnl-grid strong { font-size: 15px; overflow-wrap: anywhere; }
+.mobile-home .mh-muted { color: var(--mh-secondary); font-size: 11px; }
+.mobile-home .mh-warning { color: #f6c565; }
+.mobile-home .mh-negative { color: #ff8c96; }
+.mobile-home .mh-positive { color: #70d9a2; }
+.mh-section-title { font-size: 13px; font-weight: 650; letter-spacing: .01em; }
+.mh-counts { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; margin: 14px 0 8px; }
+.mh-counts > div { padding: 12px; border-radius: 10px; background: #18263a; display: flex; flex-direction: column; gap: 4px; }
+.mh-counts strong { font-size: 27px; font-weight: 600; line-height: 1.1; }
+.mh-counts span { font-size: 10px; color: var(--mh-secondary); }
+.mh-primary, .mh-secondary { display: flex; justify-content: center; align-items: center; gap: 12px; width: 100%; border-radius: 10px; padding: 10px 12px; margin-top: 12px; }
+.mh-primary { background: #2258a1; color: #fff; border: 1px solid #5487ca; }
+.mh-secondary { background: #1a2a40; color: #e5effe; border: 1px solid #40587b; }
+.mh-link { display: flex; justify-content: space-between; align-items: center; width: 100%; gap: 10px; padding: 9px 0 0; border: 0; background: transparent; color: #9fc5ff; text-align: left; }
+.mh-position { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 13px 0; border-bottom: 1px solid #253247; font-size: 12px; }
+.mh-position > div { min-width: 0; }
+.mh-position span { display: block; color: var(--mh-secondary); margin-top: 4px; font-size: 10px; overflow-wrap: anywhere; }
+.mh-position strong { overflow-wrap: anywhere; }
+.mh-position > strong { flex-shrink: 0; }
+.mh-emergency { border-top: 1px solid #304058; margin-top: 10px; padding-top: 5px; }
+.mh-emergency summary { color: #ffadb5; display: list-item; align-content: center; padding: 12px 0; }
+.mh-emergency .instrument-halt { min-height: 44px !important; margin-top: 12px; }
+@media (prefers-reduced-motion: reduce) { .mobile-home * { scroll-behavior: auto; transition: none !important; } }
+

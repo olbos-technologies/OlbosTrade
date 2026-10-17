@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased — Refined mobile Home
+
+- Phones open a compact Home with broker account value, separately labelled trade P&L, recent/older approval counts, positions, and reliable stop-coverage states.
+- Independent reads expose loading, unavailable, and stale data. Queue age is advisory and does not bypass approval validation.
+- Stop automation uses the existing Manual-mode API and reports persistence failures. Emergency controls reuse the existing kill-switch confirmation. Desktop dashboard and navigation remain intact.
+- Frontend-only: no migration, environment-variable changes, or nginx regeneration.
+
 ## Unreleased — Adopted positions are counted as money, separated as attribution
 
 **No migration. No new environment variables.** Performance payloads gain
@@ -43,6 +50,7 @@ Measured on production, three months of paper trading:
 - **Risk still counts them.** Exposure, portfolio heat, concurrent-position
   limits, reconciliation and the kill switch are untouched. A guard test
   pins that those modules never learned about this distinction.
+
 
 ## Unreleased — Background workers run per owner (Batch E2 steps 4 and 6)
 
