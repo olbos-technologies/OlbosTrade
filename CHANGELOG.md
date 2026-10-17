@@ -1,37 +1,48 @@
 # Changelog
 
-## Unreleased — Adopted positions no longer count as strategy performance
+## Unreleased — Adopted positions are counted as money, separated as attribution
 
-**No migration. No new environment variables.** Performance figures will
-change on the next deploy — that is the point of the change.
+**No migration. No new environment variables.** Performance payloads gain
+fields; no existing figure changes meaning.
 
 Measured on production, three months of paper trading:
 
 | strategy | n | total P&L | win % |
 |---|---|---|---|
-| `equity` | 43 | **+3,163.51** | 53.5 |
-| `adopted_untracked` | 25 | **−4,263.07** | 48.0 |
-| combined (what was reported) | 68 | −1,099.56 | 51.5 |
+| `equity` (the desk's own decisions) | 43 | **+3,163.51** | 53.5 |
+| `adopted_untracked` (inherited from the broker) | 25 | **−4,263.07** | 48.0 |
+| combined — the account's actual result | 68 | **−1,099.56** | 51.5 |
 
 - The reconciler's adopt path writes a Trade for every live broker position
-  with no DB record, so the guardrails can see it. Those rows are real
-  positions, but their `entry_date`, strikes and `credit_received` are
-  **discovery-time placeholders** — the adopt path says so in its own log.
-  P&L against an invented basis measures how far a position moved since
-  somebody noticed it, not the result of a decision.
-- They were 37% of closed rows and **inverted the sign** of the headline
-  number the desk steers by.
-- `compute_performance` now sets them aside, so every caller is correct by
-  default, and `/api/paper-trade/portfolio` excludes them from win rate and
-  total P&L. `strategy_health` no longer grades `adopted_untracked` — it is
-  not a strategy anyone can choose, and `meta_strategy` reads those grades.
-- **Nothing is dropped silently.** `adopted_positions`, `adopted_pnl` and
-  `adopted_excluded` travel with the figures, as `unmeasured_trades` already
-  does. `/portfolio` returns `adopted_closed_excluded`.
+  with no DB record, so the guardrails can see it. No strategy chose those
+  positions, so **no strategy can be graded on them** — `strategy_health` no
+  longer grades `adopted_untracked`, which matters because `meta_strategy`
+  reads those grades and would tilt allocation on a score for something
+  nobody can choose to trade.
+- **Their P&L is real money and stays in every total.** An earlier draft of
+  this change excluded it, on the belief that the cost basis was invented.
+  That was wrong: the adopt path writes `pos.avg_cost` — the broker's real
+  average cost basis — into `credit_received`, which is exactly what equity
+  P&L is computed from. Only `entry_date` and the strike fields are
+  placeholders, so attribution and any duration statistic are unsafe on
+  these rows while the dollars are not.
+- Excluding them would have reported **+3,163 on an account that was down
+  1,099**: a sign flip on the number the desk steers by, in the direction
+  that reads as "we are fine" while capital drains. A real-PostgreSQL test
+  on `/api/paper-trade/portfolio` now pins the inclusive total, because that
+  endpoint builds its own SQL and the unit tests did not cover it — which is
+  how the bug reached a branch in the first place.
+- `compute_performance` and `/api/paper-trade/portfolio` now report the
+  split alongside the totals: `attributable_trades`, `attributable_pnl`,
+  `adopted_positions`, `adopted_pnl`, `adopted_present`, and
+  `adopted_closed` / `adopted_closed_pnl` respectively. The desk's decisions
+  and the account are different questions, and on this book they gave
+  opposite answers.
+- **Nothing is dropped silently**, the way `unmeasured_trades` already
+  travels with performance and `heat_overstated` with portfolio heat.
 - **Risk still counts them.** Exposure, portfolio heat, concurrent-position
-  limits, reconciliation and the kill switch are untouched: the capital is
-  genuinely committed. A guard test pins that those modules never learned
-  about this distinction.
+  limits, reconciliation and the kill switch are untouched. A guard test
+  pins that those modules never learned about this distinction.
 
 ## Unreleased — Background workers run per owner (Batch E2 steps 4 and 6)
 

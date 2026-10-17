@@ -93,17 +93,22 @@ def _trade_drawdowns(pnls: list[float], starting_capital: float,
     return out
 
 
-def _adopted_block(adopted: list, adopted_pnls: list) -> dict:
-    """What was set aside, so excluding it is visible rather than silent.
+def _attribution_block(adopted_pnls: list, attributable_pnls: list) -> dict:
+    """How the totals above split between chosen and inherited positions.
 
-    `adopted_pnl` is the movement of those positions since they were noticed.
-    It is NOT a strategy result and must never be added to `total_pnl` — the
-    entry price it is measured from was invented at discovery time.
+    Both halves are already counted in `total_pnl` and in every other figure
+    here: an adopted position's P&L is correct arithmetic on the broker's real
+    cost basis, so it is real money (see trade_attribution). This breaks the
+    total down so a caller can say "the desk's decisions made X while
+    inherited positions made Y" — never so it can report X alone as the
+    result. Counts cover measured rows only, matching the sums beside them.
     """
     return {
-        "adopted_positions": len(adopted),
-        "adopted_pnl": round(float(sum(adopted_pnls)), 2) if adopted_pnls else 0.0,
-        "adopted_excluded": bool(adopted),
+        "attributable_trades": len(attributable_pnls),
+        "attributable_pnl": round(float(sum(attributable_pnls)), 2),
+        "adopted_positions": len(adopted_pnls),
+        "adopted_pnl": round(float(sum(adopted_pnls)), 2),
+        "adopted_present": bool(adopted_pnls),
     }
 
 
@@ -120,9 +125,11 @@ def _empty() -> dict:
         "unmeasured_trades": 0,
         "measured_pct": 100.0,
         "performance_incomplete": False,
+        "attributable_trades": 0,
+        "attributable_pnl": 0.0,
         "adopted_positions": 0,
         "adopted_pnl": 0.0,
-        "adopted_excluded": False,
+        "adopted_present": False,
     }
 
 
@@ -141,22 +148,28 @@ def compute_performance(trades: list[dict], starting_capital: float,
     got. So the count travels with the numbers instead, the same way
     heat_overstated travels with portfolio heat.
     """
-    # Reconciler-adopted positions are excluded from every figure below,
-    # because their cost basis is a discovery-time placeholder rather than a
-    # real entry — see trade_attribution. They are counted and returned, not
-    # dropped: on production they were 25 of 68 rows and flipped the sign of
-    # the headline P&L, so a caller that hid them would be swapping one
-    # misleading number for another.
+    # Reconciler-adopted positions are INCLUDED in every figure below. Their
+    # P&L is computed from the broker's real average cost basis, so it is real
+    # money and belongs in an account-level total; only attribution and
+    # anything derived from entry_date are unsafe on those rows (see
+    # trade_attribution). They are broken out alongside, because no strategy
+    # chose them and the desk needs to see when its decisions and its account
+    # disagree — on production, +3,163 against -1,099.
     #
     # A caller that does not pass `strategy` is unaffected: nothing matches,
-    # and the partition is a no-op.
+    # the partition puts everything in `attributable`, and the breakdown
+    # degenerates to "all of it was chosen", which is the right answer absent
+    # evidence otherwise.
     from app.services.trade_attribution import partition
 
     attributable, adopted = partition(trades)
     adopted_pnls = [float(t["pnl"]) for t in adopted if t.get("pnl") is not None]
+    attributable_pnls = [
+        float(t["pnl"]) for t in attributable if t.get("pnl") is not None
+    ]
 
-    total_submitted = len(attributable)
-    rows = [t for t in attributable if t.get("pnl") is not None]
+    total_submitted = len(trades)
+    rows = [t for t in trades if t.get("pnl") is not None]
     unmeasured = total_submitted - len(rows)
     if not rows:
         out = _empty()
@@ -165,7 +178,7 @@ def compute_performance(trades: list[dict], starting_capital: float,
         out["unmeasured_trades"] = unmeasured
         out["measured_pct"] = 0.0 if unmeasured else 100.0
         out["performance_incomplete"] = unmeasured > 0
-        out.update(_adopted_block(adopted, adopted_pnls))
+        out.update(_attribution_block(adopted_pnls, attributable_pnls))
         return out
 
     pnls = [float(t["pnl"]) for t in rows]
@@ -226,7 +239,7 @@ def compute_performance(trades: list[dict], starting_capital: float,
         "unmeasured_trades": unmeasured,
         "measured_pct": round(len(rows) / total_submitted * 100, 1),
         "performance_incomplete": unmeasured > 0,
-        **_adopted_block(adopted, adopted_pnls),
+        **_attribution_block(adopted_pnls, attributable_pnls),
     }
 
 

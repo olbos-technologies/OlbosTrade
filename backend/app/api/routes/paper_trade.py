@@ -89,28 +89,28 @@ async def get_portfolio(conn: HTTPConnection):
             # in the denominator would understate the win rate (a NULL is never a
             # win) and misrepresent total trades.
             org_id = await scope_or_401(session, conn)
-            # Reconciler-adopted positions are excluded from win rate and
-            # total P&L. Their cost basis is a discovery-time placeholder, so
-            # the "P&L" is how far the position moved since somebody noticed
-            # it, not a result. On production they were 25 of 68 closed rows
-            # and turned a +3,163 strategy into a -1,099 headline. They are
-            # counted separately below rather than hidden — see
-            # trade_attribution.
+            # Reconciler-adopted positions are INCLUDED here. Their P&L is
+            # computed from the broker's real average cost basis, so it is
+            # real money and belongs in the account's headline total; leaving
+            # it out would have reported +3,163 on a book that was actually
+            # down 1,099. They are broken out below, because no strategy chose
+            # them — see trade_attribution.
             stats = (await session.execute(
                 select(
                     func.count(Trade.id).label("count"),
                     func.coalesce(func.sum(Trade.pnl), 0).label("total_pnl"),
                     func.coalesce(func.sum(case((Trade.pnl > 0, 1), else_=0)), 0).label("wins"),
-                ).where(owned_by(org_id), Trade.status == "closed",
-                        Trade.pnl.isnot(None),
-                        func.coalesce(Trade.strategy, "") != ADOPTED_STRATEGY)
+                ).where(owned_by(org_id), Trade.status == "closed", Trade.pnl.isnot(None))
             )).one()
 
-            adopted_closed = (await session.execute(
-                select(func.count(Trade.id)).where(
-                    owned_by(org_id), Trade.status == "closed",
-                    func.coalesce(Trade.strategy, "") == ADOPTED_STRATEGY)
-            )).scalar() or 0
+            adopted = (await session.execute(
+                select(
+                    func.count(Trade.id).label("count"),
+                    func.coalesce(func.sum(Trade.pnl), 0).label("pnl"),
+                ).where(owned_by(org_id), Trade.status == "closed",
+                        Trade.pnl.isnot(None),
+                        func.coalesce(Trade.strategy, "") == ADOPTED_STRATEGY)
+            )).one()
 
             today = date.today()
             trades_today = (await session.execute(
@@ -140,10 +140,13 @@ async def get_portfolio(conn: HTTPConnection):
             "open_positions":   open_count,
             "trades_today":     trades_today,
             "starting_capital": settings.starting_capital,
-            # Real positions, excluded from the figures above because their
-            # entry price was invented at discovery. open_positions still
-            # counts them: the capital is genuinely at risk.
-            "adopted_closed_excluded": adopted_closed,
+            # Positions the reconciler inherited from the broker rather than
+            # the desk choosing them. Counted in the figures above — real
+            # capital, realised P&L — and reported here because no strategy
+            # can be graded on them, so "the account" and "our decisions" are
+            # different questions with different answers.
+            "adopted_closed":     adopted.count,
+            "adopted_closed_pnl": round(float(adopted.pnl), 2),
             "return_pct":       (
                 round((acct_value - settings.starting_capital) / settings.starting_capital * 100, 2)
                 if acct_value is not None else None

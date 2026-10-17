@@ -1,7 +1,6 @@
-"""Adopted positions are kept out of strategy performance, and said so.
+"""Adopted positions are counted as money and separated as attribution.
 
-The failure this prevents was measured on production (2026-10-17, three
-months of paper trading):
+Measured on production (2026-10-17, three months of paper trading):
 
     strategy            n    total P&L    win %
     equity             43    +3,163.51     53.5
@@ -9,27 +8,30 @@ months of paper trading):
     ------------------------------------------
     combined           68    -1,099.56     51.5
 
-The desk concluded it was losing money. The strategy was positive. 37% of the
-rows were positions the reconciler adopted from the broker, whose entry price,
-strikes and entry date are discovery-time placeholders — `main`'s own adopt
-path logs them as "placeholders, not real historical entry data". P&L against
-an invented basis measures how far a position moved since somebody noticed it.
+The first version of this module got the reason wrong and the behaviour with
+it. It claimed the adopted rows' cost basis was invented and excluded their
+P&L from every total, which would have reported +3,163 on a book that was
+really down 1,099. **That is the more dangerous of the two possible errors**
+— it reads as "we are fine" while capital drains — and this file now pins
+against it.
 
-So this is not cosmetic: on the real book it inverted the sign of the number
-the whole operation is steered by.
+The adopt path writes `pos.avg_cost` into `credit_received`, and equity P&L
+is computed from `credit_received`. `avg_cost` is the broker's real average
+cost basis, so an adopted equity position's P&L is correct arithmetic on real
+money. What IS a placeholder is `entry_date` and the strike fields.
 
-Two properties, and the second matters as much as the first:
+So the split is about attribution, not arithmetic:
 
-1. Adopted rows are excluded from win rate, expectancy and total P&L.
-2. They are REPORTED, not dropped. The repo already works this way —
-   `unmeasured_trades` travels with performance, `heat_overstated` with
-   portfolio heat — because silently excluding 25 of 68 rows replaces one
-   misleading number with another.
+1. Adopted P&L is IN total_pnl, win rate and expectancy. It is real.
+2. It is also broken out, because no strategy chose those positions — the
+   desk's decisions and the account can disagree, and on production they did.
+3. Nothing is dropped silently, the way `unmeasured_trades` travels with
+   performance and `heat_overstated` with portfolio heat.
 
 What is NOT tested here, deliberately, because it must not change: adopted
 positions still count for exposure, heat, concurrent-position limits and
-reconciliation. The capital is real. `trade_attribution` is imported by none
-of those paths, and `test_risk_paths_still_count_adopted_positions` pins that.
+reconciliation. `trade_attribution` is imported by none of those paths, and
+`test_risk_paths_still_count_adopted_positions` pins that.
 """
 from __future__ import annotations
 
@@ -74,69 +76,99 @@ def test_partition_returns_both_halves():
     assert len(a) == 2 and len(d) == 1
 
 
-# ── the number that was wrong ────────────────────────────────────────────
+# ── the number that was wrong, and the regression that must not return ──
 
-def test_an_adopted_loss_does_not_flip_the_headline():
-    """Production's exact shape, scaled down: a positive strategy and a
-    larger adopted loss. Before this, the sum was reported as the result."""
+def test_an_adopted_loss_is_in_the_headline_total():
+    """Production's exact shape: a positive strategy and a larger adopted
+    loss. The headline is the account's result, so it is negative."""
     trades = [_t("equity", 3163.51)] + [_t(ADOPTED_STRATEGY, -4263.07)]
 
     out = compute_performance(trades, CAPITAL)
 
-    assert out["total_pnl"] == 3163.51, (
-        f"total_pnl={out['total_pnl']} — the adopted position's placeholder "
-        f"basis is being counted as strategy performance"
+    assert out["total_pnl"] == -1099.56, (
+        f"total_pnl={out['total_pnl']} — an adopted position's P&L is real "
+        f"money off the broker's own cost basis; dropping it reports a "
+        f"profit on a losing book"
     )
-    assert out["total_trades"] == 1
-    assert out["win_rate"] == 1.0
+    assert out["total_trades"] == 2
+    assert out["attributable_pnl"] == 3163.51
+    assert out["adopted_pnl"] == -4263.07
 
 
-def test_the_exclusion_is_reported_not_silent():
+def test_the_headline_is_never_just_the_attributable_half():
+    """The specific regression: excluding adopted rows from the total.
+
+    Asserted as an inequality rather than a value so it keeps biting if the
+    numbers change — any book where the two halves have opposite signs must
+    report a headline different from its attributable half.
+    """
+    out = compute_performance(
+        [_t("equity", 500), _t(ADOPTED_STRATEGY, -900)], CAPITAL)
+
+    assert out["attributable_pnl"] == 500.0
+    assert out["total_pnl"] == -400.0
+    assert out["total_pnl"] != out["attributable_pnl"]
+    assert out["total_pnl"] == out["attributable_pnl"] + out["adopted_pnl"]
+
+
+def test_the_split_is_reported_not_silent():
     out = compute_performance(
         [_t("equity", 100), _t(ADOPTED_STRATEGY, -500)], CAPITAL)
 
     assert out["adopted_positions"] == 1
     assert out["adopted_pnl"] == -500.0
-    assert out["adopted_excluded"] is True
+    assert out["attributable_trades"] == 1
+    assert out["attributable_pnl"] == 100.0
+    assert out["adopted_present"] is True
 
 
 def test_a_book_with_no_adopted_rows_says_so():
     out = compute_performance([_t("equity", 100)], CAPITAL)
     assert out["adopted_positions"] == 0
-    assert out["adopted_excluded"] is False
+    assert out["adopted_pnl"] == 0.0
+    assert out["adopted_present"] is False
+    assert out["attributable_pnl"] == out["total_pnl"]
 
 
-def test_win_rate_and_expectancy_use_only_attributable_rows():
-    # 2 strategy wins, and 3 adopted losses that must not drag the rate down.
+def test_win_rate_and_expectancy_cover_the_whole_account():
+    """Account-level statistics include inherited positions: the losses were
+    taken, whoever chose them."""
     trades = [_t("equity", 100), _t("equity", 300)] + [
         _t(ADOPTED_STRATEGY, -1000) for _ in range(3)]
 
     out = compute_performance(trades, CAPITAL)
 
-    assert out["win_rate"] == 1.0, f"win_rate={out['win_rate']}"
-    assert out["expectancy"] == 200.0
-    assert out["losses"] == 0
+    assert out["total_trades"] == 5
+    assert out["win_rate"] == 0.4
+    assert out["losses"] == 3
+    assert out["total_pnl"] == -2600.0
+    assert out["attributable_pnl"] == 400.0
     assert out["adopted_positions"] == 3
 
 
-def test_an_all_adopted_book_is_empty_performance_not_a_loss():
-    """The edge that would otherwise divide by zero, and the one most likely
-    to read as a catastrophic desk."""
+def test_an_all_adopted_book_reports_its_real_loss():
+    """A book of nothing but inherited positions still lost the money.
+
+    The first version returned total_pnl 0.0 here, which is the worst case of
+    the bug: a 20,000 loss rendered as a flat desk with nothing to see.
+    """
     out = compute_performance([_t(ADOPTED_STRATEGY, -5000) for _ in range(4)],
                               CAPITAL)
 
-    assert out["total_trades"] == 0
-    assert out["total_pnl"] == 0.0
+    assert out["total_trades"] == 4
+    assert out["total_pnl"] == -20000.0
     assert out["adopted_positions"] == 4
     assert out["adopted_pnl"] == -20000.0
-    assert out["adopted_excluded"] is True
+    assert out["attributable_trades"] == 0
+    assert out["attributable_pnl"] == 0.0
+    assert out["adopted_present"] is True
 
 
 # ── callers that predate this must be unaffected ─────────────────────────
 
 def test_a_caller_that_passes_no_strategy_is_unchanged():
     """Several callers build rows with only pnl and dates. They must keep
-    working, and nothing of theirs may be swallowed as adopted."""
+    working, and nothing of theirs may be misread as adopted."""
     rows = [{"pnl": 100.0, "entry_date": date(2026, 6, 1),
              "exit_date": date(2026, 6, 2)},
             {"pnl": -40.0, "entry_date": date(2026, 6, 1),
@@ -147,11 +179,13 @@ def test_a_caller_that_passes_no_strategy_is_unchanged():
     assert out["total_trades"] == 2
     assert out["total_pnl"] == 60.0
     assert out["adopted_positions"] == 0
+    assert out["attributable_pnl"] == 60.0
 
 
 def test_unmeasured_disclosure_still_works_alongside_this_one():
-    """The two exclusions are different and must both be visible: a trade with
-    no exit price is unmeasured; an adopted trade is unattributable."""
+    """The two disclosures are different and must both be visible: a trade
+    with no exit price is unmeasured; an adopted trade is unattributable but
+    still counted."""
     out = compute_performance(
         [_t("equity", 100),
          {"strategy": "equity", "pnl": None, "entry_date": date(2026, 6, 1)},
@@ -161,7 +195,8 @@ def test_unmeasured_disclosure_still_works_alongside_this_one():
     assert out["unmeasured_trades"] == 1
     assert out["performance_incomplete"] is True
     assert out["adopted_positions"] == 1
-    assert out["total_trades"] == 1
+    assert out["total_trades"] == 2
+    assert out["total_pnl"] == -400.0
 
 
 # ── the boundary: risk must keep counting them ───────────────────────────
