@@ -244,11 +244,13 @@ export default function GlobalRiskStatus() {
   }
 
   // ── 6. Connection / freshness ────────────────────────────────────────
-  const anyError = [execAvail, brokerAvail, killAvail, riskAvail].some((a) => a.status === "error");
+  const reads = [execAvail, brokerAvail, killAvail, riskAvail];
+  const anyError = reads.some((a) => a.status === "error");
+  const allRead = reads.every((a) => a.status === "available");
   const connChip = anyError ? (
     <Chip label="DATA" value="PARTIAL" tone="var(--amber)" order={6} title="One or more risk-status fields failed to load; see individual chips." />
   ) : (
-    <Chip label="DATA" value="LIVE" tone="var(--green)" order={6} />
+    <Chip label="STATUS" value={allRead ? "READ OK" : "LOADING"} tone={allRead ? "var(--ink-dim)" : "var(--amber)"} order={6} title="Status endpoints responded. This does not confirm quote freshness or permission to trade." />
   );
 
   // ── Mobile: show what needs attention, fold away what does not ───────

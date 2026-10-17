@@ -13,10 +13,10 @@ export const UNIVERSE: UniverseGroup[] = [
   {
     label: "Index & Broad",
     symbols: [
-      { sym: "SPY", name: "S&P 500" },
-      { sym: "QQQ", name: "Nasdaq 100" },
-      { sym: "IWM", name: "Russell 2000" },
-      { sym: "DIA", name: "Dow 30" },
+      { sym: "SPY", name: "S&P 500 ETF" },
+      { sym: "QQQ", name: "Nasdaq 100 ETF" },
+      { sym: "IWM", name: "Russell 2000 ETF" },
+      { sym: "DIA", name: "Dow 30 ETF" },
     ],
   },
   {
@@ -34,10 +34,10 @@ export const UNIVERSE: UniverseGroup[] = [
   {
     label: "Rates, Metals & Energy",
     symbols: [
-      { sym: "TLT", name: "20Y Treasuries" },
-      { sym: "GLD", name: "Gold" },
-      { sym: "SLV", name: "Silver" },
-      { sym: "USO", name: "Crude Oil" },
+      { sym: "TLT", name: "20Y Treasury ETF" },
+      { sym: "GLD", name: "Gold ETF" },
+      { sym: "SLV", name: "Silver ETF" },
+      { sym: "USO", name: "Oil futures fund" },
     ],
   },
   {
@@ -50,9 +50,12 @@ export const UNIVERSE: UniverseGroup[] = [
 
 /** Fetch one snapshot; resolves to a Snap (nulls on failure). */
 export function fetchSnap(apiSym: string): Promise<Snap> {
-  return fetch(`/api/market/snapshot/${apiSym}`)
-    .then(r => r.json())
-    .then(d => ({ last_close: d.last_close, prev_close: d.prev_close, change_pct: d.change_pct }))
+  return fetch(`/api/market/snapshot/${encodeURIComponent(apiSym)}`, { signal: AbortSignal.timeout(12000) })
+    .then(r => { if (!r.ok) throw new Error("Snapshot unavailable"); return r.json(); })
+    .then(d => {
+      const numeric = (v: unknown) => typeof v === "number" && Number.isFinite(v) ? v : null;
+      return { last_close: numeric(d.last_close), prev_close: numeric(d.prev_close), change_pct: numeric(d.change_pct) };
+    })
     .catch(() => ({ last_close: null, prev_close: null, change_pct: null }));
 }
 

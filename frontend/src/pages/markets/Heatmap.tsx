@@ -1,96 +1,31 @@
-/**
- * Heatmaps — watchlist universe tiled and colored by daily % change.
- * Reads the same /api/market/snapshot endpoint that feeds the ticker strip.
- */
-import React, { useEffect, useState } from "react";
-import { UNIVERSE, Snap, fetchSnap } from "./universe";
+import React, { useState } from "react";
+import { UNIVERSE } from "./universe";
+import { useMarketSnapshots } from "./useMarketSnapshots";
+import { MarketToolbar, chartHref } from "./MarketToolbar";
 
-// Background tint by magnitude of move (green up / red down), terminal-flat.
-function tileBg(pct: number | null): { bg: string; fg: string } {
-  if (pct === null) return { bg: "var(--bg-3)", fg: "var(--ink-faint)" };
-  const mag = Math.min(Math.abs(pct), 3) / 3; // 0..1
-  const alpha = 0.12 + mag * 0.33;
-  if (pct >= 0) return { bg: `rgba(34,197,94,${alpha.toFixed(2)})`, fg: "var(--ink)" };
-  return { bg: `rgba(239,68,68,${alpha.toFixed(2)})`, fg: "var(--ink)" };
+export function tileBg(pct: number | null): string {
+  if (pct === null || pct === 0) return "var(--bg-3)";
+  const alpha = .15 + Math.min(Math.abs(pct),3)/3*.35;
+  return pct > 0 ? `rgba(34,197,94,${alpha.toFixed(2)})` : `rgba(239,68,68,${alpha.toFixed(2)})`;
 }
-
 export default function Heatmap() {
-  const [snaps, setSnaps] = useState<Record<string, Snap>>({});
-  const [loading, setLoading] = useState(true);
-
-  const load = () => {
-    const jobs = UNIVERSE.flatMap(g =>
-      g.symbols.map(s => fetchSnap(s.api ?? s.sym).then(snap => [s.sym, snap] as const))
-    );
-    Promise.all(jobs).then(pairs => {
-      setSnaps(Object.fromEntries(pairs));
-      setLoading(false);
-    });
-  };
-
-  useEffect(() => {
-    load();
-    const t = setInterval(load, 60000);
-    return () => clearInterval(t);
-  }, []);
-
-  return (
-    <div style={{ padding: 16, height: "100%", overflowY: "auto" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 14, flexWrap: "wrap" }}>
-        <span className="panel-title">Market Heatmap</span>
-        <span style={{ fontFamily: "var(--mono)", fontSize: 10, color: "var(--ink-faint)" }}>
-          daily % change · snapshot refreshes every 60s
-        </span>
-        {loading && (
-          <span style={{ marginLeft: "auto", fontFamily: "var(--mono)", fontSize: 10, color: "var(--ink-faint)" }}>
-            loading…
-          </span>
-        )}
-      </div>
-
-      {UNIVERSE.map(group => (
-        <div key={group.label} style={{ marginBottom: 20 }}>
-          <div style={{
-            fontFamily: "var(--mono)", fontSize: 10, letterSpacing: "0.1em",
-            textTransform: "uppercase", color: "var(--ink-dim)", marginBottom: 8,
-          }}>
-            {group.label}
-          </div>
-          <div style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))",
-            gap: 8,
-          }}>
-            {group.symbols.map(s => {
-              const snap = snaps[s.sym];
-              const pct = snap?.change_pct ?? null;
-              const { bg, fg } = tileBg(pct);
-              return (
-                <div key={s.sym} style={{
-                  background: bg, color: fg, border: "1px solid var(--line-dim)",
-                  padding: "10px 12px", minHeight: 62, display: "flex", flexDirection: "column",
-                  justifyContent: "space-between",
-                }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                    <span style={{ fontFamily: "var(--mono)", fontWeight: 600, fontSize: 13 }}>{s.sym}</span>
-                    <span style={{ fontFamily: "var(--mono)", fontSize: 11 }}>
-                      {snap?.last_close != null ? snap.last_close.toFixed(2) : "—"}
-                    </span>
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                    <span style={{ fontSize: 9, color: "var(--ink-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {s.name}
-                    </span>
-                    <span style={{ fontFamily: "var(--mono)", fontSize: 12, fontWeight: 600 }}>
-                      {pct != null ? `${pct >= 0 ? "▲" : "▼"} ${Math.abs(pct).toFixed(2)}%` : "—"}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
+  const { snaps, loading, updatedAt, stale, failed, refresh } = useMarketSnapshots();
+  const [group, setGroup] = useState("all");
+  return <div className="markets-page">
+    <MarketToolbar title="Watchlist heatmap" subtitle="Daily close-to-close change · equal-sized tiles · refreshes every 60s" {...{ updatedAt, loading, onRefresh:refresh }}>
+      <select aria-label="Heatmap group" value={group} onChange={e=>setGroup(e.target.value)}><option value="all">All groups</option>{UNIVERSE.map(g=><option key={g.label}>{g.label}</option>)}</select>
+    </MarketToolbar>
+    <div className="heatmap-legend"><span>−3% or less</span><i aria-hidden="true" /><span>+3% or more</span><span>Neutral / unavailable shown without a directional tint</span></div>
+    {(stale || failed > 0) && <p className="markets-notice">{stale ? "Refresh overdue. Values withheld." : `${failed} symbols unavailable.`}</p>}
+    {UNIVERSE.filter(g=>group==="all" || group===g.label).map(g=><section key={g.label}><h2 className="markets-group-title">{g.label}</h2>
+      <div className="market-tiles">{g.symbols.map(s=>{
+        const snap=stale ? undefined : snaps[s.sym], pct=snap?.change_pct ?? null;
+        return <a className="market-tile" href={chartHref(s.api ?? s.sym)} key={s.sym} style={{background:tileBg(pct)}} aria-label={`Open ${s.sym} chart`}>
+          <div className="market-tile-top"><strong>{s.sym}</strong><span>{snap?.last_close?.toFixed(2) ?? "—"}</span></div>
+          <div className="market-tile-name">{s.name}</div>
+          <div className="market-tile-change">{pct===null ? "Unavailable" : `${pct===0 ? "" : pct>0 ? "▲ " : "▼ "}${Math.abs(pct).toFixed(2)}%`}</div>
+        </a>;
+      })}</div>
+    </section>)}
+  </div>;
 }

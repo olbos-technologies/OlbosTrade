@@ -238,7 +238,7 @@ export default function ExecutiveSummary() {
   };
 
   useEffect(() => {
-    const j = (u: string) => fetch(u).then(r => r.json()).catch(() => null);
+    const j = (u: string) => fetch(u, { signal: AbortSignal.timeout(12000) }).then(r => { if (!r.ok) throw new Error("Unavailable"); return r.json(); }).then(d => d?.error ? null : d).catch(() => null);
     const load = async () => {
       setS(await j("/api/dashboard/summary"));
       setPerf(await j("/api/analytics/performance"));
@@ -255,6 +255,8 @@ export default function ExecutiveSummary() {
     return () => clearInterval(id);
   }, []);
 
+  const pnlAvailable = !!s && typeof s.total_pnl === "number" && typeof s.day_pnl === "number" && !s.health?.some(h => h.name === "PostgreSQL" && h.status !== "ok");
+  const hasSample = !!perf && perf.total_trades > 0;
   const pnlColor = (n: number) => (n >= 0 ? "var(--green)" : "var(--red)");
   const pct = (n: number) => `${n >= 0 ? "+" : ""}${n}%`;
 
@@ -279,19 +281,20 @@ export default function ExecutiveSummary() {
       {/* KPI cards */}
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
         <Kpi
-          label="Total Equity"
+          label="Broker account value"
           icon="dollar"
           value={s && s.total_equity != null ? plain(s.total_equity) : "—"}
           sub={s && s.total_equity == null ? "Broker unavailable" : undefined}
         />
-        <Kpi label="Total P&L" icon="pnl"
-          value={s ? money(s.total_pnl) : "—"} color={s ? pnlColor(s.total_pnl) : undefined}
-          sub={s ? `${pct(s.total_pnl_pct)} since open` : undefined} />
-        <Kpi label="Day P&L" icon="trend"
-          value={s ? money(s.day_pnl) : "—"} color={s ? pnlColor(s.day_pnl) : undefined}
-          sub={s ? `${pct(s.day_pnl_pct)} today` : undefined} />
+        <Kpi label="Recorded closed-trade P&L" icon="pnl"
+          value={pnlAvailable ? money(s!.total_pnl) : "—"} color={pnlAvailable ? pnlColor(s!.total_pnl) : undefined}
+          sub="Desk-wide closed trades · not broker account return" />
+        <Kpi label="Desk day P&L" icon="trend"
+          value={pnlAvailable ? money(s!.day_pnl) : "—"} color={pnlAvailable ? pnlColor(s!.day_pnl) : undefined}
+          sub="Recorded closed trades today · desk-wide" />
       </div>
 
+      <p style={{fontSize:11,color:"var(--ink-dim)",margin:"0 0 14px",lineHeight:1.5}}>Broker balance, recorded desk-wide P&amp;L, and the performance sample have different scopes. An empty sample is shown as unavailable.</p>
       {/* Performance + Portfolio Heat */}
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1.4fr 1fr", gap: 12, marginBottom: 14 }}>
         {/* Performance — short strip by default */}
@@ -303,26 +306,26 @@ export default function ExecutiveSummary() {
                 </span>
               : perf && <span className="mono" style={{ fontSize: 9.5, color: "var(--ink-dim)" }}>{perf.total_trades} trades</span>} />
           <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2,1fr)" : "repeat(4,1fr)", gap: 8, padding: 10 }}>
-            <Tile label="Win Rate" value={perf ? `${(perf.win_rate * 100).toFixed(0)}%` : "—"}
+            <Tile label="Win Rate" value={hasSample ? `${(perf.win_rate * 100).toFixed(0)}%` : "—"}
               color={perf && perf.win_rate >= 0.5 ? "var(--green)" : "var(--ink)"} />
-            <Tile label="Profit Factor" value={perf ? perf.profit_factor.toFixed(2) : "—"}
+            <Tile label="Profit Factor" value={hasSample ? perf.profit_factor.toFixed(2) : "—"}
               color={perf && perf.profit_factor >= 1.5 ? "var(--green)" : "var(--ink)"} />
-            <Tile label="Max DD" value={perf ? `${perf.max_drawdown_pct}%` : "—"}
+            <Tile label="Max DD" value={hasSample ? `${perf.max_drawdown_pct}%` : "—"}
               color={perf && perf.max_drawdown_pct > 15 ? "var(--red)" : "var(--ink)"} />
-            <Tile label="Current DD" value={perf ? `${perf.current_drawdown_pct}%` : "—"}
+            <Tile label="Current DD" value={hasSample ? `${perf.current_drawdown_pct}%` : "—"}
               color={perf && perf.current_drawdown_pct > 8 ? "var(--red)" : "var(--ink)"} />
             {showAdvanced && (
               <>
-                <Tile label="Sharpe" value={perf ? perf.sharpe.toFixed(2) : "—"}
+                <Tile label="Sharpe" value={hasSample ? perf.sharpe.toFixed(2) : "—"}
                   color={perf && perf.sharpe >= 1 ? "var(--cyan)" : "var(--ink)"} />
-                <Tile label="Sortino" value={perf ? perf.sortino.toFixed(2) : "—"}
+                <Tile label="Sortino" value={hasSample ? perf.sortino.toFixed(2) : "—"}
                   color={perf && perf.sortino >= 1 ? "var(--cyan)" : "var(--ink)"} />
-                <Tile label="Calmar" value={perf ? perf.calmar.toFixed(2) : "—"} />
-                <Tile label="Rolling DD (30)" value={perf ? `${perf.rolling_max_dd_30_pct}%` : "—"}
+                <Tile label="Calmar" value={hasSample ? perf.calmar.toFixed(2) : "—"} />
+                <Tile label="Rolling DD (30)" value={hasSample ? `${perf.rolling_max_dd_30_pct}%` : "—"}
                   color={perf && perf.rolling_max_dd_30_pct > 10 ? "var(--amber)" : "var(--ink)"} />
-                <Tile label="Expectancy" value={perf ? money(perf.expectancy) : "—"}
+                <Tile label="Expectancy" value={hasSample ? money(perf.expectancy) : "—"}
                   color={perf ? pnlColor(perf.expectancy) : undefined} />
-                <Tile label="Avg Hold" value={perf ? `${perf.avg_hold_days}d` : "—"} />
+                <Tile label="Avg Hold" value={hasSample ? `${perf.avg_hold_days}d` : "—"} />
               </>
             )}
           </div>
@@ -330,9 +333,10 @@ export default function ExecutiveSummary() {
 
         {/* Portfolio Heat */}
         <div className="instrument-card exec-card">
-          <PanelHead icon="gauge" title="Portfolio Heat"
-            right={heat && <span className="mono" style={{ fontSize: 9.5, color: "var(--ink-dim)" }}>{heat.position_count} open</span>} />
+          <PanelHead icon="gauge" title="Managed-position heat"
+            right={heat && <span className="mono" style={{ fontSize: 9.5, color: "var(--ink-dim)" }}>{heat.position_count} managed</span>} />
           <div style={{ padding: "14px" }}>
+            <p style={{fontSize:11,color:"var(--ink-dim)",margin:"0 0 10px"}}>Recorded positions only. Untracked broker holdings may be excluded.</p>
             <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 8 }}>
               <span className="mono" style={{ fontSize: 24, fontWeight: 700,
                 color: heat ? HEAT[heat.heat_status] : "var(--ink)" }}>

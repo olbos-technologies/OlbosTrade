@@ -1,84 +1,55 @@
-/**
- * Watchlists — the market universe as a sortable price table, grouped by sector.
- * Same /api/market/snapshot source as the heatmap; complementary dense view.
- */
-import React, { useEffect, useState } from "react";
-import { UNIVERSE, Snap, fetchSnap, changeColor } from "./universe";
+import React, { useState } from "react";
+import { UNIVERSE, changeColor } from "./universe";
+import { useMarketSnapshots } from "./useMarketSnapshots";
+import { MarketToolbar, chartHref } from "./MarketToolbar";
 
 export default function Watchlists() {
-  const [snaps, setSnaps] = useState<Record<string, Snap>>({});
-  const [loading, setLoading] = useState(true);
-
-  const load = () => {
-    const jobs = UNIVERSE.flatMap(g =>
-      g.symbols.map(s => fetchSnap(s.api ?? s.sym).then(snap => [s.sym, snap] as const))
-    );
-    Promise.all(jobs).then(pairs => {
-      setSnaps(Object.fromEntries(pairs));
-      setLoading(false);
-    });
+  const { snaps, loading, updatedAt, stale, failed, refresh } = useMarketSnapshots();
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState("group");
+  const [onlySaved, setOnlySaved] = useState(false);
+  const [saveError, setSaveError] = useState(false);
+  const [saved, setSaved] = useState<string[]>(() => {
+    try { const v = JSON.parse(localStorage.getItem("olbos.market.favorites") || "[]"); return Array.isArray(v) ? v.filter(x => typeof x === "string") : []; } catch { return []; }
+  });
+  const toggle = (sym: string) => {
+    const next = saved.includes(sym) ? saved.filter(s => s !== sym) : [...saved, sym];
+    setSaved(next);
+    try { localStorage.setItem("olbos.market.favorites", JSON.stringify(next)); setSaveError(false); } catch { setSaveError(true); }
   };
-
-  useEffect(() => {
-    load();
-    const t = setInterval(load, 60000);
-    return () => clearInterval(t);
-  }, []);
-
-  return (
-    <div style={{ padding: 16, height: "100%", overflowY: "auto" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 14, flexWrap: "wrap" }}>
-        <span className="panel-title">Watchlists</span>
-        <span style={{ fontFamily: "var(--mono)", fontSize: 10, color: "var(--ink-faint)" }}>
-          {loading ? "loading…" : "close · change · refreshes every 60s"}
-        </span>
-      </div>
-
-      <table className="t-table">
-        <thead>
-          <tr>
-            <th style={{ textAlign: "left" }}>Symbol</th>
-            <th style={{ textAlign: "left" }}>Name</th>
-            <th style={{ textAlign: "right" }}>Last</th>
-            <th style={{ textAlign: "right" }}>Prev</th>
-            <th style={{ textAlign: "right" }}>Change</th>
-          </tr>
-        </thead>
-        <tbody>
-          {UNIVERSE.map(group => (
-            <React.Fragment key={group.label}>
-              <tr>
-                <td colSpan={5} style={{
-                  fontFamily: "var(--mono)", fontSize: 9.5, letterSpacing: "0.1em",
-                  textTransform: "uppercase", color: "var(--ink-dim)",
-                  background: "var(--bg-3)", padding: "5px 8px",
-                }}>
-                  {group.label}
-                </td>
-              </tr>
-              {group.symbols.map(s => {
-                const snap = snaps[s.sym];
-                const pct = snap?.change_pct ?? null;
-                return (
-                  <tr key={s.sym}>
-                    <td className="mono" style={{ color: "var(--cyan)", fontWeight: 600 }}>{s.sym}</td>
-                    <td style={{ color: "var(--ink-dim)", fontSize: 11 }}>{s.name}</td>
-                    <td className="mono" style={{ textAlign: "right" }}>
-                      {snap?.last_close != null ? snap.last_close.toFixed(2) : "—"}
-                    </td>
-                    <td className="mono" style={{ textAlign: "right", color: "var(--ink-dim)" }}>
-                      {snap?.prev_close != null ? snap.prev_close.toFixed(2) : "—"}
-                    </td>
-                    <td className="mono" style={{ textAlign: "right", color: changeColor(pct), fontWeight: 600 }}>
-                      {pct != null ? `${pct >= 0 ? "▲" : "▼"} ${Math.abs(pct).toFixed(2)}%` : "—"}
-                    </td>
-                  </tr>
-                );
-              })}
-            </React.Fragment>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
+  const groups = UNIVERSE.map(g => ({ ...g, symbols: g.symbols.filter(s =>
+    (!onlySaved || saved.includes(s.sym)) && (s.sym + " " + s.name).toLowerCase().includes(query.toLowerCase())) }));
+  const rows = groups.flatMap(g => g.symbols);
+  if (sort !== "group") rows.sort((a,b) => {
+    if (sort === "symbol") return a.sym.localeCompare(b.sym);
+    const av = snaps[a.sym]?.change_pct, bv = snaps[b.sym]?.change_pct;
+    if (av == null) return bv == null ? a.sym.localeCompare(b.sym) : 1;
+    if (bv == null) return -1;
+    return sort === "gainers" ? bv-av : av-bv;
+  });
+  const renderRow = (s: typeof rows[number]) => {
+    const d = stale ? undefined : snaps[s.sym], pct = d?.change_pct;
+    const delta = d?.last_close != null && d.prev_close != null ? d.last_close-d.prev_close : null;
+    return <tr key={s.sym}>
+      <td><button aria-label={`Save ${s.sym}`} aria-pressed={saved.includes(s.sym)} onClick={() => toggle(s.sym)}>{saved.includes(s.sym) ? "★" : "☆"}</button></td>
+      <td><a className="ticker-link" href={chartHref(s.api ?? s.sym)}>{s.sym}</a></td><td>{s.name}</td>
+      <td className="markets-number">{d?.last_close?.toFixed(2) ?? "—"}</td>
+      <td className="markets-number">{d?.prev_close?.toFixed(2) ?? "—"}</td>
+      <td className="markets-number">{delta == null ? "—" : `${delta >= 0 ? "+" : ""}${delta.toFixed(2)}`}</td>
+      <td className="markets-number" style={{ color:changeColor(pct ?? null) }}>{pct == null ? "—" : `${pct >= 0 ? "▲" : "▼"} ${Math.abs(pct).toFixed(2)}%`}</td>
+    </tr>;
+  };
+  return <div className="markets-page">
+    <MarketToolbar title="Watchlists" subtitle="Closing-price snapshots · ETF proxies are labelled · refreshes every 60s" {...{ updatedAt, loading, onRefresh:refresh }}>
+      <input aria-label="Search watchlist" placeholder="Search symbol or name" value={query} onChange={e=>setQuery(e.target.value)} />
+      <select aria-label="Sort watchlist" value={sort} onChange={e=>setSort(e.target.value)}><option value="group">By group</option><option value="symbol">Symbol A–Z</option><option value="gainers">Biggest gainers</option><option value="decliners">Biggest decliners</option></select>
+      <button aria-pressed={onlySaved} onClick={()=>setOnlySaved(v=>!v)}>{onlySaved ? "Saved only" : "All symbols"}</button>
+    </MarketToolbar>
+    {(stale || failed > 0) && <p className="markets-notice" role="status">{stale ? "Snapshot refresh overdue. Values withheld until refreshed." : `${failed} symbols unavailable. Missing prices are not zero returns.`}</p>}
+    {saveError && <p className="markets-notice">Favorites apply for this visit but could not be saved on this device.</p>}
+    <div className="markets-table-wrap"><table className="markets-table"><thead><tr><th>Save</th><th>Symbol</th><th>Name</th><th className="markets-number">Last close</th><th className="markets-number">Previous close</th><th className="markets-number">Change $</th><th className="markets-number">Change %</th></tr></thead><tbody>
+      {rows.length === 0 ? <tr><td colSpan={7} className="markets-empty">No symbols match your filters.</td></tr>
+        : sort === "group" ? groups.filter(g=>g.symbols.length).map(g=><React.Fragment key={g.label}><tr className="markets-group"><td colSpan={7}>{g.label}</td></tr>{g.symbols.map(renderRow)}</React.Fragment>) : rows.map(renderRow)}
+    </tbody></table></div>
+  </div>;
 }

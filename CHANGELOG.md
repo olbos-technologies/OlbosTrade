@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased — Command Center and Markets refresh
+
+- Command Center places loss-limit warnings and untracked holdings above the summary. Broker balance and recorded desk-wide P&L have explicit scopes; duplicate headline metrics are removed and empty performance samples show dashes.
+- Chart workspace adds focus mode and symbol deep links, labels the model score as research, and uses amber for paused/unknown macro entry state.
+- Watchlists gain search, sorting, device-local favorites, ETF labels and chart links. Heatmap tiles fill the workspace with a visible daily-return legend.
+- News groups duplicate articles across symbols, adds search/type filtering and visible sources, and labels event importance without implying predicted returns.
+- Sector rotation supports ranking by existing return periods and identifies the server rank-change lookback. Status reads no longer imply live quote freshness.
+- Frontend-only: no migration, new environment variables or nginx regeneration. Risk limits, order submission, approval, reconciliation and broker execution are unchanged.
+
 ## Unreleased — Refined mobile Home
 
 - Phones open a compact Home with broker account value, separately labelled trade P&L, recent/older approval counts, positions, and reliable stop-coverage states.
