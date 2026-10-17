@@ -23,8 +23,10 @@ start failing — which is the signal you want.
 
 Set OLBOS_TEST_DATABASE_URL to an asyncpg URL to run these, e.g.
     postgresql+asyncpg://postgres@/olbos_test?host=/tmp&port=5433
-CI provides one via the postgres service in .github/workflows/ci.yml. Without
-it the module skips rather than passing vacuously.
+CI provides one from the PostgreSQL that ships on its runner image, started
+in .github/workflows/ci.yml. Without it the module skips rather than passing
+vacuously — and the workflow's "PostgreSQL-backed tests must RUN, not skip"
+step fails the job if that ever happens there.
 """
 from __future__ import annotations
 
