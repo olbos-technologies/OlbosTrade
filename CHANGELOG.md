@@ -51,6 +51,60 @@ Measured on production, three months of paper trading:
   limits, reconciliation and the kill switch are untouched. A guard test
   pins that those modules never learned about this distinction.
 
+## Unreleased — Equity exit geometry can be swept instead of guessed
+
+**No migration. No new environment variables. No change to any shipped
+parameter or to any execution path.** `equity_stop_atr_multiplier` (2.0) and
+`equity_target_atr_multiplier` (4.0) are untouched; this adds the tooling to
+choose them from a backtest, and nothing more.
+
+- Production equity exits over 2026-08-01 → 2026-10-17, adopted positions
+  excluded (43 attributable closes), realised a reward:risk of **0.31**
+  against a geometry that plans **2.0**. Converting each group to ATR units
+  via `planned_risk = 2 x ATR x quantity`: trades held any length of time
+  peaked at **1.12 x ATR** (manual, 8.5 days) and **1.14 x ATR**
+  (closed-at-broker, 13.2 days) — independently, within 2% of each other —
+  while the target sits at **4.0 x ATR** and the stop at 2.0 x ATR is
+  reached, paying exactly −2.00 x ATR when it is (−$1,717.42 realised
+  against −$1,715.70 planned). An unreachable target against a reachable
+  stop is negative expectancy from the geometry alone, independent of
+  whether the entry signal has any skill.
+- That is an inference from 43 trades and far too few to conclude anything,
+  which is the point: `app/services/equity_exit_optimizer.py` grid-searches
+  both multipliers against real `Backtester.run_equity()` calls on a
+  training window, then validates the winner strictly out-of-sample.
+- **This fills an injection point that had been inert since it was added.**
+  `run_equity(..., equity_params=)` was documented as waiting for "an
+  eventual equity-side optimizer"; nothing had ever passed a non-default
+  value.
+- Acceptance diverges from `strategy_optimizer`'s percentage gate on
+  purpose: percentage improvement over a baseline whose Sharpe is near zero
+  or negative is unstable to the point of meaninglessness, and the baseline
+  this was built for is losing money — the expected case, not an edge case.
+  The gate is an absolute Sharpe gain, which stays interpretable through
+  zero, plus a train-to-validation decay check.
+- Scoring excludes `run_equity`'s force-closed `backtest_end` row, which
+  carries a hardcoded `pnl = 0.0`. Counting it as a real break-even drags
+  every mean toward zero, and worst for exactly the wide-target geometries
+  under test, which leave positions open longest.
+- Targets nearer than the stop are in the grid deliberately. It looks wrong
+  and it is the hypothesis.
+- `scripts/equity_exit_sweep.py` runs it. **Read-only** — writes no config,
+  no row, submits no order, and opens no broker connection: OHLCV comes from
+  yfinance through a stub broker, so a research run cannot touch the live
+  execution stack or consume an IBKR client id. A guard test pins the
+  absence of `get_broker`.
+- **No `max_position_pct` axis.** That cap is a kwarg on
+  `compute_equity_trade_plan()`, not a field on `EquitySignalParams`, and
+  `run_equity` does not thread it — so it stays at the production default of
+  0.08 for every grid point. That is the regime being measured: all seven
+  production stop-outs sized to ~$20k notional, i.e. the cap bound on every
+  one, which is why realised risk floated between $1,052 and $2,223 while
+  `risk_pct_per_trade` (0.02, a $5,000 budget) never got a say — it would
+  need a 25% stop distance to bind, and ATR stops are 5–11%.
+- The sweep recommends; it does not act. A person decides whether to move a
+  production parameter, with the trade counts in view.
+
 
 ## Unreleased — Background workers run per owner (Batch E2 steps 4 and 6)
 
