@@ -93,6 +93,25 @@ def _trade_drawdowns(pnls: list[float], starting_capital: float,
     return out
 
 
+def _attribution_block(adopted_pnls: list, attributable_pnls: list) -> dict:
+    """How the totals above split between chosen and inherited positions.
+
+    Both halves are already counted in `total_pnl` and in every other figure
+    here: an adopted position's P&L is correct arithmetic on the broker's real
+    cost basis, so it is real money (see trade_attribution). This breaks the
+    total down so a caller can say "the desk's decisions made X while
+    inherited positions made Y" — never so it can report X alone as the
+    result. Counts cover measured rows only, matching the sums beside them.
+    """
+    return {
+        "attributable_trades": len(attributable_pnls),
+        "attributable_pnl": round(float(sum(attributable_pnls)), 2),
+        "adopted_positions": len(adopted_pnls),
+        "adopted_pnl": round(float(sum(adopted_pnls)), 2),
+        "adopted_present": bool(adopted_pnls),
+    }
+
+
 def _empty() -> dict:
     return {
         "total_trades": 0, "wins": 0, "losses": 0, "win_rate": 0.0,
@@ -106,6 +125,11 @@ def _empty() -> dict:
         "unmeasured_trades": 0,
         "measured_pct": 100.0,
         "performance_incomplete": False,
+        "attributable_trades": 0,
+        "attributable_pnl": 0.0,
+        "adopted_positions": 0,
+        "adopted_pnl": 0.0,
+        "adopted_present": False,
     }
 
 
@@ -124,6 +148,26 @@ def compute_performance(trades: list[dict], starting_capital: float,
     got. So the count travels with the numbers instead, the same way
     heat_overstated travels with portfolio heat.
     """
+    # Reconciler-adopted positions are INCLUDED in every figure below. Their
+    # P&L is computed from the broker's real average cost basis, so it is real
+    # money and belongs in an account-level total; only attribution and
+    # anything derived from entry_date are unsafe on those rows (see
+    # trade_attribution). They are broken out alongside, because no strategy
+    # chose them and the desk needs to see when its decisions and its account
+    # disagree — on production, +3,163 against -1,099.
+    #
+    # A caller that does not pass `strategy` is unaffected: nothing matches,
+    # the partition puts everything in `attributable`, and the breakdown
+    # degenerates to "all of it was chosen", which is the right answer absent
+    # evidence otherwise.
+    from app.services.trade_attribution import partition
+
+    attributable, adopted = partition(trades)
+    adopted_pnls = [float(t["pnl"]) for t in adopted if t.get("pnl") is not None]
+    attributable_pnls = [
+        float(t["pnl"]) for t in attributable if t.get("pnl") is not None
+    ]
+
     total_submitted = len(trades)
     rows = [t for t in trades if t.get("pnl") is not None]
     unmeasured = total_submitted - len(rows)
@@ -134,6 +178,7 @@ def compute_performance(trades: list[dict], starting_capital: float,
         out["unmeasured_trades"] = unmeasured
         out["measured_pct"] = 0.0 if unmeasured else 100.0
         out["performance_incomplete"] = unmeasured > 0
+        out.update(_attribution_block(adopted_pnls, attributable_pnls))
         return out
 
     pnls = [float(t["pnl"]) for t in rows]
@@ -194,6 +239,7 @@ def compute_performance(trades: list[dict], starting_capital: float,
         "unmeasured_trades": unmeasured,
         "measured_pct": round(len(rows) / total_submitted * 100, 1),
         "performance_incomplete": unmeasured > 0,
+        **_attribution_block(adopted_pnls, attributable_pnls),
     }
 
 
