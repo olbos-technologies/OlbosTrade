@@ -199,7 +199,11 @@ async def get_performance(conn: HTTPConnection):
             trades = (await session.execute(
                 select(Trade).where(owned_by(org_id), Trade.status == "closed")
             )).scalars().all()
+        # `strategy` is what lets compute_performance set reconciler-adopted
+        # positions aside; without it they are folded into the headline P&L
+        # against a placeholder cost basis. See trade_attribution.
         rows = [{"pnl": float(t.pnl) if t.pnl is not None else None,
+                 "strategy": t.strategy,
                  "entry_date": t.entry_date, "exit_date": t.exit_date}
                 for t in trades]
     except Exception as exc:
