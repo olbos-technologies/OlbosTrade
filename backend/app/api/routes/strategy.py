@@ -164,6 +164,7 @@ async def _evaluate_health(min_sample: int, org_id):
     from app.models.research_experiment import ResearchExperiment
     from app.services.research_lab import baselines_from_experiments, PROMOTED
     from app.services.strategy_health import evaluate_all
+    from app.services.trade_attribution import is_adopted
     from app.services.trade_scope import owned_by
     from sqlalchemy import select
 
@@ -180,6 +181,12 @@ async def _evaluate_health(min_sample: int, org_id):
 
     by_strategy: dict[str, list[dict]] = {}
     for t in trades:
+        # `adopted_untracked` is not a strategy — it is the reconciler's label
+        # for a position it inherited from the broker. Grading it would put a
+        # health score and an allocation tilt on something nobody can choose
+        # to trade, and meta_strategy reads these grades.
+        if is_adopted(t):
+            continue
         by_strategy.setdefault(str(t.strategy), []).append(
             {"pnl": float(t.pnl), "entry_date": t.entry_date, "exit_date": t.exit_date}
         )

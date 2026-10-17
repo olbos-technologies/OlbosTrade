@@ -17,6 +17,7 @@ from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.models.trade import Trade
 from app.services.trade_identity import asset_class_from_trade, position_identity_key
+from app.services.trade_attribution import ADOPTED_STRATEGY
 from app.services.trade_scope import owned_by
 
 router = APIRouter()
@@ -88,13 +89,28 @@ async def get_portfolio(conn: HTTPConnection):
             # in the denominator would understate the win rate (a NULL is never a
             # win) and misrepresent total trades.
             org_id = await scope_or_401(session, conn)
+            # Reconciler-adopted positions are excluded from win rate and
+            # total P&L. Their cost basis is a discovery-time placeholder, so
+            # the "P&L" is how far the position moved since somebody noticed
+            # it, not a result. On production they were 25 of 68 closed rows
+            # and turned a +3,163 strategy into a -1,099 headline. They are
+            # counted separately below rather than hidden — see
+            # trade_attribution.
             stats = (await session.execute(
                 select(
                     func.count(Trade.id).label("count"),
                     func.coalesce(func.sum(Trade.pnl), 0).label("total_pnl"),
                     func.coalesce(func.sum(case((Trade.pnl > 0, 1), else_=0)), 0).label("wins"),
-                ).where(owned_by(org_id), Trade.status == "closed", Trade.pnl.isnot(None))
+                ).where(owned_by(org_id), Trade.status == "closed",
+                        Trade.pnl.isnot(None),
+                        func.coalesce(Trade.strategy, "") != ADOPTED_STRATEGY)
             )).one()
+
+            adopted_closed = (await session.execute(
+                select(func.count(Trade.id)).where(
+                    owned_by(org_id), Trade.status == "closed",
+                    func.coalesce(Trade.strategy, "") == ADOPTED_STRATEGY)
+            )).scalar() or 0
 
             today = date.today()
             trades_today = (await session.execute(
@@ -124,6 +140,10 @@ async def get_portfolio(conn: HTTPConnection):
             "open_positions":   open_count,
             "trades_today":     trades_today,
             "starting_capital": settings.starting_capital,
+            # Real positions, excluded from the figures above because their
+            # entry price was invented at discovery. open_positions still
+            # counts them: the capital is genuinely at risk.
+            "adopted_closed_excluded": adopted_closed,
             "return_pct":       (
                 round((acct_value - settings.starting_capital) / settings.starting_capital * 100, 2)
                 if acct_value is not None else None

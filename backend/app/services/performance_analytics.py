@@ -93,6 +93,20 @@ def _trade_drawdowns(pnls: list[float], starting_capital: float,
     return out
 
 
+def _adopted_block(adopted: list, adopted_pnls: list) -> dict:
+    """What was set aside, so excluding it is visible rather than silent.
+
+    `adopted_pnl` is the movement of those positions since they were noticed.
+    It is NOT a strategy result and must never be added to `total_pnl` — the
+    entry price it is measured from was invented at discovery time.
+    """
+    return {
+        "adopted_positions": len(adopted),
+        "adopted_pnl": round(float(sum(adopted_pnls)), 2) if adopted_pnls else 0.0,
+        "adopted_excluded": bool(adopted),
+    }
+
+
 def _empty() -> dict:
     return {
         "total_trades": 0, "wins": 0, "losses": 0, "win_rate": 0.0,
@@ -106,6 +120,9 @@ def _empty() -> dict:
         "unmeasured_trades": 0,
         "measured_pct": 100.0,
         "performance_incomplete": False,
+        "adopted_positions": 0,
+        "adopted_pnl": 0.0,
+        "adopted_excluded": False,
     }
 
 
@@ -124,8 +141,22 @@ def compute_performance(trades: list[dict], starting_capital: float,
     got. So the count travels with the numbers instead, the same way
     heat_overstated travels with portfolio heat.
     """
-    total_submitted = len(trades)
-    rows = [t for t in trades if t.get("pnl") is not None]
+    # Reconciler-adopted positions are excluded from every figure below,
+    # because their cost basis is a discovery-time placeholder rather than a
+    # real entry — see trade_attribution. They are counted and returned, not
+    # dropped: on production they were 25 of 68 rows and flipped the sign of
+    # the headline P&L, so a caller that hid them would be swapping one
+    # misleading number for another.
+    #
+    # A caller that does not pass `strategy` is unaffected: nothing matches,
+    # and the partition is a no-op.
+    from app.services.trade_attribution import partition
+
+    attributable, adopted = partition(trades)
+    adopted_pnls = [float(t["pnl"]) for t in adopted if t.get("pnl") is not None]
+
+    total_submitted = len(attributable)
+    rows = [t for t in attributable if t.get("pnl") is not None]
     unmeasured = total_submitted - len(rows)
     if not rows:
         out = _empty()
@@ -134,6 +165,7 @@ def compute_performance(trades: list[dict], starting_capital: float,
         out["unmeasured_trades"] = unmeasured
         out["measured_pct"] = 0.0 if unmeasured else 100.0
         out["performance_incomplete"] = unmeasured > 0
+        out.update(_adopted_block(adopted, adopted_pnls))
         return out
 
     pnls = [float(t["pnl"]) for t in rows]
@@ -194,6 +226,7 @@ def compute_performance(trades: list[dict], starting_capital: float,
         "unmeasured_trades": unmeasured,
         "measured_pct": round(len(rows) / total_submitted * 100, 1),
         "performance_incomplete": unmeasured > 0,
+        **_adopted_block(adopted, adopted_pnls),
     }
 
 
