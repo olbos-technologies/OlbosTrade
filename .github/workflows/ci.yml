@@ -29,59 +29,90 @@ concurrency:
 
 jobs:
   backend-tests:
-    runs-on: ubuntu-latest
+    # Pinned, not `ubuntu-latest`, because this job now depends on what the
+    # runner image CONTAINS: the PostgreSQL it starts below. `ubuntu-latest`
+    # moves to the next LTS on GitHub's schedule, which would change the
+    # database under the suite at a moment nobody chose — the assertion below
+    # would catch it, but as a surprise red CI rather than a decision. The
+    # other two jobs stay on `ubuntu-latest`: they depend only on Node, which
+    # they install themselves.
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
-    # A real PostgreSQL, because some defects are properties of transaction
-    # isolation and a mocked session cannot decide a race. Without this the
-    # concurrency tests skip, and a skipped test is a green tick that proves
-    # nothing — which is how the double-approval bug survived a passing suite.
-    services:
-      postgres:
-        # ECR Public's mirror of the official image, pinned by digest, because
-        # anonymous pulls from Docker Hub are rate-limited per IP and shared
-        # runners exhaust that quota. PR #102 lost a backend-tests run to
-        # `toomanyrequests` three retries deep, before any test executed.
-        #
-        # VERIFIED, not assumed: the mirror's manifest is byte-for-byte the
-        # official one. Both registries return the same index digest, which also
-        # matches Docker Hub's own docker-content-digest header for postgres:16:
-        #
-        #   docker/library/postgres:16  (ECR Public) -> sha256:ca0bd484...b641d
-        #   library/postgres:16         (Docker Hub) -> sha256:ca0bd484...b641d
-        #
-        # Re-verify, or find the digest for a newer tag, with:
-        #
-        #   T=$(curl -s https://public.ecr.aws/token/ | jq -r .token)
-        #   curl -s -H "Authorization: Bearer $T" \
-        #     -H 'Accept: application/vnd.oci.image.index.v1+json' \
-        #     https://public.ecr.aws/v2/docker/library/postgres/manifests/16 \
-        #     | sha256sum
-        #
-        # Pinned by digest rather than tag so the mirror is content-addressed:
-        # a digest cannot drift, which is what makes "verified" stay true. Bump
-        # it deliberately when the test database should move.
-        #
-        # NO CREDENTIALS ARE NEEDED OR STORED. The authenticated-Docker-Hub
-        # alternative would be a `credentials:` block reading repository
-        # secrets — never literals in this file — and is deliberately not used
-        # here, because it would require secrets to exist before CI could run
-        # at all.
-        image: public.ecr.aws/docker/library/postgres@sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d
-        env:
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: olbos_test
-        ports: ["5432:5432"]
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     env:
       OLBOS_TEST_DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/olbos_test
     defaults:
       run:
         working-directory: backend
     steps:
+      # A real PostgreSQL, because some defects are properties of transaction
+      # isolation and a mocked session cannot decide a race. Without one the
+      # concurrency tests skip, and a skipped test is a green tick that proves
+      # nothing — which is how the double-approval bug survived a passing
+      # suite. That requirement has not changed; where the database comes from
+      # has.
+      #
+      # It is STARTED FROM THE RUNNER IMAGE, not pulled as a service
+      # container, because an anonymous registry pull has now exhausted its
+      # quota and failed this job twice, from two different registries:
+      #
+      #   PR #102  Docker Hub      `toomanyrequests`, three retries deep
+      #   PR #117  ECR Public      `toomanyrequests: Data limit exceeded`
+      #
+      # The ECR Public mirror was the fix for the first failure. It was a
+      # correct fix for the cause it addressed — a per-IP limit on Docker Hub
+      # — and it is being replaced not because it was wrong but because the
+      # whole approach has one quota or another behind it. A third registry
+      # would reset the clock, not stop it. Both failures died in "Initialize
+      # containers", before checkout: every later step read `skipped`, so no
+      # test ran and the job still reported failure.
+      #
+      # ubuntu-24.04 ships PostgreSQL 16.15 with the service disabled, so this
+      # needs no network, no registry and — keeping the constraint the
+      # `credentials:` block was rejected for — NO SECRETS. It is also faster:
+      # no image to pull before the job can start.
+      #
+      # THE TRADE-OFF, stated because it is real: the old image was pinned by
+      # digest and could not drift. This version tracks the runner image
+      # instead, so GitHub bumping it changes the database under us. The major
+      # version is therefore asserted below rather than assumed, so a bump
+      # fails this step loudly instead of silently running the suite against a
+      # different PostgreSQL. A minor bump is allowed through deliberately —
+      # pinning 16.15 exactly would break the job every time GitHub patched
+      # the image, for a difference no test here depends on.
+      #
+      # If this ever needs to go back to a container, the verification recipe
+      # for the ECR digest is in this file's history at
+      # `git log -p -- .github/workflows/ci.yml`.
+      - name: Start PostgreSQL from the runner image
+        working-directory: /tmp
+        run: |
+          set -euo pipefail
+          sudo systemctl start postgresql.service
+
+          # Debian's package listens on localhost:5432 with scram-sha-256 for
+          # 127.0.0.1 and ::1 out of the box, which is what the DSN above
+          # expects. Wait for readiness rather than assuming the unit returning
+          # means the server is accepting connections.
+          for _ in $(seq 1 30); do
+            pg_isready -h localhost -p 5432 -q && break
+            sleep 1
+          done
+          pg_isready -h localhost -p 5432
+
+          major="$(psql --version | awk '{print $3}' | cut -d. -f1)"
+          if [ "$major" != "16" ]; then
+            echo "::error::expected PostgreSQL 16 on the runner image, found ${major}. \
+          The suite has not been validated against it — check the change, then \
+          update this assertion deliberately."
+            exit 1
+          fi
+          echo "PostgreSQL $(psql --version | awk '{print $3}') ready on localhost:5432"
+
+          # The role exists with peer auth only; the tests connect over TCP
+          # with a password, so set one. `createdb` matches POSTGRES_DB on the
+          # old service container.
+          sudo -u postgres psql -qc "ALTER USER postgres PASSWORD 'postgres';"
+          sudo -u postgres createdb olbos_test
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:

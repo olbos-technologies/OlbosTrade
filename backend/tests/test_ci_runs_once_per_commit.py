@@ -20,8 +20,19 @@ Four properties are pinned here, because each one silently undoes the fix:
 2. a concurrency group exists (otherwise pushes race instead of superseding),
 3. cancel-in-progress is conditional, never a bare `true` (a bare one would
    cancel main's post-merge validation run),
-4. the service image is not an anonymous Docker Hub pull, and is pinned by
-   digest so "verified mirror" stays true rather than drifting with a tag.
+4. the job pulls NO container image at all, and the PostgreSQL it uses
+   instead has its major version asserted.
+
+Property 4 was twice weaker than this. It began as "not a bare Docker Hub
+image", then "pinned to a verified ECR Public digest" — and ECR Public then
+exhausted its own data limit and failed `backend-tests` on PR #117 the same
+way, in "Initialize containers", before checkout, every later step reading
+`skipped`. Both fixes were right about their cause and wrong about the
+category: any anonymous registry has a quota behind it, so a third registry
+resets the clock rather than stopping it. The job now starts the PostgreSQL
+that ships on the runner image, which needs no registry, no network and no
+secrets. What that gives up is digest pinning, so the major version is
+asserted in the workflow and here.
 
 Also asserts the job names, because required status checks are matched by
 name: renaming a job silently orphans the branch-protection rule that was
@@ -36,14 +47,6 @@ import pytest
 import yaml
 
 WORKFLOW = pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows" / "ci.yml"
-
-#: The postgres service image's expected index digest, verified byte-for-byte
-#: against Docker Hub's official `library/postgres:16` manifest. Both
-#: registries return this, and it matches Docker Hub's own
-#: docker-content-digest header. Re-verify with the command in ci.yml.
-VERIFIED_POSTGRES_DIGEST = (
-    "sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d"
-)
 
 
 @pytest.fixture(scope="module")
@@ -115,55 +118,120 @@ def test_cancel_in_progress_is_conditional_not_a_bare_true(workflow):
     assert "refs/heads/main" in cancel
 
 
-def test_the_postgres_service_is_not_an_anonymous_docker_hub_pull(workflow):
-    image = workflow["jobs"]["backend-tests"]["services"]["postgres"]["image"]
-    assert not re.fullmatch(r"postgres(:.*)?", image), (
-        "a bare `postgres` image is an anonymous Docker Hub pull, which is "
-        "rate-limited per IP on shared runners — the failure this guards"
-    )
-    assert "docker.io/" not in image and not image.startswith("library/")
+def test_backend_tests_pulls_no_container_image(workflow):
+    """No service containers, so no registry quota can fail this job.
 
-
-def test_the_postgres_service_is_pinned_to_the_verified_digest(workflow):
-    """Content-addressed, so the mirror cannot quietly serve something else.
-
-    A tag on a mirror requires trusting the mirror continuously. A digest
-    requires trusting it once, verifiably: this is the same manifest Docker
-    Hub serves for the official image.
+    This is the property both earlier fixes were reaching for. A `services:`
+    block is pulled during "Initialize containers", before checkout and
+    before any step runs, so a quota refusal there cannot be caught,
+    retried past, or distinguished from a real failure by anyone reading
+    the PR. Removing the pull removes the failure mode rather than
+    relocating it.
     """
-    image = workflow["jobs"]["backend-tests"]["services"]["postgres"]["image"]
-    assert "@sha256:" in image, (
-        "pin the image by digest; a tag can drift and 'verified mirror' then "
-        "means nothing"
+    job = workflow["jobs"]["backend-tests"]
+    assert "services" not in job, (
+        "backend-tests declared a service container again. That is a "
+        "registry pull before any step runs, and an anonymous one has "
+        "already failed this job twice (Docker Hub on #102, ECR Public on "
+        "#117). Start the database from the runner image instead, or if a "
+        "container is genuinely needed, authenticate it via `credentials:` "
+        "reading `${{ secrets.* }}`."
     )
-    assert image.endswith(VERIFIED_POSTGRES_DIGEST), (
-        "the postgres digest changed. That is allowed, but re-verify it "
-        "against Docker Hub's official manifest and update "
-        "VERIFIED_POSTGRES_DIGEST in the same change — see the command in "
-        "ci.yml"
+    raw_job = yaml.dump(job)
+    assert "public.ecr.aws" not in raw_job and "docker.io" not in raw_job, (
+        "a registry reference reappeared in backend-tests"
     )
 
 
-#: The ephemeral test database's password. Not a credential: the service
-#: container is reachable only from inside its own job, is destroyed with it,
-#: and holds nothing but tables the tests just created. It has to be written
-#: somewhere for the service to start.
-EPHEMERAL_SERVICE_LITERALS = {"POSTGRES_PASSWORD: postgres"}
+def test_postgres_is_started_from_the_runner_image(workflow):
+    """The database still exists, and is a real PostgreSQL.
+
+    Dropping the service container must not quietly become "no database":
+    the concurrency tests skip without one, and a skipped test is a green
+    tick that proves nothing. `PostgreSQL-backed tests must RUN, not skip`
+    is the step that catches that at runtime; this catches it in review.
+    """
+    steps = workflow["jobs"]["backend-tests"]["steps"]
+    start = next(
+        (s for s in steps if "postgresql" in (s.get("name") or "").lower()),
+        None,
+    )
+    assert start is not None, "no step starts PostgreSQL"
+    run = start["run"]
+    assert "systemctl start postgresql" in run
+    assert "createdb olbos_test" in run, (
+        "the test database must be created; the old service container got "
+        "it from POSTGRES_DB"
+    )
+    assert "pg_isready" in run, (
+        "wait for readiness — the unit returning is not the server "
+        "accepting connections"
+    )
+
+
+def test_the_backend_runner_image_is_pinned(workflow):
+    """This job depends on what the runner image contains, so it names one.
+
+    `ubuntu-latest` moves to the next LTS on GitHub's schedule. Since the
+    database now comes from the image rather than a registry, that move
+    would swap the database under the suite at a time nobody chose. The
+    major-version assertion would catch it, but as surprise red CI instead
+    of a decision someone made.
+    """
+    runs_on = workflow["jobs"]["backend-tests"]["runs-on"]
+    assert runs_on != "ubuntu-latest", (
+        "backend-tests must pin its runner image, because it starts the "
+        "PostgreSQL that image ships"
+    )
+    assert re.fullmatch(r"ubuntu-\d\d\.\d\d", runs_on), (
+        f"expected a pinned ubuntu image, got {runs_on!r}"
+    )
+
+
+def test_the_postgres_major_version_is_asserted_not_assumed(workflow):
+    """What replaces the digest pin.
+
+    The runner image is GitHub's to bump. Without this assertion a bump
+    would run the whole suite against a different PostgreSQL and report
+    green, which is exactly the drift the digest pin existed to prevent.
+    """
+    steps = workflow["jobs"]["backend-tests"]["steps"]
+    run = next(
+        s["run"] for s in steps
+        if "postgresql" in (s.get("name") or "").lower()
+    )
+    assert re.search(r'major[^\n]*!=\s*"16"', run), (
+        "the workflow no longer asserts the PostgreSQL major version. A "
+        "runner-image bump would then change the database under the suite "
+        "silently. Update the expected major deliberately, in the same "
+        "change that validates against it."
+    )
+    assert "::error::" in run, (
+        "a version mismatch must surface as a GitHub error annotation, not "
+        "a bare non-zero exit buried in the log"
+    )
 
 
 def test_no_credentials_are_written_into_the_workflow(raw):
     """Authenticated pulls are fine; credential literals in the repo are not.
 
-    If the postgres service is ever switched to an authenticated registry, the
-    `credentials:` block must read `${{ secrets.* }}` — a reference, which this
-    test permits — and never a username and password typed into the file.
+    If a container is ever reintroduced and needs an authenticated registry,
+    its `credentials:` block must read `${{ secrets.* }}` — a reference,
+    which this test permits — and never a username and password typed into
+    the file.
+
+    The allowlist this test used to carry (`POSTGRES_PASSWORD: postgres`)
+    is gone with the service container, which makes the scan stricter: that
+    line reappearing now fails here as well as in
+    test_backend_tests_pulls_no_container_image. The ephemeral test
+    database's password is set by an `ALTER USER` statement in a `run:`
+    step instead — deliberately not a `key: value` pair, which is the shape
+    a leaked credential takes in YAML and the shape this pattern matches.
     """
     for line in raw.splitlines():
         stripped = line.strip()
         if stripped.startswith("#") or "secrets." in stripped:
             continue          # a secrets reference is the correct form
-        if stripped in EPHEMERAL_SERVICE_LITERALS:
-            continue
         assert not re.search(
             r"(password|token|secret)\s*:\s*['\"]?[A-Za-z0-9_\-]{8,}", stripped, re.I
         ), f"a credential looks hard-coded into ci.yml: {stripped!r}"
