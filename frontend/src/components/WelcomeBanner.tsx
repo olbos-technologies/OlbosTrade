@@ -88,19 +88,19 @@ export default function WelcomeBanner({ onDismiss }: { onDismiss: () => void }) 
         <>
           {step("1", "Start in a practice environment", "Learn the screens using a paper brokerage account. Verify PAPER status before interacting with any order controls.", { label: "Open Broker", page: "system:broker" })}
           {step("2", "Understand the difference between a signal and an order", "A signal is a model-based observation, not a promise of profit. Keep the separate execution mode on Manual.", { label: "Explore Signals", page: "equity" })}
-          {step("3", "Review risk before learning options", "Focus on potential losses, expiration dates, spreads, and how much you could lose before practicing complex strategies.", { label: "View Risk", page: "risk" })}
+          {step("3", "Review risk before learning options", "Focus on potential losses, expiration dates, spreads, and how much you could lose before practicing complex strategies.", { label: "View Risk", page: "risk:heat" })}
         </>
       ) : level === "intermediate" ? (
         <>
           {step("1", "Confirm paper broker connectivity", "Check whether market data is timely and whether your account is configured for simulated orders.", { label: "Open Broker", page: "system:broker" })}
           {step("2", "Review signal explanations", "Compare model predictions, rejected signals, and downside scenarios. Signal scores are not probabilities of profit.", { label: "Explore Signals", page: "equity" })}
-          {step("3", "Analyze portfolio exposure", "Examine position sizing, maximum drawdown, and concentration before reviewing execution controls.", { label: "View Risk", page: "risk" })}
+          {step("3", "Analyze portfolio exposure", "Examine position sizing, maximum drawdown, and concentration before reviewing execution controls.", { label: "View Risk", page: "risk:heat" })}
         </>
       ) : (
         <>
           {step("1", "Check the execution environment", "Verify broker status, data freshness, reconciliation, account mode, and the kill switch.", { label: "Open Broker", page: "system:broker" })}
           {step("2", "Inspect model lineage", "Review feature inputs, predicted return-on-risk, uncertainty, and out-of-sample performance.", { label: "Explore Signals", page: "equity" })}
-          {step("3", "Stress-test the strategy", "Review exposure, margin, partial fills, expiration behavior, and what happens when a connection fails.", { label: "View Risk", page: "risk" })}
+          {step("3", "Stress-test the strategy", "Review exposure, margin, partial fills, expiration behavior, and what happens when a connection fails.", { label: "View Risk", page: "risk:heat" })}
         </>
       )}
 
