@@ -328,10 +328,9 @@ function ExecutionModeControl({
         </div>
       )}
 
-      {/* An explicit current-state sentence, not only the tooltip. PLAN Batch
-          5.4: every transition states the mode in force and what it means, so
-          the operator never has to infer it from which chip looks lit. */}
-      <div
+      {/* Keep the explanation on touch layouts and pending feedback everywhere.
+          On desktop, the selected chip already states the confirmed mode. */}
+      {(touch || pending) && <div
         data-testid="exec-mode-state"
         style={{
           fontFamily: "var(--sans)", fontSize: touch ? 12 : 9.5,
@@ -343,7 +342,7 @@ function ExecutionModeControl({
         {pending
           ? `Requesting ${pending.toUpperCase()} — not applied until the server confirms.`
           : EXEC_MODE_SENTENCE[mode]}
-      </div>
+      </div>}
 
       {/* Freshness, stated separately from the mode itself. A failed or stale
           read must not look like a confident answer — the same rule the kill

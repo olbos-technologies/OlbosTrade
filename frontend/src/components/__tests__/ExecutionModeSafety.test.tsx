@@ -162,12 +162,10 @@ describe("execution mode safety surface (PLAN 5.4)", () => {
     expect(ack).toHaveTextContent(/nothing will be submitted/i);
   });
 
-  it("states the mode in force in words, not only as a lit chip", async () => {
+  it("shows the confirmed desktop mode without redundant explanatory text", async () => {
     await renderShell();
-    await waitFor(() =>
-      expect(screen.getByTestId("exec-mode-state")).toHaveTextContent(/MANUAL in force/i)
-    );
-    expect(screen.getByTestId("exec-mode-state")).toHaveTextContent(/signals only/i);
+    await waitFor(() => expect(chip(/^manual$/i)).toHaveAttribute("aria-pressed", "true"));
+    expect(screen.queryByTestId("exec-mode-state")).not.toBeInTheDocument();
   });
 
   it("says a requested mode is not yet applied while it is in flight", async () => {
