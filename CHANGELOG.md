@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased — Paper-pilot reliability gates
+
+- Database backups are written privately to a temporary file, verified before publication, and retain previous copies when dump or configured off-site transfer fails. No schema or environment-variable change.
+- CI pins the existing broker-order submission sites for explicit review when a new route is added; this does not assert that all current paths share one OMS.
+- A paper-pilot evidence register separates repository tests from broker, recovery, security, accessibility, and legal/vendor sign-off.
+- Mobile Home no longer says automatic execution is available while the kill-switch read or broker connection is unverified.
+
 ## Unreleased — Command Center and Markets refresh
 
 - Command Center places loss-limit warnings and untracked holdings above the summary. Broker balance and recorded desk-wide P&L have explicit scopes; duplicate headline metrics are removed and empty performance samples show dashes.

@@ -155,6 +155,8 @@ export default function MobileHome() {
         </div>
         <p>{halted ? "Kill switch engaged. Verify broker exposure."
           : !mode.value ? "Execution mode could not be confirmed."
+          : !kill.value ? "Kill switch status unverified. Do not assume automatic execution is available."
+          : !broker.value || broker.value.status !== "connected" ? "Broker connection unverified. Execution availability is unknown."
           : mode.value.mode === "autopilot" ? "Automatic execution enabled."
           : mode.value.mode === "copilot" ? "Every new trade needs your approval."
           : "Signals only. No automated entries."}</p>

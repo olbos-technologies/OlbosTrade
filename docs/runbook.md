@@ -1,5 +1,7 @@
 # OlbosTrade — Operations Runbook
 
+Paper-pilot release gates and evidence: [PAPER_PILOT_READINESS.md](PAPER_PILOT_READINESS.md).
+
 For the person at the keyboard when something is wrong, who may not be the
 person who broke it.
 

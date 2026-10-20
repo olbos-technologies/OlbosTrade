@@ -409,6 +409,11 @@ Configure an off-site target too (`BACKUP_RCLONE_REMOTE` or
 `BACKUP_SCP_TARGET` in `backend/.env.prod`) — local-only backups don't
 survive a disk failure.
 
+The job publishes a dump only after `pg_dump` and gzip verification succeed,
+and prunes older local copies only after any configured off-site transfer
+succeeds. A successful backup is still not a restore test: follow the isolated
+restore drill in `docs/PAPER_PILOT_READINESS.md` before live expansion.
+
 ---
 
 ## Updating after a code change
