@@ -1,9 +1,16 @@
 # Paper-pilot readiness and evidence register
 
-This is a release gate, not a declaration that OlbosTrade is institutionally
-certified or suitable for live customer capital. Keep automation in paper mode
-until the owner records evidence for every applicable gate below. Never use a
-production approval, rejection, or live order as a test fixture.
+This register governs an **internal, paper-only pilot**. It is not a declaration
+that OlbosTrade is institutionally certified or suitable for customer or live
+capital. Prove the technical and operating gates below before expanding the
+paper pilot. Never use a production approval, rejection, or live order as a
+test fixture.
+
+There are two separate decisions: (1) whether this paper pilot may expand
+within its defined account and risk envelope, and (2) whether the product may
+serve customers or route live capital. Technical evidence supports the first.
+The second also needs legal, commercial, broker, and market-data decisions;
+passing the paper pilot does not automatically authorize it.
 
 ## Current evidence (2026-10-20 repository review)
 
@@ -14,7 +21,12 @@ production approval, rejection, or live order as a test fixture.
 | Identity and tenancy | Session and organization-scoping code and tests exist. Production `AUTH_ENABLED` was confirmed true by a boolean-only read on 2026-10-20. | Review all consequential routes, test cross-tenant denial and operator overrides, and require stronger confirmation for high-risk actions. Independent security review remains external. |
 | Backup and recovery | `backup_db.sh` now verifies a private dump before publishing it and retains old copies if dump/off-site transfer fails; local failure tests cover both. Production cron was present and local dumps existed through 2026-10-19. | **No off-site target was configured on 2026-10-20.** Configure one, verify receipt, and restore a selected dump into a **disposable isolated database**. Record recovery time and broker reconciliation. Do not restore into production as a drill. |
 | Mobile safety | Browser tests cover mobile Home at 320/390/768 px, Signals focus, navigation, unavailable data and kill-switch confirmation. | Manual accessibility audit on iOS Safari and Android Chrome (screen reader, zoom, keyboard, touch, landscape), followed by remediation and a signed operator walkthrough. |
-| Legal/vendor scope | Master architecture states the operating-model and data-licensing boundaries. | Qualified counsel, broker/provider, market-data, and compliance owners must approve the actual customer/live scope. Code cannot grant these approvals. |
+
+Legal/vendor approval is **not being represented as completed or as a code
+task in this internal paper-pilot phase**. Before customer access or live
+capital, qualified owners must review the actual operating model, broker and
+market-data permissions, disclosures, and agreements. That is a separate
+release gate, not an automatic consequence of technical readiness.
 
 ## Paper-pilot procedure
 
@@ -39,8 +51,9 @@ production approval, rejection, or live order as a test fixture.
    Record RPO/RTO and off-site retrieval time. Do not point a running worker at
    the restored database during the drill.
 6. Have an operator and reviewer sign the evidence, unresolved risks, and
-   explicit go/no-go decision. If a gate is unverified, leave automation off
-   for the expanded scope.
+   explicit **paper-pilot** go/no-go decision. If a gate is unverified, leave
+   automation off for the expanded scope. This decision does not approve
+   customer or live-capital use.
 
 ## Stop conditions
 
