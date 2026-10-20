@@ -74,6 +74,26 @@ describe("Mobile Home truth and controls", () => {
     await screen.findByText("HALTED");
     expect(screen.getByRole("button", { name: "Stop automation" })).toBeDisabled();
   });
+  it("does not claim automatic execution is available when kill status is unknown", async () => {
+    vi.mocked(api.getTradeDeskKillSwitch).mockRejectedValue(new Error("offline"));
+    render(<MobileHome />);
+    await screen.findByText("AUTOPILOT");
+    expect(await screen.findByText(/Do not assume automatic execution is available/)).toBeInTheDocument();
+    expect(screen.queryByText("Automatic execution enabled.")).not.toBeInTheDocument();
+  });
+  it("does not claim automatic execution is available when the broker is disconnected", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => ({
+      ok: true, json: async () => url.includes("dashboard")
+        ? { total_equity: 261074.34, total_pnl: 100, day_pnl: -25 }
+        : url.includes("broker")
+          ? { broker: "ibkr", paper_mode: true, status: "disconnected" }
+          : { available: true, source: "refreshed", unprotected_is_reliable: true, positions_without_stop: [] },
+    })));
+    render(<MobileHome />);
+    await screen.findByText("AUTOPILOT");
+    expect(await screen.findByText("Broker connection unverified. Execution availability is unknown.")).toBeInTheDocument();
+    expect(screen.queryByText("Automatic execution enabled.")).not.toBeInTheDocument();
+  });
   it("routes review into the existing approval queue without submitting orders", async () => {
     render(<MobileHome />);
     await screen.findByText("AUTOPILOT");
