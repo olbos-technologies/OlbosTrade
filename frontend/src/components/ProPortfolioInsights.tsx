@@ -1,5 +1,6 @@
 /** Read-only professional insight cards sourced exclusively from the positions hook. */
-import React from "react";
+import React, { useEffect, useState } from "react";
+import { api } from "../api/client";
 
 export type PositionInsight = {
   symbol?: string | null;
@@ -39,6 +40,20 @@ export default function ProPortfolioInsights({
   positions: PositionInsight[];
   portfolioUnavailable: boolean;
 }) {
+  const [correlations, setCorrelations] = useState<any>(null);
+  const [correlationState, setCorrelationState] = useState<"loading" | "ready" | "error">("loading");
+  useEffect(() => {
+    let mounted = true;
+    api.getPortfolioCorrelation()
+      .then((response: any) => { if (mounted) { setCorrelations(response); setCorrelationState("ready"); } })
+      .catch(() => { if (mounted) setCorrelationState("error"); });
+    return () => { mounted = false; };
+  }, []);
+  const matrix: unknown = correlations?.correlation_matrix;
+  const symbols: unknown = correlations?.tickers;
+  const validMatrix = correlationState === "ready" && correlations?.status === "ok" && Array.isArray(symbols) && Array.isArray(matrix)
+    && symbols.length >= 2 && matrix.length === symbols.length
+    && matrix.every((row: unknown) => Array.isArray(row) && row.length === symbols.length && row.every((value: unknown) => typeof value === "number" && Number.isFinite(value) && value >= -1 && value <= 1));
   const contributors = portfolioUnavailable ? [] : pnlContributors(positions);
   const known = contributors.length;
   const coverage = portfolioUnavailable ? null : portfolioDataCoverage(positions);
@@ -87,8 +102,19 @@ export default function ProPortfolioInsights({
           <div role="status" style={{ fontSize: 11, color: "var(--amber)" }}>Awaiting verified allocation dataset</div>
         </Panel>
         <Panel title="Position correlations">
-          <p style={muted}>A reliable correlation heatmap requires aligned historical return observations for each holding. Current position snapshots cannot supply those correlations.</p>
-          <div role="status" style={{ fontSize: 11, color: "var(--amber)" }}>Historical returns required</div>
+          {correlationState === "loading" ? <p role="status" style={muted}>Loading historical correlations…</p>
+            : correlationState === "error" ? <p role="status" style={muted}>Correlation data unavailable. No values are inferred.</p>
+            : !validMatrix ? <p role="status" style={muted}>Insufficient verified overlapping price history for a correlation matrix.</p>
+            : <>
+              <p style={{ ...muted, marginTop: 0 }}>Historical return correlations · {correlations.lookback_days ?? "—"}-day lookback</p>
+              <div style={{ overflowX: "auto" }}>
+                <table aria-label="Portfolio correlation matrix" style={{ borderCollapse: "separate", borderSpacing: 3, fontSize: 10, fontVariantNumeric: "tabular-nums" }}>
+                  <thead><tr><th scope="col"></th>{(symbols as string[]).map((s, i) => <th scope="col" key={i} style={{ padding: 5 }}>{s}</th>)}</tr></thead>
+                  <tbody>{(matrix as number[][]).map((row, i) => <tr key={i}><th scope="row" style={{ padding: 5 }}>{(symbols as string[])[i]}</th>{row.map((v, j) => <td key={j} title={`${(symbols as string[])[i]} / ${(symbols as string[])[j]}: ${v.toFixed(2)}`} style={{ textAlign: "center", minWidth: 34, padding: 6, background: v > 0.5 ? "rgba(245,158,11,0.34)" : v < -0.5 ? "rgba(34,211,238,0.24)" : "var(--bg-3)", color: "var(--ink)", borderRadius: 3 }}>{v.toFixed(2)}</td>)}</tr>)}</tbody>
+                </table>
+              </div>
+              <p style={{ ...muted, fontSize: 10 }}>{correlations.excluded_symbols?.length || 0} symbols excluded from analysis. Correlation is not a forecast.</p>
+            </>}
         </Panel>
       </div>
     </section>
