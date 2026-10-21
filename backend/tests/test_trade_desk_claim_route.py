@@ -352,7 +352,8 @@ async def test_a_broken_duplicate_read_is_not_reported_as_a_missing_guard(claims
                new=AsyncMock(return_value=_clean_portfolio())), \
          patch("app.api.routes.trade_desk._is_kill_switch_active", return_value=False), \
          patch("app.broker.broker_factory.get_broker", return_value=broker), \
-         patch.object(td.ibkr_coordinator, "submit", new=_run_submitted):
+         patch.object(td.ibkr_coordinator, "submit", new=_run_submitted), \
+         patch("app.services.execution_portfolio_gate.check_execution_portfolio", new=AsyncMock(return_value=__import__("app.services.execution_portfolio_gate", fromlist=["PortfolioGateResult"]).PortfolioGateResult(allowed=True, reason=None))):
         res = await _execute_signal(_signal(), approved_by="manual")
 
     assert res["result"] == "blocked"
