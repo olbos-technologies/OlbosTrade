@@ -2,7 +2,7 @@ import { describe, expect, it, vi, afterEach } from "vitest";
 import { readExperienceLevel, EXPERIENCE_LEVEL_KEY } from "../WelcomeBanner";
 
 describe("experience preference", () => {
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => { vi.restoreAllMocks(); });
   it("defaults to beginner when no saved preference exists", () => {
     vi.spyOn(Storage.prototype, "getItem").mockReturnValue(null);
     expect(readExperienceLevel()).toBe("beginner");
