@@ -23,6 +23,32 @@ export function pnlContributors(positions: PositionInsight[]): { symbol: string;
     .sort((a, b) => Math.abs(b.pnl) - Math.abs(a.pnl));
 }
 
+/** Portfolio API shape is {ticker: {ticker: correlation}}, not a 2D array. */
+export function normalizeCorrelationMatrix(
+  tickers: unknown,
+  raw: unknown,
+): number[][] | null {
+  if (!Array.isArray(tickers) || tickers.length < 2 ||
+      !tickers.every(t => typeof t === "string" && t.length > 0) ||
+      new Set(tickers).size !== tickers.length ||
+      raw === null || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const matrix = raw as Record<string, unknown>;
+  const rows: number[][] = [];
+  for (const ticker of tickers as string[]) {
+    const row = matrix[ticker];
+    if (row === null || typeof row !== "object" || Array.isArray(row)) return null;
+    const cells = row as Record<string, unknown>;
+    const values: number[] = [];
+    for (const other of tickers as string[]) {
+      const value = cells[other];
+      if (typeof value !== "number" || !Number.isFinite(value) || value < -1 || value > 1) return null;
+      values.push(value);
+    }
+    rows.push(values);
+  }
+  return rows;
+}
+
 function Panel({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="instrument-card" aria-label={title} style={{ minWidth: 0, padding: "14px 16px", borderRadius: 8 }}>
@@ -58,11 +84,11 @@ export default function ProPortfolioInsights({
       .catch(() => { if (mounted) setCorrelationState("error"); });
     return () => { mounted = false; };
   }, []);
-  const matrix: unknown = correlations?.correlation_matrix;
   const symbols: unknown = correlations?.tickers;
-  const validMatrix = correlationState === "ready" && correlations?.status === "ok" && Array.isArray(symbols) && Array.isArray(matrix)
-    && symbols.length >= 2 && matrix.length === symbols.length
-    && matrix.every((row: unknown) => Array.isArray(row) && row.length === symbols.length && row.every((value: unknown) => typeof value === "number" && Number.isFinite(value) && value >= -1 && value <= 1));
+  const matrix = correlationState === "ready" && correlations?.status === "ok"
+    ? normalizeCorrelationMatrix(symbols, correlations?.correlation_matrix)
+    : null;
+  const validMatrix = matrix !== null;
   const contributors = portfolioUnavailable ? [] : pnlContributors(positions);
   const known = contributors.length;
   const coverage = portfolioUnavailable ? null : portfolioDataCoverage(positions);
