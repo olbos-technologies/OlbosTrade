@@ -17,8 +17,8 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-from unittest.mock import AsyncMock, MagicMock, patch
-from app.services.execution_portfolio_gate import PortfolioGateResult, call
+from unittest.mock import AsyncMock, MagicMock, patch, call
+from app.services.execution_portfolio_gate import PortfolioGateResult
 
 import pytest
 
