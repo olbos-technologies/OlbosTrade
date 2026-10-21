@@ -30,7 +30,12 @@ from app.services.portfolio_engine import (
 from app.services.risk_manager import PortfolioRiskState, ProposedTrade, RiskManager
 from app.utils.logger import get_logger
 
-logger = get_logger(__name__)\n\n\nclass PortfolioStateUnavailable(RuntimeError):\n    """Required database-backed portfolio exposure could not be verified."""\n
+logger = get_logger(__name__)
+
+
+class PortfolioStateUnavailable(RuntimeError):
+    """Required database-backed portfolio exposure could not be verified."""
+
 
 # Per-regime concurrency tightening — separate from regime_classifier.py's
 # REGIME_CONFIG size_multiplier because position-size economics and
