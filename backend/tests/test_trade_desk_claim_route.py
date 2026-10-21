@@ -39,6 +39,7 @@ from app.models.trade import Trade
 from app.services.guardrails import PortfolioState
 from app.models.position_claim import STATE_SUBMITTED, STATE_UNKNOWN, PositionClaim
 from app.services import position_claim
+from app.services.execution_portfolio_gate import PortfolioGateResult
 
 TEST_DB_URL = os.getenv("OLBOS_TEST_DATABASE_URL")
 
@@ -353,7 +354,7 @@ async def test_a_broken_duplicate_read_is_not_reported_as_a_missing_guard(claims
          patch("app.api.routes.trade_desk._is_kill_switch_active", return_value=False), \
          patch("app.broker.broker_factory.get_broker", return_value=broker), \
          patch.object(td.ibkr_coordinator, "submit", new=_run_submitted), \
-         patch("app.services.execution_portfolio_gate.check_execution_portfolio", new=AsyncMock(return_value=__import__("app.services.execution_portfolio_gate", fromlist=["PortfolioGateResult"]).PortfolioGateResult(allowed=True, reason=None))):
+         patch("app.services.execution_portfolio_gate.check_execution_portfolio", new=AsyncMock(return_value=PortfolioGateResult(allowed=True, reason=None))):
         res = await _execute_signal(_signal(), approved_by="manual")
 
     assert res["result"] == "blocked"
