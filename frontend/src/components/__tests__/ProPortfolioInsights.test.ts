@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { pnlContributors, portfolioDataCoverage } from "../ProPortfolioInsights";
+import { pnlContributors, portfolioDataCoverage, normalizeCorrelationMatrix } from "../ProPortfolioInsights";
 
 describe("portfolio intelligence contributors", () => {
   it("sorts observed unrealized P&L by absolute size", () => {
@@ -21,4 +21,15 @@ describe("portfolio intelligence contributors", () => {
       { symbol: "B", unrealized_pnl: null, tracked: false },
     ])).toEqual({ total: 2, pnlKnown: 1, missingPnl: 1, untracked: 1 });
   });
+  it("converts the portfolio endpoint's ticker-keyed correlation matrix", () => {
+    expect(normalizeCorrelationMatrix(["AAPL", "MSFT"], {
+      AAPL: { AAPL: 1, MSFT: 0.72 },
+      MSFT: { AAPL: 0.72, MSFT: 1 },
+    })).toEqual([[1, 0.72], [0.72, 1]]);
+  });
+  it("rejects incomplete or invalid correlations", () => {
+    expect(normalizeCorrelationMatrix(["AAPL", "MSFT"], { AAPL: { AAPL: 1 }, MSFT: { MSFT: 1 } })).toBeNull();
+    expect(normalizeCorrelationMatrix(["AAPL", "MSFT"], { AAPL: { AAPL: 1, MSFT: NaN }, MSFT: { AAPL: 0, MSFT: 1 } })).toBeNull();
+  });
+
 });
