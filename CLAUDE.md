@@ -1,5 +1,8 @@
 # Olbos Trade — Claude Code Instructions
 
+> **Required shared instructions:** Read `AGENTS.md`, `docs/MASTER_UPGRADE_PLAN.md`, and `docs/MASTER_ARCHITECTURE.md` before any task. Use the milestone IDs and handoff protocol in the master upgrade plan. These shared rules also govern Cursor, Copilot and Codex; Claude-specific notes below are supplementary, not an alternative roadmap.
+
+
 ## Mission
 Improve the existing Olbos Trade application incrementally. Inspect the code and documentation before proposing changes. Do not rebuild working features or claim a capability exists without verifying it.
 

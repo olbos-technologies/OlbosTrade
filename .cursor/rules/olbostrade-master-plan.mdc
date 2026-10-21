@@ -1,0 +1,5 @@
+---
+description: OlbosTrade architecture, master roadmap and safe cross-agent handoffs
+alwaysApply: true
+---
+Read `AGENTS.md`, `docs/MASTER_UPGRADE_PLAN.md`, and `docs/MASTER_ARCHITECTURE.md` before making changes. Follow their milestone IDs, safety rules, CI and PR handoff protocol. Treat `CLAUDE.md` and `.github/copilot-instructions.md` as adapters to the same shared instructions, not alternative architectures. Do not enable live trading or 0DTE Autopilot, change risk limits, or deploy without explicit authorization.
