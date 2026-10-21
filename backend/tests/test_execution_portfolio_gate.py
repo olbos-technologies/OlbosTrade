@@ -480,6 +480,7 @@ async def test_check_execution_portfolio_blocks_new_entries_on_db_failure(monkey
     assert result.allowed is False
     assert "portfolio_state_unavailable" in result.flags
     assert "new entries blocked" in result.reason
+    # Missing DB state is never interpreted as an empty, safe portfolio.
 
 
 # ── Unknown is not a sector ─────────────────────────────────────────────
