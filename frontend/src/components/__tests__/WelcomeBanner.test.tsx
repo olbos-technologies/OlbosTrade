@@ -25,7 +25,7 @@ describe("WelcomeBanner", () => {
     fireEvent.click(screen.getByRole("button", { name: /explore signals/i }));
     expect(onNav).toHaveBeenCalledWith("equity");
 
-    fireEvent.click(screen.getByRole("button", { name: /dismiss guide/i }));
+    fireEvent.click(screen.getByRole("button", { name: /dismiss getting started guide/i }));
     expect(onDismiss).toHaveBeenCalled();
   });
 
