@@ -40,6 +40,15 @@ export default function ProPortfolioInsights({
   positions: PositionInsight[];
   portfolioUnavailable: boolean;
 }) {
+  const [heat, setHeat] = useState<any>(null);
+  const [heatState, setHeatState] = useState<"loading" | "ready" | "error">("loading");
+  useEffect(() => {
+    let mounted = true;
+    api.getPortfolioHeat()
+      .then((value: any) => { if (mounted) { setHeat(value); setHeatState(value?.error ? "error" : "ready"); } })
+      .catch(() => { if (mounted) setHeatState("error"); });
+    return () => { mounted = false; };
+  }, []);
   const [correlations, setCorrelations] = useState<any>(null);
   const [correlationState, setCorrelationState] = useState<"loading" | "ready" | "error">("loading");
   useEffect(() => {
@@ -97,9 +106,35 @@ export default function ProPortfolioInsights({
             </>
           )}
         </Panel>
-        <Panel title="Sector allocation">
-          <p style={muted}>Sector exposure isn't provided by the current positions summary. A percentage chart requires authoritative sector classification and consistent exposure values.</p>
-          <div role="status" style={{ fontSize: 11, color: "var(--amber)" }}>Awaiting verified allocation dataset</div>
+        <Panel title="Sector risk exposure">
+          {heatState === "loading" ? <p role="status" style={muted}>Loading sector risk data…</p>
+            : heatState === "error" ? <p role="status" style={muted}>Sector risk unavailable. Exposure cannot be verified.</p>
+            : (() => {
+                const raw = heat?.exposure_by_sector;
+                const entries = raw && typeof raw === "object" && !Array.isArray(raw)
+                  ? Object.entries(raw).filter((item): item is [string, number] => typeof item[1] === "number" && Number.isFinite(item[1]) && item[1] > 0)
+                  : [];
+                const total = entries.reduce((sum, item) => sum + item[1], 0);
+                return total <= 0 ? <p role="status" style={muted}>No positive sector risk exposure available for this account scope.</p> : <>
+                  <p style={{ ...muted, marginTop: 0 }}>Share of modeled risk dollars, not market value or capital allocation.</p>
+                  {entries.sort((a, b) => b[1] - a[1]).map(([sector, risk]) => (
+                    <div key={sector} style={{ marginBottom: 9 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, color: "var(--ink)", fontSize: 11 }}>
+                        <span>{sector}</span>
+                        <span style={{ fontVariantNumeric: "tabular-nums" }}>{(risk / total * 100).toFixed(1)}%</span>
+                      </div>
+                      <div aria-hidden="true" style={{ height: 6, background: "var(--bg-3)", borderRadius: 4, marginTop: 4 }}>
+                        <div style={{ height: "100%", borderRadius: 4, background: sector === "Unknown" ? "var(--amber)" : "var(--cyan)", width: `${risk / total * 100}%` }} />
+                      </div>
+                    </div>
+                  ))}
+                  <p style={{ ...muted, fontSize: 10, marginBottom: 0 }}>
+                    Classification coverage: {typeof heat?.sector_classified_pct === "number" ? `${heat.sector_classified_pct.toFixed(1)}%` : "unknown"}.
+                    {heat?.heat_overstated ? " Some risk values use notional without a verified stop, so exposure may be overstated." : ""}
+                    {" "}These DB-tracked exposures may not include every broker holding.
+                  </p>
+                </>;
+              })()}
         </Panel>
         <Panel title="Position correlations">
           {correlationState === "loading" ? <p role="status" style={muted}>Loading historical correlations…</p>
