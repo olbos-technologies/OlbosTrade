@@ -12,10 +12,9 @@ Explicitly NOT enforced by default:
     — miscalibrated for real spreads; enable only via
     settings.execution_enforce_portfolio_greeks
 
-Load failure (cannot read open trades): fail OPEN with a warning flag, matching
-the options-scan concentration helper — transient DB blips must not halt the
-desk when kill switch + guardrails still protect. Rollback: set
-execution_portfolio_gate=false.
+Load failure (cannot read open trades): refuse new entries with an explicit
+portfolio_state_unavailable flag. Risk-reducing exits use separately authorized
+close paths; never infer zero exposure from missing data.
 """
 
 from __future__ import annotations
@@ -31,7 +30,7 @@ from app.services.portfolio_engine import (
 from app.services.risk_manager import PortfolioRiskState, ProposedTrade, RiskManager
 from app.utils.logger import get_logger
 
-logger = get_logger(__name__)
+logger = get_logger(__name__)\n\n\nclass PortfolioStateUnavailable(RuntimeError):\n    """Required database-backed portfolio exposure could not be verified."""\n
 
 # Per-regime concurrency tightening — separate from regime_classifier.py's
 # REGIME_CONFIG size_multiplier because position-size economics and
@@ -218,8 +217,8 @@ def evaluate_portfolio_gates(
 async def load_portfolio_risk_state(portfolio_value: float) -> PortfolioRiskState:
     """
     Build PortfolioRiskState from open trades (same dollars/sectors as /api/portfolio/heat).
-    On DB failure returns empty exposures with open_position_count=0 and logs a warning
-    (caller treats that as fail-open for this gate only).
+    On DB load failure raise PortfolioStateUnavailable instead of fabricating
+    an empty portfolio.
 
     open_position_count is the max of the DB's tracked open-Trade count and
     the broker's own live distinct-underlying position count. The DB count
@@ -269,19 +268,8 @@ async def load_portfolio_risk_state(portfolio_value: float) -> PortfolioRiskStat
                 "count (using DB-tracked count only): %s", broker_exc,
             )
     except Exception as exc:
-        logger.warning(
-            "portfolio gate: could not load open positions (fail open for this gate): %s",
-            exc,
-        )
-        return PortfolioRiskState(
-            net_delta=0.0,
-            net_vega=0.0,
-            net_theta=0.0,
-            open_position_count=0,
-            portfolio_value=float(portfolio_value or 0),
-            positions_by_underlying={},
-            positions_by_sector={},
-        )
+        logger.error("portfolio gate: failed to verify open positions: %s", exc)
+        raise PortfolioStateUnavailable("portfolio positions unavailable") from exc
 
     return PortfolioRiskState(
         net_delta=0.0,
@@ -302,5 +290,12 @@ async def check_execution_portfolio(
     if not getattr(settings, "execution_portfolio_gate", True):
         return PortfolioGateResult(allowed=True, reason=None, flags=["portfolio_gate_disabled"])
 
-    portfolio = await load_portfolio_risk_state(portfolio_value)
+    try:
+        portfolio = await load_portfolio_risk_state(portfolio_value)
+    except PortfolioStateUnavailable:
+        return PortfolioGateResult(
+            allowed=False,
+            reason="portfolio state unavailable; new entries blocked",
+            flags=["portfolio_state_unavailable"],
+        )
     return evaluate_portfolio_gates(signal, portfolio)
