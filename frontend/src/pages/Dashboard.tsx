@@ -18,6 +18,7 @@ import MobileHome from "./MobileHome";
 import CommandAttention, { riskWarnings } from "../components/CommandAttention";
 import ErrorBoundary     from "../components/ErrorBoundary";
 import WelcomeBanner, { WELCOME_DISMISS_KEY } from "../components/WelcomeBanner";
+import CommandCenterWorkspace from "../components/CommandCenterWorkspace";
 import MetricHint, { resolveMetricHint } from "../components/MetricHint";
 import { useIsMobile }   from "../hooks/useIsMobile";
 import { StatTile, Badge, Button, Panel } from "../components/ui";
@@ -359,6 +360,8 @@ function DesktopDashboard() {
           <WelcomeBanner onDismiss={dismissWelcome} />
         </ErrorBoundary>
       )}
+
+      <CommandCenterWorkspace />
 
       <CommandAttention guard={guardrailStatus} state={portfolioState?.state} untracked={untrackedPositions.length} portfolioUnavailable={portfolioError || !portfolio} />
 
