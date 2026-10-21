@@ -344,6 +344,8 @@ async def test_a_broken_duplicate_read_is_not_reported_as_a_missing_guard(claims
     Both outcomes are `blocked`, and that is correct — but they must be
     distinguishable, or neither test can prove which defect it caught. Here the
     claims table is present and working and the duplicate READ is what fails.
+    Keep the separate Stage 2b portfolio gate permissive so its own trades
+    query does not intercept this deliberately broken Stage 3 read.
     """
     broker = _broker()
     async with claims_table() as s, s.begin():
@@ -352,6 +354,9 @@ async def test_a_broken_duplicate_read_is_not_reported_as_a_missing_guard(claims
     with patch("app.api.routes.trade_desk._fetch_portfolio_state",
                new=AsyncMock(return_value=_clean_portfolio())), \
          patch("app.api.routes.trade_desk._is_kill_switch_active", return_value=False), \
+         patch("app.services.execution_portfolio_gate.check_execution_portfolio",
+               new=AsyncMock(return_value=MagicMock(
+                   allowed=True, flags=[], reason=None))), \
          patch("app.broker.broker_factory.get_broker", return_value=broker), \
          patch.object(td.ibkr_coordinator, "submit", new=_run_submitted), \
          patch("app.services.execution_portfolio_gate.check_execution_portfolio", new=AsyncMock(return_value=PortfolioGateResult(allowed=True, reason=None))):
