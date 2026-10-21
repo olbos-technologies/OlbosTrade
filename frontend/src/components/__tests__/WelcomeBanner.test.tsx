@@ -6,7 +6,7 @@ import WelcomeBanner from "../WelcomeBanner";
 import { TerminalNavProvider } from "../TerminalNavContext";
 
 describe("WelcomeBanner", () => {
-  it("renders three getting-started steps and navigates via TerminalNav", () => {
+  it("renders beginner guidance and navigates via TerminalNav", () => {
     const onNav = vi.fn();
     const onDismiss = vi.fn();
     render(
@@ -15,16 +15,29 @@ describe("WelcomeBanner", () => {
       </TerminalNavProvider>,
     );
 
-    expect(screen.getByLabelText(/getting started/i)).toBeInTheDocument();
-    expect(screen.getByText(/three steps before you trade/i)).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: /getting started with olbostrade/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /make the terminal work for you/i })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: /choose your experience level/i })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /open broker/i }));
     expect(onNav).toHaveBeenCalledWith("system:broker");
 
-    fireEvent.click(screen.getByRole("button", { name: /open signals/i }));
+    fireEvent.click(screen.getByRole("button", { name: /explore signals/i }));
     expect(onNav).toHaveBeenCalledWith("equity");
 
-    fireEvent.click(screen.getByRole("button", { name: /dismiss welcome/i }));
+    fireEvent.click(screen.getByRole("button", { name: /dismiss guide/i }));
     expect(onDismiss).toHaveBeenCalled();
+  });
+
+  it("changes guidance without changing execution mode", () => {
+    const onNav = vi.fn();
+    render(
+      <TerminalNavProvider onNav={onNav}>
+        <WelcomeBanner onDismiss={vi.fn()} />
+      </TerminalNavProvider>,
+    );
+    fireEvent.click(screen.getByRole("radio", { name: /experienced trader/i }));
+    expect(screen.getByText(/inspect model lineage/i)).toBeInTheDocument();
+    expect(screen.getByText(/cannot enable live trading/i)).toBeInTheDocument();
   });
 });
