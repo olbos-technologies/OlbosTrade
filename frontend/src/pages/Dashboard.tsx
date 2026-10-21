@@ -19,6 +19,8 @@ import CommandAttention, { riskWarnings } from "../components/CommandAttention";
 import ErrorBoundary     from "../components/ErrorBoundary";
 import WelcomeBanner, { WELCOME_DISMISS_KEY } from "../components/WelcomeBanner";
 import CommandCenterWorkspace from "../components/CommandCenterWorkspace";
+import ProPortfolioInsights from "../components/ProPortfolioInsights";
+import { readExperienceLevel } from "../components/WelcomeBanner";
 import MetricHint, { resolveMetricHint } from "../components/MetricHint";
 import { useIsMobile }   from "../hooks/useIsMobile";
 import { StatTile, Badge, Button, Panel } from "../components/ui";
@@ -221,6 +223,13 @@ function DesktopDashboard() {
   const { positions, portfolio, portfolioError, greeks } = usePaperTrade();
   const { guardrailStatus, portfolioState } = useRisk();
   const nav = useTerminalNav();
+  const [experience, setExperience] = useState(readExperienceLevel);
+  useEffect(() => {
+    const sync = () => setExperience(readExperienceLevel());
+    window.addEventListener("olbos:experience-change", sync);
+    window.addEventListener("storage", sync);
+    return () => { window.removeEventListener("olbos:experience-change", sync); window.removeEventListener("storage", sync); };
+  }, []);
 
   // Managed = Olbos-opened positions (tracked). Untracked = pre-existing
   // broker holdings in the (shared paper) account that we did not open.
@@ -557,6 +566,12 @@ function DesktopDashboard() {
           </div>
         </div>
       </div>
+
+      {experience === "pro" && (
+        <ErrorBoundary label="Portfolio Intelligence">
+          <ProPortfolioInsights positions={positions} portfolioUnavailable={Boolean(portfolioError || !portfolio)} />
+        </ErrorBoundary>
+      )}
 
       {/* Execution activity — Command Center third row */}
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr" }}>
