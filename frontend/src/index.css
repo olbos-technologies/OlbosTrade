@@ -1456,6 +1456,7 @@ summary span[aria-hidden="true"] { display: inline-block; transition: transform 
    the review sheet is shared by phone and desktop so the destructive action
    follows the same two-stage flow everywhere. */
 .positions-summary { display: none; }
+.position-mobile-expand { display: none; }
 .position-tracking-warning {
   color: var(--amber);
   overflow: hidden;
@@ -1798,18 +1799,23 @@ summary span[aria-hidden="true"] { display: inline-block; transition: transform 
     width: 100%;
     box-sizing: border-box;
     grid-template-areas:
+      "symbol   type   pnl";
+    gap: 5px 9px;
+    align-items: center;
+    padding: 8px 12px;
+    margin: 0 0 8px;
+    background: var(--bg-2);
+    border: 1px solid var(--line-dim);
+    border-radius: var(--radius-card);
+  }
+  .t-table--cards tbody tr.position-card--expanded {
+    grid-template-areas:
       "symbol   type   pnl"
       "strategy strategy strategy"
       "credit   hold   mode"
       "mfe      mae    status"
       "action   action action";
-    gap: 5px 9px;
-    align-items: center;
     padding: 10px 12px;
-    margin: 0 0 8px;
-    background: var(--bg-2);
-    border: 1px solid var(--line-dim);
-    border-radius: var(--radius-card);
   }
   /* The empty-state row keeps its single centred cell. */
   .t-table--cards tbody tr:has(td[colspan]) {
@@ -1840,6 +1846,38 @@ summary span[aria-hidden="true"] { display: inline-block; transition: transform 
   .t-table--cards td[data-col="mode"]     { grid-area: mode; }
   .t-table--cards td[data-col="status"]   { grid-area: status; justify-content: flex-end; }
   .t-table--cards td[data-col="action"]   { grid-area: action; margin-top: 4px; }
+
+  .t-table--cards tbody tr:not(.position-card--expanded) td[data-col="strategy"],
+  .t-table--cards tbody tr:not(.position-card--expanded) td[data-col="credit"],
+  .t-table--cards tbody tr:not(.position-card--expanded) td[data-col="mfe"],
+  .t-table--cards tbody tr:not(.position-card--expanded) td[data-col="mae"],
+  .t-table--cards tbody tr:not(.position-card--expanded) td[data-col="hold"],
+  .t-table--cards tbody tr:not(.position-card--expanded) td[data-col="mode"],
+  .t-table--cards tbody tr:not(.position-card--expanded) td[data-col="status"],
+  .t-table--cards tbody tr:not(.position-card--expanded) td[data-col="action"] { display: none; }
+
+  .t-table--cards .position-desktop-symbol { display: none; }
+  .t-table--cards .position-mobile-expand {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "name chevron" "quantity chevron";
+    align-items: center;
+    width: 100%;
+    min-height: 44px;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--ink);
+    text-align: left;
+    font-family: var(--mono);
+    cursor: pointer;
+  }
+  .position-mobile-expand:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+  .position-mobile-symbol { grid-area: name; overflow: hidden; text-overflow: ellipsis; }
+  .position-mobile-quantity { grid-area: quantity; color: var(--ink-dim); font-family: var(--sans); font-size: 10px; font-weight: 500; }
+  .position-mobile-chevron { grid-area: chevron; color: var(--ink-dim); font-size: 18px; padding-left: 3px; transition: transform var(--motion-fast); }
+  .position-card--expanded .position-mobile-chevron { transform: rotate(180deg); }
 
   /* The header row is gone, so the numeric cells carry their own label —
      otherwise "$4.20  +$300  -$120" is three unexplained figures. */

@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased — Compact mobile Positions
+
+- Positions now show a scannable one-row summary on phones; tapping a position reveals its full details and existing close-review action. Desktop remains a full table. This is frontend-only and does not change close eligibility or order submission.
+
 ## Unreleased — Paper-pilot reliability gates
 
 - Database backups are written privately to a temporary file, verified before publication, and retain previous copies when dump or configured off-site transfer fails. No schema or environment-variable change.
