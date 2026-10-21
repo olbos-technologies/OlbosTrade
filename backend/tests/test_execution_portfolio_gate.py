@@ -458,16 +458,28 @@ async def test_load_portfolio_risk_state_broker_failure_falls_back_to_db_count()
 
 
 @pytest.mark.asyncio
-async def test_load_portfolio_risk_state_db_failure_still_fails_open():
-    from app.services.execution_portfolio_gate import load_portfolio_risk_state
+async def test_load_portfolio_risk_state_db_failure_refuses_unknown_exposure():
+    from app.services.execution_portfolio_gate import (
+        PortfolioStateUnavailable, load_portfolio_risk_state,
+    )
 
     with patch("app.core.database.AsyncSessionLocal", side_effect=Exception("db down")):
-        state = await load_portfolio_risk_state(100_000.0)
+        with pytest.raises(PortfolioStateUnavailable, match="portfolio positions unavailable"):
+            await load_portfolio_risk_state(100_000.0)
 
-    # Pre-existing fail-open behavior for a DB-load failure is untouched by
-    # this fix — the broker cross-check never runs when the outer DB read
-    # itself fails.
-    assert state.open_position_count == 0
+
+@pytest.mark.asyncio
+async def test_check_execution_portfolio_blocks_new_entries_on_db_failure(monkeypatch):
+    from app.core.config import settings
+    from app.services.execution_portfolio_gate import check_execution_portfolio
+
+    monkeypatch.setattr(settings, "execution_portfolio_gate", True)
+    with patch("app.core.database.AsyncSessionLocal", side_effect=Exception("db down")):
+        result = await check_execution_portfolio(_equity(), 100_000.0)
+
+    assert result.allowed is False
+    assert "portfolio_state_unavailable" in result.flags
+    assert "new entries blocked" in result.reason
 
 
 # ── Unknown is not a sector ─────────────────────────────────────────────
