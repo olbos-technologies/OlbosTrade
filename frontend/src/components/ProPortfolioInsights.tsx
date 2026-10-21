@@ -8,6 +8,13 @@ export type PositionInsight = {
   quantity?: number | null;
 };
 
+export function portfolioDataCoverage(positions: PositionInsight[]) {
+  const total = positions.length;
+  const pnlKnown = positions.filter(p => p.unrealized_pnl != null && Number.isFinite(p.unrealized_pnl)).length;
+  const untracked = positions.filter(p => p.tracked === false).length;
+  return { total, pnlKnown, missingPnl: total - pnlKnown, untracked };
+}
+
 export function pnlContributors(positions: PositionInsight[]): { symbol: string; pnl: number; tracked: boolean }[] {
   return positions
     .filter(p => p.unrealized_pnl != null && Number.isFinite(p.unrealized_pnl))
@@ -34,7 +41,8 @@ export default function ProPortfolioInsights({
 }) {
   const contributors = portfolioUnavailable ? [] : pnlContributors(positions);
   const known = contributors.length;
-  const untracked = positions.filter(p => p.tracked === false).length;
+  const coverage = portfolioUnavailable ? null : portfolioDataCoverage(positions);
+  const untracked = coverage?.untracked ?? 0;
   const top = contributors.slice(0, 6);
   const max = Math.max(1, ...top.map(p => Math.abs(p.pnl)));
   const usd = (value: number) => `${value < 0 ? "−" : "+"}$${Math.abs(value).toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
@@ -44,6 +52,11 @@ export default function ProPortfolioInsights({
       <div style={{ marginBottom: 8, display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
         <h2 style={{ margin: 0, fontSize: 14, color: "var(--ink)", fontFamily: "var(--sans)" }}>Portfolio Intelligence</h2>
         <span style={{ ...muted, fontSize: 10 }}>READ-ONLY · POSITION DATA</span>
+      </div>
+      <div role="status" style={{ ...muted, marginBottom: 10, padding: "8px 10px", border: "1px solid var(--line-dim)", borderRadius: 6, background: "var(--bg-3)" }}>
+        {coverage === null ? "Position coverage unavailable — portfolio source could not be verified."
+          : coverage.total === 0 ? "No open positions reported by the current portfolio source."
+          : `Position data coverage: ${coverage.pnlKnown}/${coverage.total} with observed unrealized P&L · ${coverage.missingPnl} missing P&L values · ${coverage.untracked} untracked holdings.`}
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 270px), 1fr))", gap: 12 }}>
         <Panel title="Unrealized P&L contributors">
