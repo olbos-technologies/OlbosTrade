@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, patch, MagicMock
 
 from app.api.routes.trade_desk import evaluate_equity, EquityEvaluateRequest
 from app.services.execution_mode import execution_mode_manager, ExecutionMode
+from app.services.execution_portfolio_gate import PortfolioGateResult
 
 
 @pytest.mark.asyncio
@@ -67,7 +68,8 @@ async def test_evaluate_equity_manual_eligible_when_clear(monkeypatch):
                     return_value=(True, "ok"),
                 ):
                     # Regime import inside evaluate uses app.main._current_regime
-                    with patch("app.main._current_regime", None):
+                    with patch("app.main._current_regime", None), \
+                         patch("app.services.execution_portfolio_gate.check_execution_portfolio", new=AsyncMock(return_value=PortfolioGateResult(allowed=True, reason=None))):
                         body = await evaluate_equity(
                             EquityEvaluateRequest(
                                 ticker="AAPL",
