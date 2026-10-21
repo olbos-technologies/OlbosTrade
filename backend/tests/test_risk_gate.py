@@ -17,7 +17,8 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-from unittest.mock import AsyncMock, MagicMock, patch, call
+from unittest.mock import AsyncMock, MagicMock, patch
+from app.services.execution_portfolio_gate import PortfolioGateResult, call
 
 import pytest
 
@@ -269,7 +270,8 @@ async def test_zero_shares_skipped_in_execute_signal():
 
     with _patch_fetch(_clean_portfolio()), \
          patch("app.api.routes.trade_desk._is_kill_switch_active", return_value=False), \
-         patch("app.broker.broker_factory.get_broker", return_value=broker):
+         patch("app.broker.broker_factory.get_broker", return_value=broker), \
+         patch("app.services.execution_portfolio_gate.check_execution_portfolio", new=AsyncMock(return_value=PortfolioGateResult(allowed=True, reason=None))):
 
         result = await _execute_signal(signal, approved_by="autopilot")
 
@@ -287,7 +289,8 @@ async def test_zero_contracts_skipped_in_execute_signal():
 
     with _patch_fetch(_clean_portfolio()), \
          patch("app.api.routes.trade_desk._is_kill_switch_active", return_value=False), \
-         patch("app.broker.broker_factory.get_broker", return_value=broker):
+         patch("app.broker.broker_factory.get_broker", return_value=broker), \
+         patch("app.services.execution_portfolio_gate.check_execution_portfolio", new=AsyncMock(return_value=PortfolioGateResult(allowed=True, reason=None))):
 
         result = await _execute_signal(signal, approved_by="autopilot")
 
