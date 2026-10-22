@@ -157,6 +157,49 @@ class PositionReconciler:
             warnings=warnings,
         )
 
+    async def check_contracts(self):
+        """R2-A read-only signed contract check; never authorize entries from this.
+
+        Legacy trades encode strategy-level spreads, not a verified execution-leg
+        ledger. For now, nonempty DB trades are *unverified*, never inferred
+        clean from matching ticker totals. This method deliberately does not
+        change legacy reconcile()/check() or the live order path.
+        """
+        from app.services.contract_reconciliation import (
+            ContractLeg, compare_contract_legs,
+        )
+
+        try:
+            positions = await self.broker.get_positions()
+        except Exception:
+            return compare_contract_legs([], None)
+
+        try:
+            async with AsyncSessionLocal() as session:
+                query = await session.execute(
+                    select(Trade).where(self._owned, Trade.status == "open")
+                )
+                trades = query.scalars().all()
+        except Exception:
+            return compare_contract_legs([], None)
+
+        # No safe row-by-row signed leg mapping exists yet for legacy spread
+        # records; matching on underlying + quantity would be false evidence.
+        if trades:
+            return compare_contract_legs([], None)
+
+        broker_legs = [
+            ContractLeg(
+                underlying=p.underlying, expiration=p.expiration,
+                strike=p.strike, option_type=p.option_type, quantity=p.quantity,
+            )
+            for p in positions
+            if p.quantity
+        ]
+        # An empty book on both sides is the only currently verified state.
+        # Any broker holdings against no DB leg records are reported as drift.
+        return compare_contract_legs(broker_legs, [])
+
     async def reconcile(self) -> ReconciliationResult:
         """
         Compare broker positions against DB open trades.
