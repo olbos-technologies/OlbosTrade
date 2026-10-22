@@ -9,6 +9,7 @@ import uuid
 from dataclasses import dataclass
 from decimal import Decimal
 
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 
 from app.core.database import AsyncSessionLocal
@@ -69,5 +70,22 @@ async def record_authenticated_execution(
     async with AsyncSessionLocal() as session:
         async with session.begin():
             inserted_id = (await session.execute(statement)).scalar_one_or_none()
+            if inserted_id is None:
+                existing = (await session.execute(
+                    select(BrokerExecutionFill).where(
+                        BrokerExecutionFill.broker == values["broker"],
+                        BrokerExecutionFill.broker_account_id == values["broker_account_id"],
+                        BrokerExecutionFill.broker_execution_id == values["broker_execution_id"],
+                    )
+                )).scalar_one_or_none()
+                if existing is None:
+                    raise ValueError("execution collision without readable ledger record")
+                fields = (
+                    "organization_id", "client_order_id", "contract_id",
+                    "underlying", "expiration", "strike", "option_type",
+                    "signed_filled_quantity", "fill_price", "filled_at",
+                )
+                if any(getattr(existing, key) != values[key] for key in fields):
+                    raise ValueError("conflicting broker execution payload; manual investigation required")
     return FillWriteResult(inserted=inserted_id is not None,
                            broker_execution_id=evidence.broker_execution_id)
