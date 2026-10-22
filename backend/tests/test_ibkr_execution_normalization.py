@@ -7,13 +7,12 @@ from app.services.ibkr_execution_normalization import normalize_ibkr_option_fill
 
 def sample(**changes):
     execution=dict(acctNumber="DU123",side="SLD",shares=2,price=1.25,
-                   execId="0001.01",orderId=123,
-                   time=datetime(2026,10,22,tzinfo=timezone.utc))
-    execution.update(changes)
+                   execId="0001.01",orderId=123)
+    execution.update({k:v for k,v in changes.items() if k != "time"})
     contract=SimpleNamespace(secType="OPT",right="P",symbol="SPY",
                              lastTradeDateOrContractMonth="20261120",
                              strike=500,conId=123456)
-    return SimpleNamespace(execution=SimpleNamespace(**execution),contract=contract)
+    return SimpleNamespace(execution=SimpleNamespace(**execution),contract=contract, time=changes.get("time", datetime(2026,10,22,tzinfo=timezone.utc)))
 
 
 def test_short_option_execution_is_signed_negative():
