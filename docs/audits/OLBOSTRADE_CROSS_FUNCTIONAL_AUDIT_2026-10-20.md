@@ -3,7 +3,7 @@ Date: 2026-10-20
 Scope: Static review of current `main` repository tree, selected implementation files, existing architecture audits, and GitHub Actions job summaries. **Not an exhaustive line-by-line audit, security penetration test, market-data validation, or end-to-end runtime sign-off.**
 
 ## Executive decision
-**Upgrade rather than rewrite.** Preserve FastAPI/Python research services, broker abstraction, React/TypeScript terminal, PostgreSQL migrations, existing tests, and verified execution gates. Prioritize account/order truth, known fail-open behavior, red CI, and comprehensible user journeys before adding C++ or more autonomous strategies.
+**Upgrade rather than rewrite.** Preserve FastAPI/Python research services, broker abstraction, React/TypeScript terminal, PostgreSQL migrations, existing tests, and verified execution gates. Prioritize account/order truth, regression checks for fail-closed behavior, current CI verification, and comprehensible user journeys before adding C++ or more autonomous strategies.
 
 ## Coverage and evidence
 - Enumerated full `main` Git tree: 889 entries, 818 blobs; approx. 494 backend blobs and 266 frontend blobs.
@@ -11,10 +11,13 @@ Scope: Static review of current `main` repository tree, selected implementation 
 - Read recent CI run 39508993218: backend-tests SUCCESS; frontend-tests FAIL (Type-check); e2e-tests FAIL (Browser tests), associated with UX PR #123. Root causes not yet established.
 - No local build/test execution, broker-connected paper session, device inspection, full source-by-source review, authenticated pentest, or live order was performed.
 
+## Update note (2026-10-22)
+This audit is a historical snapshot, not a current release certification. R2-L through R2-O changes subsequently merged into `main` address ledger recovery, paper-reconciliation diagnostics, entry preflight policy, and emergency readiness. These remain separate modules and do not by themselves prove broker execution paths are guarded. R2-P integration work remains under review. The CI and code observations below retain their original dates unless explicitly revised.
+
 ## Findings ordered by severity
 ### P0/P1 — Must resolve before widening automated execution
-1. **Portfolio data load failures can fail open. CONFIRMED code/policy behavior.** `backend/app/services/execution_portfolio_gate.py` explicitly says a failed open-trade load skips that particular portfolio gate with a warning. Other risk gates do not prove the portfolio exposure check is safe. Change to block *new entries* when canonical portfolio state is unavailable; retain verified, separately authorized risk-reducing actions. Test DB timeout, malformed records, lost connection, stale state, and recovery. Coordinate change with existing `_execute_signal` gate and tests.
-2. **UX pull request #123 has red CI. CONFIRMED by GitHub Actions.** Run 39508993218: frontend Type-check and browser tests failed, backend tests succeeded. Obtain exact failures, fix PR, rerun all checks before merge. Do not infer cause from job summary.
+1. **Portfolio state fail-closed protection needs ongoing regression verification.** The October 20 finding describing a fail-open load path is historical: the current `execution_portfolio_gate.py` defines `PortfolioStateUnavailable` and documents refusal of new entries when required portfolio state cannot be loaded. This update does not independently certify every order-submission route. Continue testing DB timeout, malformed records, lost connection, stale state, recovery, and integration with `_execute_signal`; keep exits separately authorized.
+2. **UX PR #123 historical CI failure.** Run 39508993218 failed frontend type-check and browser tests on October 20. PR #123 is currently merged; this old run must not be portrayed as today's CI status. Check the latest commit and current checks before drawing release conclusions.
 3. **Order/account truth still needs demonstrated end-to-end verification. DOCUMENTED ARCHITECTURAL GAP, not newly confirmed exploit.** `ARCHITECTURE_MEMO.md` identifies canonical order/fill/position mapping, complete signal→order→fill→exit lineage, margin/buying-power visibility, and broker-event streaming as gaps. Recheck against latest code/migrations: portions may have landed after memo. Run real paper restart, partial-fill, duplicate, reconnect, and multi-account tests and document current coverage before coding replacements.
 4. **0DTE automated execution should stay OFF. CONFIRMED product boundary.** `ZeroDteDesk.tsx` is read-only, and `docs/trade-desk-2.0/PLAN.md` explicitly defers 0DTE Autopilot. For 0DTE research improve stale-quote checks, simulated fills, expiry and assignment scenarios, and cutoffs first.
 
