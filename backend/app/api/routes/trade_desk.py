@@ -1805,6 +1805,21 @@ async def _execute_signal(
             logger.error("Cooldown check failed for %s (fail closed): %s", ticker, _cd_exc)
             return _blocked(f"cooldown_check_error: {_cd_exc}")
 
+    # R2-Q: block new entries until complete, authenticated reconciliation
+    # evidence can be supplied by a trusted server-side provider. Do not accept
+    # a claimed "verified" flag from signals, requests, or IBKR fills() cache.
+    # This intentional fail-closed gate changes order behavior if deployed.
+    from app.services.entry_submission_boundary import check_entry_before_submission
+    _entry_preflight = check_entry_before_submission(
+        intent="open",
+        reconciliation=None,  # No independently verified history provider yet.
+        now=datetime.now(timezone.utc),
+        kill_switch_engaged=_is_kill_switch_active(),
+        account_scope_authenticated=False,  # Never infer this from order input.
+    )
+    if not _entry_preflight.allowed:
+        return _blocked(f"entry_preflight: {_entry_preflight.reason}")
+
     # ── Stages 4+5: Broker submission + fill recording ─────────────────────────
     action = signal.get("action", "")
 
