@@ -2,6 +2,8 @@
 from datetime import date
 from decimal import Decimal
 
+import pytest
+
 from app.services.contract_reconciliation import ContractLeg, compare_contract_legs
 
 
@@ -44,4 +46,40 @@ def test_broker_ghost_and_database_phantom_are_not_clean():
 
 def test_invalid_zero_quantity_leg_unverified():
     result = compare_contract_legs([leg(qty=0)], [])
+    assert not result.verified and not result.clean
+
+
+@pytest.mark.asyncio
+async def test_scoped_contract_check_empty_book_is_verified():
+    from unittest.mock import AsyncMock, MagicMock, patch
+    from app.services.position_reconciler import PositionReconciler
+
+    broker = MagicMock()
+    broker.get_positions = AsyncMock(return_value=[])
+    reconciler = PositionReconciler(broker, organization_id=None)
+    with patch("app.services.position_reconciler.AsyncSessionLocal") as db:
+        session = MagicMock()
+        session.execute = AsyncMock(return_value=MagicMock(
+            scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[])))
+        ))
+        db.return_value.__aenter__ = AsyncMock(return_value=session)
+        result = await reconciler.check_contracts()
+    assert result.verified and result.clean
+
+
+@pytest.mark.asyncio
+async def test_scoped_contract_check_nonempty_legacy_spread_is_unverified():
+    from unittest.mock import AsyncMock, MagicMock, patch
+    from app.services.position_reconciler import PositionReconciler
+
+    broker = MagicMock()
+    broker.get_positions = AsyncMock(return_value=[])
+    reconciler = PositionReconciler(broker, organization_id=None)
+    with patch("app.services.position_reconciler.AsyncSessionLocal") as db:
+        session = MagicMock()
+        session.execute = AsyncMock(return_value=MagicMock(
+            scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[MagicMock()])))
+        ))
+        db.return_value.__aenter__ = AsyncMock(return_value=session)
+        result = await reconciler.check_contracts()
     assert not result.verified and not result.clean
