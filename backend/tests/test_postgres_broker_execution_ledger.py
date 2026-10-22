@@ -1,6 +1,6 @@
 """R2-J PostgreSQL-backed execution ledger tests.
 
-Requires TEST_DATABASE_URL pointing to a disposable PostgreSQL database with
+Requires OLBOS_TEST_DATABASE_URL pointing to a disposable PostgreSQL database with
 migration 0042 applied. Skips when unset; never touches the default app DB.
 """
 import os
@@ -24,6 +24,9 @@ async def test_postgres_execution_identity_is_atomic_and_account_scoped():
         pytest.fail("TEST_DATABASE_URL must be PostgreSQL asyncpg")
     engine = create_async_engine(url)
     sessionmaker = async_sessionmaker(engine, expire_on_commit=False)
+    # Use the CI PostgreSQL instance; create only this test's ledger table.
+    async with engine.begin() as conn:
+        await conn.run_sync(BrokerExecutionFill.__table__.create, checkfirst=True)
     from sqlalchemy.dialects.postgresql import insert
 
     token = uuid4().hex
