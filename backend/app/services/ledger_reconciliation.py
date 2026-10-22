@@ -40,3 +40,27 @@ def compare_broker_to_ledger(broker_legs, ledger_rows, *, coverage_verified: boo
     if recorded is None:
         return ContractComparison(False, False, reasons=["invalid_execution_ledger"])
     return compare_contract_legs(broker_legs, recorded)
+
+
+
+def compare_scoped_broker_to_ledger(
+    broker_legs, ledger_rows, *,
+    broker: str, broker_account_id: str,
+    organization_id, coverage_verified: bool,
+) -> ContractComparison:
+    """Require all provided records to belong to exactly one owned account.
+
+    Account metadata on records is checked; this is NOT authentication and
+    does not prove coverage of the broker's complete execution history.
+    """
+    if not broker.strip() or not broker_account_id.strip() or ledger_rows is None:
+        return ContractComparison(False, False, reasons=["ledger_account_scope_unverified"])
+    rows = list(ledger_rows)
+    for row in rows:
+        if (
+            getattr(row, "broker", None) != broker.strip().lower()
+            or getattr(row, "broker_account_id", None) != broker_account_id
+            or getattr(row, "organization_id", object()) != organization_id
+        ):
+            return ContractComparison(False, False, reasons=["execution_account_scope_mismatch"])
+    return compare_broker_to_ledger(broker_legs, rows, coverage_verified=coverage_verified)
