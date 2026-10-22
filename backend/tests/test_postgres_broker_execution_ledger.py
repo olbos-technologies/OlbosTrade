@@ -17,11 +17,11 @@ from app.models.broker_execution_fill import BrokerExecutionFill
 
 @pytest.mark.asyncio
 async def test_postgres_execution_identity_is_atomic_and_account_scoped():
-    url = os.getenv("TEST_DATABASE_URL")
+    url = os.getenv("OLBOS_TEST_DATABASE_URL")
     if not url:
-        pytest.skip("TEST_DATABASE_URL not configured")
+        pytest.skip("OLBOS_TEST_DATABASE_URL not configured")
     if not url.startswith("postgresql+asyncpg://"):
-        pytest.fail("TEST_DATABASE_URL must be PostgreSQL asyncpg")
+        pytest.fail("OLBOS_TEST_DATABASE_URL must be PostgreSQL asyncpg")
     engine = create_async_engine(url)
     sessionmaker = async_sessionmaker(engine, expire_on_commit=False)
     # Use the CI PostgreSQL instance; create only this test's ledger table.
