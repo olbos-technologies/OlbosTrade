@@ -56,8 +56,13 @@ def compare_contract_legs(
                 return ContractComparison(verified=False, clean=False, reasons=["invalid_contract_leg"])
             source[leg.key] += int(leg.quantity)
     keys = set(broker) | set(recorded)
-    missing_at_db = {key: broker[key] - recorded[key] for key in keys if broker[key] > recorded[key]}
-    missing_at_broker = {key: recorded[key] - broker[key] for key in keys if recorded[key] > broker[key]}
+    # Report mismatched signed holdings by *source*, not numeric comparison.
+    # A short broker position (-1) absent from DB (0) is broker-only;
+    # comparing -1 > 0 incorrectly inverted it. Preserve both sides when
+    # contract direction or size differs, so the operator sees actual holdings.
+    mismatch = {key for key in keys if broker[key] != recorded[key]}
+    missing_at_db = {key: broker[key] for key in mismatch if broker[key] != 0}
+    missing_at_broker = {key: recorded[key] for key in mismatch if recorded[key] != 0}
     return ContractComparison(
         verified=True,
         clean=not missing_at_db and not missing_at_broker,
