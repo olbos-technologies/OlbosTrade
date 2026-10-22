@@ -45,3 +45,19 @@ async def test_empty_batch_does_not_claim_history_completeness():
         result=await ingest_ibkr_option_fills([],expected_account_id="DU123",organization_id=None)
     assert result.inserted==0 and result.repeated==0
     writer.assert_not_awaited()
+
+
+
+@pytest.mark.asyncio
+async def test_partial_batch_writer_failure_propagates_for_recovery():
+    writer = AsyncMock(side_effect=[
+        FillWriteResult(True, "exec-1"),
+        RuntimeError("broker ledger database unavailable"),
+    ])
+    with patch("app.services.ibkr_ledger_adapter.record_authenticated_execution", writer):
+        with pytest.raises(RuntimeError, match="database unavailable"):
+            await ingest_ibkr_option_fills(
+                [fill(execution_id="exec-1"), fill(execution_id="exec-2")],
+                expected_account_id="DU123", organization_id=None,
+            )
+    assert writer.await_count == 2
