@@ -28,6 +28,7 @@ async def record_authenticated_execution(
     broker: str,
     expected_account_id: str,
     expected_organization_id: uuid.UUID | None,
+    broker_fill_price: Decimal,
 ) -> FillWriteResult:
     """Idempotent atomic insert; identity collisions never update old fills.
 
@@ -41,6 +42,8 @@ async def record_authenticated_execution(
     )
     if not validation.verified:
         raise ValueError("invalid fill evidence: " + ", ".join(validation.reasons))
+    if not Decimal(str(broker_fill_price)).is_finite() or broker_fill_price <= 0:
+        raise ValueError("valid broker fill price required")
     if not broker.strip():
         raise ValueError("broker identity missing")
     if not evidence.expiration or len(evidence.expiration) != 10:
@@ -57,9 +60,14 @@ async def record_authenticated_execution(
         strike=Decimal(str(evidence.strike)),
         option_type=evidence.option_type,
         signed_filled_quantity=evidence.signed_filled_quantity,
-        fill_price=Decimal("0"),  # price not included in FillEvidence: NEVER invent it
+        fill_price=Decimal(str(broker_fill_price)),
         filled_at=evidence.filled_at,
     )
-    # Reject rather than store a fabricated fill price. A priced broker
-    # execution schema is required before persistence can be enabled.
-    raise ValueError("broker execution fill price unavailable; ingestion disabled")
+    statement = insert(BrokerExecutionFill).values(**values).on_conflict_do_nothing(
+        constraint="uq_broker_execution_fills_identity"
+    ).returning(BrokerExecutionFill.id)
+    async with AsyncSessionLocal() as session:
+        async with session.begin():
+            inserted_id = (await session.execute(statement)).scalar_one_or_none()
+    return FillWriteResult(inserted=inserted_id is not None,
+                           broker_execution_id=evidence.broker_execution_id)
