@@ -83,3 +83,49 @@ async def test_scoped_contract_check_nonempty_legacy_spread_is_unverified():
         db.return_value.__aenter__ = AsyncMock(return_value=session)
         result = await reconciler.check_contracts()
     assert not result.verified and not result.clean
+
+
+@pytest.mark.asyncio
+async def test_scoped_contract_check_broker_unavailable_is_not_clean():
+    from unittest.mock import AsyncMock, MagicMock
+    from app.services.position_reconciler import PositionReconciler
+
+    broker = MagicMock()
+    broker.get_positions = AsyncMock(side_effect=ConnectionError("offline"))
+    result = await PositionReconciler(broker, organization_id=None).check_contracts()
+    assert not result.verified and not result.clean
+
+
+@pytest.mark.asyncio
+async def test_scoped_contract_check_db_unavailable_is_not_clean():
+    from unittest.mock import AsyncMock, MagicMock, patch
+    from app.services.position_reconciler import PositionReconciler
+
+    broker = MagicMock()
+    broker.get_positions = AsyncMock(return_value=[])
+    with patch("app.services.position_reconciler.AsyncSessionLocal", side_effect=RuntimeError("db unavailable")):
+        result = await PositionReconciler(broker, organization_id=None).check_contracts()
+    assert not result.verified and not result.clean
+
+
+@pytest.mark.asyncio
+async def test_scoped_contract_check_untracked_broker_contract_is_not_clean():
+    from unittest.mock import AsyncMock, MagicMock, patch
+    from app.services.position_reconciler import PositionReconciler
+    from app.broker.broker_interface import Position
+
+    broker = MagicMock()
+    broker.get_positions = AsyncMock(return_value=[Position(
+        symbol="SPY option", underlying="SPY", expiration=date(2026, 11, 20),
+        strike=Decimal("500"), option_type="put", quantity=-1,
+        avg_cost=Decimal("1.50"),
+    )])
+    with patch("app.services.position_reconciler.AsyncSessionLocal") as db:
+        session = MagicMock()
+        session.execute = AsyncMock(return_value=MagicMock(
+            scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[])))
+        ))
+        db.return_value.__aenter__ = AsyncMock(return_value=session)
+        result = await PositionReconciler(broker, organization_id=None).check_contracts()
+    assert result.verified and not result.clean
+    assert result.broker_only
