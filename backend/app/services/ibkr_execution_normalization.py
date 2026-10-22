@@ -47,7 +47,7 @@ def normalize_ibkr_option_fill(fill, *, expected_account: str,
         price = Decimal(str(execution.price))
         if not strike.is_finite() or strike <= 0 or not price.is_finite() or price <= 0:
             raise ValueError("invalid_price_or_strike")
-        timestamp = execution.time
+        timestamp = fill.time
         if not isinstance(timestamp, datetime) or timestamp.tzinfo is None:
             raise ValueError("execution_timestamp_unverified")
         evidence = FillEvidence(
