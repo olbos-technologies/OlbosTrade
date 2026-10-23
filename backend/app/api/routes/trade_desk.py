@@ -1919,10 +1919,13 @@ async def _execute_signal(
             # Black-Scholes estimate.
             try:
                 quote = await broker.get_latest_quote(ticker)
-                if action == "BUY" and quote.ask_price > 0:
-                    entry_price = float(quote.ask_price) * (1 + _EQUITY_LIMIT_BUFFER)
-                elif action == "SELL" and quote.bid_price > 0:
-                    entry_price = float(quote.bid_price) * (1 - _EQUITY_LIMIT_BUFFER)
+                from app.services.equity_order_pricing import reprice_equity_limit
+                entry_price = reprice_equity_limit(
+                    action=action,
+                    fallback_price=entry_price,
+                    quote=quote,
+                    buffer=_EQUITY_LIMIT_BUFFER,
+                )
             except Exception as _q_exc:
                 logger.debug(
                     "Live quote unavailable for %s, using scan-time entry_price: %s",
