@@ -20,4 +20,52 @@ These rules apply to **Cursor, Claude Code, GitHub Copilot, Codex and humans**. 
 9. Do not infer production deployment from GitHub merge. Require deployment evidence, health checks, browser verification and rollback capability.
 10. Finish with a handoff: milestone ID, base commit, branch, changed files, behavior, checks, risk impact, deployment state and outstanding tasks.
 
+## Environment and verification traps
+These are properties of this repository's tooling, not of any one agent, and
+each has already produced a confidently wrong conclusion. They are shared
+rules for that reason — not Claude-specific notes.
+
+1. **A scan must assert that it read something.** A guard test that silently
+   matches nothing is worse than no test: it reports success forever. Assert a
+   non-trivial lower bound on what was found, and fail loudly if the thing
+   being inspected is renamed or moved.
+2. **A safety control must be reachable from the path it protects.** A policy
+   module with no caller enforces nothing, however well tested, while reading
+   in the changelog as though it does. Prove the call site exists with a guard
+   test that fails when it disappears.
+3. **No linter or formatter is configured** — no ruff, black, flake8, eslint,
+   prettier or pre-commit anywhere. Do not add one, or a config for one, as a
+   side effect of another task.
+4. **jsdom does no layout and applies no stylesheet.** Any claim about
+   geometry, overflow, CSS cascade, computed fonts or appearance at a given
+   width is unverifiable under vitest — such tests pass while the UI is
+   visibly wrong. Verify in a real browser.
+5. **vitest stubs CSS.** `import.meta.glob('**/*.css', { query: '?raw' })`
+   returns an empty string for every file while `.tsx` loads normally, so a
+   CSS-reading scan written that way passes by reading nothing. Read CSS from
+   the backend suite or a real browser instead.
+6. **pytest is already quiet.** `backend/pyproject.toml` sets `addopts = -q`,
+   so passing `-q` again makes it `-qq`, which suppresses the summary line
+   entirely — a check that greps for "N passed" then matches nothing, on a
+   fully passing run and an all-skipped one alike. Take counts from
+   `--junitxml` and cross-check pytest's exit status.
+7. **A skipped test is a green tick that proves nothing.** PostgreSQL-backed
+   tests skip unless `OLBOS_TEST_DATABASE_URL` is set, and CI fails the job if
+   they skip. Set it locally rather than reading skips as passes.
+8. **Confirm a failure against a clean tree before calling it a regression.**
+   Some dependencies do not build in every container, so a fresh checkout can
+   already fail tests. `git stash` and re-run before "fixing" something that
+   was never broken.
+9. **Alembic revision ids must be unique.** A duplicate breaks
+   `alembic upgrade head`, which the deploy script runs — so the deploy
+   breaks, not just the migration. Check the highest existing id in
+   `backend/alembic/versions/` first.
+10. **Failed reads must not look like safe values.** A swallowed error that
+    leaves the last known value on screen presents stale data as freshly
+    confirmed. Surface staleness explicitly, in code and in reports.
+
+When reporting results, prefer a command and its output over an adjective:
+"0 of 13 modules referenced in `trade_desk.py`" can be checked, "safety
+boundary integrated" cannot.
+
 If instructions disagree, prefer the stricter safety boundary and record the discrepancy for review.
