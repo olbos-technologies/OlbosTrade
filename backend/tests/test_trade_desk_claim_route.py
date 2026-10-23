@@ -492,3 +492,26 @@ async def test_unknown_history_reports_failed_claim_release(claims_table):
     rows = await _rows(claims_table)
     assert len(rows) == 1, "Cleanup failure unexpectedly removed the claim"
     assert rows[0].state != STATE_SUBMITTED, "A refused entry was marked submitted"
+
+
+async def test_parallel_unknown_history_entries_never_submit_or_leave_claim(claims_table):
+    """Real PostgreSQL contention with UNKNOWN evidence: no broker execution.
+
+    This tests refusal and cleanup only. The original successful-submission
+    concurrency test remains unchanged and must be covered separately.
+    """
+    broker = _broker()
+    with patch("app.api.routes.trade_desk._fetch_portfolio_state",
+               new=AsyncMock(return_value=_clean_portfolio())), \
+         patch("app.api.routes.trade_desk._is_kill_switch_active", return_value=False), \
+         patch("app.broker.broker_factory.get_broker", return_value=broker), \
+         patch.object(td.ibkr_coordinator, "submit", new=_run_submitted):
+        results = await asyncio.gather(*(
+            _execute_signal(_signal(), approved_by="manual") for _ in range(2)
+        ))
+    assert all(result["result"] in {"blocked", "skipped"} for result in results)
+    assert any(result["reason"] == "entry_history_proof_unavailable"
+               for result in results)
+    broker.place_order.assert_not_awaited()
+    broker.place_equity_order.assert_not_awaited()
+    assert await _rows(claims_table) == []
