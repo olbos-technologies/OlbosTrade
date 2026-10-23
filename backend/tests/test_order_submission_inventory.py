@@ -1,7 +1,8 @@
 """Review gate for broker submissions while execution paths are being unified.
 
 This is an inventory, not proof that the current paths share one risk/OMS
-pipeline. An added broker submission must receive explicit review rather than
+pipeline. Entry broker call sites now belong only to order_submission.py;
+its implementation must continue to refuse missing authorization. An added broker submission must receive explicit review rather than
 quietly creating a new path around the existing controls.
 """
 
@@ -17,8 +18,8 @@ ORDER_METHODS = {"place_order", "place_equity_order"}
 # Do not add a site here without reviewing identity, environment, risk,
 # idempotency, broker ambiguity, and reconciliation for that exact path.
 APPROVED_INVENTORY = Counter({
-    ("api/routes/trade_desk.py", "_execute_signal", "place_order"): 1,
-    ("api/routes/trade_desk.py", "_execute_signal", "place_equity_order"): 1,
+    ("services/order_submission.py", "submit_options_entry", "place_order"): 1,
+    ("services/order_submission.py", "submit_equity_entry", "place_equity_order"): 1,
     ("api/routes/trade_desk.py", "close_untracked_position", "place_equity_order"): 1,
     ("services/position_rotation.py", "close_equity_trade", "place_equity_order"): 1,
     ("services/position_rotation.py", "close_options_trade", "place_order"): 1,
