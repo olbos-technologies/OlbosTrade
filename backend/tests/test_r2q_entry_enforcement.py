@@ -27,3 +27,26 @@ def test_common_execution_pipeline_uses_submission_gate_before_broker():
     assert source.index("check_entry_before_submission(") < source.index(
         "broker.place_order(order)"
     )
+
+
+def test_no_broker_authority_from_reconciliation_claim_alone():
+    from app.services.entry_reconciliation_policy import EntryReconciliationStatus
+    now = datetime.now(timezone.utc)
+    purported_proof = EntryReconciliationStatus(
+        verified=True, clean=True, checked_at=now, scope_matches=True,
+    )
+    decision = check_entry_before_submission(
+        intent="open", reconciliation=purported_proof, now=now,
+        kill_switch_engaged=False, account_scope_authenticated=False,
+    )
+    assert not decision.allowed
+    assert decision.reason == "broker_account_authentication_unverified"
+
+
+def test_entry_denied_even_with_account_claim_when_history_missing():
+    decision = check_entry_before_submission(
+        intent="open", reconciliation=None, now=datetime.now(timezone.utc),
+        kill_switch_engaged=False, account_scope_authenticated=True,
+    )
+    assert not decision.allowed
+    assert decision.reason == "reconciliation_unavailable"
