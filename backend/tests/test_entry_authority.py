@@ -80,3 +80,15 @@ def test_unavailable_history_never_grants_retry_capability():
             ) for _ in range(3)
         ]
     assert asyncio.run(retry()) == [None, None, None]
+
+
+class _UnreadableHistoryProvider:
+    async def verify(self, *, intent_digest, account_scope):
+        raise RuntimeError("broker history read failed")
+
+
+def test_broker_history_read_failure_denies_entry():
+    authority = EntryAuthority(_UnreadableHistoryProvider())
+    assert asyncio.run(authority.request(
+        intent_digest="order-a", account_scope="paper-organization",
+    )) is None
