@@ -222,7 +222,7 @@ async def _seed_open_trade(factory, org_id, ticker="SPY"):
 # ── 1. one tenant's position does not block another's entry ────────────────
 
 async def test_another_organizations_open_position_does_not_block_entry(db):
-    """The over-blocking this step removes."""
+    """Another tenant must pass duplicate/scope checks and reach the R2-Q history hold."""
     await _seed_open_trade(db, ORG_A, "SPY")
     broker = _broker()
 
@@ -250,7 +250,7 @@ async def test_your_own_open_position_still_blocks_entry(db):
 
 
 async def test_an_unattributed_position_does_not_block_an_organization(db):
-    """Migration 0041 leaves historical rows NULL; NULL is its own scope."""
+    """Historical NULL rows cannot trigger another tenant’s duplicate guard; R2-Q still holds."""
     await _seed_open_trade(db, None, "SPY")
     broker = _broker()
 
@@ -365,7 +365,7 @@ async def test_an_autonomous_entry_is_refused_when_the_owner_is_ambiguous(db):
 
 
 async def test_an_autonomous_entry_proceeds_when_exactly_one_owner_exists(db):
-    """The unambiguous case — the same test migration 0041 applies."""
+    """One valid owner reaches the R2-Q hold, not owner_ambiguous."""
     async with db() as s, s.begin():
         await s.execute(text(
             "UPDATE organizations SET personal_for_user_id = NULL WHERE id = :i"
@@ -383,7 +383,7 @@ async def test_an_autonomous_entry_proceeds_when_exactly_one_owner_exists(db):
 
 
 async def test_an_autonomous_entry_in_single_operator_mode_uses_the_null_scope(db):
-    """Auth disabled: one operator, nothing to isolate from."""
+    """Single-operator ownership resolves, but unavailable history still blocks."""
     broker = _broker()
     p = _patches(broker)
     with p[0], p[1], p[2], p[3], p[4], \
