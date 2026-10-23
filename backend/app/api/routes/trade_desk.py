@@ -1819,6 +1819,9 @@ async def _execute_signal(
                 await position_claim.resolve(_claim)
             except Exception as _release_exc:
                 logger.error("Unsubmitted claim release failed for %s: %s", ticker, _release_exc)
+                # This claim may remain pending. Never report the cleanup as
+                # successful or let an operator mistake it for a broker fill.
+                return _blocked("entry_history_proof_unavailable_claim_release_failed")
         return _blocked("entry_history_proof_unavailable")
 
     # ── Stages 4+5: Broker submission + fill recording ─────────────────────────
