@@ -1359,18 +1359,6 @@ async def _execute_signal(
         logger.warning("Order blocked for %s — kill switch is engaged", ticker)
         return _blocked("kill_switch")
 
-    # R2-Q early safety hold: no complete broker-history source is available.
-    # Refuse BEFORE taking or marking a durable position claim, so an order
-    # that was never transmitted cannot leave a phantom submitted claim.
-    # The centralized broker submission boundary independently denies orders.
-    from app.services.entry_authority import entry_authority
-    _entry_capability = await entry_authority.request(
-        intent_digest=f"unverified:{asset_type}:{ticker}",
-        account_scope="unverified",
-    )
-    if _entry_capability is None:
-        return _blocked("entry_history_proof_unavailable")
-
     # ── Stage 1a: EmotionGuard (consecutive-loss pause / tilt) ─────────────────
     # Fail-open: an import error or DB error must never halt trading here.
     try:
@@ -1816,6 +1804,22 @@ async def _execute_signal(
             # one check meant to catch it.
             logger.error("Cooldown check failed for %s (fail closed): %s", ticker, _cd_exc)
             return _blocked(f"cooldown_check_error: {_cd_exc}")
+
+    # R2-Q: preserve the ordinary ownership/duplicate/claim risk checks first.
+    # The full-history provider is unavailable: release only our pending
+    # unsubmitted claim and refuse before marking any claim submitted.
+    from app.services.entry_authority import entry_authority
+    _entry_capability = await entry_authority.request(
+        intent_digest=f"unverified:{asset_type}:{ticker}",
+        account_scope="unverified",
+    )
+    if _entry_capability is None:
+        if _claim is not None:
+            try:
+                await position_claim.resolve(_claim)
+            except Exception as _release_exc:
+                logger.error("Unsubmitted claim release failed for %s: %s", ticker, _release_exc)
+        return _blocked("entry_history_proof_unavailable")
 
     # ── Stages 4+5: Broker submission + fill recording ─────────────────────────
     from app.services import order_submission
