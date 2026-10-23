@@ -489,3 +489,6 @@ async def test_unknown_history_reports_failed_claim_release(claims_table):
     assert result["reason"] == "entry_history_proof_unavailable_claim_release_failed"
     broker.place_order.assert_not_awaited()
     broker.place_equity_order.assert_not_awaited()
+    rows = await _rows(claims_table)
+    assert len(rows) == 1, "Cleanup failure unexpectedly removed the claim"
+    assert rows[0].state != STATE_SUBMITTED, "A refused entry was marked submitted"
