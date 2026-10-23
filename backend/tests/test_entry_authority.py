@@ -30,7 +30,8 @@ def test_externally_constructed_authorization_not_trusted():
         intent_digest="order-a",account_scope="paper-scope")) is False
 
 
-def test_parallel_requests_do_not_issue_a_permit():
+def test_parallel_requests_with_unavailable_history_all_refuse():
+    """UNKNOWN-only provider rejects concurrent reads; NOT a TOCTOU or single-use test."""
     async def check():
         authority=EntryAuthority()
         return await asyncio.gather(*(
