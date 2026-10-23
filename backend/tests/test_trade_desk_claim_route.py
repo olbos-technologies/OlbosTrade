@@ -450,3 +450,24 @@ async def test_equity_orders_still_carry_no_client_order_id():
         "place_equity_order's client_order_id support and "
         "KEYED_ASSET_CLASSES disagree: one of them has changed"
     )
+
+
+async def test_unknown_history_refuses_entry_and_releases_pending_claim(claims_table):
+    """R2-Q fail-closed: a refused entry cannot strand an unsubmitted claim.
+
+    Exercise the real PostgreSQL claim lifecycle and the broker's own order
+    method. This does not relax the old concurrent-submission regression tests.
+    """
+    broker = _broker()
+    with patch("app.api.routes.trade_desk._fetch_portfolio_state",
+               new=AsyncMock(return_value=_clean_portfolio())), \
+         patch("app.api.routes.trade_desk._is_kill_switch_active", return_value=False), \
+         patch("app.broker.broker_factory.get_broker", return_value=broker), \
+         patch.object(td.ibkr_coordinator, "submit", new=_run_submitted):
+        result = await _execute_signal(_signal(), approved_by="manual")
+
+    assert result["result"] == "blocked", result
+    assert result["reason"] == "entry_history_proof_unavailable", result
+    broker.place_order.assert_not_awaited()
+    broker.place_equity_order.assert_not_awaited()
+    assert await _rows(claims_table) == [], "Refusal stranded an unsubmitted claim"
