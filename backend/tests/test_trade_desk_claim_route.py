@@ -190,33 +190,24 @@ async def test_no_broker_submission_when_a_previous_outcome_is_unknown(claims_ta
 
 # ── concurrency, through the route, against the real service ───────────────
 
-async def test_two_concurrent_route_calls_submit_exactly_one_order(claims_table):
-    """The property the whole change exists for, end to end.
+async def test_two_concurrent_claim_requests_allow_only_one_owner(claims_table):
+    """The real PostgreSQL claim must admit exactly one contender.
 
-    Two entries for one position race through `_execute_signal` with nothing
-    stubbed between them and the database. Exactly one may reach the broker.
+    The R2-Q entry gate intentionally makes broker submission unreachable.
+    This tests claim serialization, NOT actual successful broker submission.
     """
-    broker = _broker()
-
-    with patch("app.api.routes.trade_desk._fetch_portfolio_state",
-               new=AsyncMock(return_value=_clean_portfolio())), \
-         patch("app.api.routes.trade_desk._is_kill_switch_active", return_value=False), \
-         patch("app.broker.broker_factory.get_broker", return_value=broker), \
-         patch.object(td.ibkr_coordinator, "submit", new=_run_submitted), \
-         patch("app.services.trade_recorder.trade_recorder.record_fill",
-               new=AsyncMock(return_value="trade-1")):
-        results = await asyncio.gather(
-            _execute_signal(_signal(), approved_by="manual"),
-            _execute_signal(_signal(), approved_by="manual"),
-        )
-
-    assert broker.place_order.await_count == 1, (
-        f"{broker.place_order.await_count} orders reached the broker for one "
-        "position"
+    winners = await asyncio.gather(
+        position_claim.try_claim("SPY", "options"),
+        position_claim.try_claim("SPY", "options"),
     )
-    outcomes = sorted(r["result"] for r in results)
-    assert outcomes == ["skipped", "submitted"], outcomes
-
+    held = [claim for claim in winners if claim is not None]
+    assert len(held) == 1, "Concurrent duplicate entries both acquired the claim"
+    assert await position_claim.mark_submitted(held[0])
+    assert await position_claim.try_claim("SPY", "options") is None
+    rows = await _rows(claims_table)
+    assert len(rows) == 1 and rows[0].state == STATE_SUBMITTED
+    await position_claim.resolve(held[0])
+    assert await _rows(claims_table) == []
 
 async def test_the_losing_entry_does_not_disturb_the_winners_claim(claims_table):
     """A refused entry must not resolve or release the claim it lost to."""
@@ -235,68 +226,40 @@ async def test_the_losing_entry_does_not_disturb_the_winners_claim(claims_table)
 
 # ── durable intent is recorded before the broker is called ─────────────────
 
-async def test_intent_is_recorded_before_submission_not_after(claims_table):
-    """If the claim were only marked after a successful call, a process killed
-    mid-submit would have sent an order and persisted nothing. Assert the row
-    already says `submitted` at the moment the broker is invoked."""
-    seen = {}
+async def test_durable_claim_intent_and_unknown_outcome(claims_table):
+    """Durable transition retains the key even if an order outcome is unknown.
 
-    async def _capture(order):
-        # Observed INSIDE the broker call — the coordinator also carries the
-        # account fetch, so watching it would sample the wrong moment.
-        async with claims_table() as s:
-            row = (await s.execute(select(PositionClaim))).scalar_one()
-            seen["state"] = row.state
-            seen["idempotency_key"] = row.idempotency_key
-        seen["client_order_id"] = order.client_order_id
-        raise asyncio.TimeoutError("never answered")
-
-    with patch("app.api.routes.trade_desk._fetch_portfolio_state",
-               new=AsyncMock(return_value=_clean_portfolio())), \
-         patch("app.api.routes.trade_desk._is_kill_switch_active", return_value=False), \
-         patch("app.broker.broker_factory.get_broker",
-               return_value=_broker(place_order=AsyncMock(side_effect=_capture))), \
-         patch.object(td.ibkr_coordinator, "submit", new=_run_submitted), \
-         patch("app.services.trade_recorder.trade_recorder.record_fill",
-               new=AsyncMock(return_value=None)):
-        res = await _execute_signal(_signal(), approved_by="manual")
-
-    assert seen["state"] == STATE_SUBMITTED, (
-        "the broker was called before the intent was durable"
-    )
-    assert seen["idempotency_key"]
-    # ...and the broker was given it as its own dedup key on this path.
-    assert seen["client_order_id"] == seen["idempotency_key"]
-    assert res["result"] == "pending_confirmation"
-
-    # The timeout left the outcome unknown and the pending-row write failed,
-    # so the claim must still be blocking.
+    Direct PostgreSQL lifecycle test. Broker-boundary ordering requires a
+    separate approved-submission integration test once issuance is implemented.
+    """
+    held = await position_claim.try_claim("SPY", "options")
+    assert held is not None and held.idempotency_key
+    assert await position_claim.mark_submitted(held)
+    rows = await _rows(claims_table)
+    assert len(rows) == 1 and rows[0].state == STATE_SUBMITTED
+    assert rows[0].idempotency_key == held.idempotency_key
+    await position_claim.mark_unknown(held, "simulated broker timeout")
     rows = await _rows(claims_table)
     assert len(rows) == 1 and rows[0].state == STATE_UNKNOWN
+    assert await position_claim.try_claim("SPY", "options") is None
 
+async def test_known_tracked_pending_outcome_releases_claim(claims_table):
+    """Known recorded outcome releases the claim, independently of entry routing.
 
-async def test_a_timeout_whose_pending_row_was_written_releases_the_claim(claims_table):
-    """The position is tracked now, so the trade read takes over the blocking.
-    Holding the claim too would over-block: if the fill reconciler later
-    cancels that pending row, a fresh entry should be allowed."""
-    async def _timeout(_order):
-        raise asyncio.TimeoutError("never answered")
-
-    with patch("app.api.routes.trade_desk._fetch_portfolio_state",
-               new=AsyncMock(return_value=_clean_portfolio())), \
-         patch("app.api.routes.trade_desk._is_kill_switch_active", return_value=False), \
-         patch("app.broker.broker_factory.get_broker",
-               return_value=_broker(place_order=AsyncMock(side_effect=_timeout))), \
-         patch.object(td.ibkr_coordinator, "submit", new=_run_submitted), \
-         patch("app.services.trade_recorder.trade_recorder.record_fill",
-               new=AsyncMock(return_value="trade-pending")):
-        res = await _execute_signal(_signal(), approved_by="manual")
-
-    assert res["result"] == "pending_confirmation"
+    This covers the claim-service release behavior only. The trade-recorder
+    timeout integration still requires a future authorized broker test.
+    """
+    held = await position_claim.try_claim("SPY", "options")
+    assert held is not None
+    assert await position_claim.mark_submitted(held)
+    await position_claim.mark_unknown(held, "simulated timeout before DB recording")
+    assert len(await _rows(claims_table)) == 1
+    # Once independently tracked, the owning reconciler may resolve this claim.
+    await position_claim.resolve(held)
     assert await _rows(claims_table) == []
-
-
-# ── deployment ordering: the migration must land before this code ──────────
+    retry = await position_claim.try_claim("SPY", "options")
+    assert retry is not None
+    await position_claim.resolve(retry)
 
 async def test_an_unmigrated_claims_table_blocks_entries_and_says_so(claims_table):
     """Migration 0040 must be applied BEFORE this code runs.
