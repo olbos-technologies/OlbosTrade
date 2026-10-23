@@ -182,6 +182,14 @@ def _broker():
     return b
 
 
+from app.services.order_reconciliation_preflight import OrderPreflightDecision
+
+def _synthetic_verified_entry():
+    # Unit/integration-fixture only: exercise downstream claim and tenant logic.
+    # Real execution still has no provider and MUST remain fail-closed.
+    return patch("app.services.entry_submission_boundary.check_entry_before_submission",
+                 return_value=OrderPreflightDecision(True, "synthetic_test_only"))
+
 def _patches(broker):
     """Everything up to the ownership stage, neutralised.
 
@@ -227,7 +235,7 @@ async def test_another_organizations_open_position_does_not_block_entry(db):
     broker = _broker()
 
     p = _patches(broker)
-    with p[0], p[1], p[2], p[3], p[4], _as_org(ORG_B):
+    with p[0], p[1], p[2], p[3], p[4], _synthetic_verified_entry(), _as_org(ORG_B):
         res = await _execute_signal(_signal("SPY"), approved_by="user", conn=object())
 
     assert res["result"] not in ("skipped", "blocked"), res
@@ -240,7 +248,7 @@ async def test_your_own_open_position_still_blocks_entry(db):
     broker = _broker()
 
     p = _patches(broker)
-    with p[0], p[1], p[2], p[3], p[4], _as_org(ORG_A):
+    with p[0], p[1], p[2], p[3], p[4], _synthetic_verified_entry(), _as_org(ORG_A):
         res = await _execute_signal(_signal("SPY"), approved_by="user", conn=object())
 
     assert res["result"] == "skipped"
@@ -254,7 +262,7 @@ async def test_an_unattributed_position_does_not_block_an_organization(db):
     broker = _broker()
 
     p = _patches(broker)
-    with p[0], p[1], p[2], p[3], p[4], _as_org(ORG_A):
+    with p[0], p[1], p[2], p[3], p[4], _synthetic_verified_entry(), _as_org(ORG_A):
         res = await _execute_signal(_signal("SPY"), approved_by="user", conn=object())
 
     assert res["result"] not in ("skipped", "blocked"), res
@@ -266,7 +274,7 @@ async def test_the_single_operator_scope_sees_exactly_the_unattributed_rows(db):
     broker = _broker()
 
     p = _patches(broker)
-    with p[0], p[1], p[2], p[3], p[4], _as_org(None):
+    with p[0], p[1], p[2], p[3], p[4], _synthetic_verified_entry(), _as_org(None):
         res = await _execute_signal(_signal("SPY"), approved_by="user", conn=object())
 
     assert res["result"] == "skipped"
@@ -297,7 +305,7 @@ async def test_the_claim_is_taken_in_the_callers_scope(db):
 
     broker = _broker()
     p = _patches(broker)
-    with p[0], p[1], p[2], p[3], p[4], _as_org(ORG_A), \
+    with p[0], p[1], p[2], p[3], p[4], _synthetic_verified_entry(), _as_org(ORG_A), \
          patch("app.services.position_claim.try_claim", new=_spy):
         await _execute_signal(_signal("SPY"), approved_by="user", conn=object())
 
@@ -352,7 +360,7 @@ async def test_an_autonomous_entry_is_refused_when_the_owner_is_ambiguous(db):
     """
     broker = _broker()
     p = _patches(broker)
-    with p[0], p[1], p[2], p[3], p[4], \
+    with p[0], p[1], p[2], p[3], p[4], _synthetic_verified_entry(), \
          patch("app.core.config.settings.auth_enabled", True):
         res = await _execute_signal(_signal("SPY"), approved_by="autopilot")
 
@@ -370,7 +378,7 @@ async def test_an_autonomous_entry_proceeds_when_exactly_one_owner_exists(db):
 
     broker = _broker()
     p = _patches(broker)
-    with p[0], p[1], p[2], p[3], p[4], \
+    with p[0], p[1], p[2], p[3], p[4], _synthetic_verified_entry(), \
          patch("app.core.config.settings.auth_enabled", True):
         res = await _execute_signal(_signal("SPY"), approved_by="autopilot")
 
@@ -381,7 +389,7 @@ async def test_an_autonomous_entry_in_single_operator_mode_uses_the_null_scope(d
     """Auth disabled: one operator, nothing to isolate from."""
     broker = _broker()
     p = _patches(broker)
-    with p[0], p[1], p[2], p[3], p[4], \
+    with p[0], p[1], p[2], p[3], p[4], _synthetic_verified_entry(), \
          patch("app.core.config.settings.auth_enabled", False):
         res = await _execute_signal(_signal("SPY"), approved_by="autopilot")
 
@@ -396,7 +404,7 @@ async def test_a_request_with_auth_on_and_no_identity_is_refused(db):
         raise PermissionError("no authenticated user")
 
     p = _patches(broker)
-    with p[0], p[1], p[2], p[3], p[4], \
+    with p[0], p[1], p[2], p[3], p[4], _synthetic_verified_entry(), \
          patch("app.services.trade_scope.request_scope", _raises):
         res = await _execute_signal(_signal("SPY"), approved_by="user", conn=object())
 
