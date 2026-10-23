@@ -5,8 +5,6 @@ again at consumption. This module does not enable broker connections.
 """
 from __future__ import annotations
 
-import asyncio
-import secrets
 from dataclasses import dataclass
 from enum import Enum
 from typing import Protocol
@@ -51,15 +49,17 @@ class EntryAuthority:
 
     def __init__(self, provider: HistoryProvider | None = None):
         self._provider = provider or UnavailableHistoryProvider()
-        self._issued: dict[str, tuple[str, str]] = {}
-        self._lock = asyncio.Lock()
 
     async def request(self, *, intent_digest: str, account_scope: str) -> EntryAuthorization | None:
         if not intent_digest or not account_scope:
             return None
-        evidence = await self._provider.verify(
-            intent_digest=intent_digest, account_scope=account_scope,
-        )
+        try:
+            evidence = await self._provider.verify(
+                intent_digest=intent_digest, account_scope=account_scope,
+            )
+        except Exception:
+            # A failed broker-history read cannot authorize an order.
+            return None
         if evidence.state is not ProofState.PROVEN or not evidence.evidence_id:
             return None
         # Intentionally unavailable: proof evidence alone cannot establish
