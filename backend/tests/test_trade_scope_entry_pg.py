@@ -230,8 +230,9 @@ async def test_another_organizations_open_position_does_not_block_entry(db):
     with p[0], p[1], p[2], p[3], p[4], _as_org(ORG_B):
         res = await _execute_signal(_signal("SPY"), approved_by="user", conn=object())
 
-    assert res["result"] not in ("skipped", "blocked"), res
-    broker.place_order.assert_awaited_once()
+    assert res["result"] == "blocked", res
+    assert res["reason"] == "entry_history_proof_unavailable", res
+    broker.place_order.assert_not_awaited()
 
 
 async def test_your_own_open_position_still_blocks_entry(db):
@@ -257,7 +258,9 @@ async def test_an_unattributed_position_does_not_block_an_organization(db):
     with p[0], p[1], p[2], p[3], p[4], _as_org(ORG_A):
         res = await _execute_signal(_signal("SPY"), approved_by="user", conn=object())
 
-    assert res["result"] not in ("skipped", "blocked"), res
+    assert res["result"] == "blocked", res
+    assert res["reason"] == "entry_history_proof_unavailable", res
+    broker.place_order.assert_not_awaited()
 
 
 async def test_the_single_operator_scope_sees_exactly_the_unattributed_rows(db):
@@ -374,7 +377,9 @@ async def test_an_autonomous_entry_proceeds_when_exactly_one_owner_exists(db):
          patch("app.core.config.settings.auth_enabled", True):
         res = await _execute_signal(_signal("SPY"), approved_by="autopilot")
 
-    assert res["result"] not in ("blocked",), res
+    assert res["result"] == "blocked", res
+    assert res["reason"] == "entry_history_proof_unavailable", res
+    broker.place_order.assert_not_awaited()
 
 
 async def test_an_autonomous_entry_in_single_operator_mode_uses_the_null_scope(db):
@@ -385,7 +390,9 @@ async def test_an_autonomous_entry_in_single_operator_mode_uses_the_null_scope(d
          patch("app.core.config.settings.auth_enabled", False):
         res = await _execute_signal(_signal("SPY"), approved_by="autopilot")
 
-    assert res["result"] not in ("blocked",), res
+    assert res["result"] == "blocked", res
+    assert res["reason"] == "entry_history_proof_unavailable", res
+    broker.place_order.assert_not_awaited()
 
 
 async def test_a_request_with_auth_on_and_no_identity_is_refused(db):
