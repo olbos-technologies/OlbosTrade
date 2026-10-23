@@ -1806,6 +1806,8 @@ async def _execute_signal(
             return _blocked(f"cooldown_check_error: {_cd_exc}")
 
     # ── Stages 4+5: Broker submission + fill recording ─────────────────────────
+    from app.services import order_submission
+
     action = signal.get("action", "")
 
     try:
@@ -1919,7 +1921,7 @@ async def _execute_signal(
             try:
                 result = await ibkr_coordinator.submit(
                     Priority.P0,
-                    lambda: broker.place_equity_order(
+                    lambda: order_submission.submit_equity_entry(authorization=None, broker=broker,
                         ticker=ticker,
                         qty=shares,
                         side=action,
@@ -2111,7 +2113,7 @@ async def _execute_signal(
                 return _skipped("claim_lost")
             try:
                 result = await ibkr_coordinator.submit(
-                    Priority.P0, lambda: broker.place_order(order),
+                    Priority.P0, lambda: order_submission.submit_options_entry(authorization=None, broker=broker, order=order),
                     req_type="PLACE_ORDER", symbol=ticker, timeout=150.0,
                 )
             except asyncio.TimeoutError:
