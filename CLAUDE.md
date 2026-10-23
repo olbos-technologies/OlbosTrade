@@ -61,17 +61,29 @@ A named set of risk and execution modules must stay at **≥95% coverage or CI f
 
 Touching one of these means adding tests in the same change. A second job runs whole-app coverage as a ratchet floor.
 
-## Two environment facts that cause false conclusions
+## Environment facts specific to this container
 
-**`ta` and `ib_insync` do not build in the cloud container.** A full backend run there fails 8 tests — two each in `test_baseline_comparison_engine`, `test_compute_indicators_adx`, `test_stop_backfill` and `test_backtest_run_equity_route` — and cannot even collect seven more (`test_account_staleness`, `test_backtester_run_equity`, `test_backtester_run_injection`, `test_broker_factory`, `test_data_fetcher`, `test_ibkr_client`, `test_ibkr_execution`). These are pre-existing, and CI installs both successfully. Before reporting a backend failure as a regression, confirm it against a clean tree (`git stash`) — otherwise you will "fix" something that was never broken.
+The tool-independent traps — scans that read nothing, unreachable safety
+controls, no linter, jsdom doing no layout, vitest stubbing CSS, `-qq`
+swallowing the pytest summary, skips reading as passes, confirming a failure
+against a clean tree — now live in **`AGENTS.md` -> Environment and
+verification traps**, because they are properties of this repository rather
+than of Claude, and Codex and Cursor need them just as much. Read them there
+rather than here; this file no longer restates them, so the long-form copy
+has one home. (Three one-line facts — no linter, unique Alembic ids, failed
+reads — still appear in both, where the local context needs them.)
 
-**jsdom does no layout and applies no stylesheet.** Any claim about geometry, overflow, CSS cascade, computed fonts, or how something looks at a given size is unverifiable in vitest — such tests pass while the UI is visibly wrong. Verify in a real browser:
+What is genuinely specific to the Claude cloud container:
+
+**`ta` and `ib_insync` do not build here.** A full backend run fails 8 tests — two each in `test_baseline_comparison_engine`, `test_compute_indicators_adx`, `test_stop_backfill` and `test_backtest_run_equity_route` — and cannot even collect seven more (`test_account_staleness`, `test_backtester_run_equity`, `test_backtester_run_injection`, `test_broker_factory`, `test_data_fetcher`, `test_ibkr_client`, `test_ibkr_execution`). These are pre-existing and CI installs both successfully. (Both have since been seen installed in a session venv — check before assuming either way.)
+
+**The browser is already present.** Verify layout claims with:
 
 ```js
 chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })
 ```
 
-Never run `playwright install` here. The same blind spot bites CSS-reading tests: **vitest stubs CSS**, so `import.meta.glob('**/*.css', {query:'?raw'})` returns empty strings for every file while `.tsx` loads fine. A scan written that way passes by reading nothing.
+Never run `playwright install` here — the pinned browser is provided, and the e2e suite's expected version may differ from it, which is environmental rather than a regression.
 
 ## Guard tests that encode cross-cutting rules
 
