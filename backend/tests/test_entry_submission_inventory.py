@@ -14,6 +14,7 @@ def test_no_api_route_calls_broker_entry_placement():
     assert len(files) >= 5, "API scan unexpectedly empty"
     entry_fn_found = False
     prohibited = []
+    permitted_closes = []
     for path in files:
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for fn in (n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))):
@@ -26,9 +27,12 @@ def test_no_api_route_calls_broker_entry_placement():
                     continue
                 if not isinstance(node.func.value, ast.Name) or node.func.value.id != "broker":
                     continue
-                if fn.name != "close_position":
+                if fn.name in {"close_position", "close_untracked_position"}:
+                    permitted_closes.append(f"{path.relative_to(api)}:{fn.name}:{node.lineno}")
+                else:
                     prohibited.append(f"{path.relative_to(api)}:{fn.name}:{node.lineno}")
     assert entry_fn_found, "_execute_signal entry pipeline disappeared; audit routing"
+    assert permitted_closes, "Expected independently scoped close placement disappeared"
     assert not prohibited, "Direct broker submission in API entry paths: " + ", ".join(prohibited)
 
 
