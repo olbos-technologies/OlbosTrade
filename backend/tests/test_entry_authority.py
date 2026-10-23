@@ -92,3 +92,14 @@ def test_broker_history_read_failure_denies_entry():
     assert asyncio.run(authority.request(
         intent_digest="order-a", account_scope="paper-organization",
     )) is None
+
+
+def test_malformed_provider_result_never_authorizes_entry():
+    class BadProvider:
+        async def verify(self, *, intent_digest, account_scope):
+            return {"state": "proven", "evidence_id": "invented"}
+
+    authority = EntryAuthority(BadProvider())
+    assert asyncio.run(authority.request(
+        intent_digest="order-a", account_scope="paper-organization",
+    )) is None
