@@ -60,6 +60,10 @@ class EntryAuthority:
         except Exception:
             # A failed broker-history read cannot authorize an order.
             return None
+        # Malformed, missing, or unrecognized results must not be elevated
+        # into an authorization decision.
+        if not isinstance(evidence, HistoryEvidence):
+            return None
         if evidence.state is not ProofState.PROVEN or not evidence.evidence_id:
             return None
         # Intentionally unavailable: proof evidence alone cannot establish
