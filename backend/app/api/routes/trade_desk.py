@@ -1867,34 +1867,20 @@ async def _execute_signal(
                 # runs on every execution attempt, and the surrounding try/except already
                 # fails open on any error (including a timeout) per this guard's own design
             )
-            if _acct.is_stale:
-                # Stale figures cannot clear this guard. IBKR serves account
-                # data from a cached push stream, so a dead stream still
-                # returns a complete, confident-looking margin picture — the
-                # one from whenever it died. Evaluating it risks the guard's
-                # only dangerous error: reading "margin is fine" off numbers
-                # that predate the blow-up it exists to catch. Treated as
-                # absent rather than as a block, which keeps this guard's
-                # documented fail-open contract intact (it blocks only on a
-                # positively-detected critical state) while refusing to draw
-                # an all-clear from data that cannot support one.
+            from app.services.entry_margin_preparation import evaluate_entry_margin_snapshot
+            _margin_block, _stale_age = evaluate_entry_margin_snapshot(
+                _acct, evaluate_margin=evaluate_margin,
+                warn_pct=_mg_cfg.margin_warn_pct,
+                critical_pct=_mg_cfg.margin_critical_pct,
+            )
+            if _stale_age is not None:
                 logger.warning(
                     "Margin guard skipped for %s — account values stale (%.0fs old)",
-                    ticker, _acct.data_age_seconds or 0.0,
+                    ticker, _stale_age,
                 )
-            elif _acct.maintenance_margin is not None:
-                _m = evaluate_margin(
-                    net_liquidation=float(_acct.net_liquidation or 0),
-                    maintenance_margin=float(_acct.maintenance_margin or 0),
-                    excess_liquidity=float(_acct.excess_liquidity or 0),
-                    buying_power=float(_acct.buying_power or 0),
-                    init_margin=float(_acct.init_margin or 0),
-                    warn_pct=_mg_cfg.margin_warn_pct,
-                    critical_pct=_mg_cfg.margin_critical_pct,
-                )
-                if _m.status == "critical":
-                    logger.warning("Order blocked for %s — margin: %s", ticker, _m.detail)
-                    return _blocked(f"margin_critical: {_m.detail}")
+            if _margin_block:
+                logger.warning("Order blocked for %s — %s", ticker, _margin_block)
+                return _blocked(_margin_block)
         except Exception as _mg_exc:
             logger.debug("Margin guard skipped for %s: %s", ticker, _mg_exc)
 
