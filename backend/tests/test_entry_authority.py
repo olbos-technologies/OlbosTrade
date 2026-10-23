@@ -37,3 +37,19 @@ def test_parallel_requests_do_not_issue_a_permit():
             authority.request(intent_digest="order-a",account_scope="paper-scope")
             for _ in range(8)))
     assert asyncio.run(check()) == [None]*8
+
+
+class _ClaimedProvenProvider:
+    async def verify(self, *, intent_digest, account_scope):
+        from app.services.entry_authority import HistoryEvidence
+        return HistoryEvidence(ProofState.PROVEN, "claimed_complete", "synthetic-evidence")
+
+
+def test_proven_history_claim_alone_cannot_issue_order_capability():
+    # No broker-account ownership, durable reservation or kill-switch proof
+    # exists here; even a claimed PROVEN history is insufficient.
+    authority = EntryAuthority(_ClaimedProvenProvider())
+    permit = asyncio.run(authority.request(
+        intent_digest="order-a", account_scope="paper-scope"
+    ))
+    assert permit is None
