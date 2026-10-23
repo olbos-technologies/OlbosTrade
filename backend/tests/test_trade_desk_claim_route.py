@@ -471,3 +471,21 @@ async def test_unknown_history_refuses_entry_and_releases_pending_claim(claims_t
     broker.place_order.assert_not_awaited()
     broker.place_equity_order.assert_not_awaited()
     assert await _rows(claims_table) == [], "Refusal stranded an unsubmitted claim"
+
+
+async def test_unknown_history_reports_failed_claim_release(claims_table):
+    """A failed claim cleanup is never reported as an ordinary clean refusal."""
+    broker = _broker()
+    with patch("app.api.routes.trade_desk._fetch_portfolio_state",
+               new=AsyncMock(return_value=_clean_portfolio())), \
+         patch("app.api.routes.trade_desk._is_kill_switch_active", return_value=False), \
+         patch("app.broker.broker_factory.get_broker", return_value=broker), \
+         patch.object(td.ibkr_coordinator, "submit", new=_run_submitted), \
+         patch("app.services.position_claim.resolve",
+               new=AsyncMock(side_effect=RuntimeError("database unavailable"))):
+        result = await _execute_signal(_signal(), approved_by="manual")
+
+    assert result["result"] == "blocked", result
+    assert result["reason"] == "entry_history_proof_unavailable_claim_release_failed"
+    broker.place_order.assert_not_awaited()
+    broker.place_equity_order.assert_not_awaited()
