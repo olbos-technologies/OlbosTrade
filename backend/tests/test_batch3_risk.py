@@ -173,6 +173,43 @@ async def test_execute_signal_allows_credit_spread_in_preservation(stub_position
     assert result["result"] == "submitted"
 
 
+@pytest.mark.asyncio
+async def test_credit_spread_passes_preservation_check_but_unknown_history_blocks(stub_position_claim):
+    """An allowed strategy reaches history denial; it never submits a broker order.
+
+    This is NOT a replacement for the existing successful-submission test,
+    which remains a future integration requirement.
+    """
+    from app.api.routes.trade_desk import _execute_signal
+    signal = {
+        "id": "sig-bps-unknown-history", "ticker": "SPY", "action": "SELL",
+        "asset_type": "options", "strategy": "bull_put_spread", "quantity": 1,
+        "confidence": 0.92,
+        "spread": {
+            "expiration": "2025-06-20", "short_strike": 450,
+            "long_strike": 440, "option_type": "put",
+            "net_credit": 1.50, "max_loss": 3.50,
+        },
+    }
+    broker = MagicMock()
+    broker.place_order = AsyncMock()
+    mock_session = AsyncMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=False)
+    mock_session.execute = AsyncMock(return_value=MagicMock(first=lambda: None))
+
+    with patch("app.api.routes.trade_desk._fetch_portfolio_state",
+               new=AsyncMock(return_value=_preservation_portfolio())), \
+         patch("app.api.routes.trade_desk._is_kill_switch_active", return_value=False), \
+         patch("app.broker.broker_factory.get_broker", return_value=broker), \
+         patch("app.core.database.AsyncSessionLocal", return_value=mock_session):
+        result = await _execute_signal(signal, approved_by="autopilot")
+
+    assert result["result"] == "blocked", result
+    assert result["reason"] == "entry_history_proof_unavailable", result
+    broker.place_order.assert_not_awaited()
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # 3. Scalper mode risk_per_trade_pct reaches position sizing
 # ══════════════════════════════════════════════════════════════════════════════
