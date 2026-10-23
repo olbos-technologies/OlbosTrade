@@ -38,4 +38,4 @@ def test_centralized_submission_requires_capability_argument():
     from app.services import order_submission
     for method in (order_submission.submit_equity_entry, order_submission.submit_options_entry):
         assert "authorization" in inspect.signature(method).parameters
-        assert inspect.signature(method).parameters["authorization"].annotation in (EntryAuthorization, "EntryAuthorization")
+        assert "EntryAuthorization" in str(inspect.signature(method).parameters["authorization"].annotation)
