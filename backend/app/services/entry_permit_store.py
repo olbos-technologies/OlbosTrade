@@ -8,7 +8,6 @@ history completeness, account identity, risk and current kill-switch state.
 from __future__ import annotations
 
 import hashlib
-import hmac
 import uuid
 
 from sqlalchemy import func, update
@@ -23,6 +22,9 @@ async def consume_stored_permit(
     principal_id: uuid.UUID,
     broker_connection_id: uuid.UUID,
     broker_account_id: str,
+    broker: str,
+    asset_class: str,
+    position_identity: str,
     environment: str,
     intent_digest: str,
     claim_token: uuid.UUID,
@@ -42,6 +44,9 @@ async def consume_stored_permit(
         or not isinstance(broker_connection_id, uuid.UUID)
         or not isinstance(claim_token, uuid.UUID)
         or not isinstance(broker_account_id, str) or not broker_account_id.strip()
+        or not isinstance(broker, str) or not broker.strip()
+        or asset_class not in ("equity", "options")
+        or not isinstance(position_identity, str) or not position_identity.strip()
         or environment not in ("paper", "live")
         or not isinstance(intent_digest, str) or len(intent_digest) != 64
         or not isinstance(risk_revision, str) or not risk_revision
@@ -65,6 +70,9 @@ async def consume_stored_permit(
                         EntryAuthorizationRecord.principal_id == principal_id,
                         EntryAuthorizationRecord.broker_connection_id == broker_connection_id,
                         EntryAuthorizationRecord.broker_account_id == broker_account_id,
+                        EntryAuthorizationRecord.broker == broker,
+                        EntryAuthorizationRecord.asset_class == asset_class,
+                        EntryAuthorizationRecord.position_identity == position_identity,
                         EntryAuthorizationRecord.environment == environment,
                         EntryAuthorizationRecord.intent_digest == intent_digest,
                         EntryAuthorizationRecord.position_claim_token == claim_token,
