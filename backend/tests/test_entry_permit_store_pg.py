@@ -51,6 +51,10 @@ async def _seed(factory, created_ids, *, expired=False):
         environment="paper", intent_digest="a" * 64,
         claim_token=claim, risk_revision="risk-v1",
         kill_switch_revision="stop-v1",
+        # Must match the row inserted below: consume_stored_permit() compares
+        # all three in its WHERE clause, so a value that merely passes
+        # validation is not enough.
+        broker="test", asset_class="options", position_identity="SPY:options",
     )
     now = datetime.now(timezone.utc)
     record_id = uuid.uuid4()
@@ -103,6 +107,15 @@ async def test_wrong_account_or_revision_cannot_consume(permit_database):
         {"intent_digest": "b" * 64},
         {"claim_token": uuid.uuid4()},
         {"token": uuid.uuid4().hex + uuid.uuid4().hex},
+        # The broker/asset-class/position identity triple. `asset_class` is
+        # deliberately "equity" and not a junk string: "equity" is the only
+        # other value the up-front validation accepts, so a mismatch here is
+        # refused by the WHERE clause rather than bounced by the validator.
+        # A junk value would pass this test with the asset_class predicate
+        # deleted outright.
+        {"broker": "other-broker"},
+        {"asset_class": "equity"},
+        {"position_identity": "QQQ:options"},
     ):
         assert not await consume_stored_permit(**(args | override))
     assert await consume_stored_permit(**args)
