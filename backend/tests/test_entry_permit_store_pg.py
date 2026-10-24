@@ -94,6 +94,9 @@ async def test_wrong_account_or_revision_cannot_consume(permit_database):
     args = await _seed(factory, created_ids)
     for override in (
         {"broker_account_id": "DU-OTHER"},
+        {"principal_id": uuid.uuid4()},
+        {"broker_connection_id": uuid.uuid4()},
+        {"environment": "live"},
         {"organization_id": uuid.uuid4()},
         {"risk_revision": "changed"},
         {"kill_switch_revision": "disabled"},
@@ -109,3 +112,39 @@ async def test_expired_record_cannot_be_consumed(permit_database):
     factory, created_ids = permit_database
     args = await _seed(factory, created_ids, expired=True)
     assert not await consume_stored_permit(**args)
+
+
+async def test_invalid_environment_and_missing_scopes_fail_without_consumption(permit_database):
+    factory, created_ids = permit_database
+    args = await _seed(factory, created_ids)
+    for override in (
+        {"environment": "unverified"},
+        {"broker_account_id": ""},
+        {"organization_id": None},
+        {"intent_digest": ""},
+        {"token": "short"},
+    ):
+        assert not await consume_stored_permit(**(args | override))
+    # Invalid invocations must not burn an otherwise valid permit.
+    assert await consume_stored_permit(**args)
+
+
+async def test_database_unavailable_does_not_consume_or_grant(permit_database):
+    factory, created_ids = permit_database
+    args = await _seed(factory, created_ids)
+
+    def unavailable():
+        raise RuntimeError("database connection unavailable")
+
+    with patch("app.core.database.AsyncSessionLocal", new=unavailable):
+        assert not await consume_stored_permit(**args)
+
+    async with factory() as session:
+        record = (await session.execute(select(EntryAuthorizationRecord).where(
+            EntryAuthorizationRecord.id == created_ids[0]
+        ))).scalar_one()
+        assert record.state == "issued"
+        assert record.consumed_at is None
+
+    # The fixture restores its real PostgreSQL session factory.
+    assert await consume_stored_permit(**args)
