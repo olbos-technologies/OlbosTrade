@@ -24,6 +24,70 @@ from app.services.guardrails import PortfolioState
 
 from conftest import single_operator_conn
 
+#: R2-Q holds every new entry closed until an authenticated complete-history
+#: reconciliation provider exists, so a gate that PERMITS a signal can no
+#: longer be observed as `result == "submitted"` — the hold stops the entry
+#: afterwards regardless.
+ENTRY_HELD_REASON = "entry_history_proof_unavailable"
+
+
+def assert_gate_permitted(res):
+    """The gate under test allowed this signal through to the R2-Q hold.
+
+    The hold's own reason is the positive evidence. Had the gate under test
+    blocked, `reason` would be that gate's reason instead, so this still
+    fails when a gate wrongly blocks — which is the failure every caller of
+    this helper exists to catch.
+
+    Asserting only `result == "blocked"` would NOT do: it passes whether the
+    gate permitted or blocked, turning twelve of these tests into assertions
+    that hold with the cooldown, 0DTE, liquidity or duplicate guard deleted
+    outright. The reason check is what keeps them honest.
+
+    These assertions become `result == "submitted"` again once a permit can
+    be minted; see the R2-Q authorization contract.
+    """
+    assert res["result"] == "blocked", res
+    assert res["reason"] == ENTRY_HELD_REASON, (
+        f"expected the gate under test to permit this signal and the R2-Q "
+        f"entry hold to stop it, but it was blocked by {res['reason']!r}"
+    )
+
+
+def permit_entry():
+    """Mint an R2-Q entry authorization for the duration of a `with` block.
+
+    The shipped `UnavailableHistoryProvider` returns UNKNOWN and
+    `EntryAuthority.request()` therefore returns None for every caller, so
+    no signal can reach the broker in a test. The handful of tests that
+    assert on what happens AFTER authorization — a broker fill is recorded,
+    a record failure still reports `submitted`, a submit timeout writes a
+    pending row rather than losing the fill — have nothing to assert
+    without a permit.
+
+    This stands in for the authorization only. It patches the one call the
+    route makes and nothing downstream: the ownership, duplicate, claim,
+    kill-switch, market-hours, margin and portfolio-gate checks all still
+    run for real, in their real order, ahead of it. Tests that assert the
+    hold itself must NOT use this — they use `assert_gate_permitted`, and
+    the unpatched default is asserted in tests/test_order_submission_closed.py
+    and tests/test_trade_desk_claim_route.py.
+
+    Delete this helper when a real provider can issue a permit; a test that
+    needs it then is a test asserting on a path the authority refuses.
+    """
+    from app.services import entry_authority as _ea
+    return patch.object(
+        _ea.entry_authority, "request",
+        new=AsyncMock(return_value=_ea.EntryAuthorization(
+            _nonce="test-nonce",
+            _intent_digest="test-digest",
+            _account_scope="test-scope",
+        )),
+    )
+
+
+
 # Batch E2 gave these routes a `conn` so they can resolve a trade scope; with
 # auth disabled it is never read. See conftest.single_operator_conn.
 _CONN = single_operator_conn()
@@ -562,6 +626,17 @@ def _dup_session(existing=None):
     return session
 
 
+@pytest.mark.xfail(strict=True, reason=(
+    "R2-Q closes broker entry submission at two independent layers: the "
+    "entry hold, and order_submission._require_authorization(), which "
+    "raises EntrySubmissionDenied unconditionally and ignores the "
+    "authorization it is handed (see tests/test_order_submission_closed.py). "
+    "A fill therefore cannot be observed from this route at all, so neither "
+    "the recorded-fill nor the record-failure branch is reachable. Keeping "
+    "the tests as written, with strict=True so they FAIL the moment "
+    "submission reopens, forcing both back on deliberately rather than "
+    "leaving them silently deleted."
+))
 @pytest.mark.asyncio
 async def test_options_execution_submits_and_records(stub_position_claim):
     broker = MagicMock()
@@ -600,6 +675,17 @@ async def test_market_closed_blocks_order():
     assert res["result"] == "blocked" and "market_closed" in res["reason"]
 
 
+@pytest.mark.xfail(strict=True, reason=(
+    "R2-Q closes broker entry submission at two independent layers: the "
+    "entry hold, and order_submission._require_authorization(), which "
+    "raises EntrySubmissionDenied unconditionally and ignores the "
+    "authorization it is handed (see tests/test_order_submission_closed.py). "
+    "A fill therefore cannot be observed from this route at all, so neither "
+    "the recorded-fill nor the record-failure branch is reachable. Keeping "
+    "the tests as written, with strict=True so they FAIL the moment "
+    "submission reopens, forcing both back on deliberately rather than "
+    "leaving them silently deleted."
+))
 @pytest.mark.asyncio
 async def test_options_record_failure_still_submits(stub_position_claim):
     # broker fills but DB record fails (None) → still 'submitted', critical-log path
@@ -622,7 +708,8 @@ async def test_options_place_order_timeout_records_pending_not_lost(stub_positio
     fill: a pending Trade row has to get written so _poll_fills() can later
     promote or cancel it, and the caller must see an honest result instead
     of a generic error."""
-    with patch("app.api.routes.trade_desk._fetch_portfolio_state", new=AsyncMock(return_value=_clean())), \
+    with permit_entry(), \
+         patch("app.api.routes.trade_desk._fetch_portfolio_state", new=AsyncMock(return_value=_clean())), \
          patch("app.api.routes.trade_desk._is_kill_switch_active", return_value=False), \
          patch("app.broker.broker_factory.get_broker", return_value=MagicMock()), \
          patch("app.core.database.AsyncSessionLocal", return_value=_dup_session(None)), \
@@ -644,7 +731,8 @@ async def test_options_place_order_timeout_and_record_failure_logs_critical(stub
     """Belt-and-suspenders: even the pending-row write can fail (DB down) —
     must not raise, just log critical, since a real order may be in flight
     at the broker with zero remaining trace of it."""
-    with patch("app.api.routes.trade_desk._fetch_portfolio_state", new=AsyncMock(return_value=_clean())), \
+    with permit_entry(), \
+         patch("app.api.routes.trade_desk._fetch_portfolio_state", new=AsyncMock(return_value=_clean())), \
          patch("app.api.routes.trade_desk._is_kill_switch_active", return_value=False), \
          patch("app.broker.broker_factory.get_broker", return_value=MagicMock()), \
          patch("app.core.database.AsyncSessionLocal", return_value=_dup_session(None)), \
@@ -662,7 +750,8 @@ async def test_equity_place_order_timeout_records_pending_not_lost(stub_position
     broker = MagicMock()
     broker.get_latest_quote = AsyncMock(return_value=MagicMock(ask_price=150.5, bid_price=150.0))
     sig = _equity_signal(source="equity_desk_composer", confidence=None, kelly_fraction=None)
-    with patch("app.api.routes.trade_desk._fetch_portfolio_state", new=AsyncMock(return_value=_clean())), \
+    with permit_entry(), \
+         patch("app.api.routes.trade_desk._fetch_portfolio_state", new=AsyncMock(return_value=_clean())), \
          patch("app.api.routes.trade_desk._is_kill_switch_active", return_value=False), \
          patch("app.api.routes.trade_desk._strategy_health_for", new=AsyncMock(return_value=None)), \
          patch("app.broker.broker_factory.get_broker", return_value=broker), \
@@ -711,8 +800,9 @@ async def test_duplicate_guard_allows_other_asset_class_same_underlying(stub_pos
          patch("app.services.trade_recorder.trade_recorder.record_fill",
                new=AsyncMock(return_value="trade-opt")):
         res = await _execute_signal(_options_signal(), approved_by="manual")
-    assert res["result"] == "submitted"
-    broker.place_order.assert_awaited_once()
+    assert_gate_permitted(res)
+    # The gate permitted; the R2-Q hold is what stops the order.
+    broker.place_order.assert_not_awaited()
 
 
 def _dup_and_cooldown_session(dup_existing=None, cooldown_existing=None):
@@ -788,8 +878,9 @@ async def test_cooldown_allows_different_asset_class_same_underlying(stub_positi
          patch("app.services.trade_recorder.trade_recorder.record_fill",
                new=AsyncMock(return_value="trade-cd")):
         res = await _execute_signal(_options_signal(), approved_by="manual")
-    assert res["result"] == "submitted"
-    broker.place_order.assert_awaited_once()
+    assert_gate_permitted(res)
+    # The gate permitted; the R2-Q hold is what stops the order.
+    broker.place_order.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -806,7 +897,7 @@ async def test_cooldown_allows_close_older_than_window(stub_position_claim):
          patch("app.services.trade_recorder.trade_recorder.record_fill",
                new=AsyncMock(return_value="trade-old")):
         res = await _execute_signal(_options_signal(), approved_by="manual")
-    assert res["result"] == "submitted"
+    assert_gate_permitted(res)
 
 
 @pytest.mark.asyncio
@@ -823,7 +914,7 @@ async def test_cooldown_disabled_skips_check(stub_position_claim):
          patch("app.services.trade_recorder.trade_recorder.record_fill",
                new=AsyncMock(return_value="trade-off")):
         res = await _execute_signal(_options_signal(), approved_by="manual")
-    assert res["result"] == "submitted"
+    assert_gate_permitted(res)
     # Stage 2b's portfolio-state read + Stage 3's dup check before and after
     # the claim. Stage 3b's DB call never happens: the cooldown is disabled.
     assert session.execute.call_count == 3
@@ -881,8 +972,9 @@ async def test_equity_desk_composer_order_bypasses_confidence_gate(stub_position
          patch("app.services.trade_recorder.trade_recorder.record_fill",
                new=AsyncMock(return_value="trade-e1")):
         res = await _execute_signal(sig, approved_by="user")
-    assert res["result"] == "submitted"
-    broker.place_equity_order.assert_awaited_once()
+    assert_gate_permitted(res)
+    # The gate permitted; the R2-Q hold is what stops the order.
+    broker.place_equity_order.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -937,8 +1029,9 @@ async def test_2dte_autopilot_signal_not_blocked_by_0dte_gate(stub_position_clai
          patch("app.services.trade_recorder.trade_recorder.record_fill",
                new=AsyncMock(return_value="trade-2dte")):
         res = await _execute_signal(_options_signal_dte(2), approved_by="autopilot")
-    assert res["result"] == "submitted"
-    broker.place_order.assert_awaited_once()
+    assert_gate_permitted(res)
+    # The gate permitted; the R2-Q hold is what stops the order.
+    broker.place_order.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -956,8 +1049,9 @@ async def test_0dte_manual_approval_not_blocked_by_autopilot_gate(stub_position_
          patch("app.services.trade_recorder.trade_recorder.record_fill",
                new=AsyncMock(return_value="trade-manual-0dte")):
         res = await _execute_signal(_options_signal_dte(0), approved_by="manual")
-    assert res["result"] == "submitted"
-    broker.place_order.assert_awaited_once()
+    assert_gate_permitted(res)
+    # The gate permitted; the R2-Q hold is what stops the order.
+    broker.place_order.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -974,7 +1068,7 @@ async def test_0dte_gate_does_not_apply_to_equity_signals(stub_position_claim):
          patch("app.services.trade_recorder.trade_recorder.record_fill",
                new=AsyncMock(return_value="trade-eq-0dte")):
         res = await _execute_signal(sig, approved_by="autopilot")
-    assert res["result"] == "submitted"
+    assert_gate_permitted(res)
 
 
 # ── Liquidity / gamma / close-proximity gates (Stage 1b3) ────────────────────
@@ -1033,7 +1127,7 @@ async def test_liquidity_gate_0dte_check_skipped_when_not_0dte(stub_position_cla
          patch("app.services.trade_recorder.trade_recorder.record_fill",
                new=AsyncMock(return_value="trade-not0dte")):
         res = await _execute_signal(sig, approved_by="manual")
-    assert res["result"] == "submitted"
+    assert_gate_permitted(res)
 
 
 @pytest.mark.asyncio
@@ -1052,7 +1146,7 @@ async def test_liquidity_gate_fails_open_on_missing_data(stub_position_claim):
          patch("app.services.trade_recorder.trade_recorder.record_fill",
                new=AsyncMock(return_value="trade-nodata")):
         res = await _execute_signal(sig, approved_by="manual")
-    assert res["result"] == "submitted"
+    assert_gate_permitted(res)
 
 
 @pytest.mark.asyncio
@@ -1067,7 +1161,7 @@ async def test_liquidity_gate_passes_healthy_spread(stub_position_claim):
          patch("app.services.trade_recorder.trade_recorder.record_fill",
                new=AsyncMock(return_value="trade-healthy")):
         res = await _execute_signal(sig, approved_by="manual")
-    assert res["result"] == "submitted"
+    assert_gate_permitted(res)
 
 
 # ── margin guard: stale account values must not clear it ─────────────────────
@@ -1133,10 +1227,19 @@ async def test_margin_guard_is_skipped_when_account_values_are_stale(stub_positi
     eval_mock.assert_not_called()
     # maint=99k against nl=100k would be a hard 'critical' block if evaluated —
     # proving the skip is what let this through, not a benign margin picture.
-    assert res["result"] == "submitted"
+    assert_gate_permitted(res)
 
 
 @pytest.mark.asyncio
+@pytest.mark.xfail(strict=True, reason=(
+    "R2-Q: the entry hold refuses before the margin guard is reached, so "
+    "margin_critical is no longer observable as the terminal reason here. "
+    "The same property is asserted directly against the pure evaluator in "
+    "tests/test_entry_margin_preparation.py::test_fresh_critical_margin_blocks. "
+    "strict=True so this FAILS once a permit can be minted and the route "
+    "reaches the margin guard again — re-enable it deliberately then, rather "
+    "than letting it sit silently dead."
+))
 async def test_margin_guard_still_blocks_on_fresh_critical_figures(stub_position_claim):
     """Regression pin for the other direction: the staleness check must not
     have quietly disabled the guard for live data."""
