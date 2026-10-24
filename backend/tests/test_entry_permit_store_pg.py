@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import insert, select
+from sqlalchemy import delete, insert, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.models.entry_authorization_record import EntryAuthorizationRecord
@@ -29,14 +29,20 @@ async def permit_database():
     async with engine.begin() as conn:
         await conn.run_sync(EntryAuthorizationRecord.__table__.create, checkfirst=True)
     factory = async_sessionmaker(engine, expire_on_commit=False)
-    with patch("app.core.database.AsyncSessionLocal", factory):
-        yield factory
-    async with engine.begin() as conn:
-        await conn.run_sync(EntryAuthorizationRecord.__table__.drop, checkfirst=True)
-    await engine.dispose()
+    created_ids = []
+    try:
+        with patch("app.core.database.AsyncSessionLocal", factory):
+            yield factory, created_ids
+    finally:
+        if created_ids:
+            async with engine.begin() as conn:
+                await conn.execute(delete(EntryAuthorizationRecord).where(
+                    EntryAuthorizationRecord.id.in_(created_ids)
+                ))
+        await engine.dispose()
 
 
-async def _seed(factory, *, expired=False):
+async def _seed(factory, created_ids, *, expired=False):
     org, principal, connection, claim = (uuid.uuid4() for _ in range(4))
     token = uuid.uuid4().hex + uuid.uuid4().hex
     kwargs = dict(
@@ -47,9 +53,10 @@ async def _seed(factory, *, expired=False):
         kill_switch_revision="stop-v1",
     )
     now = datetime.now(timezone.utc)
+    record_id = uuid.uuid4()
     async with factory() as session, session.begin():
         await session.execute(insert(EntryAuthorizationRecord).values(
-            id=uuid.uuid4(), organization_id=org, principal_id=principal,
+            id=record_id, organization_id=org, principal_id=principal,
             broker_connection_id=connection, broker="test",
             broker_account_id="DU-TEST", environment="paper",
             asset_class="options", position_identity="SPY:options",
@@ -62,24 +69,29 @@ async def _seed(factory, *, expired=False):
             issued_at=now - timedelta(minutes=4) if expired else now,
             expires_at=now - timedelta(minutes=1) if expired else now + timedelta(minutes=5),
         ))
+    created_ids.append(record_id)
     return kwargs
 
 
 async def test_simultaneous_consumers_only_one_wins_and_replay_fails(permit_database):
-    args = await _seed(permit_database)
+    factory, created_ids = permit_database
+    args = await _seed(factory, created_ids)
     outcomes = await asyncio.gather(
         consume_stored_permit(**args),
         consume_stored_permit(**args),
     )
     assert sorted(outcomes) == [False, True]
     assert not await consume_stored_permit(**args)
-    async with permit_database() as session:
-        row = (await session.execute(select(EntryAuthorizationRecord))).scalar_one()
+    async with factory() as session:
+        row = (await session.execute(select(EntryAuthorizationRecord).where(
+            EntryAuthorizationRecord.id == created_ids[0]
+        ))).scalar_one()
         assert row.state == "consumed" and row.consumed_at is not None
 
 
 async def test_wrong_account_or_revision_cannot_consume(permit_database):
-    args = await _seed(permit_database)
+    factory, created_ids = permit_database
+    args = await _seed(factory, created_ids)
     for override in (
         {"broker_account_id": "DU-OTHER"},
         {"organization_id": uuid.uuid4()},
@@ -94,5 +106,6 @@ async def test_wrong_account_or_revision_cannot_consume(permit_database):
 
 
 async def test_expired_record_cannot_be_consumed(permit_database):
-    args = await _seed(permit_database, expired=True)
+    factory, created_ids = permit_database
+    args = await _seed(factory, created_ids, expired=True)
     assert not await consume_stored_permit(**args)
