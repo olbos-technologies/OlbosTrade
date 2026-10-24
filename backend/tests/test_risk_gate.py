@@ -304,35 +304,23 @@ async def test_zero_contracts_skipped_in_execute_signal():
 # ══════════════════════════════════════════════════════════════════════════════
 
 @pytest.mark.asyncio
-async def test_clean_order_passes_all_stages_in_order(stub_position_claim):
-    """
-    A clean signal must:
-      kill_switch(False) → portfolio_state fetched → guardrail passes →
-      duplicate check passes → broker.place_equity_order called →
-      trade_recorder.record_fill called.
+async def test_clean_order_passes_risk_gate_but_refuses_unknown_history(stub_position_claim):
+    """A clean signal reaches the history hold after risk evaluation.
+
+    The current R2-Q design cannot authorize an entry; successful broker
+    submission, fill recording, and their ordering remain unverified and
+    require an authenticated positive-path integration test.
     """
     from app.api.routes.trade_desk import _execute_signal
 
-    call_order: list[str] = []
+    call_order = []
 
     async def _fetch_ps():
         call_order.append("fetch_portfolio_state")
         return _clean_portfolio()
 
-    broker = MagicMock()
-    order_result = MagicMock(order_id="ORD-clean", status="submitted")
-    async def _place(**kwargs):
-        call_order.append("broker.place_equity_order")
-        return order_result
-    broker.place_equity_order = _place
-    broker.get_account_summary = AsyncMock(return_value=MagicMock(net_liquidation=100_000.0))
-
-    recorder = MagicMock()
-    async def _record_fill(**kwargs):
-        call_order.append("trade_recorder.record_fill")
-        return "trade-uuid"
-    recorder.record_fill = _record_fill
-
+    broker = _mock_broker()
+    recorder = _mock_recorder()
     mock_session = AsyncMock()
     mock_session.__aenter__ = AsyncMock(return_value=mock_session)
     mock_session.__aexit__ = AsyncMock(return_value=False)
@@ -343,19 +331,14 @@ async def test_clean_order_passes_all_stages_in_order(stub_position_claim):
          patch("app.broker.broker_factory.get_broker", return_value=broker), \
          patch("app.services.trade_recorder.trade_recorder", recorder), \
          patch("app.core.database.AsyncSessionLocal", return_value=mock_session):
-
         result = await _execute_signal(_equity_signal(), approved_by="autopilot")
 
-    assert result["result"] == "submitted"
-    assert "fetch_portfolio_state" in call_order
-    assert "broker.place_equity_order" in call_order
-    assert "trade_recorder.record_fill" in call_order
-
-    # Verify order: portfolio fetch before broker, broker before recorder
-    idx_fetch  = call_order.index("fetch_portfolio_state")
-    idx_broker = call_order.index("broker.place_equity_order")
-    idx_record = call_order.index("trade_recorder.record_fill")
-    assert idx_fetch < idx_broker < idx_record
+    assert call_order == ["fetch_portfolio_state"]
+    assert result["result"] == "blocked", result
+    assert result["reason"] == "entry_history_proof_unavailable", result
+    broker.place_equity_order.assert_not_awaited()
+    broker.place_order.assert_not_awaited()
+    recorder.record_fill.assert_not_awaited()
 
 
 # ══════════════════════════════════════════════════════════════════════════════

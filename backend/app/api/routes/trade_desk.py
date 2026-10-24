@@ -1805,7 +1805,28 @@ async def _execute_signal(
             logger.error("Cooldown check failed for %s (fail closed): %s", ticker, _cd_exc)
             return _blocked(f"cooldown_check_error: {_cd_exc}")
 
+    # R2-Q: preserve the ordinary ownership/duplicate/claim risk checks first.
+    # The full-history provider is unavailable: release only our pending
+    # unsubmitted claim and refuse before marking any claim submitted.
+    from app.services.entry_authority import entry_authority
+    _entry_capability = await entry_authority.request(
+        intent_digest=f"unverified:{asset_type}:{ticker}",
+        account_scope="unverified",
+    )
+    if _entry_capability is None:
+        if _claim is not None:
+            try:
+                await position_claim.resolve(_claim)
+            except Exception as _release_exc:
+                logger.error("Unsubmitted claim release failed for %s: %s", ticker, _release_exc)
+                # This claim may remain pending. Never report the cleanup as
+                # successful or let an operator mistake it for a broker fill.
+                return _blocked("entry_history_proof_unavailable_claim_release_failed")
+        return _blocked("entry_history_proof_unavailable")
+
     # ── Stages 4+5: Broker submission + fill recording ─────────────────────────
+    from app.services import order_submission
+
     action = signal.get("action", "")
 
     try:
@@ -1846,34 +1867,20 @@ async def _execute_signal(
                 # runs on every execution attempt, and the surrounding try/except already
                 # fails open on any error (including a timeout) per this guard's own design
             )
-            if _acct.is_stale:
-                # Stale figures cannot clear this guard. IBKR serves account
-                # data from a cached push stream, so a dead stream still
-                # returns a complete, confident-looking margin picture — the
-                # one from whenever it died. Evaluating it risks the guard's
-                # only dangerous error: reading "margin is fine" off numbers
-                # that predate the blow-up it exists to catch. Treated as
-                # absent rather than as a block, which keeps this guard's
-                # documented fail-open contract intact (it blocks only on a
-                # positively-detected critical state) while refusing to draw
-                # an all-clear from data that cannot support one.
+            from app.services.entry_margin_preparation import evaluate_entry_margin_snapshot
+            _margin_block, _stale_age = evaluate_entry_margin_snapshot(
+                _acct, evaluate_margin=evaluate_margin,
+                warn_pct=_mg_cfg.margin_warn_pct,
+                critical_pct=_mg_cfg.margin_critical_pct,
+            )
+            if _stale_age is not None:
                 logger.warning(
                     "Margin guard skipped for %s — account values stale (%.0fs old)",
-                    ticker, _acct.data_age_seconds or 0.0,
+                    ticker, _stale_age,
                 )
-            elif _acct.maintenance_margin is not None:
-                _m = evaluate_margin(
-                    net_liquidation=float(_acct.net_liquidation or 0),
-                    maintenance_margin=float(_acct.maintenance_margin or 0),
-                    excess_liquidity=float(_acct.excess_liquidity or 0),
-                    buying_power=float(_acct.buying_power or 0),
-                    init_margin=float(_acct.init_margin or 0),
-                    warn_pct=_mg_cfg.margin_warn_pct,
-                    critical_pct=_mg_cfg.margin_critical_pct,
-                )
-                if _m.status == "critical":
-                    logger.warning("Order blocked for %s — margin: %s", ticker, _m.detail)
-                    return _blocked(f"margin_critical: {_m.detail}")
+            if _margin_block:
+                logger.warning("Order blocked for %s — %s", ticker, _margin_block)
+                return _blocked(_margin_block)
         except Exception as _mg_exc:
             logger.debug("Margin guard skipped for %s: %s", ticker, _mg_exc)
 
@@ -1898,10 +1905,13 @@ async def _execute_signal(
             # Black-Scholes estimate.
             try:
                 quote = await broker.get_latest_quote(ticker)
-                if action == "BUY" and quote.ask_price > 0:
-                    entry_price = float(quote.ask_price) * (1 + _EQUITY_LIMIT_BUFFER)
-                elif action == "SELL" and quote.bid_price > 0:
-                    entry_price = float(quote.bid_price) * (1 - _EQUITY_LIMIT_BUFFER)
+                from app.services.equity_order_pricing import reprice_equity_limit
+                entry_price = reprice_equity_limit(
+                    action=action,
+                    fallback_price=entry_price,
+                    quote=quote,
+                    buffer=_EQUITY_LIMIT_BUFFER,
+                )
             except Exception as _q_exc:
                 logger.debug(
                     "Live quote unavailable for %s, using scan-time entry_price: %s",
@@ -1919,7 +1929,7 @@ async def _execute_signal(
             try:
                 result = await ibkr_coordinator.submit(
                     Priority.P0,
-                    lambda: broker.place_equity_order(
+                    lambda: order_submission.submit_equity_entry(authorization=None, broker=broker,
                         ticker=ticker,
                         qty=shares,
                         side=action,
@@ -2111,7 +2121,7 @@ async def _execute_signal(
                 return _skipped("claim_lost")
             try:
                 result = await ibkr_coordinator.submit(
-                    Priority.P0, lambda: broker.place_order(order),
+                    Priority.P0, lambda: order_submission.submit_options_entry(authorization=None, broker=broker, order=order),
                     req_type="PLACE_ORDER", symbol=ticker, timeout=150.0,
                 )
             except asyncio.TimeoutError:

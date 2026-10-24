@@ -16,7 +16,7 @@ If instructions conflict, do not silently override safety invariants; document t
 - Frontend React/TypeScript/Vite; backend Python/FastAPI; PostgreSQL and broker adapters. Preserve working interfaces.
 - Onboarding PR #123 merged into `main` at `8dee8245adb0`: experience-level **welcome guidance only**; this is not three application-wide UX modes.
 - Audit PR #124 is separate and may not be merged. Check its current status.
-- `backend/app/services/execution_portfolio_gate.py` currently documents fail-open behavior on portfolio load failure. Treat as **open risk issue** until code plus regression tests prove otherwise.
+- R1 portfolio state-load failure was fixed by PR #126: `check_execution_portfolio()` now returns `allowed=False` with `portfolio_state_unavailable` on a failed required DB read, and `test_execution_portfolio_gate.py` asserts it. This closes the narrow R1 DB-unavailable issue, not the wider broker-history and entry-authorization program.
 - Code, migrations, dependency versions, and agent rules may evolve. Validate `main` before work; update this ledger in each related PR.
 
 ## Non-negotiable product boundaries
@@ -32,6 +32,21 @@ Verify CI, production deployment path, rollback, account separation, order/posit
 
 ### R1 — Trading safety [FIRST]
 Replace portfolio gate fail-open on state-load failure with refusal of **new risk-increasing orders** when portfolio exposure is unverifiable. Preserve authorized exits and emergency shutdown. Add negative tests for DB errors, stale snapshots, reconnects, retries, partial fills, duplicate orders and ambiguous broker responses. Require paper-only end-to-end validation before rollout.
+
+### R2 — Execution reconciliation and mandatory submission authority [ACTIVE]
+R2-A through R2-P introduced ledger evidence, account scoping, paper reconciliation
+diagnostics, and entry policy modules. These modules alone did not establish
+broker-path enforcement. R2-Q owns the mandatory central order submission boundary.
+
+**Acceptance gate:** no API entry route may directly submit to a broker; an AST
+scan must read real API modules and verify permitted closes are explicitly scoped.
+Every new entry must require a server-issued, single-use, order/account/org-bound
+authorization supported by independently authenticated complete broker history
+(PROVEN / UNPROVEN / UNKNOWN), current kill-switch/risk checks, and retry/TOCTOU
+protection. UNKNOWN/UNPROVEN deny. Independently position-bound risk-reducing
+closes continue. PostgreSQL, negative-mode, concurrency and paper-only tests
+must pass, including mutation checks; do not merge/deploy while tests fail.
+Until a trustworthy provider exists, all new entries remain held closed.
 
 ### UX-1 — Design system and information architecture
 Reuse current navy terminal tokens and components; simplify basic navigation while preserving Pro tools. Standardize states for loading, stale, empty, error, rejected and delayed market data. Verify 320px layout and accessible focus/contrast/touch targets. Audit existing components before adding new ones.
