@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 import pytest
+import pytest_asyncio
 from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -22,7 +23,7 @@ DB = os.getenv("OLBOS_TEST_DATABASE_URL")
 pytestmark = [pytest.mark.asyncio, pytest.mark.skipif(not DB, reason="requires real PostgreSQL")]
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def permit_database():
     engine = create_async_engine(DB, pool_size=5, max_overflow=0)
     async with engine.begin() as conn:
