@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Signals — mobile prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Tokens copied verbatim from frontend/src/index.css. */
+:root{
+  --bg:#070c14; --bg-1:#0a101c; --bg-2:#0e1624; --bg-3:#131c2e; --bg-4:#1a2538;
+  --line:rgba(212,175,55,0.18); --line-dim:rgba(255,255,255,0.09);
+  --ink:#e8edf4; --ink-dim:#9aa8bc; --ink-faint:#6b7a90;
+  --brand:#D4AF37; --accent:#3b82f6; --fill-active:#243044;
+  --amber:#f59e0b; --red:#ef4444; --green:#22c55e;
+  --mono:"JetBrains Mono",monospace; --sans:"IBM Plex Sans",system-ui,sans-serif;
+  --radius-card:12px; --radius-control:7px;
+  --bevel-hi:rgba(255,255,255,0.14);
+  --raised-bezel:0 1px 0 var(--bevel-hi),0 16px 32px -12px rgba(0,0,0,.75),
+                 0 4px 10px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.10),
+                 inset 0 -1px 0 rgba(0,0,0,.4);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{font-size:14px}
+body{background:radial-gradient(1200px 600px at 50% -10%,rgba(212,175,55,.04),transparent 55%),var(--bg);
+  color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased;overflow-x:hidden;min-height:100vh}
+.tnum{font-family:var(--sans);font-variant-numeric:tabular-nums}
+.phone{display:flex;flex-direction:column;min-height:100vh;max-width:430px;margin:0 auto}
+
+.hdr{position:sticky;top:0;z-index:20;background:var(--bg-1);border-bottom:1px solid var(--line)}
+.hdr__top{display:flex;align-items:center;gap:8px;padding:9px 16px 7px}
+.brand{display:block;flex-shrink:0;object-fit:contain}
+.hdr__spacer{flex:1 1 auto;min-width:0}
+.clock{font-family:var(--mono);font-size:10px;color:var(--ink-dim);text-align:right;line-height:1.3}
+.clock b{color:var(--ink);font-weight:500}
+.killbar{display:flex;align-items:center;gap:8px;padding:7px 16px;background:var(--bg-2);
+  border-top:1px solid var(--line-dim);font-size:11px}
+.killbar__dot{width:7px;height:7px;border-radius:50%;background:var(--green);flex:0 0 auto}
+.killbar__label{font-family:var(--mono);font-size:10px;letter-spacing:.06em;color:var(--ink-dim)}
+.killbar__state{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.04em;color:var(--green)}
+.killbar__mode{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--ink-dim);
+  border:1px solid var(--line-dim);border-radius:4px;padding:2px 7px}
+
+/* ── Hold banner. While entries are held, every card says so up front
+      instead of letting an operator tap approve and collect an error. ── */
+.hold{display:none;gap:10px;padding:11px 16px;background:rgba(245,158,11,.10);
+  border-bottom:1px solid var(--line-dim)}
+.is-held .hold{display:flex}
+.hold__icon{flex:0 0 auto;width:16px;height:16px;margin-top:1px;color:var(--amber)}
+.hold__t{font-family:var(--mono);font-size:10px;letter-spacing:.06em;font-weight:600;color:var(--amber)}
+.hold__b{font-size:11.5px;line-height:1.5;color:var(--ink-dim);margin-top:2px}
+.hold__b b{color:var(--ink);font-weight:600}
+
+main{flex:1 1 auto;padding:12px 16px 16px}
+.card{background:var(--bg-1);border:1px solid var(--line-dim);border-radius:var(--radius-card);
+  box-shadow:var(--raised-bezel);overflow:hidden;margin-bottom:12px}
+.card__hd{display:flex;align-items:baseline;gap:8px;padding:11px 14px 9px;border-bottom:1px solid var(--line-dim)}
+.card__title{font-family:var(--mono);font-size:11px;letter-spacing:.07em;color:var(--brand);font-weight:600}
+.card__meta{margin-left:auto;font-family:var(--mono);font-size:9.5px;color:var(--ink-faint)}
+
+/* ── A signal. One ticker, one contract, one state, one reason. ── */
+.sig{padding:12px 14px;border-bottom:1px solid var(--line-dim)}
+.sig:last-of-type{border-bottom:0}
+.sig__top{display:flex;align-items:baseline;gap:8px}
+.sig__tkr{font-family:var(--mono);font-size:14px;font-weight:600;letter-spacing:.02em}
+.sig__side{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.05em;
+  padding:2px 6px;border-radius:3px;border:1px solid currentColor}
+.side-buy{color:var(--green)} .side-sell{color:var(--red)}
+.sig__state{margin-left:auto;font-family:var(--mono);font-size:9.5px;letter-spacing:.06em;
+  font-weight:600;padding:2px 6px;border-radius:3px;border:1px solid currentColor}
+.st-await{color:var(--accent)} .st-filled{color:var(--green)}
+.st-refused{color:var(--red)} .st-expired{color:var(--ink-faint)}
+.sig__contract{font-size:11.5px;color:var(--ink-dim);margin-top:4px}
+.sig__time{font-size:10.5px;color:var(--ink-faint);margin-top:2px}
+/* The reason a signal is in its state — always present, never inferred
+   from a colour. For a refusal it names the gate that refused it. */
+.sig__why{display:flex;gap:8px;margin-top:9px;font-size:11.5px;line-height:1.45;
+  color:var(--ink-dim);border-left:2px solid var(--line-dim);padding-left:10px}
+.sig__why b{color:var(--ink);font-weight:600}
+.why-refused{border-left-color:var(--red)}
+.why-held{border-left-color:var(--amber)}
+.sig__act{display:flex;gap:8px;margin-top:10px}
+.act{flex:1 1 0;min-height:44px;border-radius:var(--radius-control);font-family:var(--mono);
+  font-size:10.5px;letter-spacing:.05em;font-weight:600;cursor:pointer;display:flex;
+  align-items:center;justify-content:center;touch-action:manipulation;
+  -webkit-tap-highlight-color:transparent}
+.act--approve{background:var(--fill-active);border:1px solid var(--accent);color:var(--ink)}
+.act--approve:disabled{background:none;border-color:var(--line-dim);color:var(--ink-faint);cursor:not-allowed}
+.act--dismiss{background:none;border:1px solid var(--line-dim);color:var(--ink-dim)}
+.act:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+
+/* ── Counts, not scores. Every number here is a count of things on this
+      screen, which a reader can verify by scrolling. ── */
+.cnt{display:flex;align-items:baseline;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line-dim);font-size:12px}
+.cnt:last-of-type{border-bottom:0}
+.cnt__k{color:var(--ink-dim)} .cnt__v{margin-left:auto;font-weight:600}
+.cap{padding:11px 14px}
+.cap__row{display:flex;align-items:baseline;font-size:12px;margin-bottom:7px}
+.cap__k{color:var(--ink-dim)} .cap__v{margin-left:auto;font-weight:600}
+.meter{position:relative;height:6px;background:var(--bg-3);border-radius:3px}
+.meter__fill{position:absolute;left:0;top:0;bottom:0;border-radius:3px;background:var(--green)}
+.meter__tick{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--ink);opacity:.65;left:100%}
+.note{font-size:10.5px;line-height:1.55;color:var(--ink-faint);padding:10px 14px;background:var(--bg-2)}
+.note b{color:var(--ink-dim);font-weight:600}
+
+.nav{display:flex;align-items:stretch;flex-shrink:0;background:var(--bg-1);
+  border-top:1px solid var(--line);position:sticky;bottom:0}
+.nav__tab{flex:1 1 0;min-width:0;min-height:52px;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:3px;padding:6px 2px;background:none;border:none;border-top:2px solid transparent;
+  color:var(--ink-faint);font-family:var(--mono);font-size:9px;letter-spacing:.06em;
+  text-transform:uppercase;cursor:pointer}
+.nav__tab.is-active{color:var(--brand);border-top-color:var(--brand)}
+.nav svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+
+.toggle{position:fixed;left:50%;transform:translateX(-50%);bottom:64px;z-index:40;
+  background:rgba(13,21,38,.92);border:1px solid var(--line);border-radius:999px;color:var(--ink);
+  font-family:var(--mono);font-size:10px;letter-spacing:.06em;padding:8px 16px;cursor:pointer;
+  backdrop-filter:blur(14px)}
+</style>
+</head>
+<body>
+<div class="phone is-held" id="app">
+
+  <header class="hdr">
+    <div class="hdr__top">
+      <img class="brand" src="../../../frontend/public/olbos-trade-lockup.webp"
+           width="85" height="22" alt="Olbos Trade" decoding="async">
+      <div class="hdr__spacer"></div>
+      <div class="clock"><b>17:32:03 ET</b><br>21:32 UTC</div>
+    </div>
+    <div class="killbar">
+      <span class="killbar__dot"></span>
+      <span class="killbar__label">KILL SWITCH</span>
+      <span class="killbar__state">READY — NOT ENGAGED</span>
+      <span class="killbar__mode">MANUAL</span>
+    </div>
+  </header>
+
+  <div class="hold">
+    <svg class="hold__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="1.8" stroke-linecap="round">
+      <rect x="4.5" y="10.5" width="15" height="9.5" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/>
+    </svg>
+    <div>
+      <div class="hold__t">ENTRIES HELD</div>
+      <div class="hold__b">No new entry can be submitted: <b>complete execution
+        history could not be verified</b>. Approving is disabled rather than
+        failing at the broker. Closes are unaffected.</div>
+    </div>
+  </div>
+
+  <main>
+    <section class="card">
+      <div class="card__hd">
+        <span class="card__title">AWAITING YOU</span>
+        <span class="card__meta" id="awaitmeta">1</span>
+      </div>
+
+      <div class="sig">
+        <div class="sig__top">
+          <span class="sig__tkr">QQQ</span>
+          <span class="sig__side side-buy">BUY</span>
+          <span class="sig__state st-await">AWAITING APPROVAL</span>
+        </div>
+        <div class="sig__contract">438 PUT · 18 Dec 26 · expires today · 2 contracts</div>
+        <div class="sig__time tnum">Raised 17:28:44 · 3m 19s ago</div>
+        <div class="sig__why why-held" id="qqqwhy">
+          <span><b>Cannot be approved while entries are held.</b> It stays here and
+            expires at the close if the hold is not cleared first.</span>
+        </div>
+        <div class="sig__act">
+          <button class="act act--approve" id="approve" disabled>APPROVE…</button>
+          <button class="act act--dismiss">DISMISS</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card__hd">
+        <span class="card__title">TODAY</span>
+        <span class="card__meta">3 CLOSED</span>
+      </div>
+
+      <div class="sig">
+        <div class="sig__top">
+          <span class="sig__tkr">NVDA</span>
+          <span class="sig__side side-buy">BUY</span>
+          <span class="sig__state st-filled">FILLED</span>
+        </div>
+        <div class="sig__contract">870 CALL · 18 Dec 26 · 1 contract</div>
+        <div class="sig__time tnum">Raised 17:25:12 · approved 17:25:40 · filled 17:25:41</div>
+        <div class="sig__why"><span>Filled at <b>14.20</b>. Now open in Positions.</span></div>
+      </div>
+
+      <div class="sig">
+        <div class="sig__top">
+          <span class="sig__tkr">IWM</span>
+          <span class="sig__side side-sell">SELL</span>
+          <span class="sig__state st-refused">REFUSED</span>
+        </div>
+        <div class="sig__contract">195 PUT · 15 Jan 27 · 3 contracts</div>
+        <div class="sig__time tnum">Raised 17:10:30 · refused 17:10:31</div>
+        <div class="sig__why why-refused">
+          <span>Refused by the <b>cohort exposure limit</b> — 37.5% against a 35%
+            cap. No order was sent.</span>
+        </div>
+      </div>
+
+      <div class="sig">
+        <div class="sig__top">
+          <span class="sig__tkr">SPY</span>
+          <span class="sig__side side-buy">BUY</span>
+          <span class="sig__state st-expired">EXPIRED</span>
+        </div>
+        <div class="sig__contract">500/505 straddle · 18 Dec 26 · 1 contract</div>
+        <div class="sig__time tnum">Raised 17:19:05 · expired 17:29:05</div>
+        <div class="sig__why"><span>Not approved within its <b>10-minute</b> window.</span></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card__hd"><span class="card__title">TODAY’S COUNTS</span></div>
+      <div class="cnt"><span class="cnt__k">Raised</span><span class="cnt__v tnum">4</span></div>
+      <div class="cnt"><span class="cnt__k">Filled</span><span class="cnt__v tnum">1</span></div>
+      <div class="cnt"><span class="cnt__k">Refused by a limit</span><span class="cnt__v tnum">1</span></div>
+      <div class="cnt"><span class="cnt__k">Expired unactioned</span><span class="cnt__v tnum">1</span></div>
+      <div class="cnt"><span class="cnt__k">Awaiting you</span><span class="cnt__v tnum">1</span></div>
+      <div class="cap">
+        <div class="cap__row"><span class="cap__k">Daily submission cap</span>
+          <span class="cap__v tnum">20 of 50 used</span></div>
+        <div class="meter"><span class="meter__fill" style="width:40%"></span><span class="meter__tick"></span></div>
+      </div>
+      <p class="note">These are counts of the signals above, for today only.
+        <b>No success or hit rate is shown</b> — a single percentage with no
+        definition, window or sample size is not a measure of whether a signal
+        was any good.</p>
+    </section>
+  </main>
+
+  <nav class="nav">
+    <button class="nav__tab"><svg viewBox="0 0 24 24"><path d="M3 10.5 12 4l9 6.5"/><path d="M5.5 9.5V20h13V9.5"/></svg>Home</button>
+    <button class="nav__tab"><svg viewBox="0 0 24 24"><path d="M4 18V9"/><path d="M9.5 18V5"/><path d="M15 18v-6"/><path d="M20.5 18V8"/></svg>Desk</button>
+    <button class="nav__tab is-active"><svg viewBox="0 0 24 24"><path d="M3 13.5h4l3-7 4 13 3-6.5h4"/></svg>Signals</button>
+    <button class="nav__tab"><svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="2"/><path d="M3.5 10h17"/><path d="M9 10v9"/></svg>Positions</button>
+    <button class="nav__tab"><svg viewBox="0 0 24 24"><path d="M12 3.5 21 20H3z"/><path d="M12 10v4"/><path d="M12 17h.01"/></svg>Risk</button>
+  </nav>
+</div>
+
+<button class="toggle" id="toggle">SHOW: HOLD CLEARED</button>
+
+<script>
+// Prototype-only. The hold is the live R2-Q state: no entry can be submitted
+// until execution history can be verified. The screen reflects that by
+// disabling approval and saying why on the card itself — rather than
+// accepting the tap and returning a generic error from the broker path.
+var held = true;
+var app     = document.getElementById('app');
+var approve = document.getElementById('approve');
+var why     = document.getElementById('qqqwhy');
+var toggle  = document.getElementById('toggle');
+
+function render(){
+  app.classList.toggle('is-held', held);
+  approve.disabled = held;
+  if (held){
+    why.className = 'sig__why why-held';
+    why.innerHTML = '<span><b>Cannot be approved while entries are held.</b> It stays ' +
+      'here and expires at the close if the hold is not cleared first.</span>';
+    toggle.textContent = 'SHOW: HOLD CLEARED';
+  } else {
+    why.className = 'sig__why';
+    why.innerHTML = '<span>Passed every entry check at <b>17:31:58</b>. Approving ' +
+      'sends one order and asks you to confirm the contract first.</span>';
+    toggle.textContent = 'SHOW: ENTRIES HELD';
+  }
+}
+toggle.addEventListener('click', function(){ held = !held; render(); });
+render();
+</script>
+</body>
+</html>
