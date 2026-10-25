@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased — Strict reconciliation proof flags
+
+- Reconciliation policy rejects malformed evidence objects and non-boolean proof flags. Truthy strings and integers cannot stand in for verified, clean or matching-scope proof.
+- Malformed timestamp values produce a denial. This policy change does not enable broker execution or complete R2 authorization.
+
 ## Unreleased — R1 broker position-read failure
 
 - New equity/options entries are refused when the portfolio gate cannot read broker positions, instead of falling back to database-only counts. The response remains `portfolio_state_unavailable`; recovery requires a new successful read.

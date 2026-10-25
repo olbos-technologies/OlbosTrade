@@ -167,3 +167,13 @@ PR #149 remains separate WIP; durable authenticated history, authorization,
 concurrency/replay/restart evidence and verified exits remain open. Reverting
 this combined change restores known unsafe reporting/coercion/fallback behavior
 and is not a safety mitigation. CI results and merge SHA belong in the PR.
+
+
+## R2-B strict proof validation — proposed
+
+- Base `c22522be395f8c8b9483d7ae3373d2bad8cb224b` (merged #155); branch `codex/r2-strict-reconciliation-proof`.
+- Require actual boolean verified/clean/scope flags and the expected evidence object. Truthy strings/integers must not establish proof. Malformed timestamp objects return a denial rather than raising.
+- Red-first: 27 new cases failed on original policy. Targeted policy/preflight tests: 36 passed, zero skips, 100% statement/branch policy coverage. Full-suite/CI evidence is recorded in the PR.
+- Files: policy, policy tests, roadmap and changelog. No schema/config/frontend edits, migration, broker orders, risk-limit change or deployment. Local frontend checks not run.
+- Integration: existing order_reconciliation_preflight calls this policy, but neither constitutes durable authorization nor complete-history proof. PR #149 remains WIP; live execution is not enabled.
+- Next owner: review CI and integration; complete trusted proof production/consumption and isolated paper-broker evidence. Reverting restores permissive truthiness; not a safety mitigation.
