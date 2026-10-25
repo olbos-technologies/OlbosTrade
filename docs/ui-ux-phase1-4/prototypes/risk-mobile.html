@@ -25,11 +25,62 @@
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html{font-size:14px}
 body{background:radial-gradient(1200px 600px at 50% -10%,rgba(212,175,55,.04),transparent 55%),var(--bg);
-  color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased;overflow-x:hidden;min-height:100vh}
+  color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased;
+  /* clip, not hidden: `hidden` makes body a scroll container and does not
+     contain a fixed-position descendant's scrollable overflow, which let
+     the page drag 73px sideways at 320px. `clip` contains it and creates
+     no scroll container. */
+  overflow-x:clip;min-height:100vh}
+html{overflow-x:clip}
 .tnum{font-family:var(--sans);font-variant-numeric:tabular-nums}
 .phone{display:flex;flex-direction:column;min-height:100vh;max-width:430px;margin:0 auto}
 
-.hdr{position:sticky;top:0;z-index:20;background:var(--bg-1);border-bottom:1px solid var(--line)}
+/* The top chrome is a rounded chassis inset from the edges, not a
+   full-bleed square band — same --radius-card as every other surface, so the
+   header belongs to the same family as the cards below it. .hdr itself keeps
+   an opaque background so content scrolling underneath never shows through
+   the side gutters. */
+.hdr{position:sticky;top:0;z-index:20;background:var(--bg);padding:8px 12px 6px}
+.chassis{background:var(--bg-1);border:1px solid var(--line);border-radius:var(--radius-card);
+  overflow:hidden;box-shadow:var(--raised-bezel)}
+/* Hamburger: the bottom bar reaches five destinations; the nav model has
+   around forty. Without this the other thirty-five are unreachable. */
+.burger{flex:0 0 auto;width:44px;height:44px;margin:-8px 2px -8px -10px;display:flex;
+  align-items:center;justify-content:center;background:none;border:1px solid var(--line-dim);
+  border-radius:var(--radius-control);color:var(--ink-dim);cursor:pointer;
+  touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.burger:active{background:rgba(255,255,255,.05)}
+.burger:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.burger svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round}
+
+/* ── Drawer ── */
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.6);opacity:0;pointer-events:none;
+  transition:opacity var(--motion-med,.22s ease);z-index:30}
+body.is-open .scrim{opacity:1;pointer-events:auto}
+.drawer{position:fixed;top:0;left:0;bottom:0;width:86%;max-width:320px;z-index:31;
+  background:var(--bg-1);border-right:1px solid var(--line);
+  transform:translateX(-102%);visibility:hidden;
+  transition:transform .22s ease, visibility 0s linear .22s;
+  display:flex;flex-direction:column;overflow:hidden}
+body.is-open .drawer{transform:translateX(0);visibility:visible;transition-delay:0s}
+.drawer__hd{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line)}
+.drawer__x{margin-left:auto;width:44px;height:44px;display:flex;align-items:center;justify-content:center;
+  background:none;border:1px solid var(--line-dim);border-radius:var(--radius-control);
+  color:var(--ink-dim);cursor:pointer}
+.drawer__x svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round}
+.drawer__body{flex:1 1 auto;overflow-y:auto;padding:6px 0 14px}
+.grp{font-family:var(--mono);font-size:9.5px;letter-spacing:.09em;color:var(--ink-faint);
+  padding:13px 16px 5px}
+.item{display:flex;align-items:center;gap:10px;width:100%;min-height:44px;padding:9px 16px;
+  background:none;border:0;border-left:2px solid transparent;color:var(--ink-dim);
+  font-family:var(--sans);font-size:12.5px;text-align:left;cursor:pointer;
+  touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.item:active{background:rgba(255,255,255,.04)}
+.item.is-active{color:var(--brand);border-left-color:var(--brand);background:rgba(212,175,55,.07)}
+.item__tag{margin-left:auto;font-family:var(--mono);font-size:9px;letter-spacing:.05em;
+  padding:1px 5px;border-radius:3px;border:1px solid currentColor}
+.t-held{color:var(--amber)} .t-over{color:var(--red)}
+.drawer__ft{border-top:1px solid var(--line);padding:11px 16px;font-size:11px;color:var(--ink-faint)}
 .hdr__top{display:flex;align-items:center;gap:8px;padding:9px 16px 7px}
 /* The real lockup — one immutable asset, per BrandWordmark.tsx. */
 .brand{display:block;flex-shrink:0;object-fit:contain}
@@ -44,7 +95,7 @@ body{background:radial-gradient(1200px 600px at 50% -10%,rgba(212,175,55,.04),tr
 .killbar__mode{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--ink-dim);
   border:1px solid var(--line-dim);border-radius:4px;padding:2px 7px}
 
-main{flex:1 1 auto;padding:12px 16px 16px}
+main{flex:1 1 auto;padding:12px 12px 16px}
 .card{background:var(--bg-1);border:1px solid var(--line-dim);border-radius:var(--radius-card);
   box-shadow:var(--raised-bezel);overflow:hidden;margin-bottom:12px}
 .card__hd{display:flex;align-items:baseline;gap:8px;padding:11px 14px 9px;border-bottom:1px solid var(--line-dim)}
@@ -127,17 +178,22 @@ main{flex:1 1 auto;padding:12px 16px 16px}
 <div class="phone">
 
   <header class="hdr">
-    <div class="hdr__top">
+    <div class="chassis">
+      <div class="hdr__top">
+        <button class="burger" id="burger" aria-label="Open menu">
+        <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
       <img class="brand" src="../../../frontend/public/olbos-trade-lockup.webp"
-           width="85" height="22" alt="Olbos Trade" decoding="async">
-      <div class="hdr__spacer"></div>
-      <div class="clock"><b>17:32:03 ET</b><br>21:32 UTC</div>
-    </div>
-    <div class="killbar">
-      <span class="killbar__dot"></span>
-      <span class="killbar__label">KILL SWITCH</span>
-      <span class="killbar__state">READY — NOT ENGAGED</span>
-      <span class="killbar__mode">MANUAL</span>
+             width="85" height="22" alt="Olbos Trade" decoding="async">
+        <div class="hdr__spacer"></div>
+        <div class="clock"><b>17:32:03 ET</b><br>21:32 UTC</div>
+      </div>
+      <div class="killbar">
+        <span class="killbar__dot"></span>
+        <span class="killbar__label">KILL SWITCH</span>
+        <span class="killbar__state">READY — NOT ENGAGED</span>
+        <span class="killbar__mode">MANUAL</span>
+      </div>
     </div>
   </header>
 
@@ -245,6 +301,43 @@ main{flex:1 1 auto;padding:12px 16px 16px}
   </nav>
 </div>
 
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" aria-label="All sections">
+  <div class="drawer__hd">
+    <img class="brand" src="../../../frontend/public/olbos-trade-lockup.webp"
+         width="85" height="22" alt="Olbos Trade" decoding="async">
+    <button class="drawer__x" id="drawerx" aria-label="Close menu">
+      <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </div>
+  <div class="drawer__body">
+    <div class="grp">COMMAND CENTER</div>
+        <button class="item">Command Center</button>
+    <button class="item">Markets</button>
+    <button class="item">Watchlists</button>
+    <button class="item">News &amp; Events</button>
+    <div class="grp">TRADE DESK</div>
+        <button class="item">Command Overview</button>
+    <button class="item">Equity Desk<span class="item__tag t-held">HELD</span></button>
+    <button class="item">Options Desk<span class="item__tag t-held">HELD</span></button>
+    <button class="item">Positions</button>
+    <button class="item">Orders</button>
+    <button class="item">Execution Monitor</button>
+    <div class="grp">STRATEGIES &amp; SIGNALS</div>
+        <button class="item">Signal Center<span class="item__tag t-held">HELD</span></button>
+    <button class="item">Strategy Health</button>
+    <button class="item">Signal History</button>
+    <button class="item">Alerts</button>
+    <div class="grp">PORTFOLIO &amp; RISK</div>
+        <button class="item is-active">Risk Overview<span class="item__tag t-over">OVER</span></button>
+    <button class="item">Risk Rules</button>
+    <div class="grp">RESEARCH</div>
+        <button class="item">Scenario Lab</button>
+    <button class="item">Model Health</button>
+  </div>
+  <div class="drawer__ft">Olbos Trade · paper · manual</div>
+</aside>
+
 <button class="toggle" id="toggle">SHOW: BUDGET UNREADABLE</button>
 
 <script>
@@ -276,6 +369,23 @@ function render(){
 }
 toggle.addEventListener('click', function(){ unreadable = !unreadable; render(); });
 render();
+</script>
+<script>
+// Prototype-only drawer. The bottom bar carries the five destinations reached
+// most often; everything else in the nav model lives here, so no section is
+// unreachable from a phone. Items carry the same state the screens show —
+// HELD where entries are refused, OVER where a limit is breached — so the
+// menu cannot disagree with the page it opens.
+(function(){
+  var root = document.body;   // drawer and scrim are siblings of .phone
+  var open = function(){ root.classList.add('is-open'); drawer.setAttribute('aria-hidden','false'); };
+  var shut = function(){ root.classList.remove('is-open'); drawer.setAttribute('aria-hidden','true'); };
+  var drawer = document.getElementById('drawer');
+  document.getElementById('burger').addEventListener('click', open);
+  document.getElementById('drawerx').addEventListener('click', shut);
+  document.getElementById('scrim').addEventListener('click', shut);
+  document.addEventListener('keydown', function(e){ if(e.key==='Escape') shut(); });
+})();
 </script>
 </body>
 </html>
