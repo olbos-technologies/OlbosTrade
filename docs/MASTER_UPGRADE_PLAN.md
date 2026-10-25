@@ -177,3 +177,13 @@ and is not a safety mitigation. CI results and merge SHA belong in the PR.
 - Files: policy, policy tests, roadmap and changelog. No schema/config/frontend edits, migration, broker orders, risk-limit change or deployment. Local frontend checks not run.
 - Integration: existing order_reconciliation_preflight calls this policy, but neither constitutes durable authorization nor complete-history proof. PR #149 remains WIP; live execution is not enabled.
 - Next owner: review CI and integration; complete trusted proof production/consumption and isolated paper-broker evidence. Reverting restores permissive truthiness; not a safety mitigation.
+
+
+## R2 history ingestion staging — proposed
+
+Offline single-writer quarantine on `codex/r2-history-staging` tracks declared
+periods, page receipts, restart/resume, duplicates and conflicting executions.
+Complete imports remain `staged_unverified`; native Flex parsing, authenticated
+retrieval, complete-history attestation and PostgreSQL promotion remain open.
+See `HISTORY_IMPORT_STAGING.md` for usage, validation and handoff. No entry
+authorization or broker operation is enabled.

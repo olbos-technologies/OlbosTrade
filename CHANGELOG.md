@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased — Offline history-import staging
+
+- Added durable single-writer quarantine for normalized fixture history pages, scoped report periods, resumable receipts, deduplication and conflict quarantine. Finished imports remain unverified.
+- No native Flex parser, authenticated transport, execution-ledger promotion, order authorization or deployment.
+
 ## Unreleased — Strict reconciliation proof flags
 
 - Reconciliation policy rejects malformed evidence objects and non-boolean proof flags. Truthy strings and integers cannot stand in for verified, clean or matching-scope proof.
