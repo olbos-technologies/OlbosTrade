@@ -1,8 +1,32 @@
 <p align="center">
-  <img src="docs/assets/olbos-banner.jpg" alt="Olbos Trade — Algorithmic Trading System" width="720">
+  <img src="docs/assets/olbos-banner.jpg" alt="OlbosTrade banner" width="720">
 </p>
 
-# OlbosTrade
+<h1 align="center">OLBOS TRADE</h1>
+<p align="center"><strong>Research • Backtest • Paper Trade • Manage Risk</strong></p>
+<p align="center">An open-source algorithmic options trading research platform with a FastAPI backend, React/TypeScript terminal, IBKR integration, and XGBoost signal research.</p>
+<p align="center">
+  <img alt="Python" src="https://img.shields.io/badge/Python-Backend-3776AB?logo=python&logoColor=white">
+  <img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-API-009688?logo=fastapi&logoColor=white">
+  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-Frontend-3178C6?logo=typescript&logoColor=white">
+  <img alt="Research project" src="https://img.shields.io/badge/Status-Research%20%26%20Paper%20Trading-596579">
+</p>
+<p align="center">
+  <a href="#architecture">Architecture</a> ·
+  <a href="#first-time-setup">Installation</a> ·
+  <a href="#execution-modes">Execution Modes</a> ·
+  <a href="#guardrails">Risk Controls</a> ·
+  <a href="#running-tests">Tests</a> ·
+  <a href="docs/MASTER_ARCHITECTURE.md">Technical Docs</a> ·
+  <a href="TRADING_POLICY.md">Trading Policy</a>
+</p>
+
+> [!IMPORTANT]
+> This is software for research and controlled evaluation, not investment advice or a claim of profitability. Start in paper trading; any live trading should be separately authorized and validated. Read [TRADING_POLICY.md](TRADING_POLICY.md).
+
+---
+
+## About OlbosTrade
 > *From Ancient Greek ὄλβος (olbos) — blessed prosperity through disciplined, rules-based quantitative trading.*
 
 > **Philosophy: Capital preservation first. Remove emotion. Rules are law.**
