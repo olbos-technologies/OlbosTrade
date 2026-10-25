@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Positions — mobile prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Tokens copied verbatim from frontend/src/index.css so this prototype cannot
+   drift into a palette the app does not have. */
+:root{
+  --bg:#070c14; --bg-1:#0a101c; --bg-2:#0e1624; --bg-3:#131c2e; --bg-4:#1a2538;
+  --line:rgba(212,175,55,0.18); --line-dim:rgba(255,255,255,0.09);
+  --ink:#e8edf4; --ink-dim:#9aa8bc; --ink-faint:#6b7a90;
+  --brand:#D4AF37; --accent:#3b82f6; --fill-active:#243044;
+  --amber:#f59e0b; --red:#ef4444; --green:#22c55e;
+  --mono:"JetBrains Mono",monospace; --sans:"IBM Plex Sans",system-ui,sans-serif;
+  --radius-card:12px; --radius-control:7px;
+  --bevel-hi:rgba(255,255,255,0.14);
+  --raised-bezel:0 1px 0 var(--bevel-hi),0 16px 32px -12px rgba(0,0,0,.75),
+                 0 4px 10px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.10),
+                 inset 0 -1px 0 rgba(0,0,0,.4);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{font-size:14px}
+body{
+  background:radial-gradient(1200px 600px at 50% -10%,rgba(212,175,55,.04),transparent 55%),var(--bg);
+  color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased;
+  overflow-x:hidden;min-height:100vh;
+}
+/* Data cells: sans + tabular-nums. Mono is reserved for tickers — the rule
+   already documented beside .tnum in index.css. */
+.tnum{font-family:var(--sans);font-variant-numeric:tabular-nums}
+.mono{font-family:var(--mono)}
+
+.phone{display:flex;flex-direction:column;min-height:100vh;max-width:430px;margin:0 auto}
+
+/* ── Header: two fixed rows. Kill state is row 1 and never scrolls away. ── */
+.hdr{position:sticky;top:0;z-index:20;background:var(--bg-1);border-bottom:1px solid var(--line)}
+.hdr__top{display:flex;align-items:center;gap:8px;padding:9px 16px 7px}
+.brand{font-family:var(--mono);font-weight:600;font-size:12px;letter-spacing:.04em;color:var(--brand);white-space:nowrap}
+.brand span{color:var(--green)}
+.hdr__spacer{flex:1 1 auto;min-width:0}
+.clock{font-family:var(--mono);font-size:10px;color:var(--ink-dim);text-align:right;line-height:1.3}
+.clock b{color:var(--ink);font-weight:500}
+
+/* The kill switch says what it DOES, not that it is "armed" — armed reads
+   both as "halted" and as "ready to halt", which are opposite meanings. */
+.killbar{display:flex;align-items:center;gap:8px;padding:7px 16px;
+  background:var(--bg-2);border-top:1px solid var(--line-dim);font-size:11px}
+.killbar__dot{width:7px;height:7px;border-radius:50%;flex:0 0 auto}
+.killbar--ready .killbar__dot{background:var(--green)}
+.killbar--halted{background:rgba(239,68,68,.14)}
+.killbar--halted .killbar__dot{background:var(--red)}
+.killbar__label{font-family:var(--mono);font-size:10px;letter-spacing:.06em;color:var(--ink-dim)}
+.killbar__state{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.04em}
+.killbar--ready .killbar__state{color:var(--green)}
+.killbar--halted .killbar__state{color:var(--red)}
+.killbar__mode{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--ink-dim);
+  border:1px solid var(--line-dim);border-radius:4px;padding:2px 7px}
+
+/* ── Feed banner: the ONE place that says how fresh everything below is ── */
+.feed{display:flex;gap:10px;padding:10px 16px;font-size:11.5px;line-height:1.45;
+  border-bottom:1px solid var(--line-dim)}
+.feed--live{background:rgba(34,197,94,.07)}
+.feed--stale{background:rgba(245,158,11,.10)}
+.feed__icon{flex:0 0 auto;width:16px;height:16px;margin-top:1px}
+.feed__title{font-family:var(--mono);font-size:10px;letter-spacing:.06em;font-weight:600}
+.feed--live .feed__title{color:var(--green)}
+.feed--stale .feed__title{color:var(--amber)}
+.feed__body{color:var(--ink-dim);margin-top:2px}
+.feed__body b{color:var(--ink);font-weight:600}
+
+main{flex:1 1 auto;padding:12px 16px 16px}
+
+.card{background:var(--bg-1);border:1px solid var(--line-dim);border-radius:var(--radius-card);
+  box-shadow:var(--raised-bezel);overflow:hidden;margin-bottom:12px}
+.card__hd{display:flex;align-items:baseline;gap:8px;padding:11px 14px 9px;border-bottom:1px solid var(--line-dim)}
+.card__title{font-family:var(--mono);font-size:11px;letter-spacing:.07em;color:var(--brand);font-weight:600}
+.card__meta{margin-left:auto;font-family:var(--mono);font-size:9.5px;color:var(--ink-faint)}
+
+/* ── Positions ── */
+.pos{display:block;width:100%;text-align:left;background:none;border:0;
+  border-bottom:1px solid var(--line-dim);padding:11px 14px;color:inherit;
+  font:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;
+  display:grid;grid-template-columns:1fr auto;gap:3px 10px;min-height:56px}
+.pos:last-of-type{border-bottom:0}
+.pos:active{background:rgba(255,255,255,.04)}
+.pos__tkr{font-family:var(--mono);font-size:13px;font-weight:600;letter-spacing:.02em}
+.pos__pnl{font-size:13px;font-weight:600;text-align:right;white-space:nowrap}
+.pos__contract{font-size:11px;color:var(--ink-dim);grid-column:1}
+.pos__pct{font-size:11px;text-align:right;white-space:nowrap}
+.pos__px{grid-column:1/-1;font-size:10.5px;color:var(--ink-faint);
+  display:flex;gap:12px;flex-wrap:wrap;margin-top:1px}
+.up{color:var(--green)} .down{color:var(--red)}
+/* Direction also carries a glyph, so colour is never the only cue. */
+.pnl-sign{font-family:var(--mono);font-size:11px;margin-right:2px}
+
+.totals{display:flex;align-items:baseline;gap:10px;padding:11px 14px;background:var(--bg-2)}
+.totals__label{font-family:var(--mono);font-size:10px;letter-spacing:.06em;color:var(--ink-dim)}
+.totals__val{margin-left:auto;font-size:15px;font-weight:700}
+
+/* Stale data: the numbers themselves go quiet and carry their own timestamp,
+   instead of a chip in the header while the figures render at full
+   confidence. A failed read must not look like a fresh one. */
+.is-stale .pos__pnl,.is-stale .pos__pct,.is-stale .totals__val,.is-stale .acct__val{
+  opacity:.45;text-decoration:underline;text-decoration-style:dotted;
+  text-decoration-color:var(--amber);text-underline-offset:3px}
+.asof{display:none;font-family:var(--mono);font-size:9.5px;color:var(--amber)}
+.is-stale .asof{display:inline}
+
+/* ── Account ── */
+.acct__row{display:flex;align-items:baseline;gap:10px;padding:9px 14px;border-bottom:1px solid var(--line-dim);font-size:12px}
+.acct__row:last-child{border-bottom:0}
+.acct__key{color:var(--ink-dim)}
+.acct__val{margin-left:auto;font-weight:600}
+
+/* ── What is blocking entries: replaces success/hit-rate vanity metrics ── */
+.block__row{display:flex;gap:9px;padding:10px 14px;border-bottom:1px solid var(--line-dim);font-size:11.5px;line-height:1.45}
+.block__row:last-child{border-bottom:0}
+.block__dot{flex:0 0 auto;width:6px;height:6px;border-radius:50%;margin-top:6px}
+.block__dot--stop{background:var(--red)} .block__dot--warn{background:var(--amber)}
+.block__txt{color:var(--ink-dim)} .block__txt b{color:var(--ink);font-weight:600}
+.block__why{display:block;color:var(--ink-faint);font-size:10.5px;margin-top:1px}
+
+/* ── Actions: the safe one is primary, the destructive one is a ghost ── */
+.actions{display:flex;flex-direction:column;gap:9px;margin-top:4px}
+.btn{min-height:46px;border-radius:var(--radius-control);font-family:var(--mono);
+  font-size:11px;letter-spacing:.06em;font-weight:600;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;gap:7px;
+  touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.btn--primary{background:var(--fill-active);border:1px solid var(--accent);color:var(--ink)}
+.btn--danger{background:none;border:1px solid rgba(239,68,68,.45);color:var(--red)}
+.btn--danger:disabled{opacity:.4;cursor:not-allowed;border-color:var(--line-dim);color:var(--ink-faint)}
+.btn:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.actions__note{font-size:10.5px;color:var(--ink-faint);text-align:center;line-height:1.45}
+
+/* ── Bottom nav: matches .mobile-bottom-nav in index.css ── */
+.nav{display:flex;align-items:stretch;flex-shrink:0;background:var(--bg-1);
+  border-top:1px solid var(--line);position:sticky;bottom:0}
+.nav__tab{flex:1 1 0;min-width:0;min-height:52px;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:3px;padding:6px 2px;background:none;
+  border:none;border-top:2px solid transparent;color:var(--ink-faint);
+  font-family:var(--mono);font-size:9px;letter-spacing:.06em;text-transform:uppercase;cursor:pointer}
+.nav__tab.is-active{color:var(--brand);border-top-color:var(--brand)}
+.nav svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.6;
+  stroke-linecap:round;stroke-linejoin:round}
+
+/* Prototype-only control, not part of the design. */
+.toggle{position:fixed;left:50%;transform:translateX(-50%);bottom:64px;z-index:40;
+  background:rgba(13,21,38,.92);border:1px solid var(--line);border-radius:999px;
+  color:var(--ink);font-family:var(--mono);font-size:10px;letter-spacing:.06em;
+  padding:8px 16px;cursor:pointer;backdrop-filter:blur(14px)}
+</style>
+</head>
+<body>
+<div class="phone" id="app">
+
+  <header class="hdr">
+    <div class="hdr__top">
+      <div class="brand">OLBOS<span>TRADE</span></div>
+      <div class="hdr__spacer"></div>
+      <div class="clock"><b id="et">17:32:03 ET</b><br>21:32 UTC</div>
+    </div>
+    <div class="killbar killbar--ready" id="killbar">
+      <span class="killbar__dot"></span>
+      <span class="killbar__label">KILL SWITCH</span>
+      <span class="killbar__state" id="killstate">READY — NOT ENGAGED</span>
+      <span class="killbar__mode">MANUAL</span>
+    </div>
+  </header>
+
+  <div class="feed feed--live" id="feed">
+    <svg class="feed__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+         stroke-linecap="round" style="color:var(--green)" id="feedicon">
+      <circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>
+    </svg>
+    <div>
+      <div class="feed__title" id="feedtitle">LIVE · IBKR</div>
+      <div class="feed__body" id="feedbody">Prices and P&amp;L updated <b>2s ago</b>. Entries permitted.</div>
+    </div>
+  </div>
+
+  <main>
+    <section class="card" id="poscard">
+      <div class="card__hd">
+        <span class="card__title">POSITIONS</span>
+        <span class="card__meta">4 OPEN</span>
+      </div>
+
+      <button class="pos">
+        <span class="pos__tkr">QQQ</span>
+        <span class="pos__pnl down"><span class="pnl-sign">▾</span>−$30.00</span>
+        <span class="pos__contract">438 CALL · 18 Dec 26 · +2</span>
+        <span class="pos__pct tnum down">−3.5%</span>
+        <span class="pos__px"><span class="tnum">avg 4.25</span><span class="tnum">last 4.10</span><span class="asof">as of 17:28</span></span>
+      </button>
+
+      <button class="pos">
+        <span class="pos__tkr">NVDA</span>
+        <span class="pos__pnl up"><span class="pnl-sign">▴</span>+$300.00</span>
+        <span class="pos__contract">875 PUT · 18 Dec 26 · −1 (short)</span>
+        <span class="pos__pct tnum up">+21.1%</span>
+        <span class="pos__px"><span class="tnum">avg 14.20</span><span class="tnum">last 11.20</span><span class="asof">as of 17:28</span></span>
+      </button>
+
+      <button class="pos">
+        <span class="pos__tkr">SPY</span>
+        <span class="pos__pnl up"><span class="pnl-sign">▴</span>+$40.00</span>
+        <span class="pos__contract">500/505 STRADDLE · 18 Dec 26 · +1</span>
+        <span class="pos__pct tnum up">+4.7%</span>
+        <span class="pos__px"><span class="tnum">avg 8.50</span><span class="tnum">last 8.90</span><span class="asof">as of 17:28</span></span>
+      </button>
+
+      <button class="pos">
+        <span class="pos__tkr">TLT</span>
+        <span class="pos__pnl down"><span class="pnl-sign">▾</span>−$85.00</span>
+        <span class="pos__contract">95 CALL · 15 Jan 27 · +5</span>
+        <span class="pos__pct tnum down">−15.2%</span>
+        <span class="pos__px"><span class="tnum">avg 1.12</span><span class="tnum">last 0.95</span><span class="asof">as of 17:28</span></span>
+      </button>
+
+      <div class="totals">
+        <span class="totals__label">UNREALISED</span>
+        <span class="totals__val tnum up" id="total">+$225.00</span>
+      </div>
+    </section>
+
+    <section class="card" id="acctcard">
+      <div class="card__hd"><span class="card__title">ACCOUNT</span></div>
+      <div class="acct__row"><span class="acct__key">Net liquidation</span><span class="acct__val tnum">$124,532.88</span></div>
+      <div class="acct__row"><span class="acct__key">Cash</span><span class="acct__val tnum">$45,210.12</span></div>
+      <div class="acct__row"><span class="acct__key">Maintenance margin</span><span class="acct__val tnum">$79,322.76</span></div>
+      <div class="acct__row"><span class="acct__key">Excess liquidity</span><span class="acct__val tnum">$38,417.40</span></div>
+    </section>
+
+    <section class="card">
+      <div class="card__hd">
+        <span class="card__title">ENTRIES</span>
+        <span class="card__meta" id="entrymeta">1 BLOCKER</span>
+      </div>
+      <div class="block__row">
+        <span class="block__dot block__dot--stop"></span>
+        <span class="block__txt"><b>Cohort exposure over limit</b> — 37.5% of 35%
+          <span class="block__why">New entries in this cohort are refused until it is back under. Closes are unaffected.</span></span>
+      </div>
+      <div class="block__row">
+        <span class="block__dot block__dot--warn"></span>
+        <span class="block__txt"><b>Margin usage 48.2%</b> of a 60% limit
+          <span class="block__why">Warning only. Entries still permitted.</span></span>
+      </div>
+    </section>
+
+    <div class="actions">
+      <button class="btn btn--primary">MANAGE RISK</button>
+      <button class="btn btn--danger" id="closeall">CLOSE ALL POSITIONS…</button>
+      <p class="actions__note" id="actnote">Closing asks for confirmation and names each position first.</p>
+    </div>
+  </main>
+
+  <nav class="nav">
+    <button class="nav__tab"><svg viewBox="0 0 24 24"><path d="M3 10.5 12 4l9 6.5"/><path d="M5.5 9.5V20h13V9.5"/></svg>Home</button>
+    <button class="nav__tab"><svg viewBox="0 0 24 24"><path d="M4 18V9"/><path d="M9.5 18V5"/><path d="M15 18v-6"/><path d="M20.5 18V8"/></svg>Desk</button>
+    <button class="nav__tab"><svg viewBox="0 0 24 24"><path d="M3 13.5h4l3-7 4 13 3-6.5h4"/></svg>Signals</button>
+    <button class="nav__tab is-active"><svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="2"/><path d="M3.5 10h17"/><path d="M9 10v9"/></svg>Positions</button>
+    <button class="nav__tab"><svg viewBox="0 0 24 24"><path d="M12 3.5 21 20H3z"/><path d="M12 10v4"/><path d="M12 17h.01"/></svg>Risk</button>
+  </nav>
+</div>
+
+<button class="toggle" id="toggle">SHOW: FEED LOST</button>
+
+<script>
+// Prototype-only: flips between a healthy feed and a lost one so the two
+// treatments can be compared side by side. Everything below the banner is
+// driven by one `stale` flag — the point being that a single source decides
+// freshness for every number on the screen at once.
+var stale = false;
+var app      = document.getElementById('app');
+var feed     = document.getElementById('feed');
+var icon     = document.getElementById('feedicon');
+var title    = document.getElementById('feedtitle');
+var body     = document.getElementById('feedbody');
+var killbar  = document.getElementById('killbar');
+var killstate= document.getElementById('killstate');
+var closeall = document.getElementById('closeall');
+var actnote  = document.getElementById('actnote');
+var entrymeta= document.getElementById('entrymeta');
+var toggle   = document.getElementById('toggle');
+
+function render(){
+  app.classList.toggle('is-stale', stale);
+  feed.className = 'feed ' + (stale ? 'feed--stale' : 'feed--live');
+  icon.style.color = stale ? 'var(--amber)' : 'var(--green)';
+  if (stale){
+    title.textContent = 'FEED LOST · IBKR';
+    body.innerHTML = 'Last update <b>4m 18s ago</b>. Figures below are the last ' +
+                     'values received, not current. New entries are refused.';
+    // The kill switch is operator-controlled and INDEPENDENT of feed health.
+    // A dropped connection refuses entries on its own; saying "halted" here
+    // would report a human decision that nobody made.
+    killstate.textContent = 'READY — NOT ENGAGED';
+    killbar.className = 'killbar killbar--ready';
+    closeall.disabled = true;
+    actnote.textContent = 'Closing is unavailable while the broker connection is down.';
+    entrymeta.textContent = 'REFUSED — NO FEED';
+    toggle.textContent = 'SHOW: LIVE';
+  } else {
+    title.textContent = 'LIVE · IBKR';
+    body.innerHTML = 'Prices and P&amp;L updated <b>2s ago</b>. Entries permitted.';
+    killstate.textContent = 'READY — NOT ENGAGED';
+    killbar.className = 'killbar killbar--ready';
+    closeall.disabled = false;
+    actnote.textContent = 'Closing asks for confirmation and names each position first.';
+    entrymeta.textContent = '1 BLOCKER';
+    toggle.textContent = 'SHOW: FEED LOST';
+  }
+}
+toggle.addEventListener('click', function(){ stale = !stale; render(); });
+render();
+</script>
+</body>
+</html>
