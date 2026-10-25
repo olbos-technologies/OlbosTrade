@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased — Contract reconciliation input validation
+
+- Read-only contract comparison returns unverified for malformed identity or quantities, including fractional quantities previously truncated to integers. Broker and database evidence use the same validation.
+- Valid signed aggregation and normalization remain supported. No order-routing, broker-operation, schema or configuration change.
+
 ## Unreleased — Paper-pilot reliability gates
 
 - Database backups are written privately to a temporary file, verified before publication, and retain previous copies when dump or configured off-site transfer fails. No schema or environment-variable change.

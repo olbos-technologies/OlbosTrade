@@ -82,3 +82,14 @@ Verify tenancy, RBAC, auth, broker credentials, audit, billing, privacy, data li
 
 ## Agent handoff protocol
 Every task, regardless of IDE/agent, must leave a PR or handoff note with: `Milestone ID`, `base SHA`, `branch`, `files changed`, `what passed`, `what was not run`, `migration implications`, `trading safety implications`, `deployment status`, `open risks`, `next owner`. A different tool must verify the latest branch rather than trust chat summaries.
+
+
+## R2-A contract evidence validation — proposed
+
+- Branch: `codex/r2-contract-input-validation`; base main `f4bdf746ee04e5750837059b5297bb60dd189497`.
+- The read-only contract comparator refuses fractional/string/boolean quantities, blank identifiers, invalid expiration types, and non-finite/non-positive strikes as `invalid_contract_leg`. Invalid evidence is unverified and non-clean; signed aggregation of valid integer quantities remains supported.
+- Red-first: 29 failures against original main, including fractional quantity truncation producing a false match. Validation tests cover both evidence sources; valid normalization remains tested.
+- Targeted: 56 reconciler/contract/snapshot tests passed, zero skips. Full backend and CI results are recorded in the PR. Frontend untouched; local frontend checks not run.
+- Files: contract comparator, contract tests, this roadmap and changelog. No migration, environment-variable, nginx, broker-call, risk-limit, order authorization, merge or deployment change.
+- This helper is used by `PositionReconciler.check_contracts()` but remains outside order submission. Complete authenticated history, account/tenant/freshness proof and legacy spread mapping remain open R2 work. PRs #149/#152/#153 remain independent and untouched.
+- Next owner: reviewer verifies CI and strict input contract before integration. Rollback restores permissive evidence coercion; paper validation and broader R2 gates remain required before execution integration.

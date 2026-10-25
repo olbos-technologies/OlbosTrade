@@ -129,3 +129,36 @@ async def test_scoped_contract_check_untracked_broker_contract_is_not_clean():
         result = await PositionReconciler(broker, organization_id=None).check_contracts()
     assert result.verified and not result.clean
     assert result.broker_only
+
+
+@pytest.mark.parametrize("field,value", [
+    ("quantity", 1.5), ("quantity", True), ("quantity", "1"),
+    ("quantity", float("nan")), ("quantity", float("inf")),
+    ("underlying", "   "), ("underlying", None),
+    ("expiration", None), ("expiration", "2026-11-20"),
+    ("strike", Decimal("NaN")), ("strike", Decimal("Infinity")),
+    ("strike", Decimal("-1")), ("strike", Decimal("0")),
+    ("strike", "bad"), ("option_type", None),
+])
+@pytest.mark.parametrize("source", ["broker", "database"])
+def test_invalid_contract_evidence_is_unverified(field, value, source):
+    from dataclasses import replace
+    invalid = replace(leg(), **{field: value})
+    broker, recorded = ([invalid], []) if source == "broker" else ([], [invalid])
+    result = compare_contract_legs(broker, recorded)
+    assert not result.verified and not result.clean
+    assert result.reasons == ["invalid_contract_leg"]
+
+
+def test_fractional_quantity_cannot_be_truncated_into_a_match():
+    result = compare_contract_legs([leg(qty=-1.5)], [leg(qty=-1)])
+    assert not result.verified and not result.clean
+
+
+def test_valid_normalization_and_signed_aggregation_are_preserved():
+    from dataclasses import replace
+    result = compare_contract_legs(
+        [replace(leg(qty=-1), underlying=" spy ", option_type=" PUT "), leg(qty=-1)],
+        [leg(qty=-2)],
+    )
+    assert result.verified and result.clean

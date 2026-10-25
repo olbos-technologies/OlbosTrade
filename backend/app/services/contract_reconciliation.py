@@ -6,7 +6,7 @@ not clean, until their leg mapping is explicitly supported and tested.
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Iterable
 
 
@@ -52,9 +52,23 @@ def compare_contract_legs(
     recorded = Counter()
     for source, legs in ((broker, broker_legs), (recorded, recorded_legs)):
         for leg in legs:
-            if not leg.underlying or leg.option_type.strip().lower() not in ("call", "put") or leg.quantity == 0:
+            # Type annotations do not validate broker/database evidence. Never
+            # truncate a fractional quantity or accept a non-finite identity.
+            try:
+                strike = Decimal(str(leg.strike))
+                valid = (
+                    isinstance(leg.underlying, str) and bool(leg.underlying.strip())
+                    and type(leg.expiration) is date
+                    and isinstance(leg.option_type, str)
+                    and leg.option_type.strip().lower() in ("call", "put")
+                    and type(leg.quantity) is int and leg.quantity != 0
+                    and strike.is_finite() and strike > 0
+                )
+            except (InvalidOperation, ValueError, TypeError, AttributeError):
+                valid = False
+            if not valid:
                 return ContractComparison(verified=False, clean=False, reasons=["invalid_contract_leg"])
-            source[leg.key] += int(leg.quantity)
+            source[leg.key] += leg.quantity
     keys = set(broker) | set(recorded)
     # Report mismatched signed holdings by *source*, not numeric comparison.
     # A short broker position (-1) absent from DB (0) is broker-only;
