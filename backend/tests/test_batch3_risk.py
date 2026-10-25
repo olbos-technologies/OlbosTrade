@@ -148,6 +148,8 @@ async def test_execute_signal_allows_credit_spread_in_preservation(stub_position
     }
 
     broker = MagicMock()
+    # Successful broker read is a prerequisite, not a swallowed mock error.
+    broker.get_positions = AsyncMock(return_value=[])
     broker.place_order = AsyncMock(return_value=MagicMock(order_id="ORD-1", status="submitted"))
 
     recorder = MagicMock()

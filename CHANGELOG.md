@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased — R1 broker position-read failure
+
+- New equity/options entries are refused when the portfolio gate cannot read broker positions, instead of falling back to database-only counts. The response remains `portfolio_state_unavailable`; recovery requires a new successful read.
+- Existing close paths and kill-switch behavior are unchanged. No migration, environment variable, risk-limit change, or deployment. Complete reconciliation/freshness/authorization and paper-broker validation remain open.
+
+## Unreleased — Reconciliation warning truthfulness
+
+- DB-only open trades now produce a non-clean reconciliation result, consistent with the existing warning status. Operator responses and persisted snapshots no longer pair a warning with `clean=true`, and logs no longer call that book clean.
+- The existing non-raising phantom warning policy remains. No new automatic halt, entry authorization, broker operation, schema or configuration change.
+
+## Unreleased — Contract reconciliation input validation
+
+- Read-only contract comparison returns unverified for malformed identity or quantities, including fractional quantities previously truncated to integers. Broker and database evidence use the same validation.
+- Valid signed aggregation and normalization remain supported. No order-routing, broker-operation, schema or configuration change.
+
 ## Unreleased — Paper-pilot reliability gates
 
 - Database backups are written privately to a temporary file, verified before publication, and retain previous copies when dump or configured off-site transfer fails. No schema or environment-variable change.

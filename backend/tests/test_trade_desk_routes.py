@@ -565,6 +565,8 @@ def _dup_session(existing=None):
 @pytest.mark.asyncio
 async def test_options_execution_submits_and_records(stub_position_claim):
     broker = MagicMock()
+    # Successful broker read is a prerequisite, not a swallowed mock error.
+    broker.get_positions = AsyncMock(return_value=[])
     broker.place_order = AsyncMock(return_value=MagicMock(order_id="ORD-9", status="submitted"))
     with patch("app.api.routes.trade_desk._fetch_portfolio_state", new=AsyncMock(return_value=_clean())), \
          patch("app.api.routes.trade_desk._is_kill_switch_active", return_value=False), \
@@ -585,7 +587,7 @@ async def test_options_execution_zero_size_skipped():
     with patch("app.api.routes.trade_desk._fetch_portfolio_state", new=AsyncMock(return_value=_clean())), \
          patch("app.api.routes.trade_desk._is_kill_switch_active", return_value=False), \
          patch("app.core.database.AsyncSessionLocal", return_value=_dup_session(None)), \
-         patch("app.broker.broker_factory.get_broker", return_value=MagicMock()):
+         patch("app.broker.broker_factory.get_broker", return_value=MagicMock(get_positions=AsyncMock(return_value=[]))):
         res = await _execute_signal(sig, approved_by="manual")
     assert res["result"] == "skipped" and "zero_size" in res["reason"]
 
@@ -604,6 +606,8 @@ async def test_market_closed_blocks_order():
 async def test_options_record_failure_still_submits(stub_position_claim):
     # broker fills but DB record fails (None) → still 'submitted', critical-log path
     broker = MagicMock()
+    # Successful broker read is a prerequisite, not a swallowed mock error.
+    broker.get_positions = AsyncMock(return_value=[])
     broker.place_order = AsyncMock(return_value=MagicMock(order_id="ORD-X", status="submitted"))
     with patch("app.api.routes.trade_desk._fetch_portfolio_state", new=AsyncMock(return_value=_clean())), \
          patch("app.api.routes.trade_desk._is_kill_switch_active", return_value=False), \
@@ -624,7 +628,7 @@ async def test_options_place_order_timeout_records_pending_not_lost(stub_positio
     of a generic error."""
     with patch("app.api.routes.trade_desk._fetch_portfolio_state", new=AsyncMock(return_value=_clean())), \
          patch("app.api.routes.trade_desk._is_kill_switch_active", return_value=False), \
-         patch("app.broker.broker_factory.get_broker", return_value=MagicMock()), \
+         patch("app.broker.broker_factory.get_broker", return_value=MagicMock(get_positions=AsyncMock(return_value=[]))), \
          patch("app.core.database.AsyncSessionLocal", return_value=_dup_session(None)), \
          patch.object(td.ibkr_coordinator, "submit",
                       new=AsyncMock(side_effect=asyncio.TimeoutError("timed out"))), \
@@ -646,7 +650,7 @@ async def test_options_place_order_timeout_and_record_failure_logs_critical(stub
     at the broker with zero remaining trace of it."""
     with patch("app.api.routes.trade_desk._fetch_portfolio_state", new=AsyncMock(return_value=_clean())), \
          patch("app.api.routes.trade_desk._is_kill_switch_active", return_value=False), \
-         patch("app.broker.broker_factory.get_broker", return_value=MagicMock()), \
+         patch("app.broker.broker_factory.get_broker", return_value=MagicMock(get_positions=AsyncMock(return_value=[]))), \
          patch("app.core.database.AsyncSessionLocal", return_value=_dup_session(None)), \
          patch.object(td.ibkr_coordinator, "submit",
                       new=AsyncMock(side_effect=asyncio.TimeoutError("timed out"))), \
@@ -660,6 +664,8 @@ async def test_options_place_order_timeout_and_record_failure_logs_critical(stub
 @pytest.mark.asyncio
 async def test_equity_place_order_timeout_records_pending_not_lost(stub_position_claim):
     broker = MagicMock()
+    # Successful broker read is a prerequisite, not a swallowed mock error.
+    broker.get_positions = AsyncMock(return_value=[])
     broker.get_latest_quote = AsyncMock(return_value=MagicMock(ask_price=150.5, bid_price=150.0))
     sig = _equity_signal(source="equity_desk_composer", confidence=None, kelly_fraction=None)
     with patch("app.api.routes.trade_desk._fetch_portfolio_state", new=AsyncMock(return_value=_clean())), \
@@ -686,7 +692,7 @@ async def test_duplicate_open_trade_skipped():
     with patch("app.api.routes.trade_desk._fetch_portfolio_state", new=AsyncMock(return_value=_clean())), \
          patch("app.api.routes.trade_desk._is_kill_switch_active", return_value=False), \
          patch("app.core.database.AsyncSessionLocal", return_value=_dup_session(existing=("trade-x",))), \
-         patch("app.broker.broker_factory.get_broker", return_value=MagicMock()):
+         patch("app.broker.broker_factory.get_broker", return_value=MagicMock(get_positions=AsyncMock(return_value=[]))):
         res = await _execute_signal(_options_signal(), approved_by="manual")
     assert res["result"] == "skipped" and "already_open" in res["reason"]
 
@@ -702,6 +708,8 @@ async def test_duplicate_guard_allows_other_asset_class_same_underlying(stub_pos
     equity_open.status = "open"
 
     broker = MagicMock()
+    # Successful broker read is a prerequisite, not a swallowed mock error.
+    broker.get_positions = AsyncMock(return_value=[])
     broker.place_order = AsyncMock(return_value=MagicMock(order_id="ORD-opt", status="submitted"))
     with patch("app.api.routes.trade_desk._fetch_portfolio_state", new=AsyncMock(return_value=_clean())), \
          patch("app.api.routes.trade_desk._is_kill_switch_active", return_value=False), \
@@ -765,7 +773,7 @@ async def test_cooldown_blocks_recently_closed_same_ticker_same_asset_class(stub
          patch("app.core.config.settings.position_cooldown_hours", 2), \
          patch("app.core.database.AsyncSessionLocal",
                return_value=_dup_and_cooldown_session(cooldown_existing=closed)), \
-         patch("app.broker.broker_factory.get_broker", return_value=MagicMock()):
+         patch("app.broker.broker_factory.get_broker", return_value=MagicMock(get_positions=AsyncMock(return_value=[]))):
         res = await _execute_signal(_options_signal(), approved_by="manual")
     assert res["result"] == "skipped" and "cooldown_active" in res["reason"]
 
@@ -778,6 +786,8 @@ async def test_cooldown_allows_different_asset_class_same_underlying(stub_positi
         asset_class="equity", exit_date=datetime.now(timezone.utc) - timedelta(minutes=5),
     )
     broker = MagicMock()
+    # Successful broker read is a prerequisite, not a swallowed mock error.
+    broker.get_positions = AsyncMock(return_value=[])
     broker.place_order = AsyncMock(return_value=MagicMock(order_id="ORD-cd", status="submitted"))
     with patch("app.api.routes.trade_desk._fetch_portfolio_state", new=AsyncMock(return_value=_clean())), \
          patch("app.api.routes.trade_desk._is_kill_switch_active", return_value=False), \
@@ -796,6 +806,8 @@ async def test_cooldown_allows_different_asset_class_same_underlying(stub_positi
 async def test_cooldown_allows_close_older_than_window(stub_position_claim):
     closed = _closed_trade(exit_date=datetime.now(timezone.utc) - timedelta(hours=3))
     broker = MagicMock()
+    # Successful broker read is a prerequisite, not a swallowed mock error.
+    broker.get_positions = AsyncMock(return_value=[])
     broker.place_order = AsyncMock(return_value=MagicMock(order_id="ORD-old", status="submitted"))
     with patch("app.api.routes.trade_desk._fetch_portfolio_state", new=AsyncMock(return_value=_clean())), \
          patch("app.api.routes.trade_desk._is_kill_switch_active", return_value=False), \
@@ -813,6 +825,8 @@ async def test_cooldown_allows_close_older_than_window(stub_position_claim):
 async def test_cooldown_disabled_skips_check(stub_position_claim):
     closed = _closed_trade(exit_date=datetime.now(timezone.utc) - timedelta(minutes=1))
     broker = MagicMock()
+    # Successful broker read is a prerequisite, not a swallowed mock error.
+    broker.get_positions = AsyncMock(return_value=[])
     broker.place_order = AsyncMock(return_value=MagicMock(order_id="ORD-off", status="submitted"))
     session = _dup_and_cooldown_session(cooldown_existing=closed)
     with patch("app.api.routes.trade_desk._fetch_portfolio_state", new=AsyncMock(return_value=_clean())), \
@@ -846,7 +860,7 @@ async def test_cooldown_check_db_error_fails_closed(stub_position_claim):
          patch("app.api.routes.trade_desk._is_kill_switch_active", return_value=False), \
          patch("app.core.config.settings.position_cooldown_hours", 2), \
          patch("app.core.database.AsyncSessionLocal", return_value=session), \
-         patch("app.broker.broker_factory.get_broker", return_value=MagicMock()):
+         patch("app.broker.broker_factory.get_broker", return_value=MagicMock(get_positions=AsyncMock(return_value=[]))):
         res = await _execute_signal(_options_signal(), approved_by="manual")
     assert res["result"] == "blocked" and "cooldown_check_error" in res["reason"]
 
@@ -870,6 +884,8 @@ async def test_equity_desk_composer_order_bypasses_confidence_gate(stub_position
     every mode's min_confidence exceeds a fabricated 0.5, so this order
     would previously be blocked unconditionally."""
     broker = MagicMock()
+    # Successful broker read is a prerequisite, not a swallowed mock error.
+    broker.get_positions = AsyncMock(return_value=[])
     broker.get_latest_quote = AsyncMock(return_value=MagicMock(ask_price=150.5, bid_price=150.0))
     broker.place_equity_order = AsyncMock(return_value=MagicMock(order_id="ORD-1", status="filled"))
     sig = _equity_signal(source="equity_desk_composer", confidence=None, kelly_fraction=None)
@@ -928,6 +944,8 @@ async def test_2dte_autopilot_signal_not_blocked_by_0dte_gate(stub_position_clai
     """2 DTE clears the hard gate — must reach broker submission, not be
     silently swallowed by an off-by-one in the dte<=1 comparison."""
     broker = MagicMock()
+    # Successful broker read is a prerequisite, not a swallowed mock error.
+    broker.get_positions = AsyncMock(return_value=[])
     broker.place_order = AsyncMock(return_value=MagicMock(order_id="ORD-2DTE", status="submitted"))
     with patch("app.api.routes.trade_desk._fetch_portfolio_state", new=AsyncMock(return_value=_clean())), \
          patch("app.api.routes.trade_desk._is_kill_switch_active", return_value=False), \
@@ -947,6 +965,8 @@ async def test_0dte_manual_approval_not_blocked_by_autopilot_gate(stub_position_
     for approved_by=="autopilot", matching the UI's "Copilot or manual
     only" language."""
     broker = MagicMock()
+    # Successful broker read is a prerequisite, not a swallowed mock error.
+    broker.get_positions = AsyncMock(return_value=[])
     broker.place_order = AsyncMock(return_value=MagicMock(order_id="ORD-MANUAL-0DTE", status="submitted"))
     with patch("app.api.routes.trade_desk._fetch_portfolio_state", new=AsyncMock(return_value=_clean())), \
          patch("app.api.routes.trade_desk._is_kill_switch_active", return_value=False), \
@@ -966,6 +986,8 @@ async def test_0dte_gate_does_not_apply_to_equity_signals(stub_position_claim):
     for asset_type != "options", not raise on a missing key."""
     sig = _equity_signal(source="equity_desk_composer", confidence=0.05, action="BUY")
     broker = MagicMock()
+    # Successful broker read is a prerequisite, not a swallowed mock error.
+    broker.get_positions = AsyncMock(return_value=[])
     broker.place_equity_order = AsyncMock(return_value=MagicMock(order_id="ORD-EQ", status="submitted"))
     with patch("app.api.routes.trade_desk._fetch_portfolio_state", new=AsyncMock(return_value=_clean())), \
          patch("app.api.routes.trade_desk._is_kill_switch_active", return_value=False), \
@@ -1024,6 +1046,8 @@ async def test_liquidity_gate_0dte_check_skipped_when_not_0dte(stub_position_cla
     proximity check is scoped to dte<=1 only."""
     sig = _options_signal_liquidity(dte=5)
     broker = MagicMock()
+    # Successful broker read is a prerequisite, not a swallowed mock error.
+    broker.get_positions = AsyncMock(return_value=[])
     broker.place_order = AsyncMock(return_value=MagicMock(order_id="ORD-NOT0DTE", status="submitted"))
     with patch("app.api.routes.trade_desk._fetch_portfolio_state", new=AsyncMock(return_value=_clean())), \
          patch("app.api.routes.trade_desk._is_kill_switch_active", return_value=False), \
@@ -1044,6 +1068,8 @@ async def test_liquidity_gate_fails_open_on_missing_data(stub_position_claim):
     fields that were never fabricated."""
     sig = _options_signal()
     broker = MagicMock()
+    # Successful broker read is a prerequisite, not a swallowed mock error.
+    broker.get_positions = AsyncMock(return_value=[])
     broker.place_order = AsyncMock(return_value=MagicMock(order_id="ORD-NODATA", status="submitted"))
     with patch("app.api.routes.trade_desk._fetch_portfolio_state", new=AsyncMock(return_value=_clean())), \
          patch("app.api.routes.trade_desk._is_kill_switch_active", return_value=False), \
@@ -1059,6 +1085,8 @@ async def test_liquidity_gate_fails_open_on_missing_data(stub_position_claim):
 async def test_liquidity_gate_passes_healthy_spread(stub_position_claim):
     sig = _options_signal_liquidity(bid_ask_width_pct=0.05, open_interest=500, gamma=0.01)
     broker = MagicMock()
+    # Successful broker read is a prerequisite, not a swallowed mock error.
+    broker.get_positions = AsyncMock(return_value=[])
     broker.place_order = AsyncMock(return_value=MagicMock(order_id="ORD-HEALTHY", status="submitted"))
     with patch("app.api.routes.trade_desk._fetch_portfolio_state", new=AsyncMock(return_value=_clean())), \
          patch("app.api.routes.trade_desk._is_kill_switch_active", return_value=False), \
@@ -1116,6 +1144,8 @@ async def test_margin_guard_is_skipped_when_account_values_are_stale(stub_positi
     margin event, or a false 'critical' that blocks after recovery.
     """
     broker = MagicMock()
+    # Successful broker read is a prerequisite, not a swallowed mock error.
+    broker.get_positions = AsyncMock(return_value=[])
     broker.place_order = AsyncMock(return_value=MagicMock(order_id="ORD-1", status="submitted"))
 
     with patch("app.api.routes.trade_desk._fetch_portfolio_state", new=AsyncMock(return_value=_clean())), \
@@ -1141,6 +1171,8 @@ async def test_margin_guard_still_blocks_on_fresh_critical_figures(stub_position
     """Regression pin for the other direction: the staleness check must not
     have quietly disabled the guard for live data."""
     broker = MagicMock()
+    # Successful broker read is a prerequisite, not a swallowed mock error.
+    broker.get_positions = AsyncMock(return_value=[])
     broker.place_order = AsyncMock(return_value=MagicMock(order_id="ORD-2", status="submitted"))
 
     with patch("app.api.routes.trade_desk._fetch_portfolio_state", new=AsyncMock(return_value=_clean())), \
