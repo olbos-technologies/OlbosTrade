@@ -1,7 +1,7 @@
 """
 Execution portfolio gate — Step 8 money-path checks for `_execute_signal`.
 
-Enforced (fail-closed when state is available):
+Enforced (refuses new entries when required position reads fail):
   - max concurrent open positions
   - single-underlying concentration (RiskManager.MAX_SINGLE_UNDERLYING)
   - sector concentration hard block (aligned with options scan; not warn-only)
@@ -236,7 +236,8 @@ async def load_portfolio_risk_state(portfolio_value: float) -> PortfolioRiskStat
     cache lookup, not a network round-trip — same convention already used
     by position_rotation.py/kill_switch.py — so this adds no meaningful
     latency and needs no coordinator/timeout handling. A broker-read
-    failure fails open to the DB-only count rather than blocking the gate.
+    failure refuses new entries: the DB cannot prove the absence of untracked
+    broker positions. A successful read is required on every evaluation.
     """
     by_underlying: dict[str, float] = {}
     by_sector: dict[str, float] = {}
@@ -258,20 +259,14 @@ async def load_portfolio_risk_state(portfolio_value: float) -> PortfolioRiskStat
             by_underlying[u] = by_underlying.get(u, 0.0) + r
             by_sector[s] = by_sector.get(s, 0.0) + r
 
-        try:
-            from app.broker.broker_factory import get_broker
-            live_positions = await get_broker().get_positions()
-            broker_open_count = len({
-                (p.underlying or "").upper()
-                for p in live_positions
-                if p.quantity != 0
-            })
-            open_count = max(open_count, broker_open_count)
-        except Exception as broker_exc:
-            logger.warning(
-                "portfolio gate: could not cross-check live broker position "
-                "count (using DB-tracked count only): %s", broker_exc,
-            )
+        from app.broker.broker_factory import get_broker
+        live_positions = await get_broker().get_positions()
+        broker_open_count = len({
+            (p.underlying or "").upper()
+            for p in live_positions
+            if p.quantity != 0
+        })
+        open_count = max(open_count, broker_open_count)
     except Exception as exc:
         logger.error("portfolio gate: failed to verify open positions: %s", exc)
         raise PortfolioStateUnavailable("portfolio positions unavailable") from exc
