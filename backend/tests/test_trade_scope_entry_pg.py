@@ -171,6 +171,8 @@ async def _run_submitted(_priority, fn, **_kw):
 
 def _broker():
     b = MagicMock()
+    # The real entry gate requires a successful async broker position read.
+    b.get_positions = AsyncMock(return_value=[])
     b.place_order = AsyncMock(return_value=MagicMock(
         order_id="ORD-1", status="submitted", fill_price=None,
         filled_quantity=None, remaining_quantity=None, message=None))

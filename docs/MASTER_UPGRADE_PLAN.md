@@ -115,8 +115,8 @@ track is certified complete by this change.
 - Milestone: R1 (broker position-read exception fallback only).
 - Base: `f4bdf746ee04e5750837059b5297bb60dd189497`.
 - Branch: `codex/r1-broker-portfolio-fail-closed`.
-- Changed files: `backend/app/services/execution_portfolio_gate.py`, its regression suite, broker-read prerequisites in `test_batch3_risk.py`, `test_equity_limit_repricing.py`, `test_risk_gate.py`, `test_trade_desk_routes.py`, this plan and `CHANGELOG.md`.
-- Test migration: those four existing suites now supply successful async broker position responses. Their original submit, repricing, timeout/pending-confirmation, duplicate, cooldown and margin assertions are retained; neither the portfolio gate nor authorization is globally stubbed.
+- Changed files: `backend/app/services/execution_portfolio_gate.py`, its regression suite, broker-read prerequisites in `test_batch3_risk.py`, `test_equity_limit_repricing.py`, `test_risk_gate.py`, `test_trade_desk_routes.py`, `test_trade_desk_claim_route.py`, `test_trade_scope_entry_pg.py`, this plan and `CHANGELOG.md`.
+- Test migration: those six existing suites now supply successful async broker position responses. Their original submit, repricing, timeout/pending-confirmation, duplicate, cooldown and margin assertions are retained; neither the portfolio gate nor authorization is globally stubbed.
 - Targeted verification: 134 passed, zero skips, changed-module coverage 96.18%; 91 integration tests passed, zero skips. The exact critical-module CI command passed 500 tests, zero skips, 96.64% aggregate coverage (this is not 95% for every individual module).
 - Red-first evidence: all seven new denial/recovery/route tests failed against the original fallback before the production edit. Clean main full backend run: 2,726 passed, 162 skipped, zero failures; PostgreSQL is unavailable locally, so skipped tests do not establish database correctness.
 - Frontend: unchanged; typecheck/unit/browser/build not run locally for this backend-only fix. Full CI and PostgreSQL validation remain required.
@@ -125,3 +125,5 @@ track is certified complete by this change.
 - Deployment: not merged, deployed, or enabled against a broker. No live or paper broker orders were placed; all execution tests used mocks.
 - Open risks: cached reads may still be stale; untracked risk dollars and account/tenant/contract identity are not completely reconciled. Existing R2 work and paper-broker disconnect/reconnect/authorized-exit drills remain necessary.
 - Next owner: reviewer runs full PostgreSQL CI, reconciles with #149 without overwriting it, then the operator records isolated paper evidence before any release decision. Roll back this feature commit only through normal review; rollback restores the prior unsafe fallback and is not a safety mitigation.
+
+- Final local whole-app run: `python -m pytest --cov=app --cov-report=term --junitxml=/tmp/olbos-final-full.xml` returned exit 0: 2,733 passed, 162 skipped, zero failures/errors, 78.58% coverage. Database-backed helpers subsequently received the same explicit async position-read prerequisite; those tests require PostgreSQL CI, not local skips.
