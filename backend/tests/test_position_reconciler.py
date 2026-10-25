@@ -134,7 +134,7 @@ async def test_check_broker_error_fails_loud_not_raise():
 
 
 @pytest.mark.asyncio
-async def test_reconcile_phantom_db_trade_warns_not_raises(mock_broker):
+async def test_reconcile_phantom_db_trade_warns_not_raises(mock_broker, caplog):
     """DB has open trade but broker has no position — warn, don't halt."""
     mock_broker.get_positions = AsyncMock(return_value=[])
     reconciler = PositionReconciler(mock_broker, organization_id=None)
@@ -151,9 +151,10 @@ async def test_reconcile_phantom_db_trade_warns_not_raises(mock_broker):
         mock_db.return_value.__aexit__ = AsyncMock(return_value=False)
         result = await reconciler.reconcile()
 
-    assert result.clean is True  # phantom doesn't fail clean check
+    assert result.clean is False  # a DB-only trade is drift, even without a hard halt
     assert len(result.phantom_in_db) == 1
     assert len(result.warnings) == 1
+    assert "Position reconciliation clean" not in caplog.text
 
 
 @pytest.mark.asyncio

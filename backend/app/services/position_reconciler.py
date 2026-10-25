@@ -257,7 +257,8 @@ class PositionReconciler:
                 quantity_mismatches.append(warn)
 
         result = ReconciliationResult(
-            clean=len(untracked) == 0 and not quantity_mismatches,
+            # DB-only trades are drift too; warning-only does not mean clean.
+            clean=not untracked and not phantom and not quantity_mismatches,
             broker_position_count=len(broker_positions),
             db_open_trade_count=len(db_open_trades),
             untracked_at_broker=list(untracked),

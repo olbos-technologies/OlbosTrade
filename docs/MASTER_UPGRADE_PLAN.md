@@ -82,3 +82,14 @@ Verify tenancy, RBAC, auth, broker credentials, audit, billing, privacy, data li
 
 ## Agent handoff protocol
 Every task, regardless of IDE/agent, must leave a PR or handoff note with: `Milestone ID`, `base SHA`, `branch`, `files changed`, `what passed`, `what was not run`, `migration implications`, `trading safety implications`, `deployment status`, `open risks`, `next owner`. A different tool must verify the latest branch rather than trust chat summaries.
+
+
+## R2-A reporting follow-up — proposed
+
+`codex/r2-phantom-reconciliation-status`, based on main `f4bdf746ee04`, corrects
+legacy reconciliation's false clean flag for database-only open trades. The
+existing non-raising warning policy is retained. Operator responses and saved
+snapshots are verified as `status=warning`, `clean=false`; this is not an entry
+authorization or contract-level reconciliation implementation. See
+`R2_BROKER_RECONCILIATION_SAFETY_AUDIT.md` for the handoff and remaining gates.
+PR #152's independent R1 broker-read fix and WIP PR #149 are left intact.

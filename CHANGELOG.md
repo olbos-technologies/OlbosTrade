@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased — Reconciliation warning truthfulness
+
+- DB-only open trades now produce a non-clean reconciliation result, consistent with the existing warning status. Operator responses and persisted snapshots no longer pair a warning with `clean=true`, and logs no longer call that book clean.
+- The existing non-raising phantom warning policy remains. No new automatic halt, entry authorization, broker operation, schema or configuration change.
+
 ## Unreleased — Paper-pilot reliability gates
 
 - Database backups are written privately to a temporary file, verified before publication, and retain previous copies when dump or configured off-site transfer fails. No schema or environment-variable change.

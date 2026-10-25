@@ -73,3 +73,52 @@ async def test_reconcile_and_record_persists_error_snapshot_on_drift():
     assert "UNTRACKED" in kwargs["error_message"]
     assert kwargs["result"] is not None
     assert kwargs["result"].untracked_at_broker == ["SPY"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("phantom", [False, True], ids=["empty-clean", "db-only-warning"])
+async def test_operator_reconciliation_reports_and_persists_consistent_status(phantom):
+    """Exercise route -> real reconciler -> real snapshot construction.
+
+    Only external DB/broker I/O and caller-scope resolution are mocked. A
+    warning must never be serialized or saved with clean=True.
+    """
+    from types import SimpleNamespace
+    from app.api.routes.risk import run_reconciliation
+
+    trade = SimpleNamespace(underlying="SPY", quantity=1)
+    session = MagicMock()
+    session.execute = AsyncMock(return_value=_db_result_with_trades([trade] if phantom else []))
+    session.commit = AsyncMock()
+    factory = MagicMock()
+    factory.return_value.__aenter__ = AsyncMock(return_value=session)
+    factory.return_value.__aexit__ = AsyncMock(return_value=False)
+    broker = MagicMock()
+    broker.get_positions = AsyncMock(return_value=[])
+    broker.place_order = AsyncMock()
+    broker.place_equity_order = AsyncMock()
+
+    with patch("app.core.database.AsyncSessionLocal", factory), \
+         patch("app.services.position_reconciler.AsyncSessionLocal", factory), \
+         patch("app.api.routes.risk.scope_or_401", new=AsyncMock(return_value=None)), \
+         patch("app.services.worker_scope.broker_for_scope",
+               new=AsyncMock(return_value=SimpleNamespace(broker=broker))) as resolve:
+        response = await run_reconciliation(MagicMock())
+
+    expected_status = "warning" if phantom else "clean"
+    assert response["status"] == expected_status
+    assert response["result"]["clean"] is (not phantom)
+    assert response["result"]["phantom_in_db"] == (["SPY"] if phantom else [])
+    assert bool(response["result"]["warnings"]) is phantom
+    resolve.assert_awaited_once_with(session, None)
+    broker.get_positions.assert_awaited_once()
+    session.add.assert_called_once()
+    snapshot = session.add.call_args.args[0]
+    assert snapshot.status == expected_status
+    assert snapshot.clean is (not phantom)
+    assert snapshot.phantom_in_db == response["result"]["phantom_in_db"]
+    assert snapshot.warnings == response["result"]["warnings"]
+    assert snapshot.source == "operator"
+    session.commit.assert_awaited_once()
+    broker.place_order.assert_not_awaited()
+    broker.place_equity_order.assert_not_awaited()
