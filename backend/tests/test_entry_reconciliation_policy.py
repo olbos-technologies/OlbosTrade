@@ -1,5 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 from app.services.entry_reconciliation_policy import (
     EntryReconciliationStatus, assess_new_entry_reconciliation,
 )
@@ -43,3 +45,26 @@ def test_naive_timestamp_does_not_authorize_entry():
     assert not assess_new_entry_reconciliation(
         status(checked_at=datetime(2026, 10, 21, 20)), now=NOW
     ).allowed
+
+
+
+@pytest.mark.parametrize("field", ["verified", "clean", "scope_matches"])
+@pytest.mark.parametrize("value", ["false", "true", 1, 0, [], {}, None])
+def test_non_boolean_proof_flags_never_authorize(field, value):
+    result = assess_new_entry_reconciliation(status(**{field: value}), now=NOW)
+    assert not result.allowed
+    assert result.reason == "reconciliation_evidence_invalid"
+
+
+@pytest.mark.parametrize("evidence", [{}, object(), "verified"])
+def test_wrong_evidence_object_never_authorizes(evidence):
+    result = assess_new_entry_reconciliation(evidence, now=NOW)
+    assert not result.allowed
+    assert result.reason == "reconciliation_evidence_invalid"
+
+
+@pytest.mark.parametrize("checked", ["2026-10-21T20:00:00Z", 123, object()])
+def test_malformed_timestamp_denies_without_raising(checked):
+    result = assess_new_entry_reconciliation(status(checked_at=checked), now=NOW)
+    assert not result.allowed
+    assert result.reason == "reconciliation_timestamp_unverified"
