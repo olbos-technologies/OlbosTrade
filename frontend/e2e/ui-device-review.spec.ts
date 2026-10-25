@@ -1,6 +1,5 @@
 import { test, expect } from '@playwright/test';
 import { expectNoHorizontalOverflow } from './helpers';
-import { mkdirSync } from 'node:fs';
 
 // Read-only UI review: no broker/backend connection. All API requests are
 // intercepted; writes fail. Screenshots show mock/unavailable data, not accounts.
@@ -27,8 +26,7 @@ for (const width of [320,390,768,1440]) {
       await page.goto('/terminal/'+surface);
       await expect(page.locator('main').first()).toBeVisible();
       await page.waitForTimeout(1200); // Let unavailable-state requests settle before capture.
-      mkdirSync('ui-audit-artifacts',{recursive:true});
-      await page.screenshot({path:`ui-audit-artifacts/${surface.replaceAll('/','-')}-${width}.png`,fullPage:true});
+      await page.screenshot({path:`ui-audit-artifacts/${surface.replace(/\//g,'-')}-${width}.png`,fullPage:true});
       await expectNoHorizontalOverflow(page,width);
       expect(errors,'uncaught browser errors').toEqual([]);
     });
