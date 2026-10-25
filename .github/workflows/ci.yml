@@ -364,3 +364,11 @@ jobs:
           name: playwright-report
           path: frontend/playwright-report/
           retention-days: 7
+
+      - name: Upload device review screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-device-review
+          path: frontend/ui-audit-artifacts/
+          if-no-files-found: ignore
