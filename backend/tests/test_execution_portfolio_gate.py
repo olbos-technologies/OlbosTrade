@@ -443,8 +443,10 @@ async def test_load_portfolio_risk_state_ignores_flat_broker_positions():
 
 
 @pytest.mark.asyncio
-async def test_load_portfolio_risk_state_broker_failure_falls_back_to_db_count():
-    from app.services.execution_portfolio_gate import load_portfolio_risk_state
+async def test_load_portfolio_risk_state_broker_failure_refuses_unknown_exposure():
+    from app.services.execution_portfolio_gate import (
+        PortfolioStateUnavailable, load_portfolio_risk_state,
+    )
 
     db_trades = [_db_trade("AAPL"), _db_trade("MSFT")]
     broker = MagicMock()
@@ -452,9 +454,8 @@ async def test_load_portfolio_risk_state_broker_failure_falls_back_to_db_count()
 
     with patch("app.core.database.AsyncSessionLocal", return_value=_db_session(db_trades)), \
          patch("app.broker.broker_factory.get_broker", return_value=broker):
-        state = await load_portfolio_risk_state(100_000.0)
-
-    assert state.open_position_count == 2  # falls back to DB-only count, does not raise
+        with pytest.raises(PortfolioStateUnavailable, match="portfolio positions unavailable"):
+            await load_portfolio_risk_state(100_000.0)
 
 
 @pytest.mark.asyncio
@@ -505,3 +506,75 @@ def test_a_classified_sector_still_blocks_on_concentration():
     assert r.allowed is False
     assert "sector_concentration_limit" in r.flags
     assert "Technology" in (r.reason or "")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("signal", [_equity(), _options()], ids=["equity", "options"])
+@pytest.mark.parametrize("db_trades", [[], [_db_trade("AAPL")]], ids=["empty-db", "tracked-db"])
+async def test_broker_read_failure_blocks_new_entries(monkeypatch, signal, db_trades):
+    from app.core.config import settings
+    from app.services.execution_portfolio_gate import check_execution_portfolio
+
+    monkeypatch.setattr(settings, "execution_portfolio_gate", True)
+    broker = MagicMock()
+    broker.get_positions = AsyncMock(side_effect=ConnectionError("broker disconnected"))
+    with patch("app.core.database.AsyncSessionLocal", return_value=_db_session(db_trades)), \
+         patch("app.broker.broker_factory.get_broker", return_value=broker):
+        result = await check_execution_portfolio(signal, 100_000.0)
+
+    assert result.allowed is False
+    assert result.flags == ["portfolio_state_unavailable"]
+    assert "new entries blocked" in result.reason
+    broker.get_positions.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_broker_read_recovery_requires_a_new_successful_read(monkeypatch):
+    from app.core.config import settings
+    from app.services.execution_portfolio_gate import check_execution_portfolio
+
+    monkeypatch.setattr(settings, "execution_portfolio_gate", True)
+    broker = MagicMock()
+    broker.get_positions = AsyncMock(side_effect=[ConnectionError("disconnected"), []])
+    with patch("app.core.database.AsyncSessionLocal", return_value=_db_session([])), \
+         patch("app.broker.broker_factory.get_broker", return_value=broker):
+        blocked = await check_execution_portfolio(_equity(), 100_000.0)
+        recovered = await check_execution_portfolio(_equity(), 100_000.0)
+
+    assert not blocked.allowed
+    assert recovered.allowed
+    assert broker.get_positions.await_count == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("signal", [_equity(), _options()], ids=["equity", "options"])
+async def test_execute_signal_reaches_real_broker_read_denial(monkeypatch, signal):
+    from app.api.routes.trade_desk import _execute_signal
+    from app.core.config import settings
+    from app.services.guardrails import PortfolioState
+
+    monkeypatch.setattr(settings, "execution_portfolio_gate", True)
+    clean = PortfolioState(
+        current_value=100_000.0, starting_capital=100_000.0,
+        daily_pnl=0.0, weekly_pnl=0.0, monthly_pnl=0.0,
+        consecutive_losses=0, trades_today=0,
+    )
+    broker = MagicMock()
+    broker.get_positions = AsyncMock(side_effect=ConnectionError("disconnected"))
+    broker.place_equity_order = AsyncMock()
+    broker.place_order = AsyncMock()
+    with patch("app.utils.market_hours.is_market_open", return_value=True), \
+         patch("app.services.unified_risk.check_emotion", return_value=(True, None)), \
+         patch("app.api.routes.trade_desk._is_kill_switch_active", return_value=False), \
+         patch("app.api.routes.trade_desk._fetch_portfolio_state", new=AsyncMock(return_value=clean)), \
+         patch("app.core.database.AsyncSessionLocal", return_value=_db_session([])), \
+         patch("app.broker.broker_factory.get_broker", return_value=broker):
+        # Manual is a real supported source; the portfolio gate is NOT stubbed.
+        result = await _execute_signal(signal, approved_by="manual")
+
+    assert result["result"] == "blocked"
+    assert result["reason"].startswith("portfolio_gate:")
+    assert "portfolio state unavailable" in result["reason"]
+    broker.get_positions.assert_awaited_once()
+    broker.place_equity_order.assert_not_awaited()
+    broker.place_order.assert_not_awaited()

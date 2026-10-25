@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased — R1 broker position-read failure
+
+- New equity/options entries are refused when the portfolio gate cannot read broker positions, instead of falling back to database-only counts. The response remains `portfolio_state_unavailable`; recovery requires a new successful read.
+- Existing close paths and kill-switch behavior are unchanged. No migration, environment variable, risk-limit change, or deployment. Complete reconciliation/freshness/authorization and paper-broker validation remain open.
+
 ## Unreleased — Paper-pilot reliability gates
 
 - Database backups are written privately to a temporary file, verified before publication, and retain previous copies when dump or configured off-site transfer fails. No schema or environment-variable change.

@@ -320,6 +320,8 @@ async def test_clean_order_passes_all_stages_in_order(stub_position_claim):
         return _clean_portfolio()
 
     broker = MagicMock()
+    # Successful broker read is a prerequisite, not a swallowed mock error.
+    broker.get_positions = AsyncMock(return_value=[])
     order_result = MagicMock(order_id="ORD-clean", status="submitted")
     async def _place(**kwargs):
         call_order.append("broker.place_equity_order")
