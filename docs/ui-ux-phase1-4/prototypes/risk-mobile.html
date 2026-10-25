@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Risk — mobile prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Tokens copied verbatim from frontend/src/index.css. */
+:root{
+  --bg:#070c14; --bg-1:#0a101c; --bg-2:#0e1624; --bg-3:#131c2e; --bg-4:#1a2538;
+  --line:rgba(212,175,55,0.18); --line-dim:rgba(255,255,255,0.09);
+  --ink:#e8edf4; --ink-dim:#9aa8bc; --ink-faint:#6b7a90;
+  --brand:#D4AF37; --accent:#3b82f6; --fill-active:#243044;
+  --amber:#f59e0b; --red:#ef4444; --green:#22c55e;
+  --mono:"JetBrains Mono",monospace; --sans:"IBM Plex Sans",system-ui,sans-serif;
+  --radius-card:12px; --radius-control:7px;
+  --bevel-hi:rgba(255,255,255,0.14);
+  --raised-bezel:0 1px 0 var(--bevel-hi),0 16px 32px -12px rgba(0,0,0,.75),
+                 0 4px 10px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.10),
+                 inset 0 -1px 0 rgba(0,0,0,.4);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{font-size:14px}
+body{background:radial-gradient(1200px 600px at 50% -10%,rgba(212,175,55,.04),transparent 55%),var(--bg);
+  color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased;overflow-x:hidden;min-height:100vh}
+.tnum{font-family:var(--sans);font-variant-numeric:tabular-nums}
+.phone{display:flex;flex-direction:column;min-height:100vh;max-width:430px;margin:0 auto}
+
+.hdr{position:sticky;top:0;z-index:20;background:var(--bg-1);border-bottom:1px solid var(--line)}
+.hdr__top{display:flex;align-items:center;gap:8px;padding:9px 16px 7px}
+/* The real lockup — one immutable asset, per BrandWordmark.tsx. */
+.brand{display:block;flex-shrink:0;object-fit:contain}
+.hdr__spacer{flex:1 1 auto;min-width:0}
+.clock{font-family:var(--mono);font-size:10px;color:var(--ink-dim);text-align:right;line-height:1.3}
+.clock b{color:var(--ink);font-weight:500}
+.killbar{display:flex;align-items:center;gap:8px;padding:7px 16px;background:var(--bg-2);
+  border-top:1px solid var(--line-dim);font-size:11px}
+.killbar__dot{width:7px;height:7px;border-radius:50%;background:var(--green);flex:0 0 auto}
+.killbar__label{font-family:var(--mono);font-size:10px;letter-spacing:.06em;color:var(--ink-dim)}
+.killbar__state{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.04em;color:var(--green)}
+.killbar__mode{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--ink-dim);
+  border:1px solid var(--line-dim);border-radius:4px;padding:2px 7px}
+
+main{flex:1 1 auto;padding:12px 16px 16px}
+.card{background:var(--bg-1);border:1px solid var(--line-dim);border-radius:var(--radius-card);
+  box-shadow:var(--raised-bezel);overflow:hidden;margin-bottom:12px}
+.card__hd{display:flex;align-items:baseline;gap:8px;padding:11px 14px 9px;border-bottom:1px solid var(--line-dim)}
+.card__title{font-family:var(--mono);font-size:11px;letter-spacing:.07em;color:var(--brand);font-weight:600}
+.card__meta{margin-left:auto;font-family:var(--mono);font-size:9.5px;color:var(--ink-faint)}
+
+/* ── Breach first. The one thing over its limit leads, with the consequence
+      spelled out — not a row in a table with "OVER" in the fourth column. ── */
+.breach{border-color:rgba(239,68,68,.45)}
+.breach .card__hd{background:rgba(239,68,68,.13);border-bottom-color:rgba(239,68,68,.3)}
+.breach .card__title{color:var(--red)}
+.breach__body{padding:12px 14px}
+.breach__metric{font-size:14px;font-weight:600;margin-bottom:3px}
+.breach__nums{font-size:12px;color:var(--ink-dim);margin-bottom:9px}
+.breach__nums b{color:var(--ink)}
+.breach__effect{font-size:11.5px;line-height:1.5;color:var(--ink-dim);
+  border-left:2px solid var(--red);padding-left:10px}
+.breach__effect b{color:var(--ink);font-weight:600}
+
+/* ── Limits. One band rule decides every status, so 80.3% and 82.7% cannot
+      disagree about what they mean. The rule is printed at the bottom. ── */
+.lim{padding:11px 14px;border-bottom:1px solid var(--line-dim)}
+.lim:last-of-type{border-bottom:0}
+.lim__top{display:flex;align-items:baseline;gap:8px;margin-bottom:2px}
+.lim__name{font-size:12.5px;font-weight:500}
+.lim__status{margin-left:auto;font-family:var(--mono);font-size:9.5px;letter-spacing:.06em;
+  font-weight:600;padding:2px 6px;border-radius:3px;border:1px solid currentColor}
+.s-normal{color:var(--green)} .s-watch{color:var(--amber)} .s-over{color:var(--red)}
+.lim__nums{font-size:11px;color:var(--ink-faint);margin-bottom:6px}
+.lim__nums b{color:var(--ink-dim);font-weight:500}
+/* Meter: the limit is a hard tick, so "near" vs "past" is a position on the
+   track and not only a colour change. */
+.meter{position:relative;height:6px;background:var(--bg-3);border-radius:3px;overflow:visible}
+.meter__fill{position:absolute;left:0;top:0;bottom:0;border-radius:3px}
+.m-normal{background:var(--green)} .m-watch{background:var(--amber)} .m-over{background:var(--red)}
+.meter__tick{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--ink);opacity:.65}
+.meter__pct{position:absolute;right:0;top:-18px;font-family:var(--sans);
+  font-variant-numeric:tabular-nums;font-size:10px;color:var(--ink-dim)}
+
+/* ── Budget. When it cannot be read, it says so — it does not print a
+      number from the last time it could. ── */
+.budget__ok{padding:12px 14px}
+.budget__row{display:flex;align-items:baseline;gap:10px;font-size:12px;margin-bottom:9px}
+.budget__key{color:var(--ink-dim)} .budget__val{margin-left:auto;font-weight:600}
+.unavail{display:flex;gap:10px;padding:13px 14px;background:rgba(245,158,11,.10)}
+.unavail__icon{flex:0 0 auto;width:16px;height:16px;margin-top:1px;color:var(--amber)}
+.unavail__t{font-family:var(--mono);font-size:10px;letter-spacing:.06em;font-weight:600;color:var(--amber)}
+.unavail__b{font-size:11.5px;line-height:1.5;color:var(--ink-dim);margin-top:3px}
+.unavail__b b{color:var(--ink);font-weight:600}
+
+.bands{font-size:10.5px;line-height:1.55;color:var(--ink-faint);padding:10px 14px;background:var(--bg-2)}
+.bands b{color:var(--ink-dim);font-weight:600}
+
+.actions{display:flex;flex-direction:column;gap:9px;margin-top:4px}
+.btn{min-height:46px;border-radius:var(--radius-control);font-family:var(--mono);font-size:11px;
+  letter-spacing:.06em;font-weight:600;cursor:pointer;display:flex;align-items:center;
+  justify-content:center;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.btn--primary{background:var(--fill-active);border:1px solid var(--accent);color:var(--ink)}
+.btn--ghost{background:none;border:1px solid var(--line-dim);color:var(--ink-dim)}
+.btn:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.actions__note{font-size:10.5px;color:var(--ink-faint);text-align:center;line-height:1.45}
+
+.nav{display:flex;align-items:stretch;flex-shrink:0;background:var(--bg-1);
+  border-top:1px solid var(--line);position:sticky;bottom:0}
+.nav__tab{flex:1 1 0;min-width:0;min-height:52px;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:3px;padding:6px 2px;background:none;border:none;
+  border-top:2px solid transparent;color:var(--ink-faint);font-family:var(--mono);font-size:9px;
+  letter-spacing:.06em;text-transform:uppercase;cursor:pointer}
+.nav__tab.is-active{color:var(--brand);border-top-color:var(--brand)}
+.nav svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.6;
+  stroke-linecap:round;stroke-linejoin:round}
+
+.toggle{position:fixed;left:50%;transform:translateX(-50%);bottom:64px;z-index:40;
+  background:rgba(13,21,38,.92);border:1px solid var(--line);border-radius:999px;color:var(--ink);
+  font-family:var(--mono);font-size:10px;letter-spacing:.06em;padding:8px 16px;cursor:pointer;
+  backdrop-filter:blur(14px)}
+</style>
+</head>
+<body>
+<div class="phone">
+
+  <header class="hdr">
+    <div class="hdr__top">
+      <img class="brand" src="../../../frontend/public/olbos-trade-lockup.webp"
+           width="85" height="22" alt="Olbos Trade" decoding="async">
+      <div class="hdr__spacer"></div>
+      <div class="clock"><b>17:32:03 ET</b><br>21:32 UTC</div>
+    </div>
+    <div class="killbar">
+      <span class="killbar__dot"></span>
+      <span class="killbar__label">KILL SWITCH</span>
+      <span class="killbar__state">READY — NOT ENGAGED</span>
+      <span class="killbar__mode">MANUAL</span>
+    </div>
+  </header>
+
+  <main>
+    <section class="card breach">
+      <div class="card__hd">
+        <span class="card__title">OVER LIMIT</span>
+        <span class="card__meta">1 OF 5</span>
+      </div>
+      <div class="breach__body">
+        <div class="breach__metric">Max cohort exposure</div>
+        <div class="breach__nums tnum"><b>37.5%</b> against a <b>35.0%</b> limit — over by 2.5 points</div>
+        <div class="breach__effect">
+          <b>New entries in this cohort are refused</b> until exposure is back
+          under 35%. Closes and existing stops are unaffected.
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card__hd">
+        <span class="card__title">LIMITS</span>
+        <span class="card__meta">AS OF 17:32</span>
+      </div>
+
+      <div class="lim">
+        <div class="lim__top"><span class="lim__name">Max cohort exposure</span>
+          <span class="lim__status s-over">OVER</span></div>
+        <div class="lim__nums tnum"><b>37.5%</b> of 35.0% limit</div>
+        <div class="meter"><span class="meter__pct tnum">107%</span>
+          <span class="meter__fill m-over" style="width:100%"></span>
+          <span class="meter__tick" style="left:93.3%"></span></div>
+      </div>
+
+      <div class="lim">
+        <div class="lim__top"><span class="lim__name">Portfolio beta</span>
+          <span class="lim__status s-watch">WATCH</span></div>
+        <div class="lim__nums tnum"><b>1.24</b> of 1.50 limit</div>
+        <div class="meter"><span class="meter__pct tnum">82.7%</span>
+          <span class="meter__fill m-watch" style="width:82.7%"></span>
+          <span class="meter__tick" style="left:100%"></span></div>
+      </div>
+
+      <div class="lim">
+        <div class="lim__top"><span class="lim__name">Margin usage</span>
+          <span class="lim__status s-watch">WATCH</span></div>
+        <div class="lim__nums tnum"><b>48.2%</b> of 60.0% limit</div>
+        <div class="meter"><span class="meter__pct tnum">80.3%</span>
+          <span class="meter__fill m-watch" style="width:80.3%"></span>
+          <span class="meter__tick" style="left:100%"></span></div>
+      </div>
+
+      <div class="lim">
+        <div class="lim__top"><span class="lim__name">VaR · 99% · 1 day</span>
+          <span class="lim__status s-normal">NORMAL</span></div>
+        <div class="lim__nums tnum"><b>$6,120</b> of $8,500 limit</div>
+        <div class="meter"><span class="meter__pct tnum">72.0%</span>
+          <span class="meter__fill m-normal" style="width:72%"></span>
+          <span class="meter__tick" style="left:100%"></span></div>
+      </div>
+
+      <div class="lim">
+        <div class="lim__top"><span class="lim__name">Drawdown · today</span>
+          <span class="lim__status s-normal">NORMAL</span></div>
+        <div class="lim__nums tnum"><b>−1.10%</b> of −2.50% limit · worst since 1 Aug: −4.20%</div>
+        <div class="meter"><span class="meter__pct tnum">44.0%</span>
+          <span class="meter__fill m-normal" style="width:44%"></span>
+          <span class="meter__tick" style="left:100%"></span></div>
+      </div>
+
+      <p class="bands">Status is one rule for every row: <b>NORMAL</b> under 80% of
+        limit · <b>WATCH</b> 80–99% · <b>OVER</b> at 100% or more. The tick on each
+        track marks the limit.</p>
+    </section>
+
+    <section class="card" id="budgetcard">
+      <div class="card__hd">
+        <span class="card__title">DAILY RISK BUDGET</span>
+        <span class="card__meta" id="budgetmeta">AS OF 17:32</span>
+      </div>
+      <div id="budgetbody">
+        <div class="budget__ok">
+          <div class="budget__row"><span class="budget__key">Cap</span><span class="budget__val tnum">$15,000</span></div>
+          <div class="budget__row"><span class="budget__key">Committed</span><span class="budget__val tnum">$4,800</span></div>
+          <div class="budget__row" style="margin-bottom:10px"><span class="budget__key">Remaining</span><span class="budget__val tnum">$10,200</span></div>
+          <div class="meter"><span class="meter__fill m-normal" style="width:32%"></span>
+            <span class="meter__tick" style="left:100%"></span></div>
+        </div>
+      </div>
+    </section>
+
+    <div class="actions">
+      <button class="btn btn--primary">REVIEW COHORT EXPOSURE</button>
+      <button class="btn btn--ghost">ADJUST LIMITS…</button>
+      <p class="actions__note">Changing a limit is recorded and takes effect on the next entry check.</p>
+    </div>
+  </main>
+
+  <nav class="nav">
+    <button class="nav__tab"><svg viewBox="0 0 24 24"><path d="M3 10.5 12 4l9 6.5"/><path d="M5.5 9.5V20h13V9.5"/></svg>Home</button>
+    <button class="nav__tab"><svg viewBox="0 0 24 24"><path d="M4 18V9"/><path d="M9.5 18V5"/><path d="M15 18v-6"/><path d="M20.5 18V8"/></svg>Desk</button>
+    <button class="nav__tab"><svg viewBox="0 0 24 24"><path d="M3 13.5h4l3-7 4 13 3-6.5h4"/></svg>Signals</button>
+    <button class="nav__tab"><svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="2"/><path d="M3.5 10h17"/><path d="M9 10v9"/></svg>Positions</button>
+    <button class="nav__tab is-active"><svg viewBox="0 0 24 24"><path d="M12 3.5 21 20H3z"/><path d="M12 10v4"/><path d="M12 17h.01"/></svg>Risk</button>
+  </nav>
+</div>
+
+<button class="toggle" id="toggle">SHOW: BUDGET UNREADABLE</button>
+
+<script>
+// Prototype-only. The point of the toggle: when the budget cannot be read,
+// the card must say that, not keep printing the last number it saw. A cap of
+// "$15,000" beside a banner reading "RISK BUDGET UNAVAILABLE" tells an
+// operator two different things at once, and the confident one wins.
+var unreadable = false;
+var body = document.getElementById('budgetbody');
+var meta = document.getElementById('budgetmeta');
+var toggle = document.getElementById('toggle');
+
+var OK = body.innerHTML;
+var LOST =
+  '<div class="unavail">' +
+    '<svg class="unavail__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"' +
+    ' stroke-width="1.8" stroke-linecap="round"><path d="M12 8v5"/><path d="M12 16.5h.01"/>' +
+    '<path d="M10.3 3.9 2.6 17.4A1.6 1.6 0 0 0 4 19.8h16a1.6 1.6 0 0 0 1.4-2.4L13.7 3.9a1.6 1.6 0 0 0-2.8 0z"/></svg>' +
+    '<div><div class="unavail__t">CANNOT BE READ</div>' +
+    '<div class="unavail__b">The risk budget service did not answer. <b>The cap, ' +
+    'committed and remaining figures are not shown because they would be ' +
+    'guesses.</b> Entries are refused while the budget is unknown.</div></div>' +
+  '</div>';
+
+function render(){
+  body.innerHTML = unreadable ? LOST : OK;
+  meta.textContent = unreadable ? 'NO READING' : 'AS OF 17:32';
+  toggle.textContent = unreadable ? 'SHOW: BUDGET OK' : 'SHOW: BUDGET UNREADABLE';
+}
+toggle.addEventListener('click', function(){ unreadable = !unreadable; render(); });
+render();
+</script>
+</body>
+</html>
