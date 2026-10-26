@@ -159,7 +159,8 @@ describe("TerminalLayout ticker strip", () => {
       </TerminalLayout>
     );
     await waitFor(() => expect(screen.getByText("page content")).toBeInTheDocument());
-    expect(container.querySelector(".app-shell")?.className).toBe("app-shell");
+    expect(container.querySelector(".app-shell")).not.toHaveClass("app-shell--desk");
+    expect(container.querySelector(".app-shell")).toHaveClass("app-shell--legacy-desk");
   });
 
   // ── Execution-mode toggle: a safety control must never show an unconfirmed
