@@ -22,12 +22,14 @@ for (const width of [320, 390, 768]) {
     await home(page, width);
     await expectNoHorizontalOverflow(page, width);
     const root = page.getByTestId("mobile-home");
+    await root.getByText("System details", { exact: true }).click();
+    await expect(root.getByRole("button", { name: /View connection details/ })).toBeVisible();
     const sizes = await root.getByRole("button").evaluateAll(buttons =>
       buttons.map(el => ({ text: el.textContent, height: el.getBoundingClientRect().height })));
     expect(sizes.length).toBeGreaterThan(4);
     for (const b of sizes) expect(b.height, b.text || "button").toBeGreaterThanOrEqual(44);
     await expect(root.getByText("Stop coverage unverified", { exact: true })).toBeVisible();
-    const emergency = root.locator("summary");
+    const emergency = root.getByText("Emergency controls", { exact: true });
     await emergency.click();
     await expect(root.getByRole("button", { name: "Engage kill switch", exact: true })).toBeVisible();
     // Opening the existing dialog is safe: never click its submission button.
