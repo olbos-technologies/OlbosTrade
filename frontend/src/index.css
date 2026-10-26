@@ -1910,3 +1910,8 @@ summary span[aria-hidden="true"] { display: inline-block; transition: transform 
     padding-bottom: 0;
   }
 }
+
+/* Connection and execution status remain in the top risk rail on phones. */
+@media (max-width: 768px) {
+  .instrument-status { display: none !important; }
+}

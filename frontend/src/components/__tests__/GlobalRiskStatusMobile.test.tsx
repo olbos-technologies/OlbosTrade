@@ -78,7 +78,7 @@ describe("GlobalRiskStatus — mobile collapse", () => {
     mockedApi.getTradeDeskKillSwitch.mockResolvedValue({ engaged: true });
     render(<GlobalRiskStatus />);
 
-    expect(await screen.findByText("ARMED")).toBeInTheDocument();
+    expect(await screen.findByText("HALTED")).toBeInTheDocument();
     expect(screen.queryByText("NOT ARMED")).not.toBeInTheDocument();
   });
 

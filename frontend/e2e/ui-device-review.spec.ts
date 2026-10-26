@@ -26,6 +26,23 @@ for (const width of [320,390,768,1440]) {
       await page.goto('/terminal/'+surface);
       await expect(page.locator('main').first()).toBeVisible();
       await page.waitForTimeout(1200); // Let unavailable-state requests settle before capture.
+      if (surface === 'dashboard' && width === 1440) {
+        const guide = page.getByRole('region', {name:'Getting started with OlbosTrade'});
+        expect((await guide.boundingBox())!.height).toBeLessThan(250);
+        await expect(guide.getByRole('group', {name:'Choose your experience level'})).toBeHidden();
+      }
+      if (surface === 'markets/watchlists' && width <= 768) {
+        const search = await page.getByRole('textbox', {name:'Search watchlist'}).boundingBox();
+        expect(search!.width).toBeGreaterThan(width * .65);
+      }
+      if (surface === 'markets/chart') {
+        await expect(page.getByText('Setup readiness unavailable. Rescan to retry.')).toBeVisible();
+        const value = page.locator('.workstation-top-strip .data-val').last();
+        expect(await value.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+      }
+      if (width <= 768) {
+        await expect(page.locator('.instrument-status')).toBeHidden();
+      }
       await page.screenshot({path:`ui-audit-artifacts/${surface.replace(/\//g,'-')}-${width}.png`,fullPage:true});
       await expectNoHorizontalOverflow(page,width);
       expect(errors,'uncaught browser errors').toEqual([]);

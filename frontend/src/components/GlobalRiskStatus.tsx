@@ -191,7 +191,7 @@ export default function GlobalRiskStatus() {
   } else {
     const engaged = killAvail.value.engaged;
     killChip = engaged
-      ? <Chip label="KILL" value="ARMED" tone="var(--red)" order={3} title="Kill switch engaged — new orders halted" />
+      ? <Chip label="KILL" value="HALTED" tone="var(--red)" order={3} title="Kill switch engaged — new orders halted" />
       : <Chip label="KILL" value="NOT ARMED" tone="var(--ink-dim)" order={3} />;
   }
 

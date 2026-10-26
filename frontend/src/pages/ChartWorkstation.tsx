@@ -380,7 +380,7 @@ export default function ChartWorkstation({
       {!compact && !focusChart && (
       <div style={{
         display: "grid",
-        gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+
         gap: 10,
       }} className="workstation-top-strip">
         {[

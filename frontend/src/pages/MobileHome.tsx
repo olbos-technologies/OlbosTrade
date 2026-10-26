@@ -111,7 +111,7 @@ export default function MobileHome() {
   const [stopError, setStopError] = useState(false);
   const counts = pending.value ? splitPending(pending.value, now) : null;
   const halted = kill.value?.engaged === true;
-  const modeLabel = halted ? "HALTED" : mode.value ? mode.value.mode.toUpperCase() : "MODE UNVERIFIED";
+  const modeLabel = halted ? "Trading halted" : mode.value ? mode.value.mode.toUpperCase() : "MODE UNVERIFIED";
   const persisted = mode.value?.persistence === "confirmed";
   const reliable = coverage.value?.available === true &&
     coverage.value.source === "refreshed" &&
@@ -161,14 +161,19 @@ export default function MobileHome() {
           : mode.value.mode === "copilot" ? "Every new trade needs your approval."
           : "Signals only. No automated entries."}</p>
         {mode.value && <p className={!persisted ? "mh-warning" : "mh-muted"}>
-          {persisted ? `Mode read ${Math.max(0, Math.floor((now - mode.at!) / 1000))}s ago · saved`
+          {persisted ? `Mode: ${mode.value.mode.charAt(0).toUpperCase() + mode.value.mode.slice(1)} · saved`
             : `Saved state ${mode.value.persistence || "unverified"} — verify execution controls`}
         </p>}
         {broker.value && broker.value.status !== "connected" && <p className="mh-warning">Broker disconnected — account data may be unavailable.</p>}
         {!kill.value && <p className="mh-warning">Kill switch status unverified.</p>}
+        <details className="mh-system-details">
+          <summary>System details</summary>
+          <p className="mh-muted">Mode last checked: {mode.at ? `${Math.max(0, Math.floor((now - mode.at) / 1000))}s ago${mode.fresh ? "" : " · unavailable or stale"}` : "unavailable"}. Account and protection data refresh independently.</p>
+          <button className="mh-link" onClick={() => nav("system:broker")}>View connection details <span aria-hidden="true">↗</span></button>
+        </details>
       </section>
 
-      <section className="mh-card mh-account" aria-label="Account overview">
+      <section className={`mh-card mh-account${!summary.loading && !summary.value ? " mh-account-unavailable" : ""}`} aria-label="Account overview">
         <div className="mh-eyebrow">BROKER ACCOUNT VALUE</div>
         <div className="mh-balance">{summary.loading ? "Loading…" : money(summary.value?.total_equity)}</div>
         {!summary.value && !summary.loading && <p className="mh-warning">Account data unavailable. Refresh to retry.</p>}
