@@ -37,6 +37,12 @@ class Settings(BaseSettings):
         description="https://paper-api.alpaca.markets (paper) or https://api.alpaca.markets (live)",
     )
 
+    # Alpaca Connect: credentials belong to the Olbos application, not users.
+    # Off until the registered application and exact HTTPS callback are configured.
+    alpaca_oauth_client_id: str = Field(default="")
+    alpaca_oauth_client_secret: str = Field(default="", repr=False)
+    alpaca_oauth_redirect_uri: str = Field(default="")
+
     # ── Database ──────────────────────────────────────────────────────────
     database_url: str = Field(
         default="postgresql+asyncpg://options_user:options_pass@localhost:5432/options_db"

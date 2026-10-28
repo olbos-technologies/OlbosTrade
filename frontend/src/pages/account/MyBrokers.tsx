@@ -25,6 +25,8 @@ import React, { useCallback, useEffect, useState } from "react";
 import { api, ApiError, type BrokerConnection } from "../../api/client";
 import { Badge, Button } from "../../components/ui";
 
+import BrokerSignIn from "./BrokerSignIn";
+
 const MONO = "var(--mono)";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -217,6 +219,8 @@ export default function MyBrokers() {
     <div style={{ padding: 16, height: "100%", overflowY: "auto" }}>
       <div className="panel-title" style={{ marginBottom: 10 }}>My Brokers</div>
 
+      <BrokerSignIn />
+
       {!routingEnabled && (
         // The honest banner. See the file docstring — it is driven by the
         // server so it disappears on its own when routing ships.
@@ -231,6 +235,8 @@ export default function MyBrokers() {
         </div>
       )}
 
+      <details>
+      <summary style={{ marginBottom: 12, cursor: "pointer" }}>Advanced: connect with API keys</summary>
       <form onSubmit={submit} className="instrument-card"
             style={{ maxWidth: 560, padding: "14px 16px", marginBottom: 20 }}>
         <div style={{ fontFamily: MONO, fontSize: 11, color: "var(--ink-dim)",
@@ -284,6 +290,7 @@ export default function MyBrokers() {
           </div>
         )}
       </form>
+      </details>
 
       <div className="panel-title" style={{ marginBottom: 8 }}>Connected accounts</div>
       <div className="instrument-card" style={{ maxWidth: 560, padding: "4px 16px" }}>

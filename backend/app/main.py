@@ -250,6 +250,10 @@ app.include_router(admin_claims_routes.router)
 # broker, and today that is Alpaca.
 from app.api.routes import broker_connections as broker_connection_routes  # noqa: E402
 app.include_router(broker_connection_routes.router)
+from app.api.routes import broker_oauth as broker_oauth_routes
+app.include_router(broker_oauth_routes.router)
+from app.api.broker_oauth_redaction import BrokerOAuthQueryRedaction
+app.add_middleware(BrokerOAuthQueryRedaction)
 
 app.include_router(backtest.router,    prefix="/api/backtest",    tags=["Backtest"])
 app.include_router(strategy.router,    prefix="/api/strategy",    tags=["Strategy"])

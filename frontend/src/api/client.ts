@@ -367,6 +367,12 @@ export const api = {
   // Note what these never carry back: the API key and secret go UP and are
   // never returned. The list shows key_last4, which the server stores in the
   // clear precisely so that a read-only screen never has to decrypt anything.
+  brokerOAuthProviders: () => request<{ providers: BrokerProvider[]; execution_enabled: false }>("/api/brokers/oauth/providers"),
+  brokerOAuthConnections: () => request<{ connections: BrokerOAuthConnection[]; execution_enabled: false }>("/api/brokers/oauth/connections"),
+  startBrokerOAuth: (provider: string) => request<{ authorization_url: string }>(
+    `/api/brokers/oauth/${encodeURIComponent(provider)}/start`, { method: "POST", body: "{}" }),
+  disconnectBrokerOAuth: (id: string) => request<{ ok: boolean }>(
+    `/api/brokers/oauth/connections/${encodeURIComponent(id)}`, { method: "DELETE" }),
   listBrokerConnections: () =>
     request<BrokerConnectionList>("/api/brokers/connections"),
   connectBroker: (body: ConnectBrokerRequest) =>
@@ -522,4 +528,12 @@ export function optionsFlowWsUrl(params?: Record<string, string | number | undef
   const q = Object.keys(clean).length ? "?" + new URLSearchParams(clean).toString() : "";
   const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
   return `${proto}//${window.location.host}/api/options-flow/ws${q}`;
+}
+
+export interface BrokerProvider {
+  id: string; name: string; available: boolean; note: string;
+}
+export interface BrokerOAuthConnection {
+  id: string; broker: string; environment: "paper"; permission: "read_only";
+  account_last4: string; connected_at: string; execution_enabled: false;
 }

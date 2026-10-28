@@ -170,6 +170,13 @@ jobs:
           --cov=app.services.feature_store
           --cov=app.services.strategy_registry
           --cov-report=term-missing --cov-fail-under=95
+      - name: Broker OAuth — hard 95% gate
+        run: >
+          pytest tests/test_broker_oauth.py
+          --cov=app.services.broker_oauth_service
+          --cov=app.api.routes.broker_oauth
+          --cov=app.api.broker_oauth_redaction
+          --cov-report=term-missing --cov-fail-under=95
       - name: PostgreSQL-backed tests must RUN, not skip
         # These skip silently when OLBOS_TEST_DATABASE_URL is not reaching
         # them, and a skipped test is a green tick that proves nothing — which
@@ -198,6 +205,7 @@ jobs:
         run: |
           set +e
           pytest --no-header -rs --junitxml=pg-tests.xml \
+            tests/test_broker_oauth_pg.py \
             tests/test_position_claim_pg.py \
             tests/test_trade_desk_claim_route.py \
             tests/test_claim_reconciliation_pg.py \
@@ -356,6 +364,15 @@ jobs:
       # so this runs against the production bundle rather than the dev server.
       - name: Browser tests
         run: npx playwright test
+
+      - name: Upload broker onboarding screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: broker-onboarding-screenshots
+          path: frontend/test-results/broker-picker-*.png
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Upload report on failure
         if: failure()
