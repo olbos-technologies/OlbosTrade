@@ -73,3 +73,17 @@ async def disconnect(grant_id: str, request: Request, db=Depends(get_async_sessi
     if not await svc.disconnect(db, org, grant_id):
         raise HTTPException(404, "No such connection")
     return {"ok": True, "detail": "Disconnected from OlbosTrade. You can also revoke access in Alpaca's app settings."}
+
+
+@router.post("/connections/{grant_id}/verify", dependencies=[Depends(rate_limit)])
+async def verify_connection(grant_id: str, request: Request, db=Depends(get_async_session)):
+    from app.services import broker_connection_health as health
+    org, _, _ = await identity(request, db)
+    try:
+        result = await health.verify(db, org, grant_id)
+    except health.ConnectionMissing:
+        raise HTTPException(404, "Connection unavailable. Reconnect this account.") from None
+    except health.ConnectionChanged:
+        raise HTTPException(409, "Connection changed during verification. Refresh and try again.") from None
+    from fastapi.responses import JSONResponse
+    return JSONResponse(result, headers=HEADERS)

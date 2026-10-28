@@ -855,3 +855,12 @@ alongside this change for the full evidence table).
   expiring session-bound state atomically, and redact callback request queries.
 - Connecting does not authorize or route automated trading. See
   docs/BROKER_OAUTH_ONBOARDING.md for deployment prerequisites and R2 gates.
+
+### Proposed — read-only broker connection health
+
+- Add a tenant/account-bound Alpaca paper account check and visible health,
+  restriction and reconnect states. Persist the observation time; keep trading off.
+- Reject stale verification writes after disconnect, reauthorization or a newer
+  check. Clear token material on account mismatch or rejected broker access.
+- Migration 0044 adds health metadata only. Positions/orders/history reconciliation,
+  execution authorization and actual paper-broker validation remain outstanding.

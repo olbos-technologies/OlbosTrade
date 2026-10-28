@@ -44,6 +44,10 @@ async def sessions(monkeypatch):
             spec.loader.exec_module(migration)
             with Operations.context(MigrationContext.configure(sync_conn)):
                 migration.upgrade()
+                spec = importlib.util.spec_from_file_location("health_migration", "alembic/versions/0044_broker_connection_health.py")
+                health_migration = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(health_migration)
+                health_migration.upgrade()
         await conn.run_sync(migrate)
     yield async_sessionmaker(engine,expire_on_commit=False)
     async with engine.begin() as conn:
@@ -99,3 +103,59 @@ async def test_concurrent_reauthorize_upserts_one_account(sessions):
         async with sessions() as db: await svc.save(db,A,token,account)
     await asyncio.gather(save("test-one"),save("test-two"))
     async with sessions() as db: assert len(await svc.list_grants(db,A))==1
+
+async def health_grant(sessions):
+    async with sessions() as db:
+        await svc.save(db,A,"test-token",str(uuid.uuid4()))
+        return (await svc.list_grants(db,A))[0]["id"]
+
+async def test_health_rejects_foreign_owner_without_broker_call(sessions,monkeypatch):
+    from app.services import broker_connection_health as health
+    from unittest.mock import AsyncMock
+    gid=await health_grant(sessions)
+    probe=AsyncMock(side_effect=AssertionError)
+    monkeypatch.setattr(health,"probe",probe)
+    async with sessions() as db:
+        with pytest.raises(health.ConnectionMissing): await health.verify(db,B,gid)
+    probe.assert_not_called()
+
+@pytest.mark.parametrize("change",["disconnect","reauthorize","faster_check"])
+async def test_inflight_health_cannot_overwrite_connection_change(sessions,monkeypatch,change):
+    from app.services import broker_connection_health as health
+    gid=await health_grant(sessions)
+    async def race(token,account_id):
+        async with sessions() as other:
+            if change=="disconnect": await svc.disconnect(other,A,gid)
+            elif change=="reauthorize": await svc.save(other,A,"replacement-token",account_id)
+            else:
+                await other.execute(text("UPDATE broker_oauth_grants SET health='unavailable',last_checked_at=now() WHERE id=:gid"),{"gid":uuid.UUID(gid)})
+                await other.commit()
+        return "reconnect_required" if change=="reauthorize" else "verified"
+    monkeypatch.setattr(health,"probe",race)
+    async with sessions() as db:
+        with pytest.raises(health.ConnectionChanged): await health.verify(db,A,gid)
+    async with sessions() as db:
+        row=(await db.execute(select(BrokerOAuthGrant))).scalar_one()
+        if change=="disconnect": assert row.status=="revoked" and row.access_token_enc is None
+        elif change=="reauthorize":
+            assert row.health=="unverified" and row.last_checked_at is None
+            from app.services import credential_cipher
+            assert credential_cipher.decrypt(row.access_token_enc)=="replacement-token"
+        else: assert row.health=="unavailable"
+
+@pytest.mark.parametrize("result",["verified","unavailable","restricted","identity_mismatch","reconnect_required"])
+async def test_health_persists_and_can_disconnect_rejected_grant(sessions,monkeypatch,result):
+    from app.services import broker_connection_health as health
+    from unittest.mock import AsyncMock
+    gid=await health_grant(sessions)
+    monkeypatch.setattr(health,"probe",AsyncMock(return_value=result))
+    async with sessions() as db:
+        checked=await health.verify(db,A,gid)
+        assert checked["execution_enabled"] is False
+        rows=await svc.list_grants(db,A)
+        assert rows[0]["health"]==result and rows[0]["last_checked_at"]
+        row=(await db.execute(select(BrokerOAuthGrant))).scalar_one()
+        if result in ("identity_mismatch","reconnect_required"):
+            assert row.access_token_enc is None and row.status=="reconnect_required"
+            with pytest.raises(health.ConnectionMissing): await health.verify(db,A,gid)
+        assert await svc.disconnect(db,A,gid)

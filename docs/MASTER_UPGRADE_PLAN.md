@@ -186,3 +186,18 @@ configuration, rollback and remaining execution gates. Adds a broker picker,
 Alpaca paper/read-only OAuth, encrypted isolated grants and one-use session-bound
 state. IBKR/Schwab remain unavailable. No execution routing, order permission,
 mode activation, risk-limit changes, merge or deployment. R2 remains incomplete.
+
+## SaaS-1 account health prerequisite — proposed
+
+- PR #160 merged as `ca0e9a080948855defafe604167de5f112eea561` after green
+  CI run 40632369474. Merge does not establish deployment or real broker proof.
+- New branch `codex/broker-connection-health`, based on that merge, adds a
+  per-connection paper-only account check, persisted health/timestamp and
+  readable reconnect/restriction states. Revision 0044 follows 0043.
+- Point-in-time verification cannot grant execution authority or prove holdings,
+  open orders, stop coverage or complete history. R2 remains incomplete.
+- Conditional writes bind tenant, connection, broker, paper environment, account,
+  exact encrypted token and previous observation, so disconnect/reconnect or a
+  newer check wins over an older broker response. No locks during broker I/O.
+- No order submission, risk-limit or mode changes; no deployment. Registered
+  app credentials/approval and a real paper account are still external gates.

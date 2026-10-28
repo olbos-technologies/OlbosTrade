@@ -26,4 +26,6 @@ class BrokerOAuthGrant(Base):
     access_token_enc: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="active")
     connected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    health: Mapped[str] = mapped_column(String(32), nullable=False, default="unverified", server_default="unverified")
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     __table_args__ = (UniqueConstraint("organization_id", "broker", "environment", "account_id", name="uq_broker_oauth_account"),)
