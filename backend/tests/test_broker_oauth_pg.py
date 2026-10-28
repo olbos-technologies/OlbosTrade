@@ -159,3 +159,65 @@ async def test_health_persists_and_can_disconnect_rejected_grant(sessions,monkey
             assert row.access_token_enc is None and row.status=="reconnect_required"
             with pytest.raises(health.ConnectionMissing): await health.verify(db,A,gid)
         assert await svc.disconnect(db,A,gid)
+
+
+async def test_snapshot_foreign_owner_never_reads_broker(sessions,monkeypatch):
+    from app.services import broker_paper_snapshot as snapshots, broker_connection_health as health
+    from unittest.mock import AsyncMock
+    gid=await health_grant(sessions)
+    read=AsyncMock(side_effect=AssertionError)
+    monkeypatch.setattr(snapshots,"read",read)
+    async with sessions() as db:
+        with pytest.raises(health.ConnectionMissing): await snapshots.snapshot(db,B,gid)
+    read.assert_not_called()
+
+async def test_snapshot_is_bound_to_stored_account_and_updates_health(sessions,monkeypatch):
+    from app.services import broker_paper_snapshot as snapshots
+    from test_broker_paper_snapshot import broker,account
+    gid=await health_grant(sessions)
+    async with sessions() as db:
+        row=(await db.execute(select(BrokerOAuthGrant))).scalar_one()
+        expected=row.account_id
+        data=account();data["id"]=expected
+        broker(monkeypatch,{"/v2/account":data,"/v2/positions":[],"/v2/orders":[]})
+        result=await snapshots.snapshot(db,A,gid)
+        assert result["positions"]["state"]=="available" and result["positions"]["data"]==[]
+        assert expected not in str(result) and result["account_last4"]==expected[-4:]
+        await db.refresh(row)
+        assert row.health=="verified" and row.last_checked_at
+        assert result["execution_enabled"] is False
+
+@pytest.mark.parametrize("change",["disconnect","reauthorize","newer_check"])
+async def test_snapshot_discards_data_after_connection_change(sessions,monkeypatch,change):
+    from app.services import broker_paper_snapshot as snapshots, broker_connection_health as health
+    from test_broker_paper_snapshot import broker,account
+    gid=await health_grant(sessions)
+    async with sessions() as db:
+        expected=(await db.execute(select(BrokerOAuthGrant))).scalar_one().account_id
+    broker(monkeypatch)
+    async def read(client,path,token):
+        if path=="/v2/account":
+            data=account();data["id"]=expected;return data
+        if path=="/v2/positions":
+            async with sessions() as other:
+                if change=="disconnect": await svc.disconnect(other,A,gid)
+                elif change=="reauthorize": await svc.save(other,A,"replacement-snapshot-token",expected)
+                else:
+                    await other.execute(text("UPDATE broker_oauth_grants SET health='restricted',last_checked_at=now() WHERE id=:gid"),{"gid":uuid.UUID(gid)})
+                    await other.commit()
+        return []
+    monkeypatch.setattr(snapshots,"read",read)
+    async with sessions() as db:
+        with pytest.raises(health.ConnectionChanged): await snapshots.snapshot(db,A,gid)
+
+async def test_snapshot_rejected_access_clears_token_in_database(sessions,monkeypatch):
+    from app.services import broker_paper_snapshot as snapshots
+    from test_broker_paper_snapshot import broker
+    import httpx
+    gid=await health_grant(sessions)
+    broker(monkeypatch,{"/v2/account":httpx.Response(401,json={"detail":"synthetic rejection"})})
+    async with sessions() as db:
+        result=await snapshots.snapshot(db,A,gid)
+        assert all(result[key]["data"] is None for key in ("balances","positions","open_orders"))
+        row=(await db.execute(select(BrokerOAuthGrant))).scalar_one()
+        assert row.status=="reconnect_required" and row.access_token_enc is None

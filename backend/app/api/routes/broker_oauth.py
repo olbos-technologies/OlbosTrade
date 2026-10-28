@@ -87,3 +87,17 @@ async def verify_connection(grant_id: str, request: Request, db=Depends(get_asyn
         raise HTTPException(409, "Connection changed during verification. Refresh and try again.") from None
     from fastapi.responses import JSONResponse
     return JSONResponse(result, headers=HEADERS)
+
+
+@router.post("/connections/{grant_id}/snapshot", dependencies=[Depends(rate_limit)])
+async def account_snapshot(grant_id: str, request: Request, db=Depends(get_async_session)):
+    from app.services import broker_paper_snapshot as snapshots, broker_connection_health as health
+    from fastapi.responses import JSONResponse
+    org, _, _ = await identity(request, db)
+    try:
+        result = await snapshots.snapshot(db, org, grant_id)
+    except health.ConnectionMissing:
+        raise HTTPException(404, "Connection unavailable. Reconnect this account.") from None
+    except health.ConnectionChanged:
+        raise HTTPException(409, "Connection changed during retrieval. Refresh and try again.") from None
+    return JSONResponse(result, headers=HEADERS)

@@ -172,8 +172,9 @@ jobs:
           --cov-report=term-missing --cov-fail-under=95
       - name: Broker OAuth — hard 95% gate
         run: >
-          pytest tests/test_broker_oauth.py tests/test_broker_connection_health.py
+          pytest tests/test_broker_oauth.py tests/test_broker_connection_health.py tests/test_broker_paper_snapshot.py
           --cov=app.services.broker_oauth_service
+          --cov=app.services.broker_paper_snapshot
           --cov=app.services.broker_connection_health
           --cov=app.api.routes.broker_oauth
           --cov=app.api.broker_oauth_redaction

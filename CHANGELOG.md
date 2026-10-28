@@ -864,3 +864,12 @@ alongside this change for the full evidence table).
   check. Clear token material on account mismatch or rejected broker access.
 - Migration 0044 adds health metadata only. Positions/orders/history reconciliation,
   execution authorization and actual paper-broker validation remain outstanding.
+
+### Proposed — selected paper account data
+
+- Add ephemeral account-bound paper reads for balances, positions and nested
+  open-order results, with explicit unavailable/incomplete/stale states.
+- Validate identity before and after retrieval; discard results if account,
+  credentials or local connection state changes. Keep execution disabled.
+- Stacked on unmerged PR #161; no default-branch or deployment change. See
+  docs/BROKER_PAPER_ACCOUNT_DATA.md for limitations and remaining R2 gates.

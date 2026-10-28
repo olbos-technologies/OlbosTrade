@@ -43,7 +43,7 @@ it("disconnects a specific account and refreshes", async () => {
   render(<BrokerSignIn />);
   fireEvent.click(await screen.findByRole("button",{name:"Disconnect broker sign-in"}));
   await waitFor(()=>expect(disconnect).toHaveBeenCalledWith("a"));
-  expect(screen.getByText(/Current account data has not been synced/)).toBeInTheDocument();
+  expect(screen.getByText(/Check account verifies access only/)).toBeInTheDocument();
 });
 
 it("checks only the selected account and never enables execution", async () => {

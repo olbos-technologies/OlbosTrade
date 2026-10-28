@@ -65,6 +65,7 @@ EXPECTED_ELITE_ONLY = {
     "/api/brokers/oauth/connections",
     "/api/brokers/oauth/connections/{grant_id}",
     "/api/brokers/oauth/connections/{grant_id}/verify",
+    "/api/brokers/oauth/connections/{grant_id}/snapshot",
     "/api/brokers/oauth/{provider}/start",
     "/api/brokers/oauth/alpaca/callback",
     "/api/brokers/connections",

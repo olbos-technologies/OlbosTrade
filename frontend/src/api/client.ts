@@ -371,6 +371,8 @@ export const api = {
   brokerOAuthConnections: () => request<{ connections: BrokerOAuthConnection[]; execution_enabled: false }>("/api/brokers/oauth/connections"),
   startBrokerOAuth: (provider: string) => request<{ authorization_url: string }>(
     `/api/brokers/oauth/${encodeURIComponent(provider)}/start`, { method: "POST", body: "{}" }),
+  getBrokerPaperSnapshot: (id: string) => request<BrokerPaperSnapshot>(
+    `/api/brokers/oauth/connections/${encodeURIComponent(id)}/snapshot`, { method: "POST", body: "{}" }),
   verifyBrokerOAuth: (id: string) => request<BrokerOAuthHealth>(
     `/api/brokers/oauth/connections/${encodeURIComponent(id)}/verify`, { method: "POST", body: "{}" }),
   disconnectBrokerOAuth: (id: string) => request<{ ok: boolean }>(
@@ -544,4 +546,26 @@ export interface BrokerOAuthConnection {
 export interface BrokerOAuthHealth {
   id: string; health: string; last_checked_at: string; status: string;
   execution_enabled: false; positions_reconciled: false;
+}
+
+export interface PaperPosition {
+  asset_id: string; symbol: string; qty: string; side: "long" | "short";
+  avg_entry_price: string | null; current_price: string | null;
+  market_value: string | null; unrealized_pl: string | null;
+}
+export interface PaperOrder {
+  id: string; symbol: string | null; side: string | null; type: string; status: string;
+  qty: string | null; filled_qty: string | null; limit_price: string | null;
+  stop_price: string | null; notional: string | null; legs: PaperOrder[] | null;
+}
+export interface SnapshotSection<T> {
+  state: "available" | "incomplete" | "unavailable"; data: T | null; reason: string | null;
+}
+export interface BrokerPaperSnapshot {
+  connection_id: string; broker: "alpaca"; environment: "paper"; account_last4: string;
+  collection_started_at: string; collection_completed_at: string;
+  snapshot_atomic: false; execution_enabled: false; positions_reconciled: false;
+  health: string; last_checked_at: string; status: string;
+  balances: SnapshotSection<{currency: string; equity: string; cash: string; buying_power: string}>;
+  positions: SnapshotSection<PaperPosition[]>; open_orders: SnapshotSection<PaperOrder[]>;
 }

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { api, type BrokerOAuthConnection, type BrokerProvider } from "../../api/client";
+import PaperAccountSnapshot from "./PaperAccountSnapshot";
 import { Button } from "../../components/ui";
 
 const HEALTH_LABELS: Record<string, string> = {
@@ -17,6 +18,7 @@ export default function BrokerSignIn() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState("");
+  const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
   const result = new URLSearchParams(window.location.search).get("broker_oauth");
   const load = useCallback(async () => {
     setLoading(true); setError("");
@@ -99,12 +101,20 @@ export default function BrokerSignIn() {
           {Object.prototype.hasOwnProperty.call(HEALTH_LABELS, c.health || "") ? HEALTH_LABELS[c.health!] : HEALTH_LABELS.unverified}
           {c.last_checked_at && <> · Checked {new Date(c.last_checked_at).toLocaleString()}</>}
         </p>
-        <small>Connected {new Date(c.connected_at).toLocaleString()}. Current account data has not been synced.</small>
+        <small>Connected {new Date(c.connected_at).toLocaleString()}. Check account verifies access only. View account data retrieves balances, positions, and orders.</small>
       </div>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",width:"100%"}}>
       <Button style={{ minHeight: 44 }} disabled={busy !== "" || c.status === "reconnect_required"}
         onClick={() => void verify(c.id)}>{busy === c.id ? "Checking…" : "Check account"}</Button>
+      <Button style={{ minHeight: 44 }} disabled={busy !== "" || c.status === "reconnect_required"}
+        onClick={() => setSelectedAccount(c.id)}>View account data</Button>
       <Button style={{ minHeight: 44 }} disabled={busy !== ""} onClick={() => void disconnect(c.id)}>Disconnect broker sign-in</Button>
+      </div>
     </div>)}
+    {selectedAccount && connections.some(c => c.id === selectedAccount) && <PaperAccountSnapshot
+      key={selectedAccount} connectionId={selectedAccount} onClose={() => setSelectedAccount(null)}
+      onHealth={result => setConnections(rows => rows.map(c => c.id === result.connection_id ?
+        {...c, health:result.health, last_checked_at:result.last_checked_at, status:result.status} : c))}/>}
     <p style={{ fontSize: 12, color: "var(--ink-dim)" }}>Account checks are point-in-time only. They do not verify positions, protective orders, or permission for automated execution.</p>
     <p style={{ fontSize: 12, color: "var(--ink-dim)" }}>Disconnecting deletes the saved token from OlbosTrade. You can also revoke this application in Alpaca’s settings.</p>
   </section>;
