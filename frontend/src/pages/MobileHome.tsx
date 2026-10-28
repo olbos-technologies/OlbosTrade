@@ -146,7 +146,7 @@ export default function MobileHome() {
         <button className="mh-icon-button" onClick={refresh} aria-label="Refresh home">↻</button>
       </header>
 
-      <section className={`mh-status mh-card${halted ? " mh-status-halted" : ""}`} aria-label="Execution status">
+      <section className={`mh-status mh-card${halted ? " mh-status-halted" : ""}${!mode.value || !kill.value || !broker.value || broker.value.status !== "connected" ? " mh-status-unverified" : ""}`} aria-label="Execution status">
         <div className="mh-line">
           <strong className={halted ? "mh-negative" : mode.value?.mode === "autopilot" ? "mh-warning" : ""}>{modeLabel}</strong>
           <span className="mh-environment">{broker.value
