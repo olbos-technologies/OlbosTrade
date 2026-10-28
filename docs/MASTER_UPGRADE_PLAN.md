@@ -177,3 +177,16 @@ and is not a safety mitigation. CI results and merge SHA belong in the PR.
 - Files: policy, policy tests, roadmap and changelog. No schema/config/frontend edits, migration, broker orders, risk-limit change or deployment. Local frontend checks not run.
 - Integration: existing order_reconciliation_preflight calls this policy, but neither constitutes durable authorization nor complete-history proof. PR #149 remains WIP; live execution is not enabled.
 - Next owner: review CI and integration; complete trusted proof production/consumption and isolated paper-broker evidence. Reverting restores permissive truthiness; not a safety mitigation.
+
+
+## R2 native Flex intake proposal — 2026-10-27
+
+Branch `codex/r2-flex-evidence-intake`, based on main `df31690f1fce`.
+Adds a versioned, offline Activity Flex XML parser and safe-summary inspector for
+stock/individual-option execution candidates. Rejects summary-only, mixed-scope,
+malformed, ambiguous-time and visible correction/conflict cases. Every result
+remains unauthenticated and unverified; no order permission or ledger promotion
+is connected. Complements the separate draft staging work without merging it.
+See `IBKR_FLEX_EVIDENCE_INTAKE.md` for the supported subset, validation and remaining
+authenticated transport, complete-history, current-book, authorization and paper
+validation gates. R2 remains incomplete; no merge/deployment is implied.

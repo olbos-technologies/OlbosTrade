@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased — Read-only native Flex evidence intake
+
+- Validate a bounded, versioned Activity Flex XML execution subset, preserving scoped contract and decimal financial fields. Reject summary-only data, account mismatches, ambiguous timestamps, visible corrections and conflicting duplicate executions.
+- Add an offline safe-summary inspector and synthetic regression tests. Results always remain unverified; no credentials, broker calls, ledger writes, order permissions, schema changes or deployment.
+
 ## Unreleased — Strict reconciliation proof flags
 
 - Reconciliation policy rejects malformed evidence objects and non-boolean proof flags. Truthy strings and integers cannot stand in for verified, clean or matching-scope proof.
