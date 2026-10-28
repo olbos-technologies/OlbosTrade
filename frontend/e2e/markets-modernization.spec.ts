@@ -28,10 +28,10 @@ for(const width of [390,1440]) {
     });
   }
 }
-test("Command Center prioritizes an actual weekly loss breach",async({page})=>{
+for (const width of [390,1440]) test(`Command Center prioritizes an actual weekly loss breach at ${width}px`,async({page})=>{
   await stubBackend(page);
   await page.route("**/api/guardrails/status",r=>r.fulfill(reply({weekly_loss_pct:-.116,max_weekly_loss_pct:.05,trading_allowed:true})));
-  await page.setViewportSize({width:1440,height:900});
+  await page.setViewportSize({width,height:900});
   await page.goto("/terminal/dashboard");
   await expect(page.getByRole("region",{name:"Needs attention"})).toContainText("Weekly loss limit exceeded");
 });
@@ -46,7 +46,7 @@ test("chart symbol links and focus mode keep the chart available",async({page})=
     : {status:503,contentType:"application/json",body:"{}"}));
   await page.setViewportSize({width:1440,height:1000});
   await page.goto("/terminal/markets/chart?symbol=MSFT");
-  await expect(page.getByRole("heading",{name:"Chart workspace"})).toBeVisible();
+  await expect(page.getByRole("heading",{name:"Market workspace"})).toBeVisible();
   await expect(page.locator(".workstation-center").getByText("MSFT",{exact:true}).first()).toBeVisible();
   await page.getByRole("button",{name:"Focus chart",exact:true}).click();
   await expect(page.getByRole("button",{name:"Show research panels",exact:true})).toHaveAttribute("aria-pressed","true");

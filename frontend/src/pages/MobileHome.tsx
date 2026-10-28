@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client";
 import { useTerminalNav } from "../components/TerminalNavContext";
+import { riskWarnings } from "../components/CommandAttention";
 import KillSwitchButton from "../components/KillSwitchButton";
 import "./MobileHome.css";
 
@@ -58,6 +59,13 @@ const readBroker = async () => {
   if (typeof d.broker !== "string" || typeof d.paper_mode !== "boolean" || typeof d.status !== "string") throw new Error("Broker unavailable");
   return d;
 };
+type Guard = { trading_allowed: boolean; reason?: string; daily_loss_pct?: number; max_daily_loss_pct?: number; weekly_loss_pct?: number; max_weekly_loss_pct?: number };
+const readGuard = async () => {
+  const value = await json<Guard>("/api/guardrails/status");
+  if (typeof value.trading_allowed !== "boolean") throw new Error("Risk checks unavailable");
+  return value;
+};
+const readRiskState = () => json<{ state?: Record<string, unknown> }>("/api/risk/portfolio-state");
 const readCoverage = () => json<Coverage>("/api/portfolio/open-orders");
 const readMode = async () => {
   const d = await api.getExecutionMode() as Mode;
@@ -106,6 +114,9 @@ export default function MobileHome() {
   const pending = useResource(readPending, now);
   const coverage = useResource(readCoverage, now);
   const kill = useResource(readKill, now);
+  const guard = useResource(readGuard, now);
+  const riskState = useResource(readRiskState, now);
+  const warnings = riskWarnings(guard.value, riskState.value?.state);
   const [stopping, setStopping] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [stopError, setStopError] = useState(false);
@@ -135,7 +146,7 @@ export default function MobileHome() {
     } finally { setStopping(false); }
   };
   const refresh = () => {
-    [summary, mode, broker, positions, pending, coverage, kill].forEach(r => r.refresh());
+    [summary, mode, broker, positions, pending, coverage, kill, guard, riskState].forEach(r => r.refresh());
     setNow(Date.now());
   };
 
@@ -146,7 +157,12 @@ export default function MobileHome() {
         <button className="mh-icon-button" onClick={refresh} aria-label="Refresh home">↻</button>
       </header>
 
-      <section className={`mh-status mh-card${halted ? " mh-status-halted" : ""}${!mode.value || !kill.value || !broker.value || broker.value.status !== "connected" ? " mh-status-unverified" : ""}`} aria-label="Execution status">
+      {warnings.length > 0 && <section className="mh-card mh-risk-alert" aria-label="Needs attention">
+        <div className="mh-section-title">Risk needs attention</div>
+        {warnings.map(warning => <p className="mh-warning" key={warning}>{warning}</p>)}
+        <button className="mh-link" onClick={() => nav("risk")}>Review portfolio &amp; risk <span aria-hidden="true">↗</span></button>
+      </section>}
+      <section className={`mh-status mh-card${halted ? " mh-status-halted" : ""}${!mode.value || !kill.value || !broker.value || broker.value.status !== "connected" || !guard.value ? " mh-status-unverified" : ""}`} aria-label="Execution status">
         <div className="mh-line">
           <strong className={halted ? "mh-negative" : mode.value?.mode === "autopilot" ? "mh-warning" : ""}>{modeLabel}</strong>
           <span className="mh-environment">{broker.value
@@ -166,6 +182,7 @@ export default function MobileHome() {
         </p>}
         {broker.value && broker.value.status !== "connected" && <p className="mh-warning">Broker disconnected — account data may be unavailable.</p>}
         {!kill.value && <p className="mh-warning">Kill switch status unverified.</p>}
+        {!guard.value && !guard.loading && <p className="mh-warning">Entry-check status unavailable. Review Risk before submitting new orders.</p>}
         <details className="mh-system-details">
           <summary>System details</summary>
           <p className="mh-muted">Mode last checked: {mode.at ? `${Math.max(0, Math.floor((now - mode.at) / 1000))}s ago${mode.fresh ? "" : " · unavailable or stale"}` : "unavailable"}. Account and protection data refresh independently.</p>

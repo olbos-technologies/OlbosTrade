@@ -168,3 +168,6 @@
 .home-workspace .mh-counts { gap: 8px; margin: 10px 0 4px; }
 .home-workspace .mh-counts > div { padding: 9px 12px; }
 .home-workspace .mh-counts strong { font-size: 22px; }
+
+.home-workspace .mh-risk-alert { order: -1; grid-column: 1/-1; border-left: 3px solid var(--amber); }
+.home-workspace .mh-status-unverified:not(.mh-status-halted) { border-left-color: var(--amber); }

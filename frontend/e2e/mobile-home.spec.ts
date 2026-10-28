@@ -53,6 +53,9 @@ test("mobile failed reads stay unavailable instead of showing zeroes", async ({ 
 
 test("desktop dashboard keeps the existing executive summary", async ({ page }) => {
   await stubBackend(page);
+  await page.route("**/api/**", r => r.fulfill(r.request().url().includes("/api/auth/status")
+    ? {status:200,contentType:"application/json",body:JSON.stringify({auth_enabled:false,authenticated:false,user:null})}
+    : {status:503,contentType:"application/json",body:"{}"}));
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/terminal/dashboard");
   await expect(page.getByTestId("mobile-home")).toBeVisible();

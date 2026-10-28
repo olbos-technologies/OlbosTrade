@@ -22,6 +22,7 @@ for (const width of [320,390,768,1440]) for (const state of ['populated','unavai
         '/api/paper-trade/history':{trades:[]},
       };
       if(state==='populated') Object.assign(data,{
+        '/api/guardrails/status':{trading_allowed:true},
         '/api/dashboard/summary':{total_equity:124532.88,total_pnl:225,day_pnl:40},
         '/api/paper-trade/positions':{positions:holdings},
         '/api/paper-trade/portfolio':{portfolio:{account_value:124532.88}},
