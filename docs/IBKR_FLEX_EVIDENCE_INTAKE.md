@@ -38,7 +38,8 @@ with the draft staging protocol; no automatic storage/promotion is connected.
   stock quantities remain supported. Contract identity, option economics,
   currency, commission and commission currency remain separate fields.
 - Limit: 10 MiB and 25,000 trade rows per file. DTDs/entities, non-UTF-8 input,
-  unsupported document shapes and malformed fields are rejected. CLI reads are
+  unsupported document shapes and malformed fields are rejected, including
+  NUL-interleaved UTF-16 and non-UTF-8 encoding declarations. CLI reads are
   bounded too. No XML-related network/file lookup is performed.
 
 IBKR lets a user customize sections, detail levels and fields. Therefore this
@@ -134,3 +135,12 @@ backend job. Full CI and PostgreSQL evidence are recorded in the PR.
 Rollback removes an unused intake tool; no active order-routing behavior changes.
 Next owner: validate a private broker export, then implement authenticated
 transport and durable scoped promotion before integration with entry authority.
+
+Local targeted verification: 150 tests passed, zero skips, with 100% statement
+and branch coverage for the new parser and inspector. This includes 97 native
+intake/CLI cases, workflow guards, existing entry policy/submission-boundary
+checks and read-only paper reconciliation tests. Two encoding-bypass regressions
+failed before the UTF-8 enforcement fix and passed afterward. A direct negative
+boundary test proves a parsed upload (even with caller-supplied verification
+flags) cannot satisfy the existing entry authority policy. These isolated tests
+ran with `--noconftest`; normal full-suite and PostgreSQL runs remain CI gates.

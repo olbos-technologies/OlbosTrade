@@ -286,3 +286,35 @@ def test_visible_broker_cancel_and_correction_codes_require_review(notes):
 def test_closing_trade_code_is_not_a_cancel_and_zero_change_columns_are_valid():
     result = parse(xml([row(notes="C;P", changeInPrice="0", changeInQuantity="0", origTradePrice="0")]))
     assert len(result.executions) == 1
+
+
+def test_utf16_without_bom_cannot_bypass_entity_rejection():
+    text = xml().decode().replace('ibExecID="execution-1"', 'ibExecID="&hidden;"')
+    declaration = '<?xml version="1.0" encoding="UTF-16"?>'
+    doctype = '<!DOCTYPE FlexQueryResponse [<!ENTITY hidden "execution-1">]>'
+    rejected((declaration + doctype + text).encode("utf-16-le"), "xml_invalid")
+
+
+def test_non_utf8_xml_encoding_declaration_is_not_accepted():
+    rejected(b'<?xml version="1.0" encoding="ISO-8859-1"?>' + xml(), "xml_encoding_unsupported")
+
+
+@pytest.mark.parametrize("declaration", [b'<?xml version="1.0"?>', b'<?xml version="1.0" encoding="UTF-8"?>'])
+def test_supported_encoding_declarations(declaration):
+    assert len(parse(declaration + xml()).executions) == 1
+
+
+def test_caller_flags_and_a_parsed_upload_cannot_satisfy_entry_authority():
+    from app.services.entry_submission_boundary import check_entry_before_submission
+    root = ET.fromstring(xml([row(verified="true", clean="true", source_authenticated="true")]))
+    root.set("coverageVerified", "true")
+    result = parse(ET.tostring(root))
+    assert result.summary()["verified"] is False
+    assert result.executions[0].staging_record()["source_authenticated"] is False
+    decision = check_entry_before_submission(
+        intent="open", reconciliation=result,
+        now=datetime(2026, 10, 27, 16, tzinfo=timezone.utc),
+        kill_switch_engaged=False, account_scope_authenticated=True,
+    )
+    assert decision.allowed is False
+    assert decision.reason == "reconciliation_evidence_invalid"

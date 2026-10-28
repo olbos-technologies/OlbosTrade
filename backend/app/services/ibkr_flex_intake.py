@@ -234,6 +234,16 @@ def parse_activity_flex_xml(payload: bytes, *, expected_account: str,
         raise FlexIntakeError("import_context_invalid") from None
     try:
         text = payload.decode("utf-8-sig")
+        # Expat can auto-detect NUL-interleaved UTF-16 even when handed a
+        # Python string. Reject it before declaration checks, so encoded DTDs
+        # cannot bypass the UTF-8-only intake contract.
+        if "\x00" in text:
+            raise FlexIntakeError("xml_invalid")
+        declaration = re.match(r"\s*<\?xml\b(.*?)\?>", text, flags=re.DOTALL)
+        if declaration:
+            encoding = re.search(r"\bencoding\s*=\s*(['\"])(.*?)\1", declaration[1])
+            if encoding and encoding[2].casefold() not in ("utf-8", "utf8"):
+                raise FlexIntakeError("xml_encoding_unsupported")
         if "<!DOCTYPE" in text.upper() or "<!ENTITY" in text.upper():
             raise FlexIntakeError("xml_declarations_forbidden")
         root = ElementTree.fromstring(text)
