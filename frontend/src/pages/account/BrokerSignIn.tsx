@@ -54,12 +54,12 @@ export default function BrokerSignIn() {
     {result === "connected" && <p role="status">Broker sign-in completed. Check the connected accounts below. Trading remains off.</p>}
     {result === "failed" && <p role="alert">Broker sign-in was cancelled, expired, or could not be verified. Start again.</p>}
     {loading && <p role="status">Checking broker availability…</p>}
-    {error && <div role="alert"><p>{error}</p><Button onClick={() => void load()} disabled={loading}>Retry broker sign-in</Button></div>}
+    {error && <div role="alert"><p>{error}</p><Button style={{ minHeight: 44 }} onClick={() => void load()} disabled={loading}>Retry broker sign-in</Button></div>}
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 240px), 1fr))", gap: 12 }}>
       {providers.map(p => <article key={p.id} style={{ border: "1px solid var(--line-dim)", borderRadius: 8, padding: 14 }}>
         <h3 style={{ margin: "0 0 8px", fontSize: 15 }}>{p.name}</h3>
         <p style={{ color: "var(--ink-dim)", fontSize: 13 }}>{p.note}</p>
-        <Button disabled={!p.available || busy !== ""} onClick={() => void connect(p.id)}>
+        <Button style={{ minHeight: 44 }} disabled={!p.available || busy !== ""} onClick={() => void connect(p.id)}>
           {busy === p.id ? "Opening broker…" : p.available ? `Sign in with ${p.name}` : p.id === "alpaca" ? "Setup pending" : "Coming soon"}
         </Button>
       </article>)}
@@ -72,7 +72,7 @@ export default function BrokerSignIn() {
         <span>Read-only · Trading off</span><br />
         <small>Connected {new Date(c.connected_at).toLocaleString()}. Current account data has not been synced.</small>
       </div>
-      <Button disabled={busy !== ""} onClick={() => void disconnect(c.id)}>Disconnect broker sign-in</Button>
+      <Button style={{ minHeight: 44 }} disabled={busy !== ""} onClick={() => void disconnect(c.id)}>Disconnect broker sign-in</Button>
     </div>)}
     <p style={{ fontSize: 12, color: "var(--ink-dim)" }}>Disconnecting deletes the saved token from OlbosTrade. You can also revoke this application in Alpaca’s settings.</p>
   </section>;

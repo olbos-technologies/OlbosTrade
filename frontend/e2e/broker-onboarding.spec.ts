@@ -21,6 +21,10 @@ for (const width of [320,390,768,1440]) {
     await expect(page.getByRole("heading",{name:"Choose your broker"})).toBeVisible();
     await expect(page.getByRole("button",{name:"Sign in with Alpaca"})).toBeEnabled();
     await expect(page.getByText(/failed to render/)).toHaveCount(0);
+    const targets = await page.getByRole("region", {name:"Broker sign-in"}).getByRole("button").evaluateAll(
+      buttons => buttons.map(button => button.getBoundingClientRect().height));
+    expect(targets.length).toBeGreaterThanOrEqual(3);
+    targets.forEach(height => expect(height).toBeGreaterThanOrEqual(44));
     await expectNoHorizontalOverflow(page,width);
     await page.screenshot({path:`test-results/broker-picker-${width}.png`,fullPage:true});
   });
