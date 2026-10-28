@@ -1,8 +1,8 @@
 import { test, expect } from '@playwright/test';
 import { expectNoHorizontalOverflow } from './helpers';
 const holdings = [
-  {id:'mock-msft',symbol:'MSFT',asset_type:'equity',strategy:'momentum',tracked:true,quantity:36,avg_cost:516.18,unrealized_pnl:300,mfe_pnl:340,mae_pnl:-20,hold_days:2},
-  {id:'mock-qqq',symbol:'QQQ',asset_type:'equity',strategy:'trend',tracked:true,quantity:8,avg_cost:436.80,unrealized_pnl:-30,mfe_pnl:12,mae_pnl:-45,hold_days:1},
+  {id:'mock-msft',symbol:'MSFT',asset_type:'equity',spread_type:'equity_long',strategy:'momentum',tracked:true,quantity:36,avg_cost:516.18,unrealized_pnl:300,mfe_pnl:340,mae_pnl:-20,hold_days:2},
+  {id:'mock-qqq',symbol:'QQQ',asset_type:'equity',spread_type:'equity_long',strategy:'trend',tracked:true,quantity:8,avg_cost:436.80,unrealized_pnl:-30,mfe_pnl:12,mae_pnl:-45,hold_days:1},
 ];
 const signals = [{id:'mock-idea',ticker:'MSFT',action:'BUY',confidence:.71,orderflow_score:.3,iv_overlay_boost:.1,earnings_gated:false,reason:'Price reclaimed the session high with stronger volume.',source:'scanner',generated_at:'2026-10-27T15:00:00Z',trade_plan:{entry_price:524.51,stop_price:518,target_price:535,shares:10,risk_dollars:65.1}}];
 for (const width of [320,390,768,1440]) for (const state of ['populated','unavailable']) for (const surface of ['dashboard','markets/chart','equity','trade/positions']) {

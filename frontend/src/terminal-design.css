@@ -162,3 +162,5 @@
   .app-shell:has(.chart-workspace) .mobile-market-ticker,
   .app-shell--signals .mobile-market-ticker { display: none; }
 }
+
+.signal-generated { display: block; color: var(--ink-dim); font-size: 11px; margin: 0 0 12px; }

@@ -180,23 +180,10 @@ function SignalCard({
   const tone = confidenceTone(confPct);
   const directionClass = sig.action === "BUY" ? "mission-card--buy" : sig.action === "SELL" ? "mission-card--sell" : "";
 
-  const reward = sig.opportunity_score != null
-    ? { prefix: "OPP", value: String(sig.opportunity_score.score), tone: confidenceTone(sig.opportunity_score.score) }
-    : sig.action !== "HOLD"
-      ? { prefix: "CONF", value: `${confPct}%`, tone }
-      : undefined;
-
-  const subtitleParts = [
-    new Date(sig.generated_at).toLocaleTimeString(),
-    block ? String(block) : null,
-    sig.reason,
-  ].filter(Boolean);
-
   return (
     <>
     <MissionCard
       className={`design-signal-card ${directionClass}`}
-      reward={undefined}
       title={(
         <span style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <TickerLogo ticker={sig.ticker} />
@@ -214,15 +201,15 @@ function SignalCard({
           )}
         </span>
       )}
-      subtitle={subtitleParts.join(" · ")}
       meta={{
         label: sig.action === "HOLD" ? "WAITING" : "RESEARCH",
-        tone: sig.action === "HOLD" ? "var(--ink-dim)" : confPct >= Math.round(minConfidence * 100) ? "var(--green)" : "var(--amber)",
+        tone: "var(--ink-dim)",
         icon: "⏳",
       }}
 
     >
       <div className="signal-rationale"><span>Why it appeared</span><p>{sig.reason || "No plain-language rationale supplied by this producer."}</p><small>Research only · Model scores are not probabilities of profit.</small></div>
+      <time className="signal-generated" dateTime={sig.generated_at}>Generated {new Date(sig.generated_at).toLocaleString()}</time>
       <button className="design-review" onClick={() => setReviewing(true)}>Review idea <span aria-hidden="true">→</span></button>
       <details className="signal-evidence"><summary>Technical evidence and trade plan</summary>
       <div className="mission-card__details">
