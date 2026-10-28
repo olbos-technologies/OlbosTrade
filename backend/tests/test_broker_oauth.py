@@ -259,3 +259,25 @@ async def test_health_route_missing_or_changed(web,monkeypatch,changed):
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=web),base_url="https://olbos.example") as c:
         r=await c.post(f"/api/brokers/oauth/connections/{USER}/verify")
     assert r.status_code==(409 if changed else 404)
+
+
+@pytest.mark.asyncio
+async def test_snapshot_route_uses_authenticated_account_scope(web,monkeypatch):
+    from app.services import broker_paper_snapshot as snapshots
+    payload={"connection_id":str(USER),"execution_enabled":False,"positions_reconciled":False}
+    read=AsyncMock(return_value=payload)
+    monkeypatch.setattr(snapshots,"snapshot",read)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=web),base_url="https://olbos.example") as client:
+        response=await client.post(f"/api/brokers/oauth/connections/{USER}/snapshot")
+    assert response.status_code==200 and response.json()==payload
+    assert response.headers["cache-control"]=="no-store"
+    assert read.call_args.args[1:]==(ORG,str(USER))
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("changed",[False,True])
+async def test_snapshot_route_denies_missing_or_changed_connection(web,monkeypatch,changed):
+    from app.services import broker_paper_snapshot as snapshots, broker_connection_health as health
+    monkeypatch.setattr(snapshots,"snapshot",AsyncMock(side_effect=health.ConnectionChanged() if changed else health.ConnectionMissing()))
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=web),base_url="https://olbos.example") as client:
+        response=await client.post(f"/api/brokers/oauth/connections/{USER}/snapshot")
+    assert response.status_code==(409 if changed else 404)

@@ -201,3 +201,16 @@ mode activation, risk-limit changes, merge or deployment. R2 remains incomplete.
   newer check wins over an older broker response. No locks during broker I/O.
 - No order submission, risk-limit or mode changes; no deployment. Registered
   app credentials/approval and a real paper account are still external gates.
+
+## SaaS-1 selected paper account data — proposed
+
+- Base `9c4fa1c0f0aa38ad8ee77c97dd75bd9dd2ed303e` (unmerged PR #161), branch
+  `codex/broker-paper-snapshot`. Stacked review only; no default-branch change.
+- Add a read-only selected paper-account data view with balances, positions,
+  nested open-order results, partial/unavailable/stale states and clear limits.
+- Validate broker account identity before/after collection and reuse the
+  connection/token/observation conditional write. Never authorize orders from
+  these non-atomic reads or infer complete reconciliation/stop coverage.
+- No migration beyond dependency 0044, order mutations, risk/mode changes,
+  deployment or real broker drill. See `BROKER_PAPER_ACCOUNT_DATA.md` for bounds,
+  rollback and the remaining execution requirements.
