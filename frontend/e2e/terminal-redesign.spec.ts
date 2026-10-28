@@ -54,6 +54,18 @@ for (const width of [320,390,768,1440]) for (const state of ['populated','unavai
         await page.getByRole('textbox',{name:'Search positions'}).fill('MSFT');
         await expect(page.getByRole('button',{name:'Review close QQQ'})).toHaveCount(0);
         await page.getByRole('textbox',{name:'Search positions'}).fill('');
+        if(width<=768) {
+          const cards=page.locator('.t-table--cards tbody tr');
+          const heights=await cards.evaluateAll(rows=>rows.map(row=>row.getBoundingClientRect().height));
+          expect(Math.max(...heights)).toBeLessThan(100);
+          await expect(cards.first().locator('[data-col="action"]')).toBeHidden();
+          await page.screenshot({path:`ui-audit-artifacts/compact-positions-${width}.png`,fullPage:true});
+          await cards.first().getByRole('button',{name:'Show details for MSFT position 1'}).click();
+          await expect(cards.first().locator('[data-col="action"]')).toBeVisible();
+          await expect(cards.nth(1).locator('[data-col="action"]')).toBeHidden();
+        } else {
+          await expect(page.locator('.position-mobile-expand').first()).toBeHidden();
+        }
         await page.getByRole('button',{name:'Review close MSFT'}).click();
         await expect(page.getByRole('dialog',{name:/Review close/})).toBeVisible();
         await page.getByRole('button',{name:'Cancel',exact:true}).click();

@@ -108,6 +108,7 @@
 .positions-workspace .t-table--cards td { display: flex; min-width: 0; border: 0; padding: 0; white-space: normal; overflow-wrap: anywhere; align-items: center; gap: 5px; font: 12px var(--sans); }
 .positions-workspace [data-col="symbol"] { grid-area: symbol; font-size: 20px !important; font-weight: 650; flex-direction: column; align-items: start !important; gap: 4px; }
 .position-quantity { color: var(--ink-dim); font: 11px var(--sans); }
+.position-mobile-expand { display: none; }
 .positions-workspace [data-col="type"] { grid-area: type; }
 .positions-workspace [data-col="pnl"] { grid-area: pnl; justify-content: end; font-size: 17px !important; font-weight: 650; }
 .positions-workspace [data-col="strategy"] { grid-area: strategy; color: var(--ink-dim); line-height: 1.6; padding-bottom: 12px; border-bottom: 1px solid var(--line-dim); }
@@ -146,7 +147,33 @@
   .positions-workspace .positions-summary { padding: 16px; }
   .positions-workspace .positions-summary strong { font-size: 24px; }
   .positions-workspace .t-table--cards tbody { grid-template-columns: minmax(0,1fr); }
-  .positions-workspace .t-table--cards tbody tr { padding: 16px; }
+  .positions-workspace .t-table--cards tbody tr { padding: 12px 16px; grid-template-areas: "symbol type pnl"; align-items: center; }
+  .positions-workspace .t-table--cards tbody tr.position-card--expanded {
+    grid-template-areas: "symbol type pnl" "strategy strategy strategy" "credit hold mode" "mfe mae status" "action action action";
+    padding: 16px;
+  }
+  .positions-workspace .t-table--cards tbody tr:not(.position-card--expanded) td[data-col="strategy"],
+  .positions-workspace .t-table--cards tbody tr:not(.position-card--expanded) td[data-col="credit"],
+  .positions-workspace .t-table--cards tbody tr:not(.position-card--expanded) td[data-col="hold"],
+  .positions-workspace .t-table--cards tbody tr:not(.position-card--expanded) td[data-col="mode"],
+  .positions-workspace .t-table--cards tbody tr:not(.position-card--expanded) td[data-col="mfe"],
+  .positions-workspace .t-table--cards tbody tr:not(.position-card--expanded) td[data-col="mae"],
+  .positions-workspace .t-table--cards tbody tr:not(.position-card--expanded) td[data-col="status"],
+  .positions-workspace .t-table--cards tbody tr:not(.position-card--expanded) td[data-col="action"] { display: none; }
+  .positions-workspace .position-desktop-symbol,
+  .positions-workspace .position-quantity { display: none; }
+  .positions-workspace .position-mobile-expand {
+    display: grid;
+    grid-template-columns: minmax(0,1fr) auto;
+    grid-template-areas: "name chevron" "quantity chevron";
+    width: 100%; min-width: 0; min-height: 44px; padding: 0;
+    border: 0; background: transparent; color: var(--ink); text-align: left;
+    font: 650 18px var(--sans); cursor: pointer;
+  }
+  .position-mobile-symbol { grid-area: name; overflow: hidden; text-overflow: ellipsis; }
+  .position-mobile-quantity { grid-area: quantity; color: var(--ink-dim); font: 11px var(--sans); }
+  .position-mobile-chevron { grid-area: chevron; align-self: center; color: var(--ink-dim); font-size: 18px; padding-left: 4px; }
+  .position-card--expanded .position-mobile-chevron { transform: rotate(180deg); }
   .design-signal-feed .instrument-stat-strip { grid-template-columns: repeat(2,minmax(0,1fr)) !important; }
   .design-signal-feed .page-header { padding: 16px; }
   .design-signal-feed .page-header__title { font-size: 28px; }

@@ -504,6 +504,7 @@ export default function TradeDesk({
   const [closeMsg, setCloseMsg] = useState<string | null>(null);
   const [closeFailed, setCloseFailed] = useState(false);
   const [closeReview, setCloseReview] = useState<{ position: any; untracked: boolean } | null>(null);
+  const [expandedPositionKey, setExpandedPositionKey] = useState<string | null>(null);
 
   /**
    * Turn a close failure into something the operator can act on.
@@ -815,10 +816,26 @@ export default function TradeDesk({
                 const canCloseUntracked = p.tracked === false && !p.id && p.asset_type === "equity";
                 const adopted = String(p.strategy || "").toLowerCase() === "adopted_untracked";
                 const symbol = p.symbol || p.underlying || "?";
+                const positionKey = String(p.id || `${symbol}-${p.asset_type || "unknown"}-${i}`);
+                const expanded = expandedPositionKey === positionKey;
                 const entryValue = p.credit_received ?? p.entry_credit ?? p.avg_cost;
                 return (
-                  <tr key={i}>
-                    <td data-col="symbol" className="mono" style={{ color: "var(--ink)" }}><span>{symbol}</span><small className="position-quantity">Qty {p.quantity ?? "—"}</small></td>
+                  <tr key={positionKey} className={expanded ? "position-card--expanded" : undefined}>
+                    <td data-col="symbol" className="mono" style={{ color: "var(--ink)" }}>
+                      <span className="position-desktop-symbol">{symbol}</span>
+                      <button
+                        type="button"
+                        className="position-mobile-expand"
+                        aria-label={`${expanded ? "Hide" : "Show"} details for ${symbol} position ${i + 1}`}
+                        aria-expanded={expanded}
+                        onClick={() => setExpandedPositionKey(expanded ? null : positionKey)}
+                      >
+                        <span className="position-mobile-symbol">{symbol}</span>
+                        <span className="position-mobile-quantity">{p.quantity == null ? "Qty unavailable" : `Qty ${p.quantity}`}</span>
+                        <span className="position-mobile-chevron" aria-hidden="true">⌄</span>
+                      </button>
+                      <small className="position-quantity">Qty {p.quantity ?? "—"}</small>
+                    </td>
                     <td data-col="type"><Badge text={p.asset_type?.toUpperCase() || "OPTIONS"} color="var(--ink-dim)" /></td>
                     <td data-col="strategy" className="mono" style={{ fontSize: 10 }}>
                       {adopted ? (
