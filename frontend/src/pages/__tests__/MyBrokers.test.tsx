@@ -44,6 +44,8 @@ const { FakeApiError } = vi.hoisted(() => ({
 
 vi.mock("../../api/client", () => ({
   api: {
+    brokerOAuthProviders: async () => ({ providers: [] }),
+    brokerOAuthConnections: async () => ({ connections: [] }),
     listBrokerConnections: (...a: unknown[]) => listBrokerConnections(...a),
     connectBroker: (...a: unknown[]) => connectBroker(...a),
     disconnectBroker: (...a: unknown[]) => disconnectBroker(...a),
@@ -72,6 +74,7 @@ beforeEach(() => {
 });
 
 async function fillAndSubmit() {
+  fireEvent.click(screen.getByText("Advanced: connect with API keys"));
   fireEvent.change(screen.getByPlaceholderText(/^PK/), { target: { value: KEY } });
   fireEvent.change(screen.getByPlaceholderText(/never shown again/i),
                    { target: { value: SECRET } });
@@ -190,6 +193,7 @@ describe("MyBrokers", () => {
   it("refuses to submit an empty field without calling the API", async () => {
     render(<MyBrokers />);
     await waitFor(() => expect(listBrokerConnections).toHaveBeenCalled());
+    fireEvent.click(screen.getByText("Advanced: connect with API keys"));
     fireEvent.change(screen.getByPlaceholderText(/^PK/), { target: { value: KEY } });
     fireEvent.click(screen.getByRole("button", { name: /^connect$/i }));
     expect(await screen.findByText(/Both the API key and the secret are required/i))

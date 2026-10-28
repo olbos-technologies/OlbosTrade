@@ -846,3 +846,12 @@ alongside this change for the full evidence table).
   `esbuild <=0.24.2`, flagged by `npm audit` for a dev-server-only
   vulnerability (GHSA-67mh-4wv8-2f99) that does not affect production
   builds or runtime code.
+
+### Proposed — customer broker sign-in prerequisite
+
+- Add a broker picker and Alpaca paper/read-only OAuth login to My Brokers;
+  keep IBKR/Schwab visibly unavailable pending integration and approval.
+- Encrypt tokens in separate account/organization-scoped storage, consume
+  expiring session-bound state atomically, and redact callback request queries.
+- Connecting does not authorize or route automated trading. See
+  docs/BROKER_OAUTH_ONBOARDING.md for deployment prerequisites and R2 gates.

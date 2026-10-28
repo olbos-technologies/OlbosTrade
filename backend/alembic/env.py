@@ -14,6 +14,7 @@ from app.models import (  # noqa: F401
     access_request,
     backtest_result,
     broker_connection,
+    broker_oauth,
     broker_execution_fill,
     journal_entry,
     messaging,
