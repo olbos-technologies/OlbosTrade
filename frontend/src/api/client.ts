@@ -371,6 +371,8 @@ export const api = {
   brokerOAuthConnections: () => request<{ connections: BrokerOAuthConnection[]; execution_enabled: false }>("/api/brokers/oauth/connections"),
   startBrokerOAuth: (provider: string) => request<{ authorization_url: string }>(
     `/api/brokers/oauth/${encodeURIComponent(provider)}/start`, { method: "POST", body: "{}" }),
+  verifyBrokerOAuth: (id: string) => request<BrokerOAuthHealth>(
+    `/api/brokers/oauth/connections/${encodeURIComponent(id)}/verify`, { method: "POST", body: "{}" }),
   disconnectBrokerOAuth: (id: string) => request<{ ok: boolean }>(
     `/api/brokers/oauth/connections/${encodeURIComponent(id)}`, { method: "DELETE" }),
   listBrokerConnections: () =>
@@ -536,4 +538,10 @@ export interface BrokerProvider {
 export interface BrokerOAuthConnection {
   id: string; broker: string; environment: "paper"; permission: "read_only";
   account_last4: string; connected_at: string; execution_enabled: false;
+  health?: string; last_checked_at?: string | null; status?: string;
+}
+
+export interface BrokerOAuthHealth {
+  id: string; health: string; last_checked_at: string; status: string;
+  execution_enabled: false; positions_reconciled: false;
 }

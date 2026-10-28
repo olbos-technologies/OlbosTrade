@@ -140,20 +140,23 @@ async def save(db, organization_id, token, account_id):
     # Upsert also serializes concurrent reauthorizations of the same account.
     stmt = insert(BrokerOAuthGrant).values(id=uuid.uuid4(),
         organization_id=uuid.UUID(str(organization_id)), broker="alpaca", environment="paper",
-        account_id=account_id, access_token_enc=credential_cipher.encrypt(token), status="active")
+        account_id=account_id, access_token_enc=credential_cipher.encrypt(token), status="active",
+        health="unverified", last_checked_at=None)
     await db.execute(stmt.on_conflict_do_update(constraint="uq_broker_oauth_account",
         set_={"access_token_enc": stmt.excluded.access_token_enc, "status": "active",
-              "connected_at": datetime.now(timezone.utc)}))
+              "connected_at": datetime.now(timezone.utc), "health": "unverified", "last_checked_at": None}))
     await db.commit()
 
 
 async def list_grants(db, organization_id):
     rows = (await db.execute(select(BrokerOAuthGrant).where(
         BrokerOAuthGrant.organization_id == uuid.UUID(str(organization_id)),
-        BrokerOAuthGrant.status == "active").order_by(BrokerOAuthGrant.connected_at.desc()))).scalars().all()
+        BrokerOAuthGrant.status.in_(["active", "reconnect_required"])).order_by(BrokerOAuthGrant.connected_at.desc()))).scalars().all()
     return [{"id": str(r.id), "broker": r.broker, "environment": r.environment,
              "account_last4": r.account_id[-4:], "permission": "read_only",
-             "connected_at": r.connected_at.isoformat(), "execution_enabled": False}
+             "connected_at": r.connected_at.isoformat(), "execution_enabled": False,
+             "status": getattr(r, "status", "active"), "health": getattr(r, "health", "unverified"),
+             "last_checked_at": r.last_checked_at.isoformat() if getattr(r, "last_checked_at", None) else None}
             for r in rows]
 
 
@@ -165,7 +168,7 @@ async def disconnect(db, organization_id, grant_id):
     row = (await db.execute(select(BrokerOAuthGrant).where(
         BrokerOAuthGrant.id == gid,
         BrokerOAuthGrant.organization_id == uuid.UUID(str(organization_id)),
-        BrokerOAuthGrant.status == "active").with_for_update())).scalar_one_or_none()
+        BrokerOAuthGrant.status.in_(["active", "reconnect_required"])).with_for_update())).scalar_one_or_none()
     if row is None:
         return False
     row.access_token_enc = None

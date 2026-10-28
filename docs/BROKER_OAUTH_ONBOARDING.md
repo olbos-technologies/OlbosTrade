@@ -69,3 +69,45 @@ connecting and keep using their existing Olbos account.
   Gateway use does not implement public third-party customer OAuth.
 
 No merge, deployment, live activation or broker orders are part of this change.
+
+## Follow-up: point-in-time account health (SaaS-1 prerequisite)
+
+PR #160 was merged as ca0e9a0; it has not been deployed by this work. The
+`codex/broker-connection-health` follow-up adds revision 0044 after 0043 and a
+rate-limited `POST /api/brokers/oauth/connections/{grant_id}/verify` endpoint.
+It requires the caller's personal organization and the selected active Alpaca
+paper grant. It never uses platform API keys or a live endpoint.
+
+The check reads only `GET https://paper-api.alpaca.markets/v2/account`, compares
+the returned account UUID to the stored account and strictly validates account
+restriction flags. Broker responses and identifiers are not returned or logged.
+The response always has `execution_enabled=false` and `positions_reconciled=false`.
+
+- `verified`: last account identity/restriction check succeeded at the displayed
+  time. This is neither continuing token health nor trade eligibility.
+- `unavailable`: network, malformed response, missing flags or encryption failure;
+  previous successful health is replaced, never shown as freshly confirmed.
+- `restricted`: account is not active or a restriction flag is true.
+- `reconnect_required` / `identity_mismatch`: clear local token material, retain
+  the connection with a reconnect-required status, and show it in the list so
+  the user can reconnect or disconnect. No inference of broker-side revocation.
+
+Health writes use a conditional SQL update matching the exact credential,
+account, tenant, environment and previous health timestamp. A change during
+broker I/O produces 409 without overwriting newer state. Foreign, revoked,
+unsupported or missing-token grants produce 404 without a broker call. No DB
+lock is held during the bounded 15-second broker request.
+
+Reauthorization resets health to unverified. Existing grants are backfilled
+unverified by migration 0044. Downgrading 0044 removes health fields while
+retaining tokens and grants; downgrade application code before removing fields.
+The My Brokers screen clears an old success while checking and after failed
+requests, shows the check time, and continues to display Trading off. Positions,
+orders, balances and protective orders are not synced by this feature.
+
+Official account response contract:
+https://docs.alpaca.markets/us/reference/getaccount-1
+
+Before rollout, test identity mismatch, rejected access, restriction flags,
+timeouts, same-account reauthorization and disconnect races against an isolated
+paper setup. Synthetic CI tests are not evidence of real broker connectivity.

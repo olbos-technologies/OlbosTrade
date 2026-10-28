@@ -238,3 +238,24 @@ def test_production_wiring_and_callback_log_protection():
     callback=nginx.split("location = /api/brokers/oauth/alpaca/callback {",1)[1].split("}",1)[0]
     assert "access_log off;" in callback and "error_log /dev/null;" in callback
     assert "proxy_pass http://olbos_backend;" in callback
+
+@pytest.mark.asyncio
+async def test_health_route_is_account_scoped_read_only(web,monkeypatch):
+    from app.services import broker_connection_health as health
+    result={"id":str(USER),"health":"verified","last_checked_at":"2026-01-01T00:00:00+00:00", "execution_enabled":False,"positions_reconciled":False}
+    check=AsyncMock(return_value=result)
+    monkeypatch.setattr(health,"verify",check)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=web),base_url="https://olbos.example") as c:
+        r=await c.post(f"/api/brokers/oauth/connections/{USER}/verify")
+    assert r.status_code==200 and r.json()==result
+    assert r.headers["cache-control"]=="no-store"
+    assert check.call_args.args[1:]==(ORG,str(USER))
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("changed",[False,True])
+async def test_health_route_missing_or_changed(web,monkeypatch,changed):
+    from app.services import broker_connection_health as health
+    monkeypatch.setattr(health,"verify",AsyncMock(side_effect=health.ConnectionChanged() if changed else health.ConnectionMissing()))
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=web),base_url="https://olbos.example") as c:
+        r=await c.post(f"/api/brokers/oauth/connections/{USER}/verify")
+    assert r.status_code==(409 if changed else 404)

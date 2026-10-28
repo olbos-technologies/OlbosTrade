@@ -2,6 +2,15 @@ import React, { useCallback, useEffect, useState } from "react";
 import { api, type BrokerOAuthConnection, type BrokerProvider } from "../../api/client";
 import { Button } from "../../components/ui";
 
+const HEALTH_LABELS: Record<string, string> = {
+  verified: "Last account check succeeded",
+  unavailable: "Account check unavailable — retry",
+  reconnect_required: "Broker access rejected — sign in again",
+  identity_mismatch: "Account mismatch — reconnect before continuing",
+  restricted: "Broker account is restricted or not active",
+  unverified: "Account check required",
+};
+
 export default function BrokerSignIn() {
   const [providers, setProviders] = useState<BrokerProvider[]>([]);
   const [connections, setConnections] = useState<BrokerOAuthConnection[]>([]);
@@ -43,6 +52,22 @@ export default function BrokerSignIn() {
     finally { setBusy(""); }
   };
 
+  const verify = async (id: string) => {
+    setBusy(id); setError("");
+    // Clear the previous result while a new check is pending.
+    setConnections(rows => rows.map(c => c.id === id ? {...c, health: "unverified", last_checked_at: null} : c));
+    try {
+      const result = await api.verifyBrokerOAuth(id);
+      if (result.id !== id || result.execution_enabled !== false || result.positions_reconciled !== false
+          || !Object.prototype.hasOwnProperty.call(HEALTH_LABELS, result.health)
+          || !Number.isFinite(Date.parse(result.last_checked_at))) throw new Error();
+      setConnections(rows => rows.map(c => c.id === id ? {...c, ...result} : c));
+    } catch {
+      setConnections(rows => rows.map(c => c.id === id ? {...c, health: "unavailable", last_checked_at: null} : c));
+      setError("Could not verify that account. Refresh your connections and retry; trading remains off.");
+    } finally { setBusy(""); }
+  };
+
   return <section aria-label="Broker sign-in" className="instrument-card"
     style={{ maxWidth: 680, padding: 16, marginBottom: 20, lineHeight: 1.6 }}>
     <h2 style={{ fontSize: 18, margin: "0 0 8px" }}>Choose your broker</h2>
@@ -70,10 +95,17 @@ export default function BrokerSignIn() {
       <div style={{ flex: 1, minWidth: 160 }}>
         <strong>Alpaca · Paper · ••••{c.account_last4}</strong><br />
         <span>Read-only · Trading off</span><br />
+        <p style={{ margin: "4px 0", color: c.health === "verified" ? "var(--ink)" : "var(--amber)" }}>
+          {Object.prototype.hasOwnProperty.call(HEALTH_LABELS, c.health || "") ? HEALTH_LABELS[c.health!] : HEALTH_LABELS.unverified}
+          {c.last_checked_at && <> · Checked {new Date(c.last_checked_at).toLocaleString()}</>}
+        </p>
         <small>Connected {new Date(c.connected_at).toLocaleString()}. Current account data has not been synced.</small>
       </div>
+      <Button style={{ minHeight: 44 }} disabled={busy !== "" || c.status === "reconnect_required"}
+        onClick={() => void verify(c.id)}>{busy === c.id ? "Checking…" : "Check account"}</Button>
       <Button style={{ minHeight: 44 }} disabled={busy !== ""} onClick={() => void disconnect(c.id)}>Disconnect broker sign-in</Button>
     </div>)}
+    <p style={{ fontSize: 12, color: "var(--ink-dim)" }}>Account checks are point-in-time only. They do not verify positions, protective orders, or permission for automated execution.</p>
     <p style={{ fontSize: 12, color: "var(--ink-dim)" }}>Disconnecting deletes the saved token from OlbosTrade. You can also revoke this application in Alpaca’s settings.</p>
   </section>;
 }
