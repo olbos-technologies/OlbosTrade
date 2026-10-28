@@ -372,30 +372,3 @@ jobs:
           name: ui-device-review
           path: frontend/ui-audit-artifacts/
           if-no-files-found: ignore
-
-  ui-review-captures:
-    runs-on: ubuntu-latest
-    timeout-minutes: 8
-    defaults:
-      run:
-        working-directory: frontend
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      - run: npm ci
-      - id: browser-version
-        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ steps.browser-version.outputs.version }}
-      - run: npx playwright install chromium
-      - run: npx playwright test e2e/ui-device-review.spec.ts e2e/terminal-redesign.spec.ts
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: ui-review-fast-captures
-          path: frontend/ui-audit-artifacts/
-          if-no-files-found: ignore
