@@ -32,14 +32,15 @@ function GreekCell({ label, value, warn }: { label: string; value: number; warn?
 }
 
 export default function PortfolioGreeks() {
+  const [unavailable, setUnavailable] = useState(false);
   const [greeks, setGreeks] = useState<Greeks | null>(null);
 
   useEffect(() => {
     const load = () =>
       fetch("/api/market/greeks")
-        .then(r => r.json())
-        .then(setGreeks)
-        .catch(() => {});
+        .then(r => { if (!r.ok) throw new Error("Greeks unavailable"); return r.json(); })
+        .then(d => { if (![d?.net_delta, d?.net_vega, d?.net_theta].every(v => typeof v === "number" && Number.isFinite(v))) throw new Error("Greeks unavailable"); setGreeks(d); setUnavailable(false); })
+        .catch(() => { setGreeks(null); setUnavailable(true); });
     load();
     const t = setInterval(load, 60000);
     return () => clearInterval(t);
@@ -51,7 +52,7 @@ export default function PortfolioGreeks() {
         padding: "12px 16px",
         fontFamily: "var(--mono)", fontSize: 11, color: "var(--ink-faint)",
       }}>
-        Loading Greeks...
+        {unavailable ? "Portfolio Greeks unavailable" : "Loading Greeks…"}
       </div>
     );
   }

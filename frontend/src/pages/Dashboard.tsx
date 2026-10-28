@@ -215,7 +215,7 @@ function filterByRange(points: ChartPoint[], range: string): ChartPoint[] {
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 export default function Dashboard() {
   const isMobile = useIsMobile();
-  return isMobile ? <MobileHome /> : <DesktopDashboard />;
+  return <div className="home-workspace"><MobileHome />{!isMobile && <details className="home-advanced"><summary>Advanced dashboard and analytics</summary><DesktopDashboard /></details>}</div>;
 }
 
 function DesktopDashboard() {

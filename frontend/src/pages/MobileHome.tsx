@@ -142,11 +142,11 @@ export default function MobileHome() {
   return (
     <div className="mobile-home" data-testid="mobile-home">
       <header className="mh-heading">
-        <div><div className="mh-eyebrow">YOUR TRADING DAY</div><h1>Home</h1></div>
+        <div><div className="mh-eyebrow">YOUR TRADING DAY</div><h1>Overview</h1></div>
         <button className="mh-icon-button" onClick={refresh} aria-label="Refresh home">↻</button>
       </header>
 
-      <section className="mh-status mh-card" aria-label="Execution status">
+      <section className={`mh-status mh-card${halted ? " mh-status-halted" : ""}`} aria-label="Execution status">
         <div className="mh-line">
           <strong className={halted ? "mh-negative" : mode.value?.mode === "autopilot" ? "mh-warning" : ""}>{modeLabel}</strong>
           <span className="mh-environment">{broker.value
@@ -185,7 +185,7 @@ export default function MobileHome() {
         <p className="mh-muted">Trade P&amp;L and broker balance may cover different holdings.</p>
       </section>
 
-      <section className="mh-card" aria-label="Stop coverage">
+      <section className="mh-card mh-protection" aria-label="Stop coverage">
         <div className="mh-section-title">Protection</div>
         <p className={uncovered === null || uncovered.length ? "mh-warning" : ""}>
           {uncovered === null ? "Stop coverage unverified"
@@ -197,10 +197,10 @@ export default function MobileHome() {
         <button className="mh-link" onClick={() => nav("trade:positions")}>Review positions <span aria-hidden="true">↗</span></button>
       </section>
 
-      <section className="mh-card" aria-label="Pending signals">
-        <div className="mh-section-title">Signals awaiting review</div>
+      <section className="mh-card mh-attention" aria-label="Pending signals">
+        <div className="mh-section-title">Needs your attention</div>
         {counts ? <>
-          <div className="mh-counts">
+          <div className="mh-counts" aria-label="Signals awaiting review">
             <div><strong>{counts.recent}</strong><span>Recent · under 24h</span></div>
             <div><strong>{counts.older}</strong><span>Older · 24h or more</span></div>
           </div>
@@ -208,9 +208,10 @@ export default function MobileHome() {
           <p className="mh-muted">{pending.value!.length === 0 ? "Your approval queue is clear." : "Age groups only. Every approval is checked again before execution."}</p>
         </> : <p className="mh-warning">{pending.loading ? "Loading signals…" : "Signal queue unavailable."}</p>}
         <button className="mh-primary" onClick={() => nav("trade:copilot")}>Review signal queue <span aria-hidden="true">→</span></button>
+        <button className="mh-link" onClick={() => nav("markets:chart")}>Explore markets <span aria-hidden="true">↗</span></button>
       </section>
 
-      <section className="mh-card" aria-label="Open positions">
+      <section className="mh-card mh-holdings" aria-label="Open positions">
         <div className="mh-line"><div className="mh-section-title">Open positions</div><span className="mh-muted">{positions.value ? positions.value.length : "—"}</span></div>
         {!positions.value ? <p className="mh-warning">{positions.loading ? "Loading positions…" : "Positions unavailable."}</p>
           : positions.value.length === 0 ? <p className="mh-muted">No open positions reported.</p>

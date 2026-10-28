@@ -392,7 +392,7 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ steps.browser-version.outputs.version }}
       - run: npx playwright install chromium
-      - run: npx playwright test e2e/ui-device-review.spec.ts
+      - run: npx playwright test e2e/ui-device-review.spec.ts e2e/terminal-redesign.spec.ts
       - uses: actions/upload-artifact@v4
         if: always()
         with:

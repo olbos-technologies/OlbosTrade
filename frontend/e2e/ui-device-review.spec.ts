@@ -27,9 +27,11 @@ for (const width of [320,390,768,1440]) {
       await expect(page.locator('main').first()).toBeVisible();
       await page.waitForTimeout(1200); // Let unavailable-state requests settle before capture.
       if (surface === 'dashboard' && width === 1440) {
+        await page.getByText('Advanced dashboard and analytics', {exact:true}).click();
         const guide = page.getByRole('region', {name:'Getting started with OlbosTrade'});
         expect((await guide.boundingBox())!.height).toBeLessThan(250);
         await expect(guide.getByRole('group', {name:'Choose your experience level'})).toBeHidden();
+        await page.getByText('Advanced dashboard and analytics', {exact:true}).click();
       }
       if (surface === 'markets/watchlists' && width <= 768) {
         const search = await page.getByRole('textbox', {name:'Search watchlist'}).boundingBox();

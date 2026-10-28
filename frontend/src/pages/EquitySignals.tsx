@@ -5,6 +5,7 @@
  */
 
 import React, { useEffect, useState } from "react";
+import SignalDetailDrawer from "../components/SignalDetailDrawer";
 import BrokerStatus from "../components/BrokerStatus";
 import PortfolioGreeks from "../components/PortfolioGreeks";
 import SignalAttribution from "../components/SignalAttribution";
@@ -171,6 +172,7 @@ function SignalCard({
   minConfidence: number;
   blockCtx: ReturnType<typeof useDeskBlockContext>;
 }) {
+  const [reviewing, setReviewing] = useState(false);
   const tp = sig.trade_plan || {};
   const ind = sig.indicators || {};
   const block = deriveSignalBlockReason(sig, blockCtx);
@@ -191,15 +193,16 @@ function SignalCard({
   ].filter(Boolean);
 
   return (
+    <>
     <MissionCard
-      className={directionClass}
-      reward={reward}
+      className={`design-signal-card ${directionClass}`}
+      reward={undefined}
       title={(
         <span style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <TickerLogo ticker={sig.ticker} />
           <span className="mono" style={{ fontWeight: 700, fontSize: 15 }}>{sig.ticker}</span>
           <SignalDirectionBadge action={sig.action} size="sm" />
-          <SignalAttribution data={toAttribution(sig)} size="sm" />
+
           <WhyBlockedChip reason={block} />
           {sig.earnings_gated && (
             <span style={{
@@ -213,17 +216,17 @@ function SignalCard({
       )}
       subtitle={subtitleParts.join(" · ")}
       meta={{
-        label: sig.action === "HOLD" ? "HOLD" : confPct >= Math.round(minConfidence * 100) ? "LIVE" : "LOW",
+        label: sig.action === "HOLD" ? "WAITING" : "RESEARCH",
         tone: sig.action === "HOLD" ? "var(--ink-dim)" : confPct >= Math.round(minConfidence * 100) ? "var(--green)" : "var(--amber)",
         icon: "⏳",
       }}
-      progress={sig.action !== "HOLD" ? {
-        value: confPct,
-        tone,
-        label: `${sig.ticker} confidence`,
-      } : undefined}
+
     >
+      <div className="signal-rationale"><span>Why it appeared</span><p>{sig.reason || "No plain-language rationale supplied by this producer."}</p><small>Research only · Model scores are not probabilities of profit.</small></div>
+      <button className="design-review" onClick={() => setReviewing(true)}>Review idea <span aria-hidden="true">→</span></button>
+      <details className="signal-evidence"><summary>Technical evidence and trade plan</summary>
       <div className="mission-card__details">
+        <SignalAttribution data={toAttribution(sig)} size="sm" />
         {sig.action !== "HOLD" && (
           <ConfidenceFloorLabel confidence={sig.confidence} minConfidence={minConfidence} />
         )}
@@ -266,7 +269,10 @@ function SignalCard({
           <BacktestButtons ticker={sig.ticker} assetType="equity" />
         </div>
       </div>
+      </details>
     </MissionCard>
+    <SignalDetailDrawer open={reviewing} onClose={() => setReviewing(false)} signal={{ ...sig, reasons: sig.reason ? [sig.reason] : [] }} symbol={sig.ticker} timeframe="unknown" latestBar={null} />
+    </>
   );
 }
 
@@ -487,6 +493,8 @@ function EquitySignalsGrid() {
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [minMovePct, setMinMovePct] = useState(0);
+  const [query, setQuery] = useState("");
+  const [loading, setLoading] = useState(true);
   const blockCtx = useDeskBlockContext();
   const { minConfidence } = blockCtx;
 
@@ -497,9 +505,10 @@ function EquitySignalsGrid() {
     // a full cycle in the past. 150 covers the current watchlist with room
     // to grow.
     fetch("/api/equity/signals?limit=150")
-      .then(r => r.json())
-      .then(d => setSignals(d.signals || []))
-      .catch(e => setError(String(e)));
+      .then(r => { if (!r.ok) throw new Error("Signal feed unavailable. Refresh to retry."); return r.json(); })
+      .then(d => { if (!Array.isArray(d.signals)) throw new Error("Signal feed unavailable."); setSignals(d.signals); setError(null); })
+      .catch(e => { setSignals([]); setError(String(e.message || e)); })
+      .finally(() => setLoading(false));
   };
 
   useEffect(() => {
@@ -512,7 +521,8 @@ function EquitySignalsGrid() {
     setScanning(true);
     setError(null);
     try {
-      await fetch("/api/equity/scan", { method: "POST" });
+      const response = await fetch("/api/equity/scan", { method: "POST" });
+      if (!response.ok) throw new Error("Scan could not be started.");
       loadSignals();
     } catch (e) {
       setError(String(e));
@@ -524,15 +534,16 @@ function EquitySignalsGrid() {
   // Min move % only makes sense for BUY/SELL — a HOLD has no trade_plan
   // (no target price to measure a move against), so it's left out of that
   // filter entirely rather than being silently dropped by an ?? 0 default.
-  const buySignals = signals
+  const filteredSignals = signals.filter(s => `${s.ticker} ${s.reason || ""}`.toLowerCase().includes(query.toLowerCase()));
+  const buySignals = filteredSignals
     .filter(s => s.action === "BUY" && !s.earnings_gated)
     .filter(s => (s.trade_plan?.target_move_pct ?? 0) >= minMovePct)
     .sort(sortRecentThenConfident);
-  const sellSignals = signals
+  const sellSignals = filteredSignals
     .filter(s => s.action === "SELL" && !s.earnings_gated)
     .filter(s => (s.trade_plan?.target_move_pct ?? 0) >= minMovePct)
     .sort(sortRecentThenConfident);
-  const holdSignals = signals
+  const holdSignals = filteredSignals
     .filter(s => s.action === "HOLD" || s.earnings_gated)
     .sort(sortRecentThenConfident);
   const actionableCount = buySignals.length + sellSignals.length;
@@ -543,12 +554,12 @@ function EquitySignalsGrid() {
   const topSellSignals = sellSignals.slice(0, 3);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+    <div className="design-signal-feed" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div className="instrument-card page-header">
         <div>
-          <div className="page-header__title">Equity Signals</div>
+          <h1 className="page-header__title">Signals</h1>
           <p className="page-header__sub">
-            Live scanner feed · confidence vs trading-style floor
+            Research ideas for your review · no orders submitted here
           </p>
         </div>
         <span style={{ flex: 1 }} />
@@ -571,11 +582,15 @@ function EquitySignalsGrid() {
         </button>
       </div>
 
+      <div className="design-search-row">
+        <input aria-label="Search signals" placeholder="Search symbol or explanation" value={query} onChange={e => setQuery(e.target.value)} />
+        <button className="design-review" onClick={loadSignals}>Refresh signals</button>
+      </div>
       <div className="instrument-stat-strip" style={{ gridTemplateColumns: "repeat(4, minmax(0, 1fr))" }}>
-        <StatTile variant="divider" size="sm" label="Actionable" value={actionableCount} tone="var(--accent)" />
-        <StatTile variant="divider" size="sm" label="Buy" value={buySignals.length} tone="var(--green)" />
-        <StatTile variant="divider" size="sm" label="Sell" value={sellSignals.length} tone="var(--red)" />
-        <StatTile variant="divider" size="sm" label="Total" value={signals.length} />
+        <StatTile variant="divider" size="sm" label="Actionable" value={error || loading ? "—" : actionableCount} tone="var(--accent)" />
+        <StatTile variant="divider" size="sm" label="Buy" value={error || loading ? "—" : buySignals.length} tone="var(--green)" />
+        <StatTile variant="divider" size="sm" label="Sell" value={error || loading ? "—" : sellSignals.length} tone="var(--red)" />
+        <StatTile variant="divider" size="sm" label="Total" value={error || loading ? "—" : signals.length} />
       </div>
 
       {error && (
@@ -588,17 +603,18 @@ function EquitySignalsGrid() {
         </div>
       )}
 
-      {signals.length === 0 ? (
+      {loading ? <p role="status">Loading signals…</p> : error ? null : filteredSignals.length === 0 ? (
         <div className="instrument-card instrument-card--flat empty-chassis">
-          <p className="empty-chassis__title">No equity signals yet</p>
+          <p className="empty-chassis__title">{query ? "No signals match your search" : "No equity signals yet"}</p>
           <p className="empty-chassis__hint">Click <strong style={{ color: "var(--ink)" }}>RUN SCAN</strong> to score the watchlist.</p>
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 12 }}>
+          <details className="signal-ranking"><summary>Ranked scanner summary</summary><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 12 }}>
             <TopSignals top={topBuySignals} label="BUY" minConfidence={minConfidence} blockCtx={blockCtx} />
             <TopSignals top={topSellSignals} label="SELL" minConfidence={minConfidence} blockCtx={blockCtx} />
           </div>
+          </details>
           <SignalGroup action="BUY" signals={buySignals} minConfidence={minConfidence} blockCtx={blockCtx} />
           <SignalGroup action="SELL" signals={sellSignals} minConfidence={minConfidence} blockCtx={blockCtx} />
           <SignalGroup action="HOLD" signals={holdSignals} minConfidence={minConfidence} blockCtx={blockCtx} />

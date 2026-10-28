@@ -5,7 +5,7 @@
  * informational only and has no execution controls.
  */
 
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import { Panel, StatTile, Button } from "./ui";
 import BottomSheet from "./BottomSheet";
 import { useIsMobile } from "../hooks/useIsMobile";
@@ -82,6 +82,24 @@ export default function SignalDetailDrawer({
   latestBar: LatestBar | null;
 }) {
   const isMobile = useIsMobile();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open || isMobile) return;
+    const previous = document.activeElement as HTMLElement | null;
+    const root = dialogRef.current;
+    const focusable = () => Array.from(root?.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], input, summary, [tabindex="0"]') || []);
+    focusable()[0]?.focus();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); onClose(); }
+      if (event.key !== "Tab") return;
+      const nodes = focusable(); const first = nodes[0]; const last = nodes[nodes.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("keydown", onKey); previous?.focus(); };
+  }, [open, isMobile, onClose]);
+
 
   if (!open) return null;
 
@@ -180,6 +198,7 @@ export default function SignalDetailDrawer({
 
   return (
     <div
+      ref={dialogRef}
       role="dialog"
       aria-modal="true"
       aria-labelledby="signal-detail-title"
