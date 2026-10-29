@@ -45,7 +45,9 @@ for (const width of [320,390,768,1440]) for (const state of ['populated','unavai
       await expect(nav.getByRole('button')).toHaveCount(5);
       expect(await nav.getByRole('button').evaluateAll(buttons=>buttons.map(b=>b.getAttribute('aria-label'))))
         .toEqual(['Home','Markets','Signals','Positions','More']);
-      const logo=await page.locator('.mobile-terminal-header .terminal-wordmark').boundingBox();
+      const brand=page.locator('.mobile-terminal-header img[alt="Olbos Trade"]');
+      await expect(brand).toHaveAttribute('src','/olbos-trade-lockup.webp');
+      const logo=await brand.boundingBox();
       const menu=await page.getByRole('button',{name:'Toggle navigation',exact:true}).boundingBox();
       expect(logo!.x+logo!.width).toBeLessThanOrEqual(menu!.x);
       expect(logo!.y).toBeGreaterThanOrEqual(0);

@@ -7,7 +7,7 @@ modifying that branch. This PR includes its Home, Markets, Signals and Positions
 changes plus the current broker onboarding/data views. Review the combined
 change against main; do not interpret inherited work as newly implemented here.
 
-Reference-specific changes: terminal-only silver O single-line lockup, mobile
+Reference-specific changes: existing official angular silver O / gold TRADE logo lockup, mobile
 header alignment, Home/Markets/Signals/Positions/More navigation, larger type,
 navy/gold card styling, healthy Home account-first hierarchy and consistent
 My Brokers cards. Desk and Portfolio & Risk remain reachable in the More drawer.
@@ -35,3 +35,9 @@ permission/routing or risk-limit change. No merge/deployment by this work.
 Rollback the frontend code/image through the reviewed release process. Next:
 inspect CI screenshots against the approved references, resolve any failures,
 then review integration/merge and deployment independently.
+
+Logo correction: user requested the established Olbos Trade logo. Reuse
+BrandWordmark and the canonical olbos-trade-lockup.webp / olbos-mark.webp assets;
+remove the concept-only TerminalWordmark component. Layout and trading behavior
+are unchanged. Browser assertions pin the official mobile logo asset. Prior
+screenshot package predates this logo correction; regenerate through CI.

@@ -2,6 +2,7 @@
 
 ## Unreleased — Reference design integration
 
+- Use the established Olbos Trade logo assets in the redesigned terminal header.
 - Combine the existing Home/Markets/Signals/Positions redesign with broker onboarding. Align the terminal logo, five mobile tabs, typography and broker cards with the approved navy/gold references. Desk and Risk remain in More.
 - Missing or malformed risk state displays unavailable instead of crashing or assuming zero drawdown. No trading permission, migration or deployment.
 

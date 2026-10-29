@@ -236,9 +236,6 @@
   .brokers-workspace .broker-sign-in { padding: 18px !important; }
 }
 
-.app-shell .terminal-wordmark.brand-lockup-word { width: auto; }
 @media (max-width: 380px) {
-  .app-shell .terminal-wordmark > span { font-size: 12px !important; }
-  .app-shell .terminal-wordmark svg { width: 28px; height: 28px; }
   .app-shell [data-testid="mobile-exec-trigger"] { padding-inline: 8px !important; }
 }
