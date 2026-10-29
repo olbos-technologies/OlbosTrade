@@ -201,14 +201,19 @@ test.describe("history has one entry per real navigation", () => {
     ).toBe(before);
   });
 
+  async function selectRisk(page: Page) {
+    await page.locator(".mobile-bottom-nav").getByRole("button", {name:"More", exact:true}).click();
+    const target=page.getByRole("button", {name:"Risk Overview", exact:true});
+    if(await target.count()===0) await page.getByRole("button", {name:"Portfolio & Risk", exact:true}).click();
+    await target.click();
+  }
+
   test("Back still works after clicking around", async ({ page }) => {
     await open(page, "/terminal/dashboard", 390);
     await page.waitForSelector(".mobile-bottom-nav");
-    const nav = page.locator(".mobile-bottom-nav");
-
-    await nav.getByRole("button", { name: "Risk", exact: true }).click();
+    await selectRisk(page);
     await page.waitForTimeout(400);
-    await nav.getByRole("button", { name: "Risk", exact: true }).click();  // no-op
+    await selectRisk(page);  // no-op
     await page.waitForTimeout(400);
 
     await page.goBack();
@@ -218,7 +223,7 @@ test.describe("history has one entry per real navigation", () => {
 
   test("an alias of the page you are on does not stack history either", async ({ page }) => {
     // /terminal/risk and /terminal/risk/heat are both RiskCenter's monitor
-    // tab, and the mobile Risk item navigates to risk:heat. Arriving on the
+    // tab, and Risk Overview in More navigates to risk:heat. Arriving on the
     // bare URL and clicking it therefore looked like a real navigation to a
     // key-only comparison: it pushed an entry, and Back returned to a view
     // identical to the one you were already looking at.
@@ -228,8 +233,7 @@ test.describe("history has one entry per real navigation", () => {
     const historyLength = () => page.evaluate(() => history.length);
     const before = await historyLength();
 
-    const risk = page.locator(".mobile-bottom-nav").getByRole("button", { name: "Risk", exact: true });
-    await risk.click();
+    await selectRisk(page);
     await page.waitForTimeout(400);
 
     expect(

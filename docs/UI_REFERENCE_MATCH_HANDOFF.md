@@ -23,8 +23,8 @@ GlobalRiskStatus. Missing/non-numeric/non-finite daily-loss state now renders
 unavailable instead of dereferencing undefined or assuming zero drawdown. Four
 unit regression cases cover malformed responses.
 
-Validation: frontend unit suite 606 passed; production TypeScript/Vite build and
-browser results are recorded in the PR. Browser matrix covers 320/390/768/1440px,
+Validation: frontend unit suite 610 passed; production TypeScript/Vite build passed; 11 static CI workflow guards passed.
+Browser results are recorded in the PR. Browser matrix covers 320/390/768/1440px,
 populated/unavailable states, no unintended API writes, chart/signals/position
 review, five-tab names, logo/menu bounds, navigation and screenshot captures.
 Local browser binaries are unavailable; browser results must come from CI.

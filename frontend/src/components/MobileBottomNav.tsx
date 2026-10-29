@@ -48,7 +48,7 @@ export const BOTTOM_NAV_ITEMS: BottomNavItem[] = [
   {
     key: "markets:chart",
     label: "Markets",
-    matches: ["markets", "markets:overview", "markets:watchlist"],
+    matches: ["markets", "markets:watchlists", "markets:heatmaps", "markets:news", "markets:sector-rotation"],
     icon: <Icon><path d="M4 18V9" /><path d="M9.5 18V5" /><path d="M15 18v-6" /><path d="M20.5 18V8" /></Icon>,
   },
   {
@@ -98,8 +98,9 @@ export default function MobileBottomNav({
       })}
       <button
         type="button"
-        className={`mobile-bottom-nav__tab${moreOpen ? " is-active" : ""}`}
+        className={`mobile-bottom-nav__tab${moreOpen || !BOTTOM_NAV_ITEMS.some(isActive) ? " is-active" : ""}`}
         aria-label="More"
+        aria-current={!BOTTOM_NAV_ITEMS.some(isActive) ? "page" : undefined}
         aria-expanded={moreOpen}
         onClick={onOpenMore}
       >

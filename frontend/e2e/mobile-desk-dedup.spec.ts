@@ -39,8 +39,9 @@ async function openDesk(page: Page, positions?: unknown[]) {
   await page.setViewportSize(PHONE);
   await page.goto("/terminal/dashboard");
   await page.waitForSelector(".mobile-bottom-nav");
-  await page.locator(".mobile-bottom-nav")
-    .getByRole("button", { name: "Desk", exact: true }).click();
+  await page.locator(".mobile-bottom-nav").getByRole("button", { name: "More", exact: true }).click();
+  await page.getByRole("button", {name:"Trade Desk", exact:true}).click();
+  await page.getByRole("button", {name:/^(Overview|Command Overview)$/}).click();
   await page.waitForSelector(".app-shell--desk");
 }
 

@@ -163,6 +163,7 @@ export default function MobileHome() {
         <button className="mh-link" onClick={() => nav("risk")}>Review portfolio &amp; risk <span aria-hidden="true">↗</span></button>
       </section>}
       <section className={`mh-status mh-card${halted ? " mh-status-halted" : ""}${!mode.value || !kill.value || !broker.value || broker.value.status !== "connected" || !guard.value ? " mh-status-unverified" : ""}`} aria-label="Execution status">
+        <div className="mh-section-title">Trading status</div>
         <div className="mh-line">
           <strong className={halted ? "mh-negative" : mode.value?.mode === "autopilot" ? "mh-warning" : ""}>{modeLabel}</strong>
           <span className="mh-environment">{broker.value
@@ -191,7 +192,8 @@ export default function MobileHome() {
       </section>
 
       <section className={`mh-card mh-account${!summary.loading && !summary.value ? " mh-account-unavailable" : ""}`} aria-label="Account overview">
-        <div className="mh-eyebrow">BROKER ACCOUNT VALUE</div>
+        <div className="mh-eyebrow">{broker.value?.paper_mode === true ? "Paper account value"
+          : broker.value?.paper_mode === false ? "Live account value" : "Broker account value"}</div>
         <div className="mh-balance">{summary.loading ? "Loading…" : money(summary.value?.total_equity)}</div>
         {!summary.value && !summary.loading && <p className="mh-warning">Account data unavailable. Refresh to retry.</p>}
         {summary.value?.total_equity == null && summary.value && <p className="mh-warning">Broker account value unavailable.</p>}

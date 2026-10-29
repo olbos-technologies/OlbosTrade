@@ -57,6 +57,16 @@ describe("MobileBottomNav", () => {
     expect(screen.getByLabelText("More")).toHaveAttribute("aria-expanded", "true");
   });
 
+  it.each(["risk:heat", "trade:overview", "system:broker"])("marks More on drawer destination %s", active => {
+    setup(active);
+    expect(screen.getByLabelText("More")).toHaveAttribute("aria-current", "page");
+  });
+
+  it("keeps Markets active on watchlists", () => {
+    setup("markets:watchlists");
+    expect(screen.getByLabelText("Markets")).toHaveAttribute("aria-current", "page");
+  });
+
   it("gives every tab an accessible name", () => {
     setup();
     for (const item of BOTTOM_NAV_ITEMS) {

@@ -202,6 +202,7 @@
 /* Approved reference alignment, shared by the redesigned pages and brokers. */
 .app-shell { --design-action: #f6c45c; }
 .home-workspace .mh-status { order: 2; }
+.home-workspace .mh-status > .mh-section-title { margin-bottom: 12px; }
 .home-workspace .mh-attention { order: 3; }
 .home-workspace .mh-holdings { order: 4; }
 .home-workspace .mh-status-halted, .home-workspace .mh-status-unverified { order: 0; }

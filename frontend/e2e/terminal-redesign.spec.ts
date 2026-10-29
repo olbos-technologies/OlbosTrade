@@ -23,6 +23,7 @@ for (const width of [320,390,768,1440]) for (const state of ['populated','unavai
       };
       if(state==='populated') Object.assign(data,{
         '/api/guardrails/status':{trading_allowed:true},
+        '/api/risk/portfolio-state':{state:{daily_loss_pct:.001,max_daily_loss_pct:.02,weekly_loss_pct:.002,max_weekly_loss_pct:.05}},
         '/api/dashboard/summary':{total_equity:124532.88,total_pnl:225,day_pnl:40},
         '/api/paper-trade/positions':{positions:holdings},
         '/api/paper-trade/portfolio':{portfolio:{account_value:124532.88}},
