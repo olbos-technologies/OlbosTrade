@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased — Paper broker setup validation
+
+- Add an offline configuration check with secret-free output and nonzero exit codes for missing or invalid paper OAuth setup. It does not contact a broker or database, enable trading, or certify deployment readiness.
+- Add a paper validation runbook and record the merged health/data prerequisites. No migration or new setting.
+
 ## Unreleased — Strict reconciliation proof flags
 
 - Reconciliation policy rejects malformed evidence objects and non-boolean proof flags. Truthy strings and integers cannot stand in for verified, clean or matching-scope proof.
