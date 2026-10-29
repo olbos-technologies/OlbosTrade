@@ -6,8 +6,8 @@
  *   [NAV SIDEBAR] [MAIN]  ← left sidebar + content area
  *   [STATUS BAR]          ← bottom, full width, system status
  *
- * The sidebar is icon-only (48px) with tooltips.
- * Active route gets a cyan left-border accent.
+ * Desktop navigation starts with visible labels and may collapse.
+ * The full official wordmark remains visible in either state.
  */
 
 import React, { useState, useEffect } from "react";
@@ -383,27 +383,15 @@ function ExecutionModeControl({
   );
 }
 
-/* The desktop sidebar's two widths. The header's hamburger+logo block must be
-   exactly as wide as the sidebar so their right-hand dividers line up, so both
-   read these rather than repeating a literal -- they were two separate magic
-   numbers before, which is how they would quietly diverge.
-
-   Collapsed is 80 rather than 48 because the brand mark lives in that rail
-   too: 48 is entirely consumed by the toggle's tap target, and the sidebar
-   defaults to collapsed, so at 48 a desktop operator saw no mark at all on
-   the screen they land on. 48 (toggle) + 27 (mark) + 5 breathing = 80. */
+/* Navigation can collapse independently of the full header wordmark. */
 const RAIL_COLLAPSED = 80;
 const RAIL_EXPANDED = 232;
 
 function TickerStrip({ onToggle, sidebarExpanded, isMobile }: {
   onToggle: () => void; sidebarExpanded: boolean; isMobile: boolean;
 }) {
-  // The header's hamburger+logo block width must track the sidebar's actual
-  // rendered width so their right-side dividers stay aligned as it expands/
-  // collapses. On mobile the sidebar is an overlay (doesn't reserve layout
-  // space) so the header block keeps its natural, unconstrained width.
-  const showFullLogo = isMobile || sidebarExpanded;
-  const headerLeftWidth = isMobile ? undefined : (sidebarExpanded ? RAIL_EXPANDED : RAIL_COLLAPSED);
+  // Keep the full brand visible even when desktop navigation is collapsed.
+  const headerLeftWidth = isMobile ? undefined : RAIL_EXPANDED;
 
   const [time, setTime] = useState(new Date());
   const [spy,  setSpy]  = useState<SnapShot>({ last_close: null, prev_close: null, change_pct: null });
@@ -897,7 +885,7 @@ function TickerStrip({ onToggle, sidebarExpanded, isMobile }: {
   return (
     <div style={{ display: "flex", flexDirection: "column", flexShrink: 0 }}>
     {autopilotGate}
-    <div className="instrument-ticker" style={{
+    <div className="instrument-ticker desktop-terminal-header" style={{
       display: "flex",
       alignItems: "center",
       // The mode control includes a visible state sentence (and may show a
@@ -909,9 +897,8 @@ function TickerStrip({ onToggle, sidebarExpanded, isMobile }: {
       flexShrink: 0,
       overflow: "hidden",
     }}>
-      {/* Hamburger + logo — pinned left, width tracks the sidebar's own width
-          so this block's right divider stays aligned with the sidebar's. */}
-      <div style={{
+      {/* Full wordmark stays anchored independently of sidebar collapse. */}
+      <div className="desktop-brand" style={{
         display: "flex", alignItems: "center", flexShrink: 0,
         width: headerLeftWidth, height: "100%",
         borderRight: "1px solid var(--line-dim)",
@@ -937,25 +924,20 @@ function TickerStrip({ onToggle, sidebarExpanded, isMobile }: {
           </svg>
         </button>
 
-        {/* Expanded rail gets the complete lockup; collapsed rail gets the
-            same angular mark alone. Both fit the fixed 38px ticker strip. */}
-        <div className={`brand-lockup brand-lockup--strip${showFullLogo ? "" : " is-mark-only"}`}
-             style={{ overflow: "hidden", paddingRight: showFullLogo ? 12 : 0 }}>
-          {showFullLogo
-            ? <BrandWordmark className="brand-lockup-word" height={25} />
-            : <img className="brand-lockup-mark" src="/olbos-mark.webp" alt="Olbos Trade" width={25} height={25} />}
+        <div className="brand-lockup brand-lockup--strip" style={{ paddingRight: 12 }}>
+          <BrandWordmark className="brand-lockup-word" height={36} />
         </div>
       </div>
 
       {/* Marquee strip — scrolls continuously */}
-      <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
+      <div className="desktop-market-strip" aria-label="Market ticker" style={{ flex: 1, overflow: "hidden", position: "relative" }}>
         <div className="ticker-strip-marquee" style={{ display: "inline-flex", animation: "ticker-scroll 55s linear infinite" }}>
           {marqueeContent}{marqueeContent}
         </div>
       </div>
 
       {/* Execution mode (trading style lives in Desk Settings) */}
-      <div style={{
+      <div className="desktop-execution-control" style={{
         display: "flex", alignItems: "center", gap: 8, flexShrink: 0,
         padding: "0 12px", borderLeft: "1px solid var(--line-dim)",
       }}>
@@ -963,7 +945,7 @@ function TickerStrip({ onToggle, sidebarExpanded, isMobile }: {
       </div>
 
       {/* Market status + clock — pinned right */}
-      <div style={{
+      <div className="desktop-market-clock" style={{
         display: "flex", alignItems: "center", gap: 10, flexShrink: 0,
         padding: "0 14px", borderLeft: "1px solid var(--line-dim)",
       }}>
@@ -1175,7 +1157,7 @@ function Sidebar({ active, onNav, expanded, isMobile = false }: {
   };
 
   return (
-    <div style={containerStyle}>
+    <nav aria-label="Workspace navigation" className="desktop-workspace-nav" style={containerStyle}>
 
       {/* Grouped nav — Core by default; Advanced leaves/groups behind toggle */}
       {visibleNav.map(renderGroup)}
@@ -1294,7 +1276,7 @@ function Sidebar({ active, onNav, expanded, isMobile = false }: {
       >
         <KillSwitchButton variant="sidebar" expanded={showLabels} />
       </div>
-    </div>
+    </nav>
   );
 }
 
@@ -1452,9 +1434,11 @@ export default function TerminalLayout({ children, activePage, onNav, isDeskV2Sh
   isDeskV2Shell?: boolean;
 }) {
   const isMobile = useIsMobile();
-  // On desktop the sidebar starts collapsed (icon rail); on mobile it starts
-  // hidden and slides in as an overlay.
-  const [sidebarExpanded, setSidebarExpanded] = useState(false);
+  // Desktop starts labeled; phones keep their closed overlay drawer.
+  const [sidebarExpanded, setSidebarExpanded] = useState(() => !isMobile);
+
+  // Crossing the breakpoint must not leave a desktop rail covering a phone.
+  useEffect(() => { setSidebarExpanded(!isMobile); }, [isMobile]);
 
   // On mobile, navigating closes the overlay.
   const handleNav = (key: string) => {

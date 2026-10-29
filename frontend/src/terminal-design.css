@@ -239,3 +239,52 @@
 @media (max-width: 380px) {
   .app-shell [data-testid="mobile-exec-trigger"] { padding-inline: 8px !important; }
 }
+
+/* UX-1 desktop: a branded workspace header and readable navigation, rather
+   than sharing one narrow row between the logo, prices and mode controls. */
+@media (min-width: 769px) {
+  .app-shell .desktop-terminal-header {
+    display: grid !important;
+    grid-template-columns: 232px minmax(0,1fr) auto;
+    padding: 0 !important;
+    overflow: visible !important;
+    background: #0c1828;
+  }
+  .desktop-brand { grid-column: 1; grid-row: 1; min-height: 68px; }
+  .desktop-brand > button { min-height: 44px; }
+  .desktop-execution-control { grid-column: 2; grid-row: 1; justify-content: end; padding: 12px 24px !important; border-left: 0 !important; }
+  .desktop-market-clock { grid-column: 3; grid-row: 1; min-height: 44px; }
+  .desktop-market-strip { grid-column: 1/-1; grid-row: 2; min-height: 30px; padding: 7px 24px; border-top: 1px solid var(--line-dim); background: #081321; }
+  .desktop-execution-control [aria-label="Execution mode"] { height: 36px !important; padding: 3px !important; border-radius: 10px !important; }
+  .desktop-execution-control [aria-label="Execution mode"] > button { height: 28px !important; padding: 0 12px !important; border-radius: 7px !important; font: 600 11px var(--sans) !important; letter-spacing: 0 !important; }
+  .desktop-workspace-nav { padding: 16px 8px 8px !important; background: #0c1828 !important; }
+  .desktop-workspace-nav button { border-radius: 8px; }
+  .desktop-workspace-nav button[aria-label] { min-height: 40px; }
+  .desktop-workspace-nav button[aria-label] > span { font-family: var(--sans) !important; letter-spacing: 0 !important; text-transform: none !important; font-size: 13px !important; }
+  .desktop-workspace-nav button[aria-current="page"] { color: var(--design-action) !important; border-left-color: var(--design-action) !important; background: #efb45412 !important; }
+  .home-workspace .mobile-home {
+    max-width: 1560px; padding: 28px 32px; gap: 16px;
+    grid-template-columns: minmax(0,1fr) minmax(0,1fr) minmax(280px,.9fr);
+    align-items: stretch;
+  }
+  .home-workspace .mh-heading { margin-bottom: 8px; }
+  .home-workspace .mh-heading h1 { font-size: 36px; }
+  .home-workspace .mh-account { grid-column: 1/3; order: 1; }
+  .home-workspace .mh-attention { grid-column: 3; order: 2; }
+  .home-workspace .mh-status { grid-column: 1/-1; order: 3; padding: 16px 20px; }
+  .home-workspace .mh-status .mh-section-title { margin-bottom: 8px; }
+  .home-workspace .mh-risk-alert { grid-column: 1/-1; order: 0; }
+  .home-workspace .mh-holdings { grid-column: 1/3; order: 4; }
+  .home-workspace .mh-protection { grid-column: 3; order: 5; }
+  .home-workspace .mh-controls { grid-column: 1/-1; order: 6; }
+  .home-workspace .mh-balance { font-size: 44px; margin: 14px 0 22px; }
+  .home-workspace .mh-pnl-grid { max-width: 600px; }
+  .home-workspace .mh-pnl-grid strong { font-size: 24px; }
+  .home-advanced { max-width: 1496px; margin: 0 32px 28px; }
+}
+@media (min-width: 769px) and (max-width: 1199px) {
+  .home-workspace .mobile-home { padding: 24px; grid-template-columns: minmax(0,1fr); }
+  .home-workspace .mh-card { grid-column: 1 !important; }
+  .desktop-market-clock { display: none !important; }
+  .app-shell .desktop-terminal-header { grid-template-columns: 232px minmax(0,1fr); }
+}
