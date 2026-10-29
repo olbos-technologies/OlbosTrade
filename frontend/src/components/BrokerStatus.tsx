@@ -14,20 +14,21 @@ interface BrokerInfo {
 }
 
 export default function BrokerStatus() {
+  const [unavailable, setUnavailable] = useState(false);
   const [info, setInfo] = useState<BrokerInfo | null>(null);
 
   useEffect(() => {
     const load = () =>
       fetch("/api/market/broker")
-        .then(r => r.json())
-        .then(setInfo)
-        .catch(() => {});
+        .then(r => { if (!r.ok) throw new Error("Broker unavailable"); return r.json(); })
+        .then(d => { if (typeof d?.broker !== "string" || typeof d.paper_mode !== "boolean" || typeof d.status !== "string") throw new Error("Broker unavailable"); setInfo(d); setUnavailable(false); })
+        .catch(() => { setInfo(null); setUnavailable(true); });
     load();
     const t = setInterval(load, 30000);
     return () => clearInterval(t);
   }, []);
 
-  if (!info) return null;
+  if (!info) return unavailable ? <p role="status">Broker connection unavailable</p> : null;
 
   const connected = info.status === "connected";
   const modeLabel = info.paper_mode ? "paper" : "live";

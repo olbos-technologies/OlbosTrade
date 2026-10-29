@@ -206,7 +206,7 @@ export default function MyBrokers() {
   if (blocked) {
     return (
       <div style={{ padding: 16 }}>
-        <div className="panel-title" style={{ marginBottom: 10 }}>My Brokers</div>
+        <header className="design-page-heading"><div><span className="design-eyebrow">ACCOUNT CONNECTIONS</span><h1>My Brokers</h1><p>Choose a broker and review your connected accounts.</p></div></header>
         <div className="instrument-card" style={{ maxWidth: 560, padding: "14px 16px",
              fontFamily: MONO, fontSize: 12, color: "var(--ink-dim)", lineHeight: 1.7 }}>
           {blocked}
@@ -216,8 +216,8 @@ export default function MyBrokers() {
   }
 
   return (
-    <div style={{ padding: 16, height: "100%", overflowY: "auto" }}>
-      <div className="panel-title" style={{ marginBottom: 10 }}>My Brokers</div>
+    <div className="brokers-workspace" style={{ padding: 16, height: "100%", overflowY: "auto" }}>
+      <header className="design-page-heading"><div><span className="design-eyebrow">ACCOUNT CONNECTIONS</span><h1>My Brokers</h1><p>Choose a broker and review your connected accounts.</p></div></header>
 
       <BrokerSignIn />
 

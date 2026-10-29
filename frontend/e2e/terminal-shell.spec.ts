@@ -38,10 +38,11 @@ const WIDTHS = [PHONE_WIDTH, NARROW_WIDTH];
 /** Pages a phone can actually reach, and how it reaches them. */
 const PAGES: Array<{ label: string; via: "bottom" | "drawer" }> = [
   { label: "Home", via: "bottom" },
-  { label: "Desk", via: "bottom" },
+  { label: "Desk", via: "drawer" },
+  { label: "Markets", via: "bottom" },
   { label: "Signals", via: "bottom" },
   { label: "Positions", via: "bottom" },
-  { label: "Risk", via: "bottom" },
+  { label: "Risk", via: "drawer" },
   { label: "Journal", via: "drawer" },
   { label: "Performance", via: "drawer" },
 ];
@@ -60,7 +61,13 @@ async function navigateTo(page: Page, label: string, via: "bottom" | "drawer") {
     await page.locator(".mobile-bottom-nav").getByRole("button", { name: label, exact: true }).click();
   } else {
     await burger(page).click();
-    await page.getByText(new RegExp(`^${label}$`, "i")).first().click();
+    if (label === "Desk") {
+      await page.getByRole("button", {name:"Trade Desk", exact:true}).click();
+      await page.getByRole("button", {name:/^(Overview|Command Overview)$/}).click();
+    } else if (label === "Risk") {
+      await page.getByRole("button", {name:"Portfolio & Risk", exact:true}).click();
+      await page.getByRole("button", {name:"Risk Overview", exact:true}).click();
+    } else await page.getByText(new RegExp(`^${label}$`, "i")).first().click();
   }
   // The drawer animates out over 0.2s after a selection; measuring mid-slide
   // would read a transient geometry rather than the settled layout.

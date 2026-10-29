@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased — Reference design integration
+
+- Use the established Olbos Trade logo assets in the redesigned terminal header.
+- Combine the existing Home/Markets/Signals/Positions redesign with broker onboarding. Align the terminal logo, five mobile tabs, typography and broker cards with the approved navy/gold references. Desk and Risk remain in More.
+- Missing or malformed risk state displays unavailable instead of crashing or assuming zero drawdown. No trading permission, migration or deployment.
+
+## Unreleased — UI device-review follow-up
+
+- Phone Positions rows show symbol, quantity, asset type and P&L first; expanding a row reveals the existing details and close-review action. This changes presentation only, not close eligibility or submission safeguards.
+- Desktop Home opens the existing analytics section by default while keeping it collapsible. No account data, execution mode or risk calculation changes.
+
 ## Unreleased — Strict reconciliation proof flags
 
 - Reconciliation policy rejects malformed evidence objects and non-boolean proof flags. Truthy strings and integers cannot stand in for verified, clean or matching-scope proof.

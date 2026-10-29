@@ -7,35 +7,41 @@ export function usePaperTrade() {
   const [greeks, setGreeks]         = useState<any>(null);
   const [lastSignal, setLastSignal] = useState<any>(null);
   const [cycleLog, setCycleLog]     = useState<any[]>([]);
-  const [loading, setLoading]       = useState(false);
+  const [loading, setLoading]       = useState(true);
   // Distinguishes "portfolio is genuinely unfetched/failed" from "not yet
   // loaded" — a fetch failure must never be indistinguishable from a
   // legitimate absence of data, so callers can show an explicit
   // unavailable state instead of a stale or fabricated value.
   const [portfolioError, setPortfolioError] = useState(false);
+  const [positionsError, setPositionsError] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [p, port, g, hist] = await Promise.all([
-        api.getPositions() as any,
-        api.getPortfolio() as any,
-        api.getGreeksSummary() as any,
-        api.getTradeHistory() as any,
+      const [p, port, g, hist] = await Promise.allSettled([
+        api.getPositions() as Promise<any>,
+        api.getPortfolio() as Promise<any>,
+        api.getGreeksSummary() as Promise<any>,
+        api.getTradeHistory() as Promise<any>,
       ]);
-      setPositions(p.positions ?? []);
-      setPortfolio(port.portfolio ?? null);
-      setPortfolioError(false);
-      setGreeks(g);
-      const trades: any[] = hist.trades ?? [];
-      setCycleLog(trades);
-      if (trades.length > 0) setLastSignal(trades[0]);
-    } catch {
-      // Keep the last-known portfolio value (avoids flicker on a transient
-      // blip) but flag that the most recent attempt failed, so a caller
-      // with no last-known value at all can render "unavailable" instead
-      // of falling through to a fabricated default.
-      setPortfolioError(true);
+      if (p.status === "fulfilled" && Array.isArray(p.value?.positions)) {
+        setPositions(p.value.positions);
+        setPositionsError(false);
+      } else {
+        setPositionsError(true);
+      }
+      if (port.status === "fulfilled" && port.value?.portfolio) {
+        setPortfolio(port.value.portfolio);
+        setPortfolioError(false);
+      } else {
+        setPortfolioError(true);
+      }
+      if (g.status === "fulfilled") setGreeks(g.value);
+      if (hist.status === "fulfilled") {
+        const trades = hist.value?.trades ?? [];
+        setCycleLog(trades);
+        if (trades.length > 0) setLastSignal(trades[0]);
+      }
     } finally {
       setLoading(false);
     }
@@ -58,5 +64,5 @@ export function usePaperTrade() {
     return () => clearInterval(interval);
   }, [refresh]);
 
-  return { positions, portfolio, portfolioError, greeks, lastSignal, cycleLog, loading, refresh, runCycle };
+  return { positions, portfolio, portfolioError, positionsError, greeks, lastSignal, cycleLog, loading, refresh, runCycle };
 }

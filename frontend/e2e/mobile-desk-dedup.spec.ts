@@ -39,8 +39,9 @@ async function openDesk(page: Page, positions?: unknown[]) {
   await page.setViewportSize(PHONE);
   await page.goto("/terminal/dashboard");
   await page.waitForSelector(".mobile-bottom-nav");
-  await page.locator(".mobile-bottom-nav")
-    .getByRole("button", { name: "Desk", exact: true }).click();
+  await page.locator(".mobile-bottom-nav").getByRole("button", { name: "More", exact: true }).click();
+  await page.getByRole("button", {name:"Trade Desk", exact:true}).click();
+  await page.getByRole("button", {name:/^(Overview|Command Overview)$/}).click();
   await page.waitForSelector(".app-shell--desk");
 }
 
@@ -150,6 +151,7 @@ test("a position close is reviewed before hold-to-submit", async ({ page }) => {
 
   await expect(page.getByLabel("Open positions summary")).toContainText("1");
   await expect(page.getByLabel("Open positions summary")).toContainText("-$433");
+  await page.getByRole("button", { name: "Show details for ADBE position 1" }).click();
   await expect(page.getByText(/Adopted from broker/)).toBeVisible();
 
   // Choosing Close is reversible and opens a review. Submission still needs

@@ -38,6 +38,18 @@ afterEach(() => {
 });
 
 describe("GlobalRiskStatus", () => {
+  it.each([{}, { state: null }, { state: {} }, { state: { daily_loss_pct: "0" } }])(
+    "keeps malformed risk state visible as unavailable: %j", async (response) => {
+      mockBroker({ broker: "ibkr", paper_mode: true, status: "connected" });
+      mockedApi.getExecutionMode.mockResolvedValue({ mode: "manual" });
+      mockedApi.getTradeDeskKillSwitch.mockResolvedValue({ engaged: false });
+      mockedApi.getPortfolioState.mockResolvedValue(response);
+      render(<GlobalRiskStatus />);
+      await waitFor(() => expect(screen.getAllByText("UNAVAILABLE").length).toBeGreaterThanOrEqual(2));
+      expect(screen.getByRole("region", { name: "Capital-at-risk status" })).toBeInTheDocument();
+      expect(screen.queryByText("0.0%")).not.toBeInTheDocument();
+    }
+  );
   it("shows LIVE — IBKR when connected and not in paper mode", async () => {
     mockBroker({ broker: "ibkr", paper_mode: false, status: "connected" });
     mockedApi.getExecutionMode.mockResolvedValue({ mode: "manual" });
@@ -69,14 +81,14 @@ describe("GlobalRiskStatus", () => {
     await waitFor(() => expect(screen.getByText("AUTOPILOT OFF")).toBeInTheDocument());
   });
 
-  it("shows KILL ARMED when the kill switch is engaged", async () => {
+  it("shows KILL HALTED when the kill switch is engaged", async () => {
     mockBroker({ broker: "ibkr", paper_mode: true, status: "connected" });
     mockedApi.getExecutionMode.mockResolvedValue({ mode: "manual" });
     mockedApi.getTradeDeskKillSwitch.mockResolvedValue({ engaged: true });
     mockedApi.getPortfolioState.mockResolvedValue({ state: {} });
 
     render(<GlobalRiskStatus />);
-    await waitFor(() => expect(screen.getByText("ARMED")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("HALTED")).toBeInTheDocument());
   });
 
   it("shows KILL UNKNOWN rather than defaulting to not-armed when both kill-switch reads fail", async () => {

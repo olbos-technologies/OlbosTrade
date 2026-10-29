@@ -8,7 +8,7 @@
   padding: 18px 14px 24px;
   box-sizing: border-box;
   color: #e8eef7;
-  font-family: var(--sans);
+  font-family: var(--sans, system-ui, sans-serif);
   font-variant-numeric: tabular-nums;
   display: flex;
   flex-direction: column;
@@ -16,7 +16,7 @@
 }
 .mobile-home *, .mobile-home *::before, .mobile-home *::after { box-sizing: border-box; }
 .mh-heading, .mh-line { display: flex; justify-content: space-between; align-items: center; gap: 10px; min-width: 0; }
-.mh-heading h1 { font-family: var(--sans); font-size: 27px; line-height: 1.2; letter-spacing: -.04em; margin: 4px 0 0; font-weight: 650; }
+.mh-heading h1 { font-family: var(--sans, system-ui, sans-serif); font-size: 27px; line-height: 1.2; letter-spacing: -.04em; margin: 4px 0 0; font-weight: 650; }
 .mh-eyebrow { color: var(--mh-label); font-size: 10px; font-weight: 650; letter-spacing: .12em; }
 .mh-card {
   flex-shrink: 0;
@@ -71,3 +71,11 @@
 .mh-emergency .instrument-halt { min-height: 44px !important; margin-top: 12px; }
 @media (prefers-reduced-motion: reduce) { .mobile-home * { scroll-behavior: auto; transition: none !important; } }
 
+
+.mobile-home p { font-size: 13px; }
+.mh-status p, .mobile-home .mh-muted { font-size: 12px; }
+.mh-status strong { letter-spacing: 0; font-size: 14px; }
+.mh-system-details { margin-top: 8px; border-top: 1px solid #304058; }
+.mh-system-details summary { color: #b7c5d8; padding: 10px 0; align-content: center; }
+.mh-account-unavailable { padding: 15px; background: #101c2c; }
+.mh-account-unavailable .mh-balance { font-size: 26px; margin: 8px 0; }

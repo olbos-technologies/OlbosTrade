@@ -52,7 +52,7 @@ test("Signals prioritizes the live feed on a phone", async ({ page }) => {
 
   // The information that belongs to this destination remains first-class.
   await expect(page.locator(".asset-toggle")).toBeVisible();
-  await expect(page.getByText("Equity Signals", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Signals", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "RUN SCAN" })).toBeVisible();
 });
 
