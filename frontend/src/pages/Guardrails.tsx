@@ -168,7 +168,7 @@ export default function Guardrails() {
   ];
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
+    <div className="workspace-page" style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
       <div style={{ padding: "8px 16px", borderBottom: "1px solid var(--line-dim)", background: "var(--bg-2)", display: "flex", gap: 1 }}>
         {(["status","history"] as const).map(t => (
           <Button key={t} active={tab === t} onClick={() => setTab(t)}>
@@ -229,7 +229,7 @@ export default function Guardrails() {
               </div>
             )}
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+            <div className="workspace-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
               {/* Rule status */}
               <Panel padding={0} title="Active Rules">
                 {rules.map((r, i) => (
@@ -254,7 +254,7 @@ export default function Guardrails() {
 
               {/* State snapshot */}
               <Panel padding={12} title="Current State">
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 12px" }}>
+                <div className="workspace-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 12px" }}>
                   {[
                     { label: "Trades Today",       val: String(guardrailStatus?.trades_today || 0) },
                     { label: "Consecutive Losses", val: String(guardrailStatus?.consecutive_losses || 0) },
@@ -287,7 +287,7 @@ export default function Guardrails() {
               title="Reconciliation Status"
               action={<Button onClick={runReconciliation} disabled={reconRunning}>{reconRunning ? "Running..." : "Run Check"}</Button>}
             >
-              <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 16 }}>
+              <div className="workspace-grid" style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 16 }}>
                 <div style={{
                   border: `1px solid ${tint(reconColor, 0.333)}`,
                   background: "var(--bg-1)",
@@ -305,7 +305,7 @@ export default function Guardrails() {
                 </div>
 
                 <div style={{ display: "grid", gap: 12 }}>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10 }}>
+                  <div className="workspace-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10 }}>
                     {[
                       { label: "Broker Positions", value: reconciliation?.broker_position_count ?? "—", color: "var(--ink)" },
                       { label: "DB Open Trades", value: reconciliation?.db_open_trade_count ?? "—", color: "var(--ink)" },
@@ -325,7 +325,7 @@ export default function Guardrails() {
                     </div>
                   )}
 
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  <div className="workspace-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                     {[
                       { title: "Warnings", items: reconciliation?.warnings || [], empty: "No warnings recorded." },
                       { title: "Drift Details", items: [
@@ -359,7 +359,7 @@ export default function Guardrails() {
 
         {tab === "history" && (
           <Panel padding={0} title="Guardrail Event Log">
-            <table className="t-table">
+            <div className="workspace-table-scroll"><table className="t-table">
               <thead><tr>
                 {["Timestamp","Event","Rule","Value","Action"].map(h => <th key={h}>{h}</th>)}
               </tr></thead>
@@ -405,7 +405,7 @@ export default function Guardrails() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
           </Panel>
         )}
       </div>

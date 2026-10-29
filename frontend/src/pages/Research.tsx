@@ -389,7 +389,7 @@ export default function Research() {
 
       <div style={{ flex: 1, overflowY: "auto" }}>
         {/* Stat grid */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(8,1fr)", borderBottom: "1px solid var(--line-dim)" }}>
+        <div className="workspace-grid" style={{ display: "grid", gridTemplateColumns: "repeat(8,1fr)", borderBottom: "1px solid var(--line-dim)" }}>
           {dataPoints.map((d, i) => (
             <div key={d.label} style={{
               padding: "14px 16px",
@@ -404,7 +404,7 @@ export default function Research() {
           ))}
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 0 }}>
+        <div className="workspace-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 0 }}>
           {/* IV Term Structure */}
           <Panel sectionStyle={{ borderTop: "none" }} title="IV Term Structure">
               {(termStruct ?? buildTermStructure(18.4)).map(row => (
@@ -459,7 +459,7 @@ export default function Research() {
                         <div style={{ fontFamily: "var(--mono)", fontSize: 10, color: "var(--ink-dim)", marginBottom: 8, letterSpacing: "0.08em" }}>
                           {tradeSetup.strategy.toUpperCase()} · {tradeSetup.dte} DTE · {symbol} @ ${spotPrice.toFixed(2)}
                         </div>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 16px" }}>
+                        <div className="workspace-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 16px" }}>
                           <div>
                             <div style={{ fontFamily: "var(--mono)", fontSize: 10, color: "var(--ink-dim)", marginBottom: 2 }}>
                               {tradeSetup.isDebit ? "BUY (long)" : `SELL ~${(tradeSetup.shortDelta * 100).toFixed(0)}Δ`}
@@ -610,7 +610,7 @@ export default function Research() {
           <div style={{ padding: "9px 14px", borderBottom: "1px solid var(--line-dim)", background: "var(--bg-2)" }}>
             <span className="panel-title">Olbos Operating Doctrine</span>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 0 }}>
+          <div className="workspace-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 0 }}>
             {[
               { title: "Mission", items: doctrine.mission, color: "var(--green)" },
               { title: "Universe", items: doctrine.assets, color: "var(--cyan)" },

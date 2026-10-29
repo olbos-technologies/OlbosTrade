@@ -41,7 +41,7 @@ export default function Backtest() {
   ];
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "280px 1fr", height: "100%", overflow: "hidden" }}>
+    <div className="workspace-backtest-layout" style={{ display: "grid", gridTemplateColumns: "280px minmax(0,1fr)", height: "100%", overflow: "hidden" }}>
       {/* Left: config */}
       <div className="instrument-card" style={{ borderRight: "1px solid var(--line-dim)", padding: 16, overflowY: "auto" }}>
         <div className="panel-title" style={{ marginBottom: 16 }}>Configuration</div>
@@ -79,7 +79,7 @@ export default function Backtest() {
       {/* Right: results */}
       <div style={{ overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 16 }}>
         {/* Metrics ribbon — tight single row to maximise chart space below. */}
-        <div className="instrument-stat-strip" style={{
+        <div className="instrument-stat-strip workspace-stat-grid" style={{
           display: "grid", gridTemplateColumns: "repeat(6, 1fr)",
           overflow: "hidden",
         }}>
@@ -127,7 +127,7 @@ export default function Backtest() {
         {/* Trade log */}
         {done && results?.trades?.length > 0 && (
           <Panel title="Trade Log" padding={16}>
-            <table className="t-table">
+            <div className="workspace-table-scroll"><table className="t-table">
               <thead><tr>
                 {["Entry","Exit","Strategy","Credit","P&L","Exit Reason"].map(h => <th key={h}>{h}</th>)}
               </tr></thead>
@@ -145,7 +145,7 @@ export default function Backtest() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
           </Panel>
         )}
       </div>

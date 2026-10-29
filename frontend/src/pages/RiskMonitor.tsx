@@ -145,7 +145,7 @@ function CorrelationMatrix({ matrix, threshold }: { matrix: Record<string, Recor
   if (tickers.length === 0) return null;
   return (
     <div style={{ overflowX: "auto", marginTop: 12 }}>
-      <table className="mono" style={{ fontSize: 10, borderCollapse: "collapse", width: "100%" }}>
+      <div className="workspace-table-scroll"><table className="mono" style={{ fontSize: 10, borderCollapse: "collapse", width: "100%" }}>
         <thead>
           <tr>
             <th style={{ textAlign: "left", padding: "3px 6px", color: "var(--ink-faint)" }} />
@@ -174,7 +174,7 @@ function CorrelationMatrix({ matrix, threshold }: { matrix: Record<string, Recor
             </tr>
           ))}
         </tbody>
-      </table>
+      </table></div>
     </div>
   );
 }
@@ -216,14 +216,14 @@ export default function RiskMonitor() {
       // panel stuck on "Loading…" forever after a broker/DB outage looks
       // like a hung page, not a real signal something is wrong.
       Promise.allSettled([
-        fetch("/api/risk/margin").then(r => r.json()).then(setMargin),
-        fetch("/api/risk/reconciliation").then(r => r.json()).then(setRecon),
-        fetch("/api/risk/scenarios").then(r => r.json()).then(setScen),
-        fetch("/api/risk/var").then(r => r.json()).then(setVarRep),
-        fetch("/api/portfolio/heat").then(r => r.json()).then(setHeat),
-        fetch("/api/portfolio/rotation-performance").then(r => r.json()).then(setRotoPerf),
-        fetch("/api/portfolio/rotation-activity").then(r => r.json()).then(setRotoActivity),
-        fetch("/api/trade-desk/rotation-reviews").then(r => r.json())
+        fetch("/api/risk/margin").then(r => { if (!r.ok) throw new Error("Risk data unavailable"); return r.json(); }).then(setMargin),
+        fetch("/api/risk/reconciliation").then(r => { if (!r.ok) throw new Error("Risk data unavailable"); return r.json(); }).then(setRecon),
+        fetch("/api/risk/scenarios").then(r => { if (!r.ok) throw new Error("Risk data unavailable"); return r.json(); }).then(setScen),
+        fetch("/api/risk/var").then(r => { if (!r.ok) throw new Error("Risk data unavailable"); return r.json(); }).then(setVarRep),
+        fetch("/api/portfolio/heat").then(r => { if (!r.ok) throw new Error("Risk data unavailable"); return r.json(); }).then(setHeat),
+        fetch("/api/portfolio/rotation-performance").then(r => { if (!r.ok) throw new Error("Risk data unavailable"); return r.json(); }).then(setRotoPerf),
+        fetch("/api/portfolio/rotation-activity").then(r => { if (!r.ok) throw new Error("Risk data unavailable"); return r.json(); }).then(setRotoActivity),
+        fetch("/api/trade-desk/rotation-reviews").then(r => { if (!r.ok) throw new Error("Risk data unavailable"); return r.json(); })
           .then(d => setRotoReviews(d?.reviews ?? [])),
       ]).then(results => {
         setSectionsError(results.some(r => r.status === "rejected"));
@@ -243,7 +243,7 @@ export default function RiskMonitor() {
   useEffect(() => {
     const loadCorr = () => {
       fetch("/api/portfolio/correlation")
-        .then(r => r.json())
+        .then(r => { if (!r.ok) throw new Error("Risk data unavailable"); return r.json(); })
         .then(d => { setCorr(d); setCorrError(false); })
         .catch(() => setCorrError(true));
     };
@@ -318,20 +318,21 @@ export default function RiskMonitor() {
   );
 
   const Meter = ({ label, val, max, unit = "", warn = 0.6, crit = 0.85 }: any) => {
-    const ratio = Math.min(val / max, 1);
-    const color = ratio < warn ? "var(--green)" : ratio < crit ? "var(--amber)" : "var(--red)";
+    const known = typeof val === "number" && Number.isFinite(val) && typeof max === "number" && max > 0;
+    const ratio = known ? Math.max(0, Math.min(val / max, 1)) : null;
+    const color = ratio === null ? "var(--amber)" : ratio < warn ? "var(--green)" : ratio < crit ? "var(--amber)" : "var(--red)";
     return (
       <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--line-dim)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
           <span className="kicker">{label}</span>
           <span style={{ fontFamily: "var(--mono)", fontSize: 12, color }}>
-            {typeof val === "number" ? val.toFixed(val < 10 ? 2 : 0) : val}{unit}
+            {known ? `${val.toFixed(val < 10 ? 2 : 0)}${unit}` : "Unavailable"}
             <span style={{ color: "var(--ink-faint)" }}> / {max}{unit}</span>
           </span>
         </div>
-        <div className="bar-track" style={{ height: 4 }}>
+        {ratio !== null && <div className="bar-track" style={{ height: 4 }}>
           <div className="bar-fill" style={{ width: `${ratio * 100}%`, background: color }} />
-        </div>
+        </div>}
       </div>
     );
   };
@@ -344,49 +345,51 @@ export default function RiskMonitor() {
   // day). These meters represent "how much of the loss budget is used", so a
   // gain must clamp to 0 — Math.abs() would otherwise fill the bar on a
   // profitable day as if it were eating into the loss limit.
-  const daily_loss  = Math.max(0, -(guardrailStatus?.daily_loss_pct  || 0)) * 100;
-  const weekly_loss = Math.max(0, -(guardrailStatus?.weekly_loss_pct || 0)) * 100;
-  const monthly_loss = Math.max(0, -(guardrailStatus?.monthly_loss_pct || 0)) * 100;
+  const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+  const lossPercent = (v: unknown) => finite(v) ? Math.max(0, -v) * 100 : null;
+  const daily_loss = lossPercent(guardrailStatus?.daily_loss_pct);
+  const weekly_loss = lossPercent(guardrailStatus?.weekly_loss_pct);
+  const monthly_loss = lossPercent(guardrailStatus?.monthly_loss_pct);
   // riskState comes from /api/risk/portfolio-state → response.state (IBKR account + DB P&L windows).
   // Never fall back to a fabricated value — see Dashboard.tsx's pvDisplay
   // for the same principle applied to the same underlying data.
-  const pvAvailable = riskState?.state?.account_value != null || riskState?.portfolio_value != null;
+  const pvAvailable = finite(riskState?.state?.account_value) || finite(riskState?.portfolio_value);
   const pv          = riskState?.state?.account_value ?? riskState?.portfolio_value ?? 0;
   const pvDisplay   = pvAvailable ? `$${(pv/1000).toFixed(2)}k` : (portfolioStateError ? "UNAVAILABLE" : "—");
-  const daily_pnl   = riskState?.state?.daily_pnl ?? 0;
+  const daily_pnl = riskState?.state?.daily_pnl;
 
   return (
     <div style={{ padding: 16, overflowY: "auto", height: "100%" }}>
 
       {/* Header stats */}
-      <div className="instrument-stat-strip" style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", marginBottom: 16 }}>
+      <div className="instrument-stat-strip workspace-stat-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", marginBottom: 16 }}>
         <Stat label="Portfolio Value" value={pvDisplay} color="var(--cyan)" />
         <Stat label="Daily P&L"
-          value={`${daily_pnl >= 0 ? "+" : ""}$${Math.abs(daily_pnl).toFixed(0)}`}
-          color={daily_pnl >= 0 ? "var(--green)" : "var(--red)"} />
-        <Stat label="Open Positions" value={riskState?.state?.open_positions || 0} />
+          value={finite(daily_pnl) ? `${daily_pnl >= 0 ? "+" : "−"}$${Math.abs(daily_pnl).toFixed(0)}` : "Unavailable"}
+          color={!finite(daily_pnl) ? "var(--amber)" : daily_pnl >= 0 ? "var(--green)" : "var(--red)"} />
+        <Stat label="Open Positions" value={finite(riskState?.state?.open_positions) ? riskState.state.open_positions : "Unavailable"} />
         <Stat label="Status"
-          value={guardrailStatus?.trading_allowed ? "ACTIVE" : "SUSPENDED"}
+          value={typeof guardrailStatus?.trading_allowed !== "boolean" ? "UNKNOWN" : guardrailStatus.trading_allowed ? "ACTIVE" : "SUSPENDED"}
           color={guardrailStatus?.trading_allowed ? "var(--green)" : "var(--red)"} />
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+      <div className="workspace-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
         <div>
           <Section title="Loss Limits">
             <Meter label="Daily Loss" val={daily_loss} max={2} unit="%" />
             <Meter label="Weekly Loss" val={weekly_loss} max={5} unit="%" />
             <Meter label="Monthly Loss" val={monthly_loss} max={10} unit="%" />
-            <Meter label="Drawdown" val={Math.max(0, (guardrailStatus?.drawdown_pct || 0)) * 100} max={15} unit="%" />
+            <Meter label="Drawdown" val={finite(guardrailStatus?.drawdown_pct) ? Math.max(0, guardrailStatus.drawdown_pct) * 100 : null} max={15} unit="%" />
           </Section>
           <Section title="Position Limits">
-            <Meter label="Trades Today" val={guardrailStatus?.trades_today||0} max={3} unit="" warn={0.5} crit={0.85} />
-            <Meter label="Consecutive Losses" val={guardrailStatus?.consecutive_losses||0} max={3} unit="" warn={0.4} crit={0.7} />
-            <Meter label="Open Positions" val={riskState?.state?.open_positions||0} max={5} unit="" />
+            <Meter label="Trades Today" val={guardrailStatus?.trades_today} max={3} unit="" warn={0.5} crit={0.85} />
+            <Meter label="Consecutive Losses" val={guardrailStatus?.consecutive_losses} max={3} unit="" warn={0.4} crit={0.7} />
+            <Meter label="Open Positions" val={riskState?.state?.open_positions} max={5} unit="" />
           </Section>
           <Section title="Margin & Buying Power">
             {margin?.available ? (
               <>
-                <Meter label="Margin Utilization" val={margin.utilization_pct ?? 0} max={100} unit="%" warn={0.5} crit={0.8} />
+                <Meter label="Margin Utilization" val={margin.utilization_pct} max={100} unit="%" warn={0.5} crit={0.8} />
                 <div style={{ display: "flex", justifyContent: "space-between", padding: "12px 16px", borderBottom: "1px solid var(--line-dim)" }}>
                   <span className="kicker">Excess Liquidity</span>
                   <span style={{ fontFamily: "var(--mono)", fontSize: 12,
@@ -595,7 +598,7 @@ export default function RiskMonitor() {
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+      <div className="workspace-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
         <Section title="Stress & VaR" action={varRep && varRep.available !== false && (
           <span className="mono" style={{ fontSize: 10.5, color: "var(--ink-dim)" }}>
             VaR {Math.round((varRep.confidence ?? 0) * 100)}%: <b style={{ color: "var(--red)" }}>${Math.round(varRep.var ?? 0).toLocaleString()}</b>
@@ -740,7 +743,7 @@ export default function RiskMonitor() {
             // orders, and the server's view of what actually happened is the
             // only one worth rendering afterwards.
             onResolved={() =>
-              fetch("/api/trade-desk/rotation-reviews").then(r => r.json())
+              fetch("/api/trade-desk/rotation-reviews").then(r => { if (!r.ok) throw new Error("Risk data unavailable"); return r.json(); })
                 .then(d => setRotoReviews(d?.reviews ?? []))
                 .catch(() => {})
             }

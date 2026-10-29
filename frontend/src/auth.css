@@ -15,6 +15,16 @@
    you came to fill in. */
 
 .auth-page {
+  --bg: #08111f;
+  --bg-2: #0d1d2d;
+  --bg-3: #142337;
+  --ink: #eef3fa;
+  --ink-dim: #adbed4;
+  --ink-faint: #8ca1bc;
+  --line-dim: #23374e;
+  --accent: #f6c45c;
+  --radius-card: 16px;
+  --radius-control: 9px;
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
@@ -114,7 +124,7 @@
   margin-bottom: 14px;
 }
 .auth-h1 {
-  font-family: var(--display);
+  font-family: var(--sans);
   font-size: 32px;
   font-weight: 600;
   line-height: 1.18;
@@ -224,16 +234,16 @@
   height: 44px;
   width: 100%;
   border-radius: var(--radius-control);
-  background: var(--fill-active);
+  background: rgba(246, 196, 92, 0.08);
   border: 1px solid var(--accent);
-  color: var(--ink);
+  color: var(--accent);
   font-family: var(--sans);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   transition: background var(--motion-fast), border-color var(--motion-fast);
 }
-.auth-submit:hover:not(:disabled) { background: var(--cyan-dim); }
+.auth-submit:hover:not(:disabled) { background: rgba(246, 196, 92, 0.16); }
 .auth-submit:disabled { cursor: not-allowed; opacity: 0.55; }
 .auth-submit.busy {
   cursor: progress;

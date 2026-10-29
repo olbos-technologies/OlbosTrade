@@ -59,7 +59,7 @@ function ModeCard({ modeKey, s, isBest }: { modeKey: string; s: ModeStats; isBes
       </div>
 
       {/* Stats grid */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)" }}>
+      <div className="workspace-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)" }}>
         {[
           { label: "WIN RATE",   val: pct(s.win_rate),                color: s.win_rate >= 0.55 ? "var(--green)" : "var(--red)" },
           { label: "EXPECTANCY", val: fmt(s.expectancy),               color: s.expectancy >= 0 ? "var(--green)" : "var(--red)" },
@@ -179,7 +179,7 @@ export default function ModeAnalytics() {
       )}
 
       {/* Trading style cards */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 16 }}>
+      <div className="workspace-grid" style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 16 }}>
         {active.map(key => (
           <ModeCard key={key} modeKey={key} s={data.modes[key]} isBest={key === data.best_mode} />
         ))}
@@ -187,7 +187,7 @@ export default function ModeAnalytics() {
 
       {/* Comparison table */}
       <Panel padding={0} title="Head-to-Head Comparison">
-        <table className="t-table">
+        <div className="workspace-table-scroll"><table className="t-table">
           <thead><tr>
             {["Trading style","Trades","Win %","Avg/Trade","Total P&L","Sharpe","Expectancy","Hold"].map(h => <th key={h}>{h}</th>)}
           </tr></thead>
@@ -217,7 +217,7 @@ export default function ModeAnalytics() {
               );
             })}
           </tbody>
-        </table>
+        </table></div>
       </Panel>
 
       {/* Signal score impact */}

@@ -221,3 +221,11 @@ mode activation, risk-limit changes, merge or deployment. R2 remains incomplete.
 `e79e2b1` and aligns header, five-tab navigation and broker styling with the
 approved reference images. See `UI_REFERENCE_MATCH_HANDOFF.md`. No merge or
 deployment; browser captures and complete CI remain review gates.
+
+## UX-1 / UX-5 remaining workspace continuity — proposed
+
+Base `e7c397a`, branch `codex/ui-workspace-continuity`: extend navy/gold
+presentation to Risk, Journal, Analytics, Backtesting, Research, System and
+Account/credential pages. See `UI_WORKSPACE_CONTINUITY.md` for exact coverage,
+unknown-data fixes, validation and remaining specialist-panel/device gaps.
+No merge, deployment, migration, permission or execution change.
