@@ -252,6 +252,7 @@
   }
   .desktop-brand { grid-column: 1; grid-row: 1; min-height: 68px; }
   .desktop-brand > button { min-height: 44px; }
+  .desktop-brand .brand-lockup-word { width: 140px; height: 36px; }
   .desktop-execution-control { grid-column: 2; grid-row: 1; justify-content: end; padding: 12px 24px !important; border-left: 0 !important; }
   .desktop-market-clock { grid-column: 3; grid-row: 1; min-height: 44px; }
   .desktop-market-strip { grid-column: 1/-1; grid-row: 2; min-height: 30px; padding: 7px 24px; border-top: 1px solid var(--line-dim); background: #081321; }

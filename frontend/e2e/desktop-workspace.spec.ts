@@ -18,6 +18,8 @@ for(const width of [820,1280,1440,1920]) for(const surface of ['dashboard','mark
     expect((await nav.boundingBox())!.width).toBe(232);
     const ticker=await page.getByLabel('Market ticker',{exact:true}).boundingBox();
     const logo=await brand.boundingBox();
+    expect(logo!.width).toBeGreaterThanOrEqual(140);
+    expect(logo!.height).toBeGreaterThanOrEqual(36);
     expect(ticker!.y).toBeGreaterThanOrEqual(logo!.y+logo!.height);
     await page.waitForTimeout(500);
     await expectNoHorizontalOverflow(page,width);
