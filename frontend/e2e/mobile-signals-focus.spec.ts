@@ -21,6 +21,11 @@ async function stubSignalContext(page: Page) {
       total_position_count: 0, is_delta_neutral: true, needs_hedge: false,
     }),
   }));
+  await page.route("**/api/risk/portfolio-state", route => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ state: {} }),
+  }));
 }
 
 test("Signals prioritizes the live feed on a phone", async ({ page }) => {
