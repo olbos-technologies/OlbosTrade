@@ -47,7 +47,8 @@ semantics are not certified complete by this change.
   summaries, populated Analytics/Journal, unavailable Journal, and sign-in/request-access/claim at all four
   widths. Checks include no overflow, no render boundary failures, stacked
   Backtesting layout, password input geometry, Journal tab reachability and no
-  API writes. Captures use intercepted synthetic data, never real accounts.
+  order/settings writes. The existing read-only CSP calculation POST is mocked
+  explicitly; no request is forwarded. Captures use intercepted synthetic data, never real accounts.
 - Browser binaries are unavailable locally; CI is the rendering evidence. See
   the PR for exact head/run, pass/fail results and screenshot artifact IDs.
 - No backend application changes, new setting, migration, permission, broker
@@ -64,3 +65,8 @@ messages and consume rejected requests. Auxiliary Risk failures clear prior
 values; a regression test verifies margin data disappears after failed refresh.
 Journal entries support keyboard review, with a named edit dialog and unchanged
 save/cancel behavior. Browser review opens and cancels notes without writes.
+
+The typography guard now confines the serif face to landing.css and asserts
+that auth heading CSS uses the shared sans face. Local guard suite: six passed.
+This updates the previous explicit serif-auth design requirement rather than
+weakening the font scan or adding a dead token reference.

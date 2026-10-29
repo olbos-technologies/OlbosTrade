@@ -25,6 +25,9 @@ async function mockWorkspace(page: Page, populatedRisk = false, journalFailure =
   });
   await page.route('**/api/**', route => {
     const request=route.request(); const path=new URL(request.url()).pathname;
+    // Existing read-only calculation uses POST for its filter payload. Mock it
+    // without forwarding; all order/settings mutations remain disallowed.
+    if(request.method()==='POST' && path==='/api/options/csp/screen') return route.fulfill({status:503,json:null});
     if(request.method()!=='GET') { writes.push(path); return route.fulfill({status:503,json:null}); }
     if(journalFailure && path.startsWith('/api/journal/')) return route.fulfill({status:503,json:null});
     if(path.startsWith('/api/journal/review/monthly/')) return route.fulfill({json:{review:null}});
