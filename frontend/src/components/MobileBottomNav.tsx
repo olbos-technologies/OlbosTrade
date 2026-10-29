@@ -46,27 +46,21 @@ export const BOTTOM_NAV_ITEMS: BottomNavItem[] = [
     icon: <Icon><path d="M3 10.5 12 4l9 6.5" /><path d="M5.5 9.5V20h13V9.5" /></Icon>,
   },
   {
-    key: "trade:overview",
-    label: "Desk",
-    matches: ["trade:orders", "trade:copilot", "trade:execlog", "trade:logs"],
+    key: "markets:chart",
+    label: "Markets",
+    matches: ["markets", "markets:overview", "markets:watchlist"],
     icon: <Icon><path d="M4 18V9" /><path d="M9.5 18V5" /><path d="M15 18v-6" /><path d="M20.5 18V8" /></Icon>,
   },
   {
     key: "equity",
     label: "Signals",
     matches: ["options:signals", "strat:alpha-edge", "strat:research"],
-    icon: <Icon><path d="M3 13.5h4l3-7 4 13 3-6.5h4" /></Icon>,
+    icon: <Icon><path d="M9 18h6M10 21h4M8 14a7 7 0 1 1 8 0l-1 3H9z" /></Icon>,
   },
   {
     key: "trade:positions",
     label: "Positions",
-    icon: <Icon><rect x="3.5" y="5" width="17" height="14" rx="2" /><path d="M3.5 10h17" /><path d="M9 10v9" /></Icon>,
-  },
-  {
-    key: "risk:heat",
-    label: "Risk",
-    matches: ["risk", "risk:rules"],
-    icon: <Icon><path d="M12 3.5 21 20H3z" /><path d="M12 10v4" /><path d="M12 17h.01" /></Icon>,
+    icon: <Icon><rect x="3" y="7" width="18" height="14" rx="2" /><path d="M8 7V4h8v3" /></Icon>,
   },
 ];
 
@@ -109,7 +103,7 @@ export default function MobileBottomNav({
         aria-expanded={moreOpen}
         onClick={onOpenMore}
       >
-        <Icon><path d="M4 7h16" /><path d="M4 12h16" /><path d="M4 17h16" /></Icon>
+        <Icon><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></Icon>
         <span className="mobile-bottom-nav__label">More</span>
       </button>
     </nav>

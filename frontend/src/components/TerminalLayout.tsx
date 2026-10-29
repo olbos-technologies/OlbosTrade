@@ -26,7 +26,7 @@ import MobileBottomNav from "./MobileBottomNav";
 import { isTradeDeskV2Enabled } from "../trade-desk/featureFlags";
 import { TerminalNavProvider } from "./TerminalNavContext";
 import { Badge, Button } from "./ui";
-import BrandWordmark from "./BrandWordmark";
+import BrandWordmark from "./TerminalWordmark";
 
 // ── Icons (inline SVG — no dep) ───────────────────────────────────────────────
 const Icon = ({ d, size = 16 }: { d: string; size?: number }) => (
@@ -943,7 +943,7 @@ function TickerStrip({ onToggle, sidebarExpanded, isMobile }: {
              style={{ overflow: "hidden", paddingRight: showFullLogo ? 12 : 0 }}>
           {showFullLogo
             ? <BrandWordmark className="brand-lockup-word" height={25} />
-            : <img className="brand-lockup-mark" src="/olbos-mark.webp" alt="Olbos Trade" width={25} height={25} />}
+            : <BrandWordmark className="brand-lockup-mark" height={25} markOnly />}
         </div>
       </div>
 
@@ -1487,7 +1487,7 @@ export default function TerminalLayout({ children, activePage, onNav, isDeskV2Sh
         safety display: it is hidden here solely because the HALT button sits
         a few pixels above it, not because it stopped mattering.
       */
-      className={`app-shell${isDeskV2Shell ? " app-shell--desk" : ""}${activePage === "equity" ? " app-shell--signals" : ""}`}
+      className={`app-shell${isDeskV2Shell ? " app-shell--desk" : activePage === "paper" || activePage.startsWith("trade:") ? " app-shell--legacy-desk" : ""}${activePage === "equity" ? " app-shell--signals" : ""}`}
       style={{ display: "flex", flexDirection: "column", overflow: "hidden" }}
     >
       <ErrorBoundary label="Ticker strip">

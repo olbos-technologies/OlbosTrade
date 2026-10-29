@@ -28,12 +28,16 @@ const BIAS_TONE: Record<string, string> = {
 export default function SetupScannerPanel() {
   const [rows, setRows] = useState<SetupRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
   const [open, setOpen] = useState<string | null>(null);
 
   const run = () => {
     setLoading(true);
+    setError(false);
     (api.getSetupScanner() as Promise<{ results: SetupRow[] }>)
-      .then(d => setRows(d.results || [])).finally(() => setLoading(false));
+      .then(d => setRows(d.results || []))
+      .catch(() => { setRows([]); setError(true); })
+      .finally(() => setLoading(false));
   };
   useEffect(() => { run(); }, []);
 
@@ -43,7 +47,9 @@ export default function SetupScannerPanel() {
       title="Setup Readiness"
       action={<Button style={{ fontSize: 11 }} onClick={run} disabled={loading}>{loading ? "Scanning…" : "Rescan"}</Button>}
     >
-        {loading && rows.length === 0 ? (
+        {error ? (
+          <div role="status" style={{ fontSize: 12, color: "var(--amber)", padding: 8 }}>Setup readiness unavailable. Rescan to retry.</div>
+        ) : loading && rows.length === 0 ? (
           <div style={{ fontSize: 12, color: "var(--ink-dim)", padding: 8 }}>Scanning watchlist…</div>
         ) : rows.length === 0 ? (
           <div style={{ fontSize: 12, color: "var(--ink-faint)", padding: 8 }}>No results.</div>

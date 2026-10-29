@@ -17,6 +17,7 @@ describe("WelcomeBanner", () => {
 
     expect(screen.getByRole("region", { name: /getting started with olbostrade/i })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /make the terminal work for you/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Customize guidance and view getting started steps"));
     expect(screen.getByRole("group", { name: /choose your experience level/i })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /open broker/i }));
@@ -36,6 +37,7 @@ describe("WelcomeBanner", () => {
         <WelcomeBanner onDismiss={vi.fn()} />
       </TerminalNavProvider>,
     );
+    fireEvent.click(screen.getByText("Customize guidance and view getting started steps"));
     fireEvent.click(screen.getByRole("radio", { name: /experienced trader/i }));
     expect(screen.getByText(/inspect model lineage/i)).toBeInTheDocument();
     expect(screen.getByText(/cannot enable live trading/i)).toBeInTheDocument();

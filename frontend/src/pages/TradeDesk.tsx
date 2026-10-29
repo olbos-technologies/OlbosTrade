@@ -494,7 +494,7 @@ export default function TradeDesk({
   routeTabsToUrl = true,
   embedded = false,
 }: { initialTab?: Tab; routeTabsToUrl?: boolean; embedded?: boolean }) {
-  const { positions, lastSignal, cycleLog, loading, runCycle, refresh } = usePaperTrade();
+  const { positions, lastSignal, cycleLog, loading, runCycle, refresh, positionsError } = usePaperTrade();
   const [tab, setTab] = useTabRoute<Tab>(
     initialTab,
     routeTabsToUrl ? TAB_PAGE_KEYS : EMPTY_TAB_KEYS,
@@ -504,6 +504,7 @@ export default function TradeDesk({
   const [closeMsg, setCloseMsg] = useState<string | null>(null);
   const [closeFailed, setCloseFailed] = useState(false);
   const [closeReview, setCloseReview] = useState<{ position: any; untracked: boolean } | null>(null);
+  const [expandedPositionKey, setExpandedPositionKey] = useState<string | null>(null);
 
   /**
    * Turn a close failure into something the operator can act on.
@@ -581,6 +582,7 @@ export default function TradeDesk({
       setTradesLoading(true);
       (api.getTradeHistory() as any)
         .then((h: any) => setTrades(h.trades || []))
+        .catch(() => setTrades([]))
         .finally(() => setTradesLoading(false));
     };
     load();
@@ -606,12 +608,14 @@ export default function TradeDesk({
     { key: "manual",    label: "Manual Trade" },
   ];
 
-  const positionRows = positions || [];
+  const [positionQuery, setPositionQuery] = useState("");
+  const positionRows = positionsError ? [] : positions || [];
+  const visiblePositions = positionRows.filter((p: any) => `${p.symbol || p.underlying || ""} ${p.strategy || ""}`.toLowerCase().includes(positionQuery.toLowerCase()));
   const knownPositionPnl = positionRows.reduce((sum: number, position: any) =>
     typeof position.unrealized_pnl === "number" && Number.isFinite(position.unrealized_pnl)
       ? sum + position.unrealized_pnl
       : sum, 0);
-  const allPositionPnlKnown = positionRows.length > 0 && positionRows.every((position: any) =>
+  const allPositionPnlKnown = !positionsError && positionRows.length > 0 && positionRows.every((position: any) =>
     typeof position.unrealized_pnl === "number" && Number.isFinite(position.unrealized_pnl));
 
   const confirmReviewedClose = () => {
@@ -730,11 +734,13 @@ export default function TradeDesk({
 
         {/* POSITIONS */}
         {tab === "positions" && (
-          <div>
+          <div className="positions-workspace">
+            <header className="design-page-heading"><div><span className="design-eyebrow">YOUR PORTFOLIO</span><h1>Positions</h1><p>Holdings and exposure · broker marks may be unavailable</p></div><button className="design-review" onClick={refresh} aria-label="Refresh positions">↻</button></header>
+            <div className="design-search-row"><input aria-label="Search positions" placeholder="Search symbol or strategy" value={positionQuery} onChange={e => setPositionQuery(e.target.value)} /></div>
             <div className="positions-summary" aria-label="Open positions summary">
               <div>
                 <span className="positions-summary__label">Positions</span>
-                <strong>{positionRows.length}</strong>
+                <strong>{positionsError || loading ? "—" : positionRows.length}</strong>
               </div>
               <div>
                 <span className="positions-summary__label">Open P&amp;L</span>
@@ -783,11 +789,11 @@ export default function TradeDesk({
               ))}
             </tr></thead>
             <tbody>
-              {positionRows.length === 0 ? (
+              {positionsError ? <tr><td colSpan={11}><p role="status">Positions unavailable. Refresh to retry; holdings have not been confirmed.</p></td></tr> : loading && positionRows.length === 0 ? <tr><td colSpan={11}>Loading positions…</td></tr> : visiblePositions.length === 0 ? (
                 <tr><td colSpan={11} style={{ textAlign: "center", padding: 40, color: "var(--ink-dim)", fontSize: 12 }}>
-                  No open positions
+                  {positionQuery ? "No positions match your search" : "No open positions"}
                 </td></tr>
-              ) : positionRows.map((p: any, i: number) => {
+              ) : visiblePositions.map((p: any, i: number) => {
                 // unrealized_pnl requires a live broker mark (paper_trade.py
                 // only sets it when the IBKR position was matched to a
                 // current price) — absent whenever the broker is
@@ -810,10 +816,26 @@ export default function TradeDesk({
                 const canCloseUntracked = p.tracked === false && !p.id && p.asset_type === "equity";
                 const adopted = String(p.strategy || "").toLowerCase() === "adopted_untracked";
                 const symbol = p.symbol || p.underlying || "?";
+                const positionKey = String(p.id || `${symbol}-${p.asset_type || "unknown"}-${i}`);
+                const expanded = expandedPositionKey === positionKey;
                 const entryValue = p.credit_received ?? p.entry_credit ?? p.avg_cost;
                 return (
-                  <tr key={i}>
-                    <td data-col="symbol" className="mono" style={{ color: "var(--ink)" }}>{symbol}</td>
+                  <tr key={positionKey} className={expanded ? "position-card--expanded" : undefined}>
+                    <td data-col="symbol" className="mono" style={{ color: "var(--ink)" }}>
+                      <span className="position-desktop-symbol">{symbol}</span>
+                      <button
+                        type="button"
+                        className="position-mobile-expand"
+                        aria-label={`${expanded ? "Hide" : "Show"} details for ${symbol} position ${i + 1}`}
+                        aria-expanded={expanded}
+                        onClick={() => setExpandedPositionKey(expanded ? null : positionKey)}
+                      >
+                        <span className="position-mobile-symbol">{symbol}</span>
+                        <span className="position-mobile-quantity">{p.quantity == null ? "Qty unavailable" : `Qty ${p.quantity}`}</span>
+                        <span className="position-mobile-chevron" aria-hidden="true">⌄</span>
+                      </button>
+                      <small className="position-quantity">Qty {p.quantity ?? "—"}</small>
+                    </td>
                     <td data-col="type"><Badge text={p.asset_type?.toUpperCase() || "OPTIONS"} color="var(--ink-dim)" /></td>
                     <td data-col="strategy" className="mono" style={{ fontSize: 10 }}>
                       {adopted ? (

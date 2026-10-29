@@ -191,7 +191,7 @@ export default function GlobalRiskStatus() {
   } else {
     const engaged = killAvail.value.engaged;
     killChip = engaged
-      ? <Chip label="KILL" value="ARMED" tone="var(--red)" order={3} title="Kill switch engaged — new orders halted" />
+      ? <Chip label="KILL" value="HALTED" tone="var(--red)" order={3} title="Kill switch engaged — new orders halted" />
       : <Chip label="KILL" value="NOT ARMED" tone="var(--ink-dim)" order={3} />;
   }
 
@@ -201,7 +201,10 @@ export default function GlobalRiskStatus() {
   if (riskAvail.status === "loading") {
     drawdownChip = <Chip label="DD" value="LOADING" tone="var(--ink-faint)" order={4} />;
     budgetChip = <Chip label="RISK BUDGET" value="LOADING" tone="var(--ink-faint)" order={5} />;
-  } else if (riskAvail.status !== "available" || riskAvail.value.state?.error) {
+  } else if (riskAvail.status !== "available" || !riskAvail.value?.state
+      || riskAvail.value.state.error
+      || typeof riskAvail.value.state.daily_loss_pct !== "number"
+      || !Number.isFinite(riskAvail.value.state.daily_loss_pct)) {
     drawdownChip = <Chip label="DD" value="UNAVAILABLE" tone="var(--amber)" order={4} title="Portfolio state could not be read" />;
     budgetChip = <Chip label="RISK BUDGET" value="UNAVAILABLE" tone="var(--amber)" order={5} />;
   } else {

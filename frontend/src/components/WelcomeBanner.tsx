@@ -65,6 +65,8 @@ export default function WelcomeBanner({ onDismiss }: { onDismiss: () => void }) 
         <button type="button" className="btn-t" onClick={onDismiss} aria-label="Dismiss getting started guide" style={{ minHeight: 40 }}>Dismiss guide</button>
       </div>
 
+      <details className="welcome-guide-details">
+        <summary style={{ cursor: "pointer", minHeight: 44, alignContent: "center", color: "var(--cyan)", fontFamily: "var(--sans)", fontSize: 13 }}>Customize guidance and view getting started steps</summary>
       <fieldset style={{ border: 0, padding: 0, margin: "12px 0 16px" }}>
         <legend style={{ color: "var(--ink)", fontSize: 13, fontWeight: 700, marginBottom: 9 }}>Choose your experience level</legend>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(165px, 1fr))", gap: 10 }}>
@@ -115,6 +117,7 @@ export default function WelcomeBanner({ onDismiss }: { onDismiss: () => void }) 
           ))}
         </div>
       </div>
+      </details>
     </section>
   );
 }

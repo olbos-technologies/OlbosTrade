@@ -71,7 +71,7 @@ describe("Mobile Home truth and controls", () => {
   it("HALTED overrides the mode and disables the stop-automation button", async () => {
     vi.mocked(api.getTradeDeskKillSwitch).mockResolvedValue({ engaged: true });
     render(<MobileHome />);
-    await screen.findByText("HALTED");
+    await screen.findByText("Trading halted");
     expect(screen.getByRole("button", { name: "Stop automation" })).toBeDisabled();
   });
   it("does not claim automatic execution is available when kill status is unknown", async () => {
@@ -99,6 +99,14 @@ describe("Mobile Home truth and controls", () => {
     await screen.findByText("AUTOPILOT");
     fireEvent.click(screen.getByRole("button", { name: /Review signal queue/ }));
     expect(nav).toHaveBeenCalledWith("trade:copilot");
+    expect(api.setExecutionMode).not.toHaveBeenCalled();
+  });
+  it("opens broker connection details without changing execution mode", async () => {
+    render(<MobileHome />);
+    await screen.findByText("AUTOPILOT");
+    fireEvent.click(screen.getByText("System details"));
+    fireEvent.click(screen.getByRole("button", { name: /View connection details/ }));
+    expect(nav).toHaveBeenCalledWith("system:broker");
     expect(api.setExecutionMode).not.toHaveBeenCalled();
   });
   it("keeps recent, older and invalid/future timestamps separate", () => {

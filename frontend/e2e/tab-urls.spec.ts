@@ -161,6 +161,10 @@ test.describe("the legacy desk nested inside TradeDeskV2", () => {
    */
   test("clicking a nested tab switches the panel without navigating", async ({ page }) => {
     await open(page, "/terminal/trade/positions");
+    await page.route("**/api/paper-trade/positions", route => route.fulfill({
+      status:200, contentType:"application/json", body:JSON.stringify({positions:[]}),
+    }));
+    await page.reload();
 
     const urlBefore = page.url();
     // "Desk signals" in the DOM; the uppercase is CSS, and the accessible name

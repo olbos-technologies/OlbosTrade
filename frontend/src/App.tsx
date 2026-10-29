@@ -1,6 +1,7 @@
 import React from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import "./index.css";
+import "./terminal-design.css";
 import { canonicalPageKey, pageKeyToUrl, pathToPageKey } from "./terminalRoutes";
 import TerminalLayout  from "./components/TerminalLayout";
 import Dashboard       from "./pages/Dashboard";

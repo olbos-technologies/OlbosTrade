@@ -22,12 +22,14 @@ for (const width of [320, 390, 768]) {
     await home(page, width);
     await expectNoHorizontalOverflow(page, width);
     const root = page.getByTestId("mobile-home");
+    await root.getByText("System details", { exact: true }).click();
+    await expect(root.getByRole("button", { name: /View connection details/ })).toBeVisible();
     const sizes = await root.getByRole("button").evaluateAll(buttons =>
       buttons.map(el => ({ text: el.textContent, height: el.getBoundingClientRect().height })));
     expect(sizes.length).toBeGreaterThan(4);
     for (const b of sizes) expect(b.height, b.text || "button").toBeGreaterThanOrEqual(44);
     await expect(root.getByText("Stop coverage unverified", { exact: true })).toBeVisible();
-    const emergency = root.locator("summary");
+    const emergency = root.getByText("Emergency controls", { exact: true });
     await emergency.click();
     await expect(root.getByRole("button", { name: "Engage kill switch", exact: true })).toBeVisible();
     // Opening the existing dialog is safe: never click its submission button.
@@ -51,9 +53,13 @@ test("mobile failed reads stay unavailable instead of showing zeroes", async ({ 
 
 test("desktop dashboard keeps the existing executive summary", async ({ page }) => {
   await stubBackend(page);
+  await page.route("**/api/**", r => r.fulfill(r.request().url().includes("/api/auth/status")
+    ? {status:200,contentType:"application/json",body:JSON.stringify({auth_enabled:false,authenticated:false,user:null})}
+    : {status:503,contentType:"application/json",body:"{}"}));
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/terminal/dashboard");
-  await expect(page.getByTestId("mobile-home")).toHaveCount(0);
+  await expect(page.getByTestId("mobile-home")).toBeVisible();
+  await expect(page.locator(".home-advanced")).toHaveAttribute("open", "");
   await expect(page.getByText("EXECUTIVE SUMMARY", { exact: true })).toBeVisible();
 });
 

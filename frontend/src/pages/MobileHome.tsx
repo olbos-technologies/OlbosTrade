@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client";
 import { useTerminalNav } from "../components/TerminalNavContext";
+import { riskWarnings } from "../components/CommandAttention";
 import KillSwitchButton from "../components/KillSwitchButton";
 import "./MobileHome.css";
 
@@ -58,6 +59,13 @@ const readBroker = async () => {
   if (typeof d.broker !== "string" || typeof d.paper_mode !== "boolean" || typeof d.status !== "string") throw new Error("Broker unavailable");
   return d;
 };
+type Guard = { trading_allowed: boolean; reason?: string; daily_loss_pct?: number; max_daily_loss_pct?: number; weekly_loss_pct?: number; max_weekly_loss_pct?: number };
+const readGuard = async () => {
+  const value = await json<Guard>("/api/guardrails/status");
+  if (typeof value.trading_allowed !== "boolean") throw new Error("Risk checks unavailable");
+  return value;
+};
+const readRiskState = () => json<{ state?: Record<string, unknown> }>("/api/risk/portfolio-state");
 const readCoverage = () => json<Coverage>("/api/portfolio/open-orders");
 const readMode = async () => {
   const d = await api.getExecutionMode() as Mode;
@@ -106,12 +114,15 @@ export default function MobileHome() {
   const pending = useResource(readPending, now);
   const coverage = useResource(readCoverage, now);
   const kill = useResource(readKill, now);
+  const guard = useResource(readGuard, now);
+  const riskState = useResource(readRiskState, now);
+  const warnings = riskWarnings(guard.value, riskState.value?.state);
   const [stopping, setStopping] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [stopError, setStopError] = useState(false);
   const counts = pending.value ? splitPending(pending.value, now) : null;
   const halted = kill.value?.engaged === true;
-  const modeLabel = halted ? "HALTED" : mode.value ? mode.value.mode.toUpperCase() : "MODE UNVERIFIED";
+  const modeLabel = halted ? "Trading halted" : mode.value ? mode.value.mode.toUpperCase() : "MODE UNVERIFIED";
   const persisted = mode.value?.persistence === "confirmed";
   const reliable = coverage.value?.available === true &&
     coverage.value.source === "refreshed" &&
@@ -135,18 +146,23 @@ export default function MobileHome() {
     } finally { setStopping(false); }
   };
   const refresh = () => {
-    [summary, mode, broker, positions, pending, coverage, kill].forEach(r => r.refresh());
+    [summary, mode, broker, positions, pending, coverage, kill, guard, riskState].forEach(r => r.refresh());
     setNow(Date.now());
   };
 
   return (
     <div className="mobile-home" data-testid="mobile-home">
       <header className="mh-heading">
-        <div><div className="mh-eyebrow">YOUR TRADING DAY</div><h1>Home</h1></div>
+        <div><div className="mh-eyebrow">YOUR TRADING DAY</div><h1>Overview</h1></div>
         <button className="mh-icon-button" onClick={refresh} aria-label="Refresh home">↻</button>
       </header>
 
-      <section className="mh-status mh-card" aria-label="Execution status">
+      {warnings.length > 0 && <section className="mh-card mh-risk-alert" aria-label="Needs attention">
+        <div className="mh-section-title">Risk needs attention</div>
+        {warnings.map(warning => <p className="mh-warning" key={warning}>{warning}</p>)}
+        <button className="mh-link" onClick={() => nav("risk")}>Review portfolio &amp; risk <span aria-hidden="true">↗</span></button>
+      </section>}
+      <section className={`mh-status mh-card${halted ? " mh-status-halted" : ""}${!mode.value || !kill.value || !broker.value || broker.value.status !== "connected" || !guard.value ? " mh-status-unverified" : ""}`} aria-label="Execution status">
         <div className="mh-line">
           <strong className={halted ? "mh-negative" : mode.value?.mode === "autopilot" ? "mh-warning" : ""}>{modeLabel}</strong>
           <span className="mh-environment">{broker.value
@@ -161,14 +177,20 @@ export default function MobileHome() {
           : mode.value.mode === "copilot" ? "Every new trade needs your approval."
           : "Signals only. No automated entries."}</p>
         {mode.value && <p className={!persisted ? "mh-warning" : "mh-muted"}>
-          {persisted ? `Mode read ${Math.max(0, Math.floor((now - mode.at!) / 1000))}s ago · saved`
+          {persisted ? `Mode: ${mode.value.mode.charAt(0).toUpperCase() + mode.value.mode.slice(1)} · saved`
             : `Saved state ${mode.value.persistence || "unverified"} — verify execution controls`}
         </p>}
         {broker.value && broker.value.status !== "connected" && <p className="mh-warning">Broker disconnected — account data may be unavailable.</p>}
         {!kill.value && <p className="mh-warning">Kill switch status unverified.</p>}
+        {!guard.value && !guard.loading && <p className="mh-warning">Entry-check status unavailable. Review Risk before submitting new orders.</p>}
+        <details className="mh-system-details">
+          <summary>System details</summary>
+          <p className="mh-muted">Mode last checked: {mode.at ? `${Math.max(0, Math.floor((now - mode.at) / 1000))}s ago${mode.fresh ? "" : " · unavailable or stale"}` : "unavailable"}. Account and protection data refresh independently.</p>
+          <button className="mh-link" onClick={() => nav("system:broker")}>View connection details <span aria-hidden="true">↗</span></button>
+        </details>
       </section>
 
-      <section className="mh-card mh-account" aria-label="Account overview">
+      <section className={`mh-card mh-account${!summary.loading && !summary.value ? " mh-account-unavailable" : ""}`} aria-label="Account overview">
         <div className="mh-eyebrow">BROKER ACCOUNT VALUE</div>
         <div className="mh-balance">{summary.loading ? "Loading…" : money(summary.value?.total_equity)}</div>
         {!summary.value && !summary.loading && <p className="mh-warning">Account data unavailable. Refresh to retry.</p>}
@@ -180,7 +202,7 @@ export default function MobileHome() {
         <p className="mh-muted">Trade P&amp;L and broker balance may cover different holdings.</p>
       </section>
 
-      <section className="mh-card" aria-label="Stop coverage">
+      <section className="mh-card mh-protection" aria-label="Stop coverage">
         <div className="mh-section-title">Protection</div>
         <p className={uncovered === null || uncovered.length ? "mh-warning" : ""}>
           {uncovered === null ? "Stop coverage unverified"
@@ -192,10 +214,10 @@ export default function MobileHome() {
         <button className="mh-link" onClick={() => nav("trade:positions")}>Review positions <span aria-hidden="true">↗</span></button>
       </section>
 
-      <section className="mh-card" aria-label="Pending signals">
-        <div className="mh-section-title">Signals awaiting review</div>
+      <section className="mh-card mh-attention" aria-label="Pending signals">
+        <div className="mh-section-title">Needs your attention</div>
         {counts ? <>
-          <div className="mh-counts">
+          <div className="mh-counts" aria-label="Signals awaiting review">
             <div><strong>{counts.recent}</strong><span>Recent · under 24h</span></div>
             <div><strong>{counts.older}</strong><span>Older · 24h or more</span></div>
           </div>
@@ -203,9 +225,10 @@ export default function MobileHome() {
           <p className="mh-muted">{pending.value!.length === 0 ? "Your approval queue is clear." : "Age groups only. Every approval is checked again before execution."}</p>
         </> : <p className="mh-warning">{pending.loading ? "Loading signals…" : "Signal queue unavailable."}</p>}
         <button className="mh-primary" onClick={() => nav("trade:copilot")}>Review signal queue <span aria-hidden="true">→</span></button>
+        <button className="mh-link" onClick={() => nav("markets:chart")}>Explore markets <span aria-hidden="true">↗</span></button>
       </section>
 
-      <section className="mh-card" aria-label="Open positions">
+      <section className="mh-card mh-holdings" aria-label="Open positions">
         <div className="mh-line"><div className="mh-section-title">Open positions</div><span className="mh-muted">{positions.value ? positions.value.length : "—"}</span></div>
         {!positions.value ? <p className="mh-warning">{positions.loading ? "Loading positions…" : "Positions unavailable."}</p>
           : positions.value.length === 0 ? <p className="mh-muted">No open positions reported.</p>

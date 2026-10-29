@@ -10,18 +10,24 @@ const setup = (active = "dashboard") => {
 };
 
 describe("MobileBottomNav", () => {
-  it("renders five destinations plus More", () => {
+  it("renders the five approved tabs including More", () => {
     setup();
-    // Six is the ceiling: a seventh drops each target below the 44px a
-    // finger needs on a 360px-wide phone.
+    // Four destinations and More match the approved mobile navigation.
     expect(screen.getAllByRole("button")).toHaveLength(BOTTOM_NAV_ITEMS.length + 1);
-    expect(BOTTOM_NAV_ITEMS).toHaveLength(5);
+    expect(BOTTOM_NAV_ITEMS).toHaveLength(4);
+    expect(screen.getAllByRole("button").map(b => b.getAttribute("aria-label"))).toEqual(["Home", "Markets", "Signals", "Positions", "More"]);
   });
 
   it("navigates with the same key the sidebar uses", () => {
     const { onNav } = setup();
     fireEvent.click(screen.getByLabelText("Signals"));
     expect(onNav).toHaveBeenCalledWith("equity");
+  });
+
+  it("opens the chart workspace from Markets", () => {
+    const { onNav } = setup();
+    fireEvent.click(screen.getByLabelText("Markets"));
+    expect(onNav).toHaveBeenCalledWith("markets:chart");
   });
 
   it("marks the active destination for assistive tech, not just visually", () => {

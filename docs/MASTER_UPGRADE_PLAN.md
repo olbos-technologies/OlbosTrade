@@ -214,3 +214,10 @@ mode activation, risk-limit changes, merge or deployment. R2 remains incomplete.
 - No migration beyond dependency 0044, order mutations, risk/mode changes,
   deployment or real broker drill. See `BROKER_PAPER_ACCOUNT_DATA.md` for bounds,
   rollback and the remaining execution requirements.
+
+## UX-1 / UX-5 reference integration — proposed
+
+`codex/design-reference-match` combines PR #158 at `27ce927` with main
+`e79e2b1` and aligns header, five-tab navigation and broker styling with the
+approved reference images. See `UI_REFERENCE_MATCH_HANDOFF.md`. No merge or
+deployment; browser captures and complete CI remain review gates.

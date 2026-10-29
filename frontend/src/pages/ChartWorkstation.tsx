@@ -1,3 +1,4 @@
+import { useIsMobile } from "../hooks/useIsMobile";
 import React, { useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
 import MarketBiasPanel from "../components/MarketBiasPanel";
@@ -194,7 +195,8 @@ export default function ChartWorkstation({
   /** Hide top strip + left watch rail — discovery lives in Equity Desk. */
   compact?: boolean;
 } = {}) {
-  const { positions, portfolio } = usePaperTrade();
+  const isMobile = useIsMobile();
+  const { positions, portfolio, portfolioError, positionsError } = usePaperTrade();
   const { guardrailStatus, reconciliation, killSwitch } = useRisk();
 
   const [internalSymbol, setInternalSymbol] = useState(() => {
@@ -224,7 +226,7 @@ export default function ChartWorkstation({
   const [chartError, setChartError] = useState<string | null>(null);
   const [catalystEvents, setCatalystEvents] = useState<CatalystEvent[]>([]);
   const [signalDrawerOpen, setSignalDrawerOpen] = useState(false);
-  const [execMode, setExecMode] = useState<ExecMode>("manual");
+  const [execMode, setExecMode] = useState<ExecMode | null>(null);
   const [watchlist, setWatchlist] = useState<string[]>(loadStoredWatchlist);
   const [tickerInput, setTickerInput] = useState("");
 
@@ -288,7 +290,7 @@ export default function ChartWorkstation({
             setExecMode(d.mode);
           }
         })
-        .catch(() => {});
+        .catch(() => setExecMode(null));
     loadExec();
     const ei = setInterval(loadExec, 15000);
     return () => {
@@ -366,21 +368,28 @@ export default function ChartWorkstation({
       ].filter((level) => level.value > 0);
 
   const actionableSignals = signals.filter((item) => item.action !== "HOLD");
-  const netLiq = portfolio?.account_value ?? portfolio?.net_liquidation;
+  const netLiq = portfolioError ? null : portfolio?.account_value ?? portfolio?.net_liquidation;
   const dayPnl = guardrailStatus?.daily_pnl;
-  const execDisplay = formatExecutionModeDisplay(execMode, Boolean(killSwitch?.active));
+  const execDisplay = execMode === null && !killSwitch?.active
+    ? { label: "Execution mode", value: "UNKNOWN", tone: "var(--amber)" }
+    : formatExecutionModeDisplay(execMode, Boolean(killSwitch?.active));
   const planTitle = tradePlanCardTitle(Boolean(selectedSignal), selectedSignal?.source);
 
   return (
-    <div style={{ padding: compact ? 0 : 16, display: "flex", flexDirection: "column", gap: 14, height: compact ? "100%" : undefined }}>
+    <div className={compact ? "chart-workspace chart-workspace--compact" : "chart-workspace"} style={{ padding: compact ? 0 : 16, display: "flex", flexDirection: "column", gap: 14, height: compact ? "100%" : undefined }}>
       {!compact && <div className="markets-toolbar" style={{marginBottom:0}}>
-        <div><div className="markets-kicker">MARKET INTELLIGENCE</div><h1>Chart workspace</h1><p>Signal direction and model score are research inputs, not permission to execute.</p></div>
+        <div><div className="markets-kicker">MARKET INTELLIGENCE</div><h1>Market workspace</h1><p>Signal direction and model score are research inputs, not permission to execute.</p></div>
         <div className="markets-controls"><button aria-pressed={focusChart} onClick={()=>setFocusChart(v=>!v)}>{focusChart ? "Show research panels" : "Focus chart"}</button></div>
+      </div>}
+      {!compact && <div className="chart-symbol-picker" aria-label="Chart instruments">
+        {Array.from(new Set([symbol, ...watchlist])).slice(0, 5).map(ticker => (
+          <button key={ticker} aria-pressed={symbol === ticker} onClick={() => setSymbol(ticker)}>{ticker}</button>
+        ))}
       </div>}
       {!compact && !focusChart && (
       <div style={{
         display: "grid",
-        gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+
         gap: 10,
       }} className="workstation-top-strip">
         {[
@@ -396,8 +405,8 @@ export default function ChartWorkstation({
 
       <div className="workstation-grid" style={compact || focusChart ? { gridTemplateColumns: "1fr", flex: 1, minHeight: 0 } : undefined}>
         {!compact && !focusChart && (
-        <div className="workstation-col">
-          <Panel title="Market Watch" sectionStyle={{ overflow: "hidden" }}>
+        <div className="workstation-col workstation-watchlist">
+          <Panel title="Your watchlist" sectionStyle={{ overflow: "hidden" }}>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               <div style={{ display: "flex", gap: 6 }}>
                 <input
@@ -462,7 +471,7 @@ export default function ChartWorkstation({
 
           <Panel title="Positions" sectionStyle={{ overflow: "hidden" }}>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {positions.length === 0 ? (
+              {positionsError ? <p role="status">Positions unavailable. Check broker connection.</p> : positions.length === 0 ? (
                 <div style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--ink-faint)" }}>
                   NO OPEN POSITIONS
                 </div>
@@ -495,6 +504,11 @@ export default function ChartWorkstation({
         )}
 
         <div className="workstation-center">
+          <div className="chart-quote" aria-label="Selected instrument quote">
+            <div><span className="design-eyebrow">{symbol} · MARKET SNAPSHOT</span><strong>{fmtMoney(selectedSnapshot?.last_close)}</strong></div>
+            <span style={{ color: selectedSnapshot?.change_pct == null ? "var(--ink-dim)" : selectedSnapshot.change_pct >= 0 ? "var(--green)" : "var(--red)" }}>{fmtPct(selectedSnapshot?.change_pct)}</span>
+            <p>Last close snapshot · {latestBar ? `Chart bar: ${new Date(latestBar.timestamp).toLocaleString()}` : "Chart data unavailable"}</p>
+          </div>
           <Panel
             sectionStyle={{ overflow: "hidden" }}
             padding={0}
@@ -517,7 +531,7 @@ export default function ChartWorkstation({
               </div>
             }
           >
-            <div style={{ padding: 14 }}>
+            <div className="chart-panel-body" style={{ padding: 14 }}>
               <div style={{
                 display: "grid",
                 gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
@@ -561,15 +575,15 @@ export default function ChartWorkstation({
           </Panel>
 
           {!compact && (
-          <section className="chart-intel-grid">
+          <details className="chart-research" open={!isMobile}><summary>Research evidence</summary><section className="chart-intel-grid">
             <MarketBiasPanel symbol={symbol} />
             <TimeframeAlignmentPanel symbol={symbol} />
             <MarketStructurePanel symbol={symbol} timeframe="1d" />
-          </section>
+          </section></details>
           )}
 
           {!compact && (
-          <div className="workstation-bottom-grid">
+          <details className="chart-research" open={!isMobile}><summary>Trade plan and context</summary><div className="workstation-bottom-grid">
             <Panel title={planTitle} sectionStyle={{ overflow: "hidden" }}>
               {selectedSignal?.source && selectedSignal.source !== "unknown" && (
                 <div className="instrument-card--flat" style={{
@@ -614,7 +628,7 @@ export default function ChartWorkstation({
                 </div>
               </div>
             </Panel>
-          </div>
+          </div></details>
           )}
         </div>
 
@@ -679,9 +693,9 @@ export default function ChartWorkstation({
                 const raw = guardrailStatus?.daily_loss_pct;
                 const dailyLossPct = typeof raw === "number" ? Math.max(0, -raw) * 100 : null;
                 return [
-                  { label: "Kill Switch", value: killSwitch?.active ? "ACTIVE" : "ARMED", tone: killSwitch?.active ? "var(--red)" : "var(--green)" },
+                  { label: "Kill Switch", value: !killSwitch || typeof killSwitch.active !== "boolean" ? "UNKNOWN" : killSwitch.active ? "ACTIVE" : "INACTIVE", tone: !killSwitch || typeof killSwitch.active !== "boolean" ? "var(--amber)" : killSwitch.active ? "var(--red)" : "var(--ink-dim)" },
                   { label: "Daily Loss", value: fmtPct(dailyLossPct, 2), tone: dailyLossPct ? "var(--red)" : "var(--green)" },
-                  { label: "Open Positions", value: String(portfolio?.open_positions ?? positions.length ?? 0), tone: "var(--ink)" },
+                  { label: "Open Positions", value: positionsError ? "—" : String(positions.length), tone: "var(--ink)" },
                   { label: "Win Rate", value: portfolio?.win_rate != null ? `${Math.round(portfolio.win_rate * 100)}%` : "—", tone: "var(--cyan)" },
                 ].map((row) => (
                   <div key={row.label} style={{ display: "flex", justifyContent: "space-between", gap: 16, borderBottom: "1px solid var(--line-dim)", paddingBottom: 8 }}>

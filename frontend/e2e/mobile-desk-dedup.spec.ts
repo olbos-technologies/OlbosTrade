@@ -150,6 +150,7 @@ test("a position close is reviewed before hold-to-submit", async ({ page }) => {
 
   await expect(page.getByLabel("Open positions summary")).toContainText("1");
   await expect(page.getByLabel("Open positions summary")).toContainText("-$433");
+  await page.getByRole("button", { name: "Show details for ADBE position 1" }).click();
   await expect(page.getByText(/Adopted from broker/)).toBeVisible();
 
   // Choosing Close is reversible and opens a review. Submission still needs

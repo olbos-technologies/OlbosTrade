@@ -105,8 +105,8 @@ export default function CopilotQueue() {
         {pending.length > 0 && (
           <Badge kind="tag" tone="var(--orange)">{`${pending.length} PENDING`}</Badge>
         )}
-        <span style={{ fontFamily: "var(--mono)", fontSize: 10, color: "var(--ink-faint)", flex: 1 }}>
-          Approve routes through existing OMS. Size edits require a new signal (no modify → re-eval yet).
+        <span className="copilot-queue-note" style={{ fontFamily: "var(--sans)", fontSize: 12, color: "var(--ink-dim)", flex: "1 1 240px" }}>
+          Review each signal before approving. To change its size, request a new signal.
         </span>
         {pending.length > 1 && !confirmClear && (
           <button
