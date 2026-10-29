@@ -11,7 +11,11 @@ type ClosedTrade = {status?: string; exit_date?: string; pnl?: number};
 export function closedPnlPoints(trades: ClosedTrade[]) {
   if(trades.some(t => t.status !== "closed" || !finiteNumber(t.pnl) || !Number.isFinite(Date.parse(t.exit_date || "")))) throw new Error("Incomplete trade history");
   let cumulative=0;
-  return [...trades].sort((a,b)=>Date.parse(a.exit_date!)-Date.parse(b.exit_date!)).map(t=>({at:Date.parse(t.exit_date!),value:(()=>{ cumulative+=t.pnl!; if(!Number.isFinite(cumulative)) throw new Error("Invalid cumulative P&L"); return cumulative; })()}));
+  return [...trades].sort((a,b)=>Date.parse(a.exit_date!)-Date.parse(b.exit_date!)).map(t=>{
+    cumulative+=t.pnl!;
+    if(!Number.isFinite(cumulative)) throw new Error("Invalid cumulative P&L");
+    return {at:Date.parse(t.exit_date!),value:cumulative};
+  });
 }
 const readHistory = async()=>{
   const d=await api.getTradeHistory({limit:500,status:"closed"}) as {trades:ClosedTrade[]};

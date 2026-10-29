@@ -30,6 +30,10 @@ for(const width of [820,1280,1440,1920]) test(`Figma command center ${width}`,as
  await expect(page.getByRole('button',{name:'1W',exact:true})).toHaveAttribute('aria-pressed','true');
  await expectNoHorizontalOverflow(page,width);
  await page.screenshot({path:`ui-audit-artifacts/figma-command-center-populated-${width}.png`,fullPage:true});
+ await page.getByRole('region',{name:'Market pulse',exact:true}).scrollIntoViewIfNeeded();
+ await expect(page.getByText('Synthetic earnings event',{exact:true})).toBeVisible();
+ await page.screenshot({path:`ui-audit-artifacts/figma-command-center-lower-${width}.png`,fullPage:true});
+ await page.locator('.dc-heading').scrollIntoViewIfNeeded();
  await page.route('**/api/dashboard/summary',r=>r.fulfill({status:503,json:{}}));
  await page.route('**/api/paper-trade/history?**',r=>r.fulfill({status:503,json:{}}));
  await page.getByRole('button',{name:'Refresh command center'}).click();
