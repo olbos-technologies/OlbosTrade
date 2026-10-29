@@ -48,6 +48,8 @@ for (const width of [320,390,768,1440]) for (const state of ['populated','unavai
       const logo=await page.locator('.mobile-terminal-header .terminal-wordmark').boundingBox();
       const menu=await page.getByRole('button',{name:'Toggle navigation',exact:true}).boundingBox();
       expect(logo!.x+logo!.width).toBeLessThanOrEqual(menu!.x);
+      expect(logo!.y).toBeGreaterThanOrEqual(0);
+      expect(menu!.y).toBeGreaterThanOrEqual(0);
       expect(menu!.width).toBeGreaterThanOrEqual(44);
       await expect(page.locator('.mobile-market-ticker')).toBeHidden();
     }

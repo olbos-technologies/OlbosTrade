@@ -1,6 +1,8 @@
 /* UX-1 / UX-5: shared terminal presentation. Execution semantics live in the
    existing components; these tokens never infer account or approval state. */
 .app-shell {
+  position: fixed;
+  inset: 0;
   --bg: #08111f;
   --bg-1: #0b1524;
   --bg-2: #101e30;
