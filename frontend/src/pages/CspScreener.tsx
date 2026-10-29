@@ -143,7 +143,7 @@ export default function CspScreener() {
       </div>
 
       {/* Status bar */}
-      <div className="instrument-stat-strip" style={{
+      <div className="instrument-stat-strip workspace-stat-grid" style={{
         display: "flex", alignItems: "center", flexWrap: "wrap", gap: 4,
         margin: "10px 0",
       }}>
@@ -169,7 +169,7 @@ export default function CspScreener() {
         </div>
       ))}
 
-      <div style={{ display: "grid", gridTemplateColumns: "220px minmax(0,1fr)", gap: 14, marginTop: 12 }}>
+      <div className="workspace-grid" style={{ display: "grid", gridTemplateColumns: "220px minmax(0,1fr)", gap: 14, marginTop: 12 }}>
         {/* Filter panel */}
         <div className="instrument-card" style={{ padding: 14 }}>
           <div className="kicker" style={{ marginBottom: 12 }}>Filters</div>

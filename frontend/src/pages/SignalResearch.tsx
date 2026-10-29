@@ -192,7 +192,7 @@ export default function SignalResearch() {
           <div style={{ padding: "9px 14px", borderBottom: "1px solid var(--line-dim)" }}>
             <span className="panel-title">By Ticker</span>
           </div>
-          <table className="t-table">
+          <div className="workspace-table-scroll"><table className="t-table">
             <thead><tr>{["Ticker", "Signals", "Hit Rate"].map(h => <th key={h}>{h}</th>)}</tr></thead>
             <tbody>
               {stats.by_ticker.map(t => (
@@ -205,7 +205,7 @@ export default function SignalResearch() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         </div>
       )}
 
@@ -238,14 +238,14 @@ export default function SignalResearch() {
           </div>
         ) : (
           <div style={{ overflowX: "auto" }}>
-            <table className="t-table">
+            <div className="workspace-table-scroll"><table className="t-table">
               <thead><tr>
                 {["Ticker", "Action", "Confidence", "Status", "Generated", "Days", "Entry", "Target", "Stop", "Best Move"].map(h => <th key={h}>{h}</th>)}
               </tr></thead>
               <tbody>
                 {raw.map(o => <RawRow key={o.id} o={o} />)}
               </tbody>
-            </table>
+            </table></div>
           </div>
         )}
       </Panel>

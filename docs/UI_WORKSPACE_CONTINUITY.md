@@ -8,7 +8,8 @@ Branch: `codex/ui-workspace-continuity`. No merge or deployment by this task.
 A shared WorkspaceFrame adds page headings, readable descriptions, navy cards,
 gold selected tabs, consistent forms and 44px mobile controls to Risk,
 Guardrails, Journal, Analytics, Backtesting, all five Research tabs, all three
-System integration tabs, Profile, Password and Sessions. Existing primary-page
+System integration tabs, Profile, Password and Sessions. The same frame also covers Strategy, Options, Crypto and Scanner
+page families, with responsive form/grid/table hooks in their main views. Existing primary-page
 and My Brokers headings are retained. Unknown routes do not inherit metadata
 from Object.prototype. The official Olbos Trade logo remains unchanged.
 
@@ -20,9 +21,10 @@ Password inputs use 16px type on mobile to avoid Safari focus zoom. Credential
 screens keep their existing official logo, routes, validation and notice tones,
 with matching navy/gold tokens and sans-serif headings.
 
-This covers the named workspaces, not certification of every advanced panel.
-Options chain/income/flow, crypto, strategy builder and specialist research
-subpanels still need individual populated-state design review and device tests.
+Shared presentation now covers the terminal page families. This is not
+certification of every nested advanced workflow: populated derivatives chains,
+strategy registration, alerts, scan execution and specialist research subpanels
+still need individual real-data workflow/device reviews.
 No claim of entire-app completion or real-device Safari verification.
 
 ## Truthful unavailable states
@@ -41,7 +43,7 @@ semantics are not certified complete by this change.
 - Local full frontend unit suite: 71 files / 617 tests passed, including seven
   risk/journal/Intel read-state regressions. No broker mutations in those tests.
 - TypeScript/Vite production build and git diff checks recorded in the PR.
-- Browser coverage: 16 workspace routes at 320/390/768/1440px, populated Risk
+- Browser coverage: 30 workspace routes at 320/390/768/1440px, populated Risk
   summaries, populated Analytics/Journal, unavailable Journal, and sign-in/request-access/claim at all four
   widths. Checks include no overflow, no render boundary failures, stacked
   Backtesting layout, password input geometry, Journal tab reachability and no

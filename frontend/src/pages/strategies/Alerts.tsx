@@ -126,7 +126,7 @@ export default function Alerts() {
       {rules.length === 0 ? (
         <div style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--ink-faint)", marginBottom: 20 }}>No rules yet.</div>
       ) : (
-        <table className="t-table" style={{ marginBottom: 20, maxWidth: 760 }}>
+        <div className="workspace-table-scroll"><table className="t-table" style={{ marginBottom: 20, maxWidth: 760 }}>
           <thead>
             <tr><th>Name</th><th>Symbol</th><th>Condition</th><th>Cooldown</th><th>Status</th><th></th></tr>
           </thead>
@@ -158,7 +158,7 @@ export default function Alerts() {
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       )}
 
       {/* Notifications */}

@@ -42,6 +42,13 @@ const surfaces = [
   ['system/broker','System settings'], ['system/market','System settings'],
   ['system/quality','System settings'], ['account/profile','Your account'],
   ['account/password','Your account'], ['account/sessions','Your account'],
+  ['strat/cards','Strategy workspace'], ['strat/health','Strategy workspace'],
+  ['strat/calendar','Strategy workspace'], ['strat/builder','Strategy workspace'],
+  ['strat/alerts','Strategy workspace'], ['strat/research','Strategy workspace'],
+  ['strat/alpha-edge','Strategy workspace'], ['strat/signal-history','Strategy workspace'],
+  ['options/signals','Options workspace'], ['options/chain','Options workspace'],
+  ['options/income','Options workspace'], ['options/flow','Options workspace'],
+  ['crypto/signals','Crypto research'], ['scan','Market scanners'],
 ] as const;
 
 for(const width of [320,390,768,1440]) for(const [surface,title] of surfaces) {

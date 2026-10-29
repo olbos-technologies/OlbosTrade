@@ -107,7 +107,7 @@ function FlowCard({ row, onPickTicker }: { row: FlowRow; onPickTicker: (t: strin
       </div>
 
       {/* Stat grid — every value is a real field from the scan row */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: "8px 10px" }}>
+      <div className="workspace-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: "8px 10px" }}>
         <Cell label="Strike" value={row.strike} />
         <Cell label="Exp" value={row.expiry} />
         <Cell label="Spot" value={row.spot != null ? row.spot.toFixed(2) : "—"} />
@@ -290,13 +290,13 @@ export default function OptionsFlow() {
             : "No rows match the current ticker/type filter."}
         </div>
       ) : view === "cards" ? (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 10 }}>
+        <div className="workspace-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%,320px), 1fr))", gap: 10 }}>
           {shown.map((r, i) => (
             <FlowCard key={`${r.ticker}-${r.strike}-${r.expiry}-${i}`} row={r} onPickTicker={pickTicker} />
           ))}
         </div>
       ) : (
-        <table className="t-table">
+        <div className="workspace-table-scroll"><table className="t-table">
           <thead>
             <tr>
               {["Ticker","P/C","Strike","Exp","DTE","Spot","Volume","OI","Vol/OI","Last","IV","Premium"].map(h => (
@@ -324,7 +324,7 @@ export default function OptionsFlow() {
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       )}
     </div>
   );

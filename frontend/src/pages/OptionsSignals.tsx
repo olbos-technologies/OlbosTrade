@@ -225,7 +225,7 @@ function OptionsSignalCard({ sig }: { sig: OptionsSignal }) {
           <AlphaEdgeInline ticker={sig.ticker} assetType="options" />
         </div>
 
-        <div style={{
+        <div className="workspace-grid" style={{
           display: "grid", gridTemplateColumns: "repeat(3, 1fr)",
           gap: 8, background: "var(--bg-3)", borderRadius: 4, padding: "8px 12px",
         }}>
@@ -358,7 +358,7 @@ export default function OptionsSignals() {
         </button>
       </div>
 
-      <div className="instrument-stat-strip" style={{ gridTemplateColumns: "repeat(5, minmax(0, 1fr))" }}>
+      <div className="instrument-stat-strip workspace-stat-grid" style={{ gridTemplateColumns: "repeat(5, minmax(0, 1fr))" }}>
         <StatTile variant="divider" size="sm" label="Actionable" value={actionable.length} tone="var(--accent)" />
         <StatTile variant="divider" size="sm" label="Buy spread" value={buySpreads.length} tone="var(--green)" />
         <StatTile variant="divider" size="sm" label="Sell spread" value={sellSpreads.length} tone="var(--red)" />

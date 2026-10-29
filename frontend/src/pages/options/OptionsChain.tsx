@@ -136,21 +136,21 @@ export default function OptionsChain({
         <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
           <div className="instrument-card" style={{ flex: 1, minWidth: 340, padding: 12 }}>
             <div className="kicker" style={{ color: "var(--green)", marginBottom: 8, letterSpacing: "0.1em", textTransform: "uppercase" }}>Calls</div>
-            <table className="t-table">
+            <div className="workspace-table-scroll"><table className="t-table">
               <thead><tr>{cols.map(h => <th key={h}>{h}</th>)}</tr></thead>
               <tbody>
                 {(data?.calls ?? []).map(c => <ContractRow key={c.strike} c={c} atm={c.strike === atmCallStrike} />)}
               </tbody>
-            </table>
+            </table></div>
           </div>
           <div className="instrument-card" style={{ flex: 1, minWidth: 340, padding: 12 }}>
             <div className="kicker" style={{ color: "var(--red)", marginBottom: 8, letterSpacing: "0.1em", textTransform: "uppercase" }}>Puts</div>
-            <table className="t-table">
+            <div className="workspace-table-scroll"><table className="t-table">
               <thead><tr>{cols.map(h => <th key={h}>{h}</th>)}</tr></thead>
               <tbody>
                 {(data?.puts ?? []).map(p => <ContractRow key={p.strike} c={p} atm={p.strike === atmPutStrike} />)}
               </tbody>
-            </table>
+            </table></div>
           </div>
         </div>
       )}
