@@ -81,6 +81,10 @@ for (const width of [320,390,768,1440]) for (const state of ['populated','unavai
           await expect(cards.nth(1).locator('[data-col="action"]')).toBeHidden();
         } else {
           await expect(page.locator('.position-mobile-expand').first()).toBeHidden();
+          await expect(page.locator('.positions-workspace table')).toHaveCSS('display','table');
+          await expect(page.locator('.positions-workspace thead')).toBeVisible();
+          const row=await page.locator('.positions-workspace tbody tr').first().boundingBox();
+          expect(row!.height).toBeLessThan(90);
         }
         await page.getByRole('button',{name:'Review close MSFT'}).click();
         await expect(page.getByRole('dialog',{name:/Review close/})).toBeVisible();

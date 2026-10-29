@@ -782,6 +782,7 @@ export default function TradeDesk({
             sheet, where hold-to-confirm provides the destructive-action
             friction after the operator has verified the broker position.
           */}
+          <div className="positions-table-scroll" role="region" aria-label="Position details table" tabIndex={0}>
           <table className="t-table t-table--cards">
             <thead><tr>
               {["Symbol","Type","Strategy","Entry Credit","Unreal P&L","MFE","MAE","Hold Days","Status","Mode","Action"].map(h => (
@@ -905,6 +906,7 @@ export default function TradeDesk({
               })}
             </tbody>
           </table>
+          </div>
 
           <BottomSheet
             open={closeReview != null}

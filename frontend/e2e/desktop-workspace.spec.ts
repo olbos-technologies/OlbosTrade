@@ -16,6 +16,11 @@ for(const width of [820,1280,1440,1920]) for(const surface of ['dashboard','mark
     const nav=page.getByRole('navigation',{name:'Workspace navigation'});
     await expect(nav.getByRole('button',{name:'Markets',exact:true})).toBeVisible();
     expect((await nav.boundingBox())!.width).toBe(232);
+    const accountIcon=await nav.getByRole('button',{name:'Account',exact:true}).locator('svg path').getAttribute('d');
+    const integrationsIcon=await nav.getByRole('button',{name:/^(Data & Integrations|System)$/}).locator('svg path').getAttribute('d');
+    expect(accountIcon).toBeTruthy();
+    expect(integrationsIcon).toBeTruthy();
+    expect(accountIcon).not.toBe(integrationsIcon);
     const ticker=await page.getByLabel('Market ticker',{exact:true}).boundingBox();
     const logo=await brand.boundingBox();
     expect(logo!.width).toBeGreaterThanOrEqual(140);
@@ -28,8 +33,8 @@ for(const width of [820,1280,1440,1920]) for(const surface of ['dashboard','mark
       await expect(page.locator('.home-advanced')).not.toHaveAttribute('open','');
       const account=await page.getByRole('region',{name:'Account overview',exact:true}).boundingBox();
       const attention=await page.getByRole('region',{name:'Pending signals',exact:true}).boundingBox();
-      // At full desktop size the primary balance and attention queue share
-      // the first row instead of stretching phone cards into equal columns.
+      // Desktop balance, operating status and review queue share the first
+      // compact terminal row. Phones retain independent cards.
       if(width>=1280) expect(Math.abs(account!.y-attention!.y)).toBeLessThan(2);
     }
     // Collapse remains reversible, without losing the full brand lockup.

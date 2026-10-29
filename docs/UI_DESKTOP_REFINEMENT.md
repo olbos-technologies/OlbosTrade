@@ -28,3 +28,16 @@ not broker evidence. Local browser executable is unavailable; CI captures are
 required before claiming geometry or visual acceptance. Record exact CI
 results and screenshot review in the PR. Actual Safari/device review remains
 outstanding. Roll back the frontend code/image via the release process.
+
+## Desktop direction clarified by the user
+
+The user wants Bloomberg-style desktop density, rather than the spacious card
+interpretation. The same branch now uses compact rectangular navy panels,
+amber monospace section headings and tabular numeric readouts; Home shows
+balance/status/attention together at full desktop width. Desktop holdings are
+restored to a semantic aligned table in a named, keyboard-focusable horizontal
+scroll region. Phone cards remain unchanged. Account and Data & Integrations
+now use distinct person and connections icons in both navigation models.
+Browser acceptance asserts distinct icon paths and desktop table/row geometry.
+Prior screenshots and CI counts predate this clarification; the PR records
+new head checks and superseding captures. No order or mode handlers changed.
