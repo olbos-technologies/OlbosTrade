@@ -17,6 +17,12 @@
 .workspace-frame .btn-t { font: 600 12px var(--sans); letter-spacing: 0; border-radius: 9px; }
 .workspace-frame .btn-t.active:not(.danger) { color: var(--design-action); border-color: var(--design-action); background: #f6c45c0a; }
 .workspace-frame input, .workspace-frame select, .workspace-frame textarea { border-radius: 9px !important; min-width: 0; max-width: 100%; }
+.workspace-frame { color-scheme: dark; }
+.workspace-frame input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+.workspace-frame select, .workspace-frame textarea {
+  background: var(--bg-3); color: var(--ink); border: 1px solid var(--line);
+  padding: 10px 12px; font-family: var(--sans);
+}
 .workspace-frame .workspace-grid { min-width: 0; }
 .workspace-frame .workspace-grid > * { min-width: 0; }
 .workspace-frame .workspace-mode-card { border-radius: 16px; overflow: hidden; }

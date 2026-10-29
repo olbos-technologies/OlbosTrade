@@ -79,6 +79,10 @@ for(const width of [320,390,768,1440]) for(const [surface,title] of surfaces) {
       await expect(input).toHaveCSS('font-size','16px');
       expect((await input.boundingBox())!.height).toBeGreaterThanOrEqual(44);
     }
+    if(surface==='options/income') {
+      await expect(page.locator('.workspace-frame input[type="number"]').first())
+        .toHaveCSS('background-color','rgb(20, 35, 55)');
+    }
     if(surface==='journal') {
       for(const label of ['PERFORMANCE','MISTAKES','MONTHLY REVIEW','ENTRIES']) {
         await page.getByRole('button',{name:label,exact:true}).click();
