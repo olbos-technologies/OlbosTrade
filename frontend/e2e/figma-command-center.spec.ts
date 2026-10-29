@@ -37,7 +37,7 @@ for(const width of [820,1280,1440,1920]) test(`Figma command center ${width}`,as
  await page.route('**/api/dashboard/summary',r=>r.fulfill({status:503,json:{}}));
  await page.route('**/api/paper-trade/history?**',r=>r.fulfill({status:503,json:{}}));
  await page.getByRole('button',{name:'Refresh command center'}).click();
- await expect(page.getByText('$124,532.88',{exact:true})).toHaveCount(0);
+ await expect(page.getByTestId('desktop-command-center').getByText('$124,532.88',{exact:true})).toHaveCount(0);
  await expect(page.getByText('Trade performance unavailable. Refresh to retry.')).toBeVisible();
  await expect(page.locator('.dc-chart .recharts-area-curve')).toHaveCount(0);
  await expect(page.getByRole('row').filter({hasText:'MSFT'})).toBeVisible();

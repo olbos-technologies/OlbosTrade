@@ -76,3 +76,7 @@ summary/grid proportions within existing React 18/Vite dependencies, rather
 than importing its app bootstrap or build configuration. Market Pulse uses
 existing last-close snapshot GETs; Event Risk uses the existing 45-day calendar
 GET. No decorative sparklines or prototype health values enter production.
+
+Advanced analytics now mount on disclosure opening and unmount on close,
+so the first desktop view does not run a second hidden dashboard or duplicate
+its polling. Existing browser checks open the disclosure and verify it renders.
