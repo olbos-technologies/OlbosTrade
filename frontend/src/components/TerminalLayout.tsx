@@ -27,6 +27,7 @@ import { isTradeDeskV2Enabled } from "../trade-desk/featureFlags";
 import { TerminalNavProvider } from "./TerminalNavContext";
 import { Badge, Button } from "./ui";
 import BrandWordmark from "./BrandWordmark";
+import WorkspaceSearch from "./WorkspaceSearch";
 
 // ── Icons (inline SVG — no dep) ───────────────────────────────────────────────
 const Icon = ({ d, size = 16 }: { d: string; size?: number }) => (
@@ -937,6 +938,8 @@ function TickerStrip({ onToggle, sidebarExpanded, isMobile }: {
           {marqueeContent}{marqueeContent}
         </div>
       </div>
+
+      <WorkspaceSearch />
 
       {/* Execution mode (trading style lives in Desk Settings) */}
       <div className="desktop-execution-control" style={{

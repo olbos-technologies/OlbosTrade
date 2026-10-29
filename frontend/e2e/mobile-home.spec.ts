@@ -58,7 +58,7 @@ test("desktop dashboard keeps the existing executive summary", async ({ page }) 
     : {status:503,contentType:"application/json",body:"{}"}));
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/terminal/dashboard");
-  await expect(page.getByTestId("mobile-home")).toBeVisible();
+  await expect(page.getByTestId("desktop-command-center")).toBeVisible();
   await expect(page.locator(".home-advanced")).not.toHaveAttribute("open", "");
   await page.getByText("Advanced dashboard and analytics", {exact:true}).click();
   await expect(page.locator(".home-advanced")).toHaveAttribute("open", "");

@@ -41,3 +41,38 @@ now use distinct person and connections icons in both navigation models.
 Browser acceptance asserts distinct icon paths and desktop table/row geometry.
 Prior screenshots and CI counts predate this clarification; the PR records
 new head checks and superseding captures. No order or mode handlers changed.
+
+## Figma Command Center reference
+
+The user approved a chart-first desktop reference: one compact summary strip,
+a central performance chart with execution status beside it, then a full-width
+holdings table. DesktopCommandCenter replaces the desktop MobileHome renderer;
+phone Home remains unchanged. The existing advanced dashboard stays available
+behind its disclosure. Shared Home read helpers are reused, preserving the
+45-second display freshness limit and independent unavailable states.
+
+Metrics use available backend fields: broker account value, Olbos day/total
+P&L, buying power and daily loss-budget utilization. No net exposure value is
+invented. The chart is explicitly cumulative reported P&L from at most 500
+returned closed trades, sorted by actual exit dates. It is not intraday broker
+equity, uses no backtest substitution, generated dates, synthetic production
+points or clipping of negative P&L. A failed/malformed read removes the curve.
+Ranges filter the latest dates in the returned history, retaining the original
+cumulative baseline. This source limitation remains visible in the panel.
+
+The header adds workspace search with slash-to-focus, Escape and unique-result
+Enter navigation. It issues no trading/settings commands. Symbols are not
+searched by this first version. A keyboard-focusable positions table retains
+read-only quantities, cost, broker marks/tracking and separately read stop
+coverage. Links open existing Trade Desk, approvals and Risk pages. The full
+logo and distinct icons remain. No new backend endpoint, migration, environment
+variable, authorization, risk-limit or order handler. Final head/CI and updated
+browser screenshots are recorded in the PR; prior captures are superseded.
+
+The user supplied Bloomberg-Style Trading Terminal.zip. Its App.tsx/CSS are
+a visual prototype with hardcoded metrics/prices, a fixed SVG curve, local-only
+mode toggles and a different logo. Adapt its panel hierarchy, palette and
+summary/grid proportions within existing React 18/Vite dependencies, rather
+than importing its app bootstrap or build configuration. Market Pulse uses
+existing last-close snapshot GETs; Event Risk uses the existing 45-day calendar
+GET. No decorative sparklines or prototype health values enter production.

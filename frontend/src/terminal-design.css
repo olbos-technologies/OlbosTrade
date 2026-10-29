@@ -339,3 +339,22 @@
 }
 
 .positions-table-scroll { min-width: 0; width: 100%; overflow-x: auto; }
+
+@media(min-width:769px) {
+ .app-shell .desktop-terminal-header { grid-template-columns:232px minmax(0,1fr) auto auto; }
+ .desktop-execution-control {grid-column:3;}
+ .desktop-market-clock {grid-column:4;}
+ .workspace-command-search {grid-column:2;grid-row:1;position:relative;min-width:0;margin:8px 16px;}
+ .workspace-command-search input {width:100%;min-width:0;background:#081321;border:1px solid var(--line);padding:10px 12px;color:var(--ink);font:12px var(--mono);border-radius:2px;}
+ .workspace-command-results {position:absolute;top:100%;left:0;right:0;background:#101b29;border:1px solid var(--line);z-index:80;box-shadow:0 8px 20px #0008;}
+ .workspace-command-results button,.workspace-command-results > span {display:block;width:100%;padding:12px;text-align:left;background:transparent;border:0;color:var(--ink);font:12px var(--sans);}
+ .workspace-command-results button {cursor:pointer;}
+ .workspace-command-results button:hover {background:#efb45418;}
+}
+@media(min-width:769px) and (max-width:1199px) {
+ .app-shell .desktop-terminal-header {grid-template-columns:232px minmax(0,1fr) auto;}
+ .workspace-command-search {margin-inline:8px;}
+ .workspace-command-search input {font-size:11px;padding-inline:8px;}
+}
+
+.workspace-command-search label { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }

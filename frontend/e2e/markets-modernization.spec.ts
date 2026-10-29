@@ -33,7 +33,8 @@ for (const width of [390,1440]) test(`Command Center prioritizes an actual weekl
   await page.route("**/api/guardrails/status",r=>r.fulfill(reply({weekly_loss_pct:-.116,max_weekly_loss_pct:.05,trading_allowed:true})));
   await page.setViewportSize({width,height:900});
   await page.goto("/terminal/dashboard");
-  await expect(page.getByTestId("mobile-home").getByRole("region",{name:"Needs attention"})).toContainText("Weekly loss limit exceeded");
+  const alert = width<=768 ? page.getByTestId("mobile-home").getByRole("region",{name:"Needs attention"}) : page.getByTestId("desktop-command-center").getByRole("status").filter({hasText:"Weekly loss limit exceeded"});
+  await expect(alert).toContainText("Weekly loss limit exceeded");
 });
 
 test("chart symbol links and focus mode keep the chart available",async({page})=>{

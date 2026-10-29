@@ -1,0 +1,68 @@
+/* Desktop layout adapted from the user-provided Figma export. Type sizes
+   remain larger than the prototype; production values come from live reads. */
+.desktop-command-center { --line: #21384d; --line-dim: #172a3b; --design-action: #f3ad2b; padding: 18px 20px; font-family: var(--sans); color: var(--ink); min-width: 0; }
+.dc-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 16px; }
+.dc-heading h1 { font-size: 28px; line-height: 1.2; margin: 6px 0 0; letter-spacing: -.025em; }
+.dc-actions { display: flex; gap: 8px; }
+.desktop-command-center button { min-height: 34px; padding: 8px 12px; color: var(--ink-dim); background: transparent; border: 1px solid var(--line); border-radius: 2px; cursor: pointer; font: 600 11px var(--mono); }
+.desktop-command-center button:hover { background: #efb4540c; color: var(--design-action); }
+.desktop-command-center .dc-primary { color: var(--design-action); border-color: #a87e35; }
+.dc-metrics { display: grid; grid-template-columns: 1.45fr repeat(4,minmax(0,1fr)); border: 1px solid var(--line); background: #0c1824; margin-bottom: 12px; }
+.dc-metric { min-width: 0; padding: 16px; border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 12px; }
+.dc-metric:last-child { border: 0; }
+.dc-metric > span { color: var(--ink-dim); font: 10px var(--mono); letter-spacing: .05em; text-transform: uppercase; }
+.dc-metric strong { font: 600 clamp(18px,1.6vw,27px) var(--mono); overflow-wrap: anywhere; }
+.dc-metric small,.dc-footnote { color: var(--ink-dim); font-size: 11px; line-height: 1.5; }
+.dc-metric progress { width: 100%; height: 5px; accent-color: var(--design-action); }
+.dc-main-grid { display: grid; grid-template-columns: minmax(0,1.7fr) minmax(260px,.7fr); gap: 12px; margin-bottom: 12px; }
+.dc-panel { border: 1px solid var(--line); background: #0c1824; min-width: 0; }
+.dc-panel > header { min-height: 48px; display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--line); }
+.dc-panel h2 { display: flex; align-items: center; gap: 10px; font: 600 12px var(--mono); text-transform: uppercase; margin: 0; }
+.dc-panel h2 i { color: var(--design-action); border: 1px solid #84662e; padding: 4px; font: normal 10px var(--mono); }
+.dc-panel h2 small { color: var(--ink-dim); }
+.dc-ranges { display: flex; gap: 4px; }
+.dc-ranges button { min-height: 30px; padding: 5px 8px; border-color: transparent; }
+.dc-ranges button[aria-pressed="true"] { color: var(--design-action); border-color: #84662e; background: #efb4540c; }
+.dc-chart-caption { display: flex; justify-content: space-between; gap: 12px; align-items: center; padding: 14px 16px 0; font-size: 11px; color: var(--ink-dim); }
+.dc-chart-caption strong { font: 600 16px var(--mono); }
+.dc-chart-body { height: 310px; min-width: 0; padding: 8px 0; }
+.dc-empty { height: 100%; display: flex; justify-content: center; align-items: center; color: var(--ink-dim); padding: 24px; font-size: 13px; }
+.dc-footnote { padding: 8px 16px; margin: 0; border-top: 1px solid var(--line-dim); }
+.dc-execution-body { padding: 16px; }
+.dc-execution-body > small { color: var(--ink-dim); font: 10px/1.5 var(--mono); }
+.dc-mode { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 8px 0 14px; }
+.dc-mode strong { font: 600 20px var(--mono); }
+.dc-mode span { color: var(--design-action); font: 10px var(--mono); }
+.dc-execution-body p { font-size: 12px; line-height: 1.5; min-height: 36px; }
+.dc-execution-body dl { margin: 12px 0; }
+.dc-execution-body dl > div { display: flex; justify-content: space-between; align-items: center; gap: 12px; border-top: 1px solid var(--line-dim); padding: 12px 0; font-size: 11px; }
+.dc-execution-body dt { color: var(--ink-dim); }
+.dc-execution-body dd { margin: 0; text-align: right; font-family: var(--mono); overflow-wrap: anywhere; }
+.dc-execution-body button { width: 100%; text-align: left; margin-top: 10px; }
+.dc-table-scroll { width: 100%; overflow-x: auto; }
+.dc-positions table { width: 100%; border-collapse: collapse; font: 12px var(--mono); white-space: nowrap; }
+.dc-positions th { background: #132235; font-size: 10px; text-transform: uppercase; letter-spacing: .03em; color: var(--ink-dim); text-align: left; }
+.dc-positions th,.dc-positions td { padding: 10px 14px; border-bottom: 1px solid var(--line-dim); }
+.dc-positions td small { display: block; color: var(--ink-dim); margin-top: 4px; font-size: 10px; }
+.dc-positions th:nth-child(n+2):nth-child(-n+4),.dc-positions td:nth-child(n+2):nth-child(-n+4) { text-align: right; }
+.dc-positions tbody tr:nth-child(even) { background: #101e2d; }
+.dc-review-strip { display: flex; justify-content: space-between; align-items: center; gap: 16px; border: 1px solid var(--line); margin-top: 12px; padding: 12px 16px; }
+.dc-review-strip span { display: flex; flex-direction: column; gap: 5px; font-size: 12px; }
+.dc-review-strip small { color: var(--ink-dim); }
+.dc-warning { border: 1px solid var(--amber); color: var(--amber); padding: 10px 12px; margin-bottom: 12px; font-size: 12px; line-height: 1.5; }
+@media(max-width:1199px) {
+ .dc-metrics { grid-template-columns: repeat(3,minmax(0,1fr)); }
+ .dc-metric { border-bottom: 1px solid var(--line); }
+ .dc-main-grid { grid-template-columns: minmax(0,1fr); }
+ .dc-heading { flex-wrap: wrap; }
+}
+
+.dc-lower-grid { display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;margin-top:12px; }
+.dc-pulse > div { display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line-dim);font:12px var(--mono); }
+.dc-pulse > div > :not(:first-child) {text-align:right;}
+.dc-events > div {display:grid;grid-template-columns:100px minmax(0,1fr) auto;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line-dim);font-size:12px;}
+.dc-events time,.dc-events b {font:11px var(--mono);color:var(--design-action);}
+.dc-events span {display:flex;flex-direction:column;gap:5px;}
+.dc-events small {color:var(--ink-dim);font-size:11px;}
+.dc-calendar-state {font-size:12px;padding:16px;color:var(--ink-dim);}
+@media(max-width:1199px) { .dc-lower-grid {grid-template-columns:minmax(0,1fr);} }

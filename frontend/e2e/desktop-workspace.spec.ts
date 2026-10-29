@@ -31,11 +31,12 @@ for(const width of [820,1280,1440,1920]) for(const surface of ['dashboard','mark
     await page.screenshot({path:`ui-audit-artifacts/desktop-workspace-${surface.replace(/\//g,'-')}-${width}.png`,fullPage:true});
     if(surface==='dashboard') {
       await expect(page.locator('.home-advanced')).not.toHaveAttribute('open','');
-      const account=await page.getByRole('region',{name:'Account overview',exact:true}).boundingBox();
-      const attention=await page.getByRole('region',{name:'Pending signals',exact:true}).boundingBox();
-      // Desktop balance, operating status and review queue share the first
-      // compact terminal row. Phones retain independent cards.
-      if(width>=1280) expect(Math.abs(account!.y-attention!.y)).toBeLessThan(2);
+      const chart=await page.getByRole('region',{name:'Olbos closed-trade performance',exact:true}).boundingBox();
+      const execution=await page.getByRole('region',{name:'Execution status',exact:true}).boundingBox();
+      const holdings=await page.getByRole('region',{name:'Open positions',exact:true}).boundingBox();
+      if(width>=1280) expect(Math.abs(chart!.y-execution!.y)).toBeLessThan(2);
+      expect(holdings!.y).toBeGreaterThanOrEqual(chart!.y+chart!.height);
+
     }
     // Collapse remains reversible, without losing the full brand lockup.
     await header.getByRole('button',{name:'Toggle sidebar',exact:true}).click();

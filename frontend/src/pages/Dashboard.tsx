@@ -15,6 +15,7 @@ import { usePaperTrade } from "../hooks/usePaperTrade";
 import { useRisk }       from "../hooks/useRisk";
 import ExecutiveSummary  from "../components/ExecutiveSummary";
 import MobileHome from "./MobileHome";
+import DesktopCommandCenter from "./DesktopCommandCenter";
 import CommandAttention, { riskWarnings } from "../components/CommandAttention";
 import ErrorBoundary     from "../components/ErrorBoundary";
 import WelcomeBanner, { WELCOME_DISMISS_KEY } from "../components/WelcomeBanner";
@@ -215,7 +216,7 @@ function filterByRange(points: ChartPoint[], range: string): ChartPoint[] {
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 export default function Dashboard() {
   const isMobile = useIsMobile();
-  return <div className="home-workspace"><MobileHome />{!isMobile && <details className="home-advanced"><summary>Advanced dashboard and analytics</summary><DesktopDashboard /></details>}</div>;
+  return <div className="home-workspace">{isMobile ? <MobileHome /> : <DesktopCommandCenter />}{!isMobile && <details className="home-advanced"><summary>Advanced dashboard and analytics</summary><DesktopDashboard /></details>}</div>;
 }
 
 function DesktopDashboard() {
