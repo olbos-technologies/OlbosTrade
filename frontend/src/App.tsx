@@ -4,6 +4,7 @@ import "./index.css";
 import "./terminal-design.css";
 import { canonicalPageKey, pageKeyToUrl, pathToPageKey } from "./terminalRoutes";
 import TerminalLayout  from "./components/TerminalLayout";
+import WorkspaceFrame from "./components/WorkspaceFrame";
 import Dashboard       from "./pages/Dashboard";
 import TradeDesk       from "./pages/TradeDesk";
 import TradeDeskV2     from "./pages/TradeDeskV2";
@@ -182,7 +183,7 @@ export default function App() {
 
   return (
     <TerminalLayout activePage={page} onNav={handleNav} isDeskV2Shell={isDeskV2Shell}>
-      <Page />
+      <WorkspaceFrame page={page}><Page /></WorkspaceFrame>
     </TerminalLayout>
   );
 }

@@ -81,7 +81,7 @@ export default function StrategyBuilder() {
       </div>
 
       <div className="exec-card" style={{ padding: 16, marginBottom: 16, maxWidth: 640 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <div className="workspace-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <label>
             <span style={label}>Name</span>
             <input style={inp} value={name} onChange={e => setName(e.target.value)}
@@ -144,7 +144,7 @@ export default function StrategyBuilder() {
       {recent.length === 0 ? (
         <div style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--ink-faint)" }}>None yet.</div>
       ) : (
-        <table className="t-table" style={{ maxWidth: 640 }}>
+        <div className="workspace-table-scroll"><table className="t-table" style={{ maxWidth: 640 }}>
           <thead><tr><th>Name</th><th>Strategy</th><th>Stage</th></tr></thead>
           <tbody>
             {recent.map(e => (
@@ -155,7 +155,7 @@ export default function StrategyBuilder() {
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       )}
     </div>
   );

@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased — Workspace style continuity
+
+- Extend navy/gold headings, cards, tabs and mobile layouts to Risk, Journal, Analytics, Backtesting, Research, System and Account pages; align credential screens while preserving the official logo.
+- Missing Risk summary/meter values remain unavailable rather than zero; failed Journal reads and Intel service failures show alerts. No broker action, backend risk-limit, permission or deployment change.
+
 ## Unreleased — Reference design integration
 
 - Use the established Olbos Trade logo assets in the redesigned terminal header.

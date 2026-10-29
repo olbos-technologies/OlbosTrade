@@ -1,8 +1,9 @@
 """
 The editorial display face is for marketing surfaces only.
 
-Playfair Display was adopted for the landing and auth headings because those
-are prose at 28-44px. It must not reach the terminal, and the reasons are
+Playfair Display remains on landing headings because those are prose at
+28-44px. Credential headings now match the terminal's sans face. The serif
+must not reach credential or terminal screens, and the reasons are
 measurable rather than aesthetic:
 
   - Its numerals do not tabulate. index.css carries an explicit `.tnum` rule
@@ -33,14 +34,11 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-import pytest
-
 SRC = Path(__file__).resolve().parents[2] / "frontend" / "src"
 
 # Marketing surfaces, plus the file that defines the token.
 ALLOWED = {
     "landing.css",   # landing headings
-    "auth.css",      # login / request-access / claim
     "index.css",     # defines --display
 }
 
@@ -105,9 +103,16 @@ def test_tabular_data_cells_still_use_the_sans_face():
     assert "tabular-nums" in body, f".tnum no longer sets tabular-nums: {body.strip()}"
 
 
-@pytest.mark.parametrize("surface", ["landing.css", "auth.css"])
-def test_marketing_surfaces_do_use_it(surface):
+def test_landing_surface_still_uses_it():
     """The inverse: if the adoption is reverted, this guard should stop claiming
     to protect something that is no longer there."""
-    assert "var(--display)" in (SRC / surface).read_text(), (
-        f"{surface} no longer uses --display — is the serif adoption still in place?")
+    assert "var(--display)" in (SRC / "landing.css").read_text(), (
+        "landing.css no longer uses --display — is the serif adoption still in place?")
+
+
+def test_credential_headings_use_the_shared_sans_face():
+    sheet = (SRC / "auth.css").read_text()
+    match = re.search(r"\.auth-h1\s*\{([^}]*)\}", sheet)
+    assert match, "credential heading rule not found"
+    assert "font-family: var(--sans)" in match.group(1)
+    assert not PATTERN.search(sheet), "credential screens must retain the shared sans typography"

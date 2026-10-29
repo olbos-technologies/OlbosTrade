@@ -83,6 +83,10 @@ function EntryCard({ e, onClick }: { e: Entry; onClick: () => void }) {
     <div
       className="instrument-card"
       onClick={onClick}
+      role="button"
+      tabIndex={0}
+      aria-label={`Review journal entry ${e.underlying || e.id}`}
+      onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onClick(); } }}
       style={{
         borderLeft: `3px solid ${isOpen ? "var(--cyan)" : (e.pnl ?? 0) >= 0 ? "var(--green)" : "var(--red)"}`,
         padding: "14px 16px",
@@ -93,8 +97,8 @@ function EntryCard({ e, onClick }: { e: Entry; onClick: () => void }) {
       onMouseLeave={ev => (ev.currentTarget.style.background = "")}
     >
       {/* Row 1: symbol + P&L */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <div className="workspace-entry-heading" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+        <div className="workspace-entry-id" style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <span style={{ fontFamily: "var(--mono)", fontSize: 15, fontWeight: 700, color: "var(--cyan)" }}>
             {e.underlying || "—"}
           </span>
@@ -189,6 +193,7 @@ function EntryCard({ e, onClick }: { e: Entry; onClick: () => void }) {
 export default function Journal() {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [tab, setTab]         = useState<"entries" | "performance" | "mistakes" | "review">("entries");
   const [editing, setEditing] = useState<EditState | null>(null);
   const [saving, setSaving]   = useState(false);
@@ -205,6 +210,9 @@ export default function Journal() {
 
   const load = async () => {
     setLoading(true);
+    setLoadError(false);
+    setEntries([]);
+    setImpact(null);
     try {
       const [entryRes, impactRes]: any = await Promise.all([
         api.getJournalEntries(),
@@ -212,7 +220,7 @@ export default function Journal() {
       ]);
       setEntries(entryRes.entries || []);
       setImpact(impactRes.impact || null);
-    } catch { } finally { setLoading(false); }
+    } catch { setLoadError(true); } finally { setLoading(false); }
   };
 
   useEffect(() => { load(); }, []);
@@ -283,10 +291,10 @@ export default function Journal() {
   const maxMistake = mistakes ? Math.max(1, ...Object.values(mistakes)) : 1;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
+    <div className="workspace-page" style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
 
       {/* Toolbar */}
-      <div style={{
+      <div className="workspace-toolbar" style={{
         padding: "8px 16px", borderBottom: "1px solid var(--line-dim)",
         background: "var(--bg-2)", display: "flex", alignItems: "center", gap: 8,
       }}>
@@ -332,12 +340,14 @@ export default function Journal() {
             <div style={{ padding: 40, textAlign: "center", fontFamily: "var(--mono)", fontSize: 11, color: "var(--ink-faint)" }}>
               LOADING...
             </div>
+          ) : loadError ? (
+            <div role="alert" className="workspace-read-error">Journal unavailable. Reload to retry; no entry count or performance is confirmed.</div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 16, padding: 16 }}>
 
               {/* Overview strip */}
               {entries.length > 0 && (
-                <div className="instrument-stat-strip" style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)" }}>
+                <div className="instrument-stat-strip workspace-stat-grid" style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)" }}>
                   <StatTile variant="divider" size="default" label="Total P&L"       value={fmt(totalPnl)}                         tone={totalPnl >= 0 ? "var(--green)" : "var(--red)"} />
                   <StatTile variant="divider" size="default" label="Win Rate"        value={closed > 0 ? `${winRate}%` : "—"}       tone={winRate >= 50 ? "var(--green)" : "var(--amber)"} />
                   <StatTile variant="divider" size="default" label="Closed / Open"   value={`${closed} / ${open}`} />
@@ -371,7 +381,7 @@ export default function Journal() {
                 <EmptyState title="NOT ENOUGH DATA" sub="Need 5+ trades with followed_rules data. Click any trade card and mark whether you followed the rules." />
               ) : (
                 <>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)" }}>
+                  <div className="workspace-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)" }}>
                     <StatTile variant="divider" size="default" label="Followed — Avg P&L"   value={fmt(impact.followed_avg_pnl)}                    tone="var(--green)" />
                     <StatTile variant="divider" size="default" label="Breached — Avg P&L"   value={fmt(impact.breached_avg_pnl)}                    tone="var(--red)" />
                     <StatTile variant="divider" size="default" label="Followed — Win Rate"  value={`${(impact.followed_win_rate*100).toFixed(1)}%`} tone="var(--green)" />
@@ -395,7 +405,7 @@ export default function Journal() {
               ) : !tagPerf || tagPerf.length === 0 ? (
                 <EmptyState title="NO TAGGED TRADES YET" sub="Add tags to closed trades (e.g. good-entry, early-exit) to see performance broken out by tag." />
               ) : (
-                <div>
+                <div className="workspace-journal-data">
                   {/* header row */}
                   <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr", padding: "6px 14px",
                     borderBottom: "1px solid var(--line-dim)", fontFamily: "var(--mono)", fontSize: 8,
@@ -461,7 +471,7 @@ export default function Journal() {
                 <EmptyState title="NO TRADES THIS MONTH" sub="Pick a different month, or check back once trades have closed this month." />
               ) : (
                 <>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)" }}>
+                  <div className="workspace-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)" }}>
                     <StatTile variant="divider" size="default" label="Total Trades"     value={String(review.total_trades)} />
                     <StatTile variant="divider" size="default" label="Win Rate"         value={pct(review.win_rate)}                           tone={review.win_rate >= 0.5 ? "var(--green)" : "var(--amber)"} />
                     <StatTile variant="divider" size="default" label="Total P&L"        value={fmt(review.total_pnl)}                          tone={review.total_pnl >= 0 ? "var(--green)" : "var(--red)"} />
@@ -511,7 +521,8 @@ export default function Journal() {
         <div style={{
           position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)",
           display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200,
-        }}>
+        }} role="dialog" aria-modal="true" aria-label="Edit journal entry"
+          onKeyDown={event => { if (event.key === "Escape") setEditing(null); }}>
           <div className="instrument-card" style={{
             maxWidth: 500, width: "100%", padding: 28,
           }}>

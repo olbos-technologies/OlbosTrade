@@ -63,7 +63,7 @@ export default function IncomeMatrix({ initialFilter = "all" }: { initialFilter?
           No qualifying income setups right now (markets may be closed, or nothing above threshold).
         </div>
       ) : (
-        <table className="t-table">
+        <div className="workspace-table-scroll"><table className="t-table">
           <thead>
             <tr>
               {["Ticker","Strategy","Strike","Exp","DTE","Spot","Premium","Capital","Return","Monthly","Annual","P(OTM)","Breakeven"].map(h => (
@@ -92,7 +92,7 @@ export default function IncomeMatrix({ initialFilter = "all" }: { initialFilter?
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       )}
     </div>
   );
