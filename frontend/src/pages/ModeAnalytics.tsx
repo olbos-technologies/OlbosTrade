@@ -29,7 +29,7 @@ const pct = (n: number) => (n * 100).toFixed(1) + "%";
 function ModeCard({ modeKey, s, isBest }: { modeKey: string; s: ModeStats; isBest: boolean }) {
   const color = MODE_COLOR[modeKey] || "var(--cyan)";
   return (
-    <div style={{
+    <div className="workspace-mode-card" style={{
       border: `1px solid ${isBest ? tint(color, 0.376) : "var(--line-dim)"}`,
       background: isBest ? tint(color, 0.031) : "var(--bg-2)",
       display: "flex", flexDirection: "column",

@@ -45,13 +45,16 @@ function SevBadge({ s }: { s: string }) {
 function CalendarTab() {
   const [events, setEvents] = useState<CalEvent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   useEffect(() => {
     (api.getCatalystCalendar(undefined, 60) as Promise<{ events: CalEvent[] }>)
-      .then(d => setEvents(d.events || [])).finally(() => setLoading(false));
+      .then(d => setEvents(d.events || []))
+      .catch(() => { setEvents([]); setError(true); })
+      .finally(() => setLoading(false));
   }, []);
   return (
     <div className="instrument-card" style={{ overflow: "hidden" }}>
-      <table className="t-table">
+      <div className="workspace-table-scroll"><table className="t-table">
         <thead><tr>
           <th>Event</th><th>Date</th><th style={{ textAlign: "right" }}>In</th><th>Type</th><th>Severity</th><th>Source</th>
         </tr></thead>
@@ -67,8 +70,9 @@ function CalendarTab() {
             </tr>
           ))}
         </tbody>
-      </table>
+      </table></div>
       {loading ? <div style={{ padding: 24, textAlign: "center", color: "var(--ink-dim)", fontSize: 12 }}>Loading…</div>
+        : error ? <div role="alert" className="workspace-read-error">Event calendar unavailable. No event count is confirmed.</div>
         : events.length === 0 ? <div style={{ padding: 24, textAlign: "center", color: "var(--ink-dim)", fontSize: 12 }}>No events in window.</div> : null}
     </div>
   );
@@ -76,11 +80,14 @@ function CalendarTab() {
 
 function WatchlistsTab() {
   const [lists, setLists] = useState<Watchlist[]>([]);
+  const [error, setError] = useState(false);
   useEffect(() => {
-    (api.getWatchlists() as Promise<{ watchlists: Watchlist[] }>).then(d => setLists(d.watchlists || []));
+    (api.getWatchlists() as Promise<{ watchlists: Watchlist[] }>).then(d => setLists(d.watchlists || []))
+      .catch(() => { setLists([]); setError(true); });
   }, []);
+  if (error) return <div role="alert" className="workspace-read-error">Watchlists unavailable. Reload to retry.</div>;
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 12 }}>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%,280px), 1fr))", gap: 12 }}>
       {lists.map(w => (
         <div key={w.slug} className="instrument-card" style={{ padding: 12 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
@@ -166,14 +173,17 @@ function WhyTab() {
   const [items, setItems] = useState<ClassifiedItem[]>([]);
   const [insider, setInsider] = useState<Insider | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
   const run = (s: string) => {
     setLoading(true);
+    setError(false); setData(null); setQuality(null); setItems([]); setInsider(null);
     Promise.all([
       api.getWhyMoving(s) as Promise<WhyMoving>,
       api.getDataQuality(s).catch(() => null),
       (api.getClassifiedNews(s) as Promise<{ items: ClassifiedItem[] }>).catch(() => ({ items: [] })),
       (api.getInsiderIntel(s) as Promise<Insider>).catch(() => null),
     ]).then(([w, q, c, ins]) => { setData(w); setQuality(q); setItems(c.items || []); setInsider(ins); })
+      .catch(() => { setError(true); setData(null); setQuality(null); setItems([]); setInsider(null); })
       .finally(() => setLoading(false));
   };
   useEffect(() => { run("NVDA"); }, []);
@@ -192,7 +202,8 @@ function WhyTab() {
           </span>
         )}
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 14, alignItems: "start" }}>
+      {error && <div role="alert" className="workspace-read-error">Market explanation unavailable. Retry to check this symbol.</div>}
+      <div className="workspace-grid" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 14, alignItems: "start" }}>
         {data && (
           <div className="instrument-card" style={{ padding: 14 }}>
             <div style={{ fontSize: 15, fontWeight: 600, color: "var(--ink)", marginBottom: 12 }}>{data.headline}</div>
@@ -256,7 +267,7 @@ export default function Intel() {
         <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: "var(--ink)" }}>Intel</h2>
         <p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--ink-dim)" }}>News &amp; catalyst intelligence · research context, not trade signals</p>
       </div>
-      <div style={{ display: "flex", gap: 6, borderBottom: "1px solid var(--line-dim)", paddingBottom: 8 }}>
+      <div className="workspace-toolbar" style={{ display: "flex", gap: 6, borderBottom: "1px solid var(--line-dim)", paddingBottom: 8 }}>
         {TABS.map(t => (
           <Button key={t.key} active={tab === t.key} onClick={() => setTab(t.key)}>{t.label}</Button>
         ))}

@@ -75,6 +75,14 @@ for(const width of [320,390,768,1440]) for(const [surface,title] of surfaces) {
         await expectNoHorizontalOverflow(page,width);
       }
     }
+    if(surface==='lab/intel') {
+      await expect(page.getByRole('alert').filter({hasText:'Event calendar unavailable'})).toBeVisible();
+      await page.getByRole('button',{name:'Smart Watchlists',exact:true}).click();
+      await expect(page.getByRole('alert').filter({hasText:'Watchlists unavailable'})).toBeVisible();
+      await page.getByRole('button',{name:'Why Is It Moving?',exact:true}).click();
+      await expect(page.getByRole('alert').filter({hasText:'Market explanation unavailable'})).toBeVisible();
+      await page.getByRole('button',{name:'Event Calendar',exact:true}).click();
+    }
     await expectNoHorizontalOverflow(page,width);
     expect(writes).toEqual([]);expect(errors).toEqual([]);
     await page.screenshot({path:`ui-audit-artifacts/workspace-${surface.replace(/\//g,'-')}-${width}.png`,fullPage:true});
@@ -82,6 +90,35 @@ for(const width of [320,390,768,1440]) for(const [surface,title] of surfaces) {
 }
 
 for(const width of [390,1440]) {
+  test(`populated analytics table scrolls independently ${width}px`,async({page})=>{
+    const writes=await mockWorkspace(page);
+    const stats={display_name:'Balanced',trade_count:10,win_rate:.6,win_count:6,loss_count:4,
+      avg_win:100,avg_loss:-50,expectancy:40,profit_factor:2,total_pnl:400,avg_pnl_per_trade:40,
+      max_drawdown_pct:.02,sharpe_ratio:1.2,avg_hold_days:3,score_vs_outcome:.2,
+      exit_breakdown:{profit_target:5,stop_loss:3,dte_exit:2,other:0},last_5_pnl:[20,-10,40,30,50],
+      is_improving:true,ui_color:'#38bdf8',recommendation:'Synthetic preview only.'};
+    await page.route('**/api/analytics/by-mode',r=>r.fulfill({json:{total_trades:10,best_mode:'balanced',recommendation:'',modes:{balanced:stats}}}));
+    await page.setViewportSize({width,height:1000});await page.goto('/terminal/analytics');
+    await expect(page.locator('.workspace-mode-card')).toBeVisible();
+    await expect(page.locator('.workspace-table-scroll table')).toBeVisible();
+    await expectNoHorizontalOverflow(page,width);expect(writes).toEqual([]);
+    await page.screenshot({path:`ui-audit-artifacts/workspace-analytics-populated-${width}.png`,fullPage:true});
+  });
+  test(`journal entry review remains read-only ${width}px`,async({page})=>{
+    const writes=await mockWorkspace(page);
+    const entry={id:'mock-entry',trade_id:'mock-trade',strategy:'bull_put_spread',underlying:'SPY',
+      pre_trade_thesis:'Synthetic UI example.',confidence_level:3,market_context:'neutral',
+      post_trade_notes:'Review sizing before the next simulated trade.',followed_rules:true,
+      exit_felt_right:true,tags:['good-entry'],loss_category:null,mistake_tags:[],pnl:75,
+      mfe:100,mae:-25,signal_score:.7,entry_date:'2026-10-01',exit_date:'2026-10-03'};
+    await page.route('**/api/journal/entries',r=>r.fulfill({json:{entries:[entry]}}));
+    await page.setViewportSize({width,height:1000});await page.goto('/terminal/journal');
+    await page.getByRole('button',{name:'Review journal entry SPY'}).click();
+    await expect(page.getByRole('dialog',{name:'Edit journal entry'})).toBeVisible();
+    await page.getByRole('button',{name:'CANCEL',exact:true}).click();
+    await expectNoHorizontalOverflow(page,width);expect(writes).toEqual([]);
+    await page.screenshot({path:`ui-audit-artifacts/workspace-journal-populated-${width}.png`,fullPage:true});
+  });
   test(`populated Risk stays readable at ${width}px`,async({page})=>{
     const writes=await mockWorkspace(page,true);
     await page.setViewportSize({width,height:1000});await page.goto('/terminal/risk/heat');

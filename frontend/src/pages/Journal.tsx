@@ -83,6 +83,10 @@ function EntryCard({ e, onClick }: { e: Entry; onClick: () => void }) {
     <div
       className="instrument-card"
       onClick={onClick}
+      role="button"
+      tabIndex={0}
+      aria-label={`Review journal entry ${e.underlying || e.id}`}
+      onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onClick(); } }}
       style={{
         borderLeft: `3px solid ${isOpen ? "var(--cyan)" : (e.pnl ?? 0) >= 0 ? "var(--green)" : "var(--red)"}`,
         padding: "14px 16px",
@@ -93,8 +97,8 @@ function EntryCard({ e, onClick }: { e: Entry; onClick: () => void }) {
       onMouseLeave={ev => (ev.currentTarget.style.background = "")}
     >
       {/* Row 1: symbol + P&L */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <div className="workspace-entry-heading" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+        <div className="workspace-entry-id" style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <span style={{ fontFamily: "var(--mono)", fontSize: 15, fontWeight: 700, color: "var(--cyan)" }}>
             {e.underlying || "—"}
           </span>
@@ -517,7 +521,8 @@ export default function Journal() {
         <div style={{
           position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)",
           display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200,
-        }}>
+        }} role="dialog" aria-modal="true" aria-label="Edit journal entry"
+          onKeyDown={event => { if (event.key === "Escape") setEditing(null); }}>
           <div className="instrument-card" style={{
             maxWidth: 500, width: "100%", padding: 28,
           }}>

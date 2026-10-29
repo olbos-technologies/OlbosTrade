@@ -38,11 +38,11 @@ semantics are not certified complete by this change.
 
 ## Validation and artifacts
 
-- Local full frontend unit suite: 71 files / 613 tests passed, including three
-  risk/journal read-state regressions. No broker mutations in those tests.
+- Local full frontend unit suite: 71 files / 617 tests passed, including seven
+  risk/journal/Intel read-state regressions. No broker mutations in those tests.
 - TypeScript/Vite production build and git diff checks recorded in the PR.
 - Browser coverage: 16 workspace routes at 320/390/768/1440px, populated Risk
-  summaries, unavailable Journal, and sign-in/request-access/claim at all four
+  summaries, populated Analytics/Journal, unavailable Journal, and sign-in/request-access/claim at all four
   widths. Checks include no overflow, no render boundary failures, stacked
   Backtesting layout, password input geometry, Journal tab reachability and no
   API writes. Captures use intercepted synthetic data, never real accounts.
@@ -55,3 +55,10 @@ semantics are not certified complete by this change.
 Next: inspect CI screenshots, resolve failures, review remaining specialist
 panels and actual Safari/accessibility behavior. Merge and deployment are
 separate from this branch's implementation and validation.
+
+Browser review found four Intel service-rejection failures (one per width).
+Calendar, watchlist and market-explanation errors now render fixed unavailable
+messages and consume rejected requests. Auxiliary Risk failures clear prior
+values; a regression test verifies margin data disappears after failed refresh.
+Journal entries support keyboard review, with a named edit dialog and unchanged
+save/cancel behavior. Browser review opens and cancels notes without writes.

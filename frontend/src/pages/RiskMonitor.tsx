@@ -215,16 +215,26 @@ export default function RiskMonitor() {
       // Fetch failure must not render identically to "still loading" — a
       // panel stuck on "Loading…" forever after a broker/DB outage looks
       // like a hung page, not a real signal something is wrong.
+      const read = async <T,>(path: string, update: (value: T | null) => void) => {
+        try {
+          const response = await fetch(path);
+          if (!response.ok) throw new Error("Risk data unavailable");
+          update(await response.json());
+        } catch (error) {
+          update(null); // Never keep a previous successful read after failure.
+          throw error;
+        }
+      };
       Promise.allSettled([
-        fetch("/api/risk/margin").then(r => { if (!r.ok) throw new Error("Risk data unavailable"); return r.json(); }).then(setMargin),
-        fetch("/api/risk/reconciliation").then(r => { if (!r.ok) throw new Error("Risk data unavailable"); return r.json(); }).then(setRecon),
-        fetch("/api/risk/scenarios").then(r => { if (!r.ok) throw new Error("Risk data unavailable"); return r.json(); }).then(setScen),
-        fetch("/api/risk/var").then(r => { if (!r.ok) throw new Error("Risk data unavailable"); return r.json(); }).then(setVarRep),
-        fetch("/api/portfolio/heat").then(r => { if (!r.ok) throw new Error("Risk data unavailable"); return r.json(); }).then(setHeat),
-        fetch("/api/portfolio/rotation-performance").then(r => { if (!r.ok) throw new Error("Risk data unavailable"); return r.json(); }).then(setRotoPerf),
-        fetch("/api/portfolio/rotation-activity").then(r => { if (!r.ok) throw new Error("Risk data unavailable"); return r.json(); }).then(setRotoActivity),
-        fetch("/api/trade-desk/rotation-reviews").then(r => { if (!r.ok) throw new Error("Risk data unavailable"); return r.json(); })
-          .then(d => setRotoReviews(d?.reviews ?? [])),
+        read("/api/risk/margin", setMargin),
+        read("/api/risk/reconciliation", setRecon),
+        read("/api/risk/scenarios", setScen),
+        read("/api/risk/var", setVarRep),
+        read("/api/portfolio/heat", setHeat),
+        read("/api/portfolio/rotation-performance", setRotoPerf),
+        read("/api/portfolio/rotation-activity", setRotoActivity),
+        read<{reviews?: RotationReviewEntry[]}>("/api/trade-desk/rotation-reviews",
+          value => setRotoReviews(value?.reviews ?? null)),
       ]).then(results => {
         setSectionsError(results.some(r => r.status === "rejected"));
       });
@@ -245,7 +255,7 @@ export default function RiskMonitor() {
       fetch("/api/portfolio/correlation")
         .then(r => { if (!r.ok) throw new Error("Risk data unavailable"); return r.json(); })
         .then(d => { setCorr(d); setCorrError(false); })
-        .catch(() => setCorrError(true));
+        .catch(() => { setCorr(null); setCorrError(true); });
     };
     loadCorr();
     const t = setInterval(loadCorr, 120000);

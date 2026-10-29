@@ -19,6 +19,8 @@
 .workspace-frame input, .workspace-frame select, .workspace-frame textarea { border-radius: 9px !important; min-width: 0; max-width: 100%; }
 .workspace-frame .workspace-grid { min-width: 0; }
 .workspace-frame .workspace-grid > * { min-width: 0; }
+.workspace-frame .workspace-mode-card { border-radius: 16px; overflow: hidden; }
+.workspace-frame .workspace-entry-heading, .workspace-frame .workspace-entry-id { flex-wrap: wrap; gap: 10px; }
 .workspace-frame .workspace-table-scroll { overflow-x: auto; width: 100%; border: 1px solid var(--line-dim); border-radius: 12px; }
 .workspace-frame .workspace-table-scroll .t-table { margin: 0; }
 .workspace-frame .t-table { font-family: var(--sans); font-variant-numeric: tabular-nums; }
