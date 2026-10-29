@@ -16,8 +16,8 @@ for(const width of [820,1280,1440,1920]) for(const surface of ['dashboard','mark
     const nav=page.getByRole('navigation',{name:'Workspace navigation'});
     await expect(nav.getByRole('button',{name:'Markets',exact:true})).toBeVisible();
     expect((await nav.boundingBox())!.width).toBe(232);
-    const accountIcon=await nav.getByRole('button',{name:'Account',exact:true}).locator('svg path').getAttribute('d');
-    const integrationsIcon=await nav.getByRole('button',{name:/^(Data & Integrations|System)$/}).locator('svg path').getAttribute('d');
+    const accountIcon=await nav.getByRole('button',{name:'Account',exact:true}).locator(':scope > span:first-child svg path').getAttribute('d');
+    const integrationsIcon=await nav.getByRole('button',{name:/^(Data & Integrations|System)$/}).locator(':scope > span:first-child svg path').getAttribute('d');
     expect(accountIcon).toBeTruthy();
     expect(integrationsIcon).toBeTruthy();
     expect(accountIcon).not.toBe(integrationsIcon);
