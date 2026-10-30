@@ -167,6 +167,7 @@ test.describe("the legacy desk nested inside TradeDeskV2", () => {
     await page.reload();
 
     const urlBefore = page.url();
+    await page.getByText("Additional desk tools & execution settings",{exact:true}).click();
     // "Desk signals" in the DOM; the uppercase is CSS, and the accessible name
     // comes from the text content, not the painted glyphs.
     const deskSignals = page.getByRole("button", { name: /^Desk signals$/i });
