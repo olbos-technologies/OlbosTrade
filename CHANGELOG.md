@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased — Mobile workspace cleanup
+
+- Tighten phone chrome and content spacing across Home, Markets, Signals, Positions, Risk, Brokers and More destinations: shorter header/nav, compact search, denser cards and headings.
+- Shorten the Home session intro while keeping Positions/Risk actions and failed-read warnings visible. Presentation only; no permission, risk-limit or order-path change.
+
 ## Unreleased — Offline history-import staging
 
 - Added durable single-writer quarantine for normalized fixture history pages, scoped report periods, resumable receipts, deduplication and conflict quarantine. Finished imports remain unverified.
