@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased — Offline history-import staging
+
+- Added durable single-writer quarantine for normalized fixture history pages, scoped report periods, resumable receipts, deduplication and conflict quarantine. Finished imports remain unverified.
+- No native Flex parser, authenticated transport, execution-ledger promotion, order authorization or deployment.
+
 ## Unreleased — Paper broker setup validation
 
 - Add an offline configuration check with secret-free output and nonzero exit codes for missing or invalid paper OAuth setup. It does not contact a broker or database, enable trading, or certify deployment readiness.
