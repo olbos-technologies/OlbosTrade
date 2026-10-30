@@ -70,8 +70,8 @@ export default function BrokerSignIn() {
     } finally { setBusy(""); }
   };
 
-  return <section className="broker-sign-in instrument-card" aria-label="Broker sign-in"
-    style={{ maxWidth: 680, padding: 16, marginBottom: 20, lineHeight: 1.6 }}>
+  return <section className="broker-sign-in brokers-card" aria-label="Broker sign-in"
+    style={{ padding: 18, lineHeight: 1.6 }}>
     <h2 style={{ fontSize: 18, margin: "0 0 8px" }}>Choose your broker</h2>
     <p style={{ color: "var(--ink-dim)" }}>
       Use your existing brokerage login on the broker’s website. Your brokerage
@@ -82,10 +82,13 @@ export default function BrokerSignIn() {
     {result === "failed" && <p role="alert">Broker sign-in was cancelled, expired, or could not be verified. Start again.</p>}
     {loading && <p role="status">Checking broker availability…</p>}
     {error && <div role="alert"><p>{error}</p><Button style={{ minHeight: 44 }} onClick={() => void load()} disabled={loading}>Retry broker sign-in</Button></div>}
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 240px), 1fr))", gap: 12 }}>
-      {providers.map(p => <article key={p.id} style={{ border: "1px solid var(--line-dim)", borderRadius: 8, padding: 14 }}>
-        <h3 style={{ margin: "0 0 8px", fontSize: 15 }}>{p.name}</h3>
-        <p style={{ color: "var(--ink-dim)", fontSize: 13 }}>{p.note}</p>
+    <div style={{ display: "grid", gap: 10 }}>
+      {providers.map(p => <article key={p.id} className="broker-row">
+        <span className="broker-row__mark" aria-hidden="true">{p.name.slice(0, 1)}</span>
+        <div className="broker-row__copy">
+          <h3>{p.name}</h3>
+          <p>{p.note}</p>
+        </div>
         <Button style={{ minHeight: 44 }} disabled={!p.available || busy !== ""} onClick={() => void connect(p.id)}>
           {busy === p.id ? "Opening broker…" : p.available ? `Sign in with ${p.name}` : p.id === "alpaca" ? "Setup pending" : "Coming soon"}
         </Button>

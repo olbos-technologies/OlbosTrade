@@ -215,100 +215,170 @@ export default function MyBrokers() {
     );
   }
 
+  // Everything in the rail is derived from state this page already holds.
+  // There is deliberately no audit trail here: the Figma exploration shows
+  // one, but no endpoint feeds it, and a list of timestamps that is not read
+  // from anywhere is decoration dressed as a record.
+  const activeCount = connections.filter(c => c.status === "active").length;
+  const revokedCount = connections.length - activeCount;
+
   return (
-    <div className="brokers-workspace" style={{ padding: 16, height: "100%", overflowY: "auto" }}>
-      <header className="design-page-heading"><div><span className="design-eyebrow">ACCOUNT CONNECTIONS</span><h1>My Brokers</h1><p>Choose a broker and review your connected accounts.</p></div></header>
+    <div className="brokers-page">
+      <div className="brokers-layout">
+        <div className="brokers-main">
 
-      <BrokerSignIn />
+          <section className="brokers-card">
+            <div className="brokers-card__body">
+              <div className="brokers-heading">
+                <div>
+                  <span className="brokers-eyebrow">Account connections</span>
+                  <h1>My Brokers</h1>
+                  <p>Choose a broker and review your connected accounts.</p>
+                </div>
+                <span className="brokers-badge">OAuth secured</span>
+              </div>
 
-      {!routingEnabled && (
-        // The honest banner. See the file docstring — it is driven by the
-        // server so it disappears on its own when routing ships.
-        <div style={{
-          maxWidth: 560, marginBottom: 16, padding: "10px 12px",
-          borderLeft: "2px solid var(--amber)", background: "rgba(245,158,11,0.06)",
-          fontFamily: MONO, fontSize: 11, color: "var(--ink-dim)", lineHeight: 1.65,
-        }}>
-          Your keys are stored encrypted, but orders are still placed through the
-          platform account. Connecting here does not route your trades to your own
-          broker yet.
+              {!routingEnabled && (
+                // The honest banner. See the file docstring — it is driven by
+                // the server so it disappears on its own when routing ships.
+                <div className="brokers-banner" style={{ marginTop: 16 }}>
+                  Your keys are stored encrypted, but orders are still placed through the
+                  platform account. Connecting here does not route your trades to your own
+                  broker yet.
+                </div>
+              )}
+            </div>
+          </section>
+
+          <BrokerSignIn />
+
+          <section className="brokers-card">
+            <div className="brokers-card__body">
+              <details>
+                <summary style={{ cursor: "pointer" }}>Advanced: connect with API keys</summary>
+                <form onSubmit={submit} style={{ marginTop: 14 }}>
+                  <div style={{ fontFamily: MONO, fontSize: 11, color: "var(--ink-dim)",
+                                lineHeight: 1.65, marginBottom: 12 }}>
+                    Connect an Alpaca account with an API key pair from the Alpaca
+                    dashboard. Interactive Brokers needs a dedicated gateway session per
+                    account and cannot be connected with keys yet.
+                  </div>
+
+                  <Field label="Environment">
+                    <select value={environment} onChange={e => setEnvironment(e.target.value)}
+                            style={inputStyle}>
+                      <option value="paper">Paper — practice account</option>
+                      <option value="live">Live — real money</option>
+                    </select>
+                  </Field>
+
+                  <Field label="API key ID">
+                    <input value={apiKey} onChange={e => setApiKey(e.target.value)}
+                           autoComplete="off" spellCheck={false} style={inputStyle}
+                           placeholder="PK..." />
+                  </Field>
+
+                  <Field label="Secret key">
+                    {/* type=password with autoComplete off: a brokerage secret must not
+                        be offered back by the browser on an unrelated form. */}
+                    <input value={secretKey} onChange={e => setSecretKey(e.target.value)}
+                           type="password" autoComplete="new-password" spellCheck={false}
+                           style={inputStyle} placeholder="never shown again once saved" />
+                  </Field>
+
+                  <Field label="Label (optional)">
+                    <input value={label} onChange={e => setLabel(e.target.value)}
+                           maxLength={60} style={inputStyle} placeholder="e.g. main account" />
+                  </Field>
+
+                  <Button type="submit" disabled={saving}>
+                    {saving ? "connecting…" : "Connect"}
+                  </Button>
+
+                  {error && (
+                    <div role="alert" style={{ marginTop: 10, fontFamily: MONO, fontSize: 11,
+                                               color: "var(--red)", lineHeight: 1.6 }}>
+                      {error}
+                    </div>
+                  )}
+                  {notice && (
+                    <div role="status" style={{ marginTop: 10, fontFamily: MONO, fontSize: 11,
+                                                color: "var(--green)", lineHeight: 1.6 }}>
+                      {notice}
+                    </div>
+                  )}
+                </form>
+              </details>
+            </div>
+          </section>
+
+          <section className="brokers-card">
+            <div className="brokers-card__body">
+              <span className="brokers-eyebrow">Connected accounts</span>
+              <div style={{ marginTop: 10 }}>
+                {loading && (
+                  <div style={{ padding: "12px 0", fontFamily: MONO, fontSize: 11,
+                                color: "var(--ink-faint)" }}>loading…</div>
+                )}
+                {!loading && connections.length === 0 && (
+                  <div style={{ padding: "12px 0", fontFamily: MONO, fontSize: 11,
+                                color: "var(--ink-faint)" }}>
+                    No broker accounts connected yet.
+                  </div>
+                )}
+                {connections.map(conn => (
+                  <ConnectionRow key={conn.id} conn={conn}
+                                 onChanged={() => { void load(); }}
+                                 onError={setError} />
+                ))}
+              </div>
+            </div>
+          </section>
         </div>
-      )}
 
-      <details>
-      <summary style={{ marginBottom: 12, cursor: "pointer" }}>Advanced: connect with API keys</summary>
-      <form onSubmit={submit} className="instrument-card"
-            style={{ maxWidth: 560, padding: "14px 16px", marginBottom: 20 }}>
-        <div style={{ fontFamily: MONO, fontSize: 11, color: "var(--ink-dim)",
-                      lineHeight: 1.65, marginBottom: 12 }}>
-          Connect an Alpaca account with an API key pair from the Alpaca
-          dashboard. Interactive Brokers needs a dedicated gateway session per
-          account and cannot be connected with keys yet.
-        </div>
-
-        <Field label="Environment">
-          <select value={environment} onChange={e => setEnvironment(e.target.value)}
-                  style={inputStyle}>
-            <option value="paper">Paper — practice account</option>
-            <option value="live">Live — real money</option>
-          </select>
-        </Field>
-
-        <Field label="API key ID">
-          <input value={apiKey} onChange={e => setApiKey(e.target.value)}
-                 autoComplete="off" spellCheck={false} style={inputStyle}
-                 placeholder="PK..." />
-        </Field>
-
-        <Field label="Secret key">
-          {/* type=password with autoComplete off: a brokerage secret must not
-              be offered back by the browser on an unrelated form. */}
-          <input value={secretKey} onChange={e => setSecretKey(e.target.value)}
-                 type="password" autoComplete="new-password" spellCheck={false}
-                 style={inputStyle} placeholder="never shown again once saved" />
-        </Field>
-
-        <Field label="Label (optional)">
-          <input value={label} onChange={e => setLabel(e.target.value)}
-                 maxLength={60} style={inputStyle} placeholder="e.g. main account" />
-        </Field>
-
-        <Button type="submit" disabled={saving}>
-          {saving ? "connecting…" : "Connect"}
-        </Button>
-
-        {error && (
-          <div role="alert" style={{ marginTop: 10, fontFamily: MONO, fontSize: 11,
-                                     color: "var(--red)", lineHeight: 1.6 }}>
-            {error}
+        <aside className="brokers-rail" aria-label="Connection status">
+          <div className="brokers-rail__block">
+            <span className="brokers-eyebrow">Live context</span>
+            <div className="brokers-rail__row">
+              <span>API-key accounts</span>
+              <b className="tnum">{loading ? "—" : String(connections.length)}</b>
+            </div>
+            <div className="brokers-rail__row">
+              <span>Active</span>
+              <b className="tnum">{loading ? "—" : String(activeCount)}</b>
+            </div>
+            <div className="brokers-rail__row">
+              <span>Order routing</span>
+              <b style={{ color: routingEnabled ? "var(--green)" : "var(--amber)" }}>
+                {routingEnabled ? "Your broker" : "Platform account"}
+              </b>
+            </div>
           </div>
-        )}
-        {notice && (
-          <div role="status" style={{ marginTop: 10, fontFamily: MONO, fontSize: 11,
-                                      color: "var(--green)", lineHeight: 1.6 }}>
-            {notice}
-          </div>
-        )}
-      </form>
-      </details>
 
-      <div className="panel-title" style={{ marginBottom: 8 }}>Connected accounts</div>
-      <div className="instrument-card" style={{ maxWidth: 560, padding: "4px 16px" }}>
-        {loading && (
-          <div style={{ padding: "12px 0", fontFamily: MONO, fontSize: 11,
-                        color: "var(--ink-faint)" }}>loading…</div>
-        )}
-        {!loading && connections.length === 0 && (
-          <div style={{ padding: "12px 0", fontFamily: MONO, fontSize: 11,
-                        color: "var(--ink-faint)" }}>
-            No broker accounts connected yet.
+          <div className="brokers-rail__block">
+            <span className="brokers-eyebrow">Exceptions</span>
+            {!routingEnabled && (
+              <div className="brokers-rail__item">
+                <i style={{ background: "var(--amber)" }} />
+                <span><b>Orders are not routed to you</b>
+                  Connecting a broker here does not change where orders go.</span>
+              </div>
+            )}
+            {revokedCount > 0 && (
+              <div className="brokers-rail__item">
+                <i style={{ background: "var(--red)" }} />
+                <span><b>{revokedCount} connection{revokedCount === 1 ? "" : "s"} revoked</b>
+                  Reconnect to resume balance and position sync.</span>
+              </div>
+            )}
+            {routingEnabled && revokedCount === 0 && (
+              <div className="brokers-rail__item" style={{ color: "var(--ink-faint)" }}>
+                <i style={{ background: "var(--green)" }} />
+                <span>Nothing to review.</span>
+              </div>
+            )}
           </div>
-        )}
-        {connections.map(conn => (
-          <ConnectionRow key={conn.id} conn={conn}
-                         onChanged={() => { void load(); }}
-                         onError={setError} />
-        ))}
+        </aside>
       </div>
     </div>
   );
