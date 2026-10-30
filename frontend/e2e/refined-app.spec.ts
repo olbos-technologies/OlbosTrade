@@ -21,6 +21,19 @@ for(const width of [390,768,1440,1920])for(const [route,heading] of routes){
   await page.route('**/api/**',r=>{const req=r.request(),path=new URL(req.url()).pathname;if(req.method()!=='GET')writes.push(path);return r.fulfill({status:req.method()==='GET'&&path in data?200:503,json:data[path]??{}});});
   await page.setViewportSize({width,height:1000});await page.goto('/terminal/'+route);
   await expect(page.getByRole('heading',{name:route==='dashboard'&&width<=768?'Overview':heading,exact:true}).first()).toBeVisible();
+  // Real downloaded fonts must load; family strings alone can hide a fallback.
+  expect(await page.evaluate(async()=>{const fonts=await Promise.all([document.fonts.load('600 24px "IBM Plex Mono"'),document.fonts.load('400 14px "Inter"')]);await document.fonts.ready;return fonts.map(f=>f.length);})).toEqual([1,1]);
+  expect(await page.evaluate(()=>document.fonts.check('600 24px "IBM Plex Mono"')&&document.fonts.check('400 14px "Inter"'))).toBe(true);
+  await expect(page.getByRole('heading',{name:route==='dashboard'&&width<=768?'Overview':heading,exact:true}).first()).toHaveCSS('font-family',/IBM Plex Mono/);
+  if(width<=768){
+   const search=page.getByRole('textbox',{name:'Find a workspace'});
+   await expect(search).toBeVisible();
+   await search.fill('Journal');
+   await expect(page.getByRole('button',{name:'Journal →',exact:true})).toBeVisible();
+   await search.press('Escape');
+   await expect(page.getByRole('button',{name:'Journal →',exact:true})).toHaveCount(0);
+   if(route==='dashboard')await expect(page.getByRole('region',{name:'Session overview'})).toContainText('Protect the capital.');
+  }
   await expect(page.locator('.app-shell')).toHaveCSS('background-color','rgb(5, 8, 13)');
   if(width>768){
    const nav=page.getByRole('navigation',{name:'Workspace navigation'});
