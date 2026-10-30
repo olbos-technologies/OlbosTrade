@@ -70,7 +70,7 @@ export default function BrokerSignIn() {
     } finally { setBusy(""); }
   };
 
-  return <section className="broker-sign-in brokers-card" aria-label="Broker sign-in"
+  return <section className="broker-sign-in acct-card" aria-label="Broker sign-in"
     style={{ padding: 18, lineHeight: 1.6 }}>
     <h2 style={{ fontSize: 18, margin: "0 0 8px" }}>Choose your broker</h2>
     <p style={{ color: "var(--ink-dim)" }}>

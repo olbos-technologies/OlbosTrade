@@ -95,17 +95,24 @@ export default function AccountPassword() {
     }
   };
 
+  // Single column: this page has no live state of its own, and a rail
+  // invented to fill the space would be decoration.
   return (
-    <div style={{ padding: 16, height: "100%", overflowY: "auto" }}>
-      <div className="panel-title" style={{ marginBottom: 10 }}>Password</div>
+    <div className="acct-page">
+      <div className="acct-layout acct-layout--single">
+        <div className="acct-main">
+          <section className="acct-card">
+            <div className="acct-card__body">
+              <div className="acct-heading">
+                <div>
+                  <span className="acct-eyebrow">Account</span>
+                  <h1>Password</h1>
+                  <p>Changing your password signs out every other browser you
+                    are logged in on. This one stays signed in.</p>
+                </div>
+              </div>
 
-      <form onSubmit={submit} className="instrument-card"
-            style={{ maxWidth: 520, padding: "14px 16px" }}>
-        <div style={{ fontFamily: MONO, fontSize: 11, color: "var(--ink-dim)",
-                      lineHeight: 1.65, marginBottom: 12 }}>
-          Changing your password signs out every other browser you are logged
-          in on. This one stays signed in.
-        </div>
+              <form onSubmit={submit} style={{ marginTop: 16 }}>
 
         <Field label="Current password">
           <input value={current} onChange={e => setCurrent(e.target.value)}
@@ -134,7 +141,11 @@ export default function AccountPassword() {
           <div role="status" style={{ marginTop: 10, fontFamily: MONO, fontSize: 11,
                                       color: "var(--green)", lineHeight: 1.6 }}>{notice}</div>
         )}
-      </form>
+              </form>
+            </div>
+          </section>
+        </div>
+      </div>
     </div>
   );
 }

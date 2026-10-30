@@ -64,41 +64,76 @@ export default function AccountProfile() {
   const limits = limitsForTier(tier);
 
   return (
-    <div style={{ padding: 16, height: "100%", overflowY: "auto" }}>
-      <div className="panel-title" style={{ marginBottom: 10 }}>Profile</div>
+    <div className="acct-page">
+      <div className="acct-layout">
+        <div className="acct-main">
 
-      {loading && <div style={{ fontFamily: MONO, fontSize: 11, color: "var(--ink-faint)" }}>loading…</div>}
-      {error && <div role="alert" style={{ fontFamily: MONO, fontSize: 11, color: "var(--red)" }}>{error}</div>}
+          <section className="acct-card">
+            <div className="acct-card__body">
+              <div className="acct-heading">
+                <div>
+                  <span className="acct-eyebrow">Account</span>
+                  <h1>Profile</h1>
+                  <p>The identity you sign in with, and the plan it carries.</p>
+                </div>
+              </div>
 
-      {user && (
-        <>
-          <div className="instrument-card" style={{ maxWidth: 520, padding: "12px 16px" }}>
-            <Row label="Email">{user.email}</Row>
-            <Row label="Plan">
-              <span style={{ color: tier === "free" ? "var(--ink-dim)" : "var(--brand)",
-                             textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                {user.tier || "unknown"}
-              </span>
-            </Row>
+              {loading && <div style={{ marginTop: 14, fontFamily: MONO, fontSize: 11, color: "var(--ink-faint)" }}>loading…</div>}
+              {error && <div role="alert" style={{ marginTop: 14, fontFamily: MONO, fontSize: 11, color: "var(--red)" }}>{error}</div>}
+
+              {user && (
+                <div style={{ marginTop: 14 }}>
+                  <Row label="Email">{user.email}</Row>
+                  <Row label="Plan">
+                    <span style={{ color: tier === "free" ? "var(--ink-dim)" : "var(--brand)",
+                                   textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                      {user.tier || "unknown"}
+                    </span>
+                  </Row>
+                </div>
+              )}
+            </div>
+          </section>
+
+          {user && limits.length > 0 && (
+            <section className="acct-card">
+              <div className="acct-card__body">
+                <span className="acct-eyebrow">Your plan includes</span>
+                <div style={{ marginTop: 10 }}>
+                  {limits.map(row => (
+                    <Row key={row.feature} label={row.feature}>{row.limit}</Row>
+                  ))}
+                </div>
+              </div>
+            </section>
+          )}
+        </div>
+
+        <aside className="acct-rail" aria-label="Plan">
+          <div className="acct-rail__block">
+            <span className="acct-eyebrow">Plan</span>
+            <div className="acct-rail__row">
+              <span>Tier</span>
+              <b style={{ textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                {loading ? "—" : (user?.tier || "unknown")}
+              </b>
+            </div>
+            <div className="acct-rail__row">
+              <span>Entitlements</span>
+              <b className="tnum">{loading ? "—" : String(limits.length)}</b>
+            </div>
           </div>
 
-          {limits.length > 0 && (
-            <div style={{ maxWidth: 520, marginTop: 16 }}>
-              <div className="panel-title" style={{ marginBottom: 8 }}>Your plan includes</div>
-              <div className="instrument-card" style={{ padding: "2px 16px" }}>
-                {limits.map(row => (
-                  <Row key={row.feature} label={row.feature}>{row.limit}</Row>
-                ))}
-              </div>
-              <div style={{ marginTop: 10, fontFamily: MONO, fontSize: 10.5,
-                            color: "var(--ink-faint)", lineHeight: 1.6 }}>
-                Plan changes are made by hand — there is no billing in the app.
-                Ask the operator to move you between plans.
-              </div>
+          <div className="acct-rail__block">
+            <span className="acct-eyebrow">Billing</span>
+            <div className="acct-rail__item">
+              <i style={{ background: "var(--ink-faint)" }} />
+              <span>Plan changes are made by hand — there is no billing in the
+                app. Ask the operator to move you between plans.</span>
             </div>
-          )}
-        </>
-      )}
+          </div>
+        </aside>
+      </div>
     </div>
   );
 }

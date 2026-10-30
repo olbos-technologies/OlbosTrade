@@ -80,25 +80,35 @@ export default function AccountSessions() {
     }
   };
 
+  // Both rail figures are counts of the rows rendered below, so a reader can
+  // check them by counting.
+  const otherCount = sessions.filter(s => !s.current).length;
+
   return (
-    <div style={{ padding: 16, height: "100%", overflowY: "auto" }}>
-      <div className="panel-title" style={{ marginBottom: 10 }}>Active sessions</div>
+    <div className="acct-page">
+      <div className="acct-layout">
+        <div className="acct-main">
 
-      <div style={{ maxWidth: 560, marginBottom: 14, fontFamily: MONO, fontSize: 11,
-                    color: "var(--ink-faint)", lineHeight: 1.65 }}>
-        Each row is a browser signed in as you. If you do not recognise one,
-        sign it out and change your password.
-      </div>
+          <section className="acct-card">
+            <div className="acct-card__body">
+              <div className="acct-heading">
+                <div>
+                  <span className="acct-eyebrow">Account</span>
+                  <h1>Active sessions</h1>
+                  <p>Each row is a browser signed in as you. If you do not
+                    recognise one, sign it out and change your password.</p>
+                </div>
+              </div>
 
-      <div className="instrument-card" style={{ maxWidth: 560, padding: "4px 16px" }}>
-        {loading && (
-          <div style={{ padding: "12px 0", fontFamily: MONO, fontSize: 11,
-                        color: "var(--ink-faint)" }}>loading…</div>
-        )}
-        {!loading && sessions.length === 0 && !error && (
-          <div style={{ padding: "12px 0", fontFamily: MONO, fontSize: 11,
-                        color: "var(--ink-faint)" }}>No active sessions.</div>
-        )}
+              <div style={{ marginTop: 14 }}>
+                {loading && (
+                  <div style={{ padding: "12px 0", fontFamily: MONO, fontSize: 11,
+                                color: "var(--ink-faint)" }}>loading…</div>
+                )}
+                {!loading && sessions.length === 0 && !error && (
+                  <div style={{ padding: "12px 0", fontFamily: MONO, fontSize: 11,
+                                color: "var(--ink-faint)" }}>No active sessions.</div>
+                )}
         {sessions.map(s => (
           <div key={s.id} style={{
             display: "flex", alignItems: "center", gap: 12, padding: "12px 0",
@@ -130,12 +140,39 @@ export default function AccountSessions() {
             )}
           </div>
         ))}
-      </div>
+              </div>
 
-      {error && (
-        <div role="alert" style={{ marginTop: 10, maxWidth: 560, fontFamily: MONO,
-                                   fontSize: 11, color: "var(--red)" }}>{error}</div>
-      )}
+              {error && (
+                <div role="alert" style={{ marginTop: 10, fontFamily: MONO,
+                                           fontSize: 11, color: "var(--red)" }}>{error}</div>
+              )}
+            </div>
+          </section>
+        </div>
+
+        <aside className="acct-rail" aria-label="Session summary">
+          <div className="acct-rail__block">
+            <span className="acct-eyebrow">Live context</span>
+            <div className="acct-rail__row">
+              <span>Signed-in browsers</span>
+              <b className="tnum">{loading ? "—" : String(sessions.length)}</b>
+            </div>
+            <div className="acct-rail__row">
+              <span>Other than this one</span>
+              <b className="tnum">{loading ? "—" : String(otherCount)}</b>
+            </div>
+          </div>
+
+          <div className="acct-rail__block">
+            <span className="acct-eyebrow">If one looks wrong</span>
+            <div className="acct-rail__item">
+              <i style={{ background: "var(--amber)" }} />
+              <span><b>Sign it out, then change your password.</b>
+                Signing out one browser does not invalidate the others.</span>
+            </div>
+          </div>
+        </aside>
+      </div>
     </div>
   );
 }
