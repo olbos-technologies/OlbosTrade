@@ -1,8 +1,9 @@
 # Paper account data — SaaS-1 / R2 prerequisite
 
-Branch `codex/broker-paper-snapshot` is stacked on PR #161, at
-`9c4fa1c0f0aa38ad8ee77c97dd75bd9dd2ed303e`. PR #161 remains unmerged pending
-explicit merge authorization. This follow-up does not change `main` or deploy.
+PR #162 merged as `e79e2b103141092dc23f833685aec7f1837d941e`, after
+PR #161 merged as `9549e4aec1e0c8315d952ff0c29818562a38965f`.
+Both are code changes only; deployment and real broker validation remain open.
+See `BROKER_PAPER_VALIDATION_RUNBOOK.md` for the next operator steps.
 
 ## Behavior
 

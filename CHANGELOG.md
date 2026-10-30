@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased — Paper broker setup validation
+
+- Add an offline configuration check with secret-free output and nonzero exit codes for missing or invalid paper OAuth setup. It does not contact a broker or database, enable trading, or certify deployment readiness.
+- Add a paper validation runbook and record the merged health/data prerequisites. No migration or new setting.
+
 ## Unreleased — Workspace style continuity
 
 - Extend navy/gold headings, cards, tabs and mobile layouts to Risk, Journal, Analytics, Backtesting, Research, System and Account pages; align credential screens while preserving the official logo.
