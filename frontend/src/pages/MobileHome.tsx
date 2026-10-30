@@ -157,6 +157,14 @@ export default function MobileHome() {
         <button className="mh-icon-button" onClick={refresh} aria-label="Refresh home">↻</button>
       </header>
 
+      <section className="mh-session-intro" aria-label="Session overview">
+        <span className="mh-eyebrow">COMMAND CENTER / PORTFOLIO OVERSIGHT</span>
+        <h2>Control the session.<br /><span>Protect the capital.</span></h2>
+        <p>One operational view for portfolio state, developing signals and exceptions requiring your attention.</p>
+        <button className="mh-primary" onClick={() => nav("trade:positions")}>Review positions <span aria-hidden="true">→</span></button>
+        <button className="mh-link" onClick={() => nav("risk:heat")}>Open Risk Center <span aria-hidden="true">↗</span></button>
+      </section>
+
       {warnings.length > 0 && <section className="mh-card mh-risk-alert" aria-label="Needs attention">
         <div className="mh-section-title">Risk needs attention</div>
         {warnings.map(warning => <p className="mh-warning" key={warning}>{warning}</p>)}

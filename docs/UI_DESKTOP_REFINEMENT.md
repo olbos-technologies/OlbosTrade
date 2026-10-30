@@ -116,3 +116,12 @@ navigation/full-menu reachability, context unavailable states, keyboard search,
 auxiliary tool disclosure and no order/settings writes. Final CI/captures in
 the PR supersede previous screenshots. No backend, migration, environment,
 permission, execution handler or risk-limit change. No merge/deployment.
+
+
+## UX-1 / UX-5 — Figma typography and mobile spacing trial
+
+Base main f626acc5; branch codex/figma-typography-layout. The user selected the attached phone references for their typography and layout after PR #168. This pass uses the exported font definitions: IBM Plex Mono 400/500/600 and Inter 400/500/600/700, self-hosted under frontend/public/fonts with SIL OFL notices. Font conversion to WOFF changes packaging, not glyphs. No external font service is required for these app families.
+
+Page headings, values, navigation and eyebrow labels use the source typography. Primary panels have thin borders and small radii. Mobile has a workspace-only search above page content, an introductory Home section with links to Positions and Risk, larger section gaps, a gold account accent, spacious signal/holding cards and full-width broker sign-in buttons. Existing risk/connection warnings remain visible, original controls and data reads remain authoritative. No synthetic prototype values, risk gauges, security claims or reconciliation verdicts are imported. The source photo has perspective distortion, and existing workflow content differs; this is a closer functional interpretation, not a claim of pixel identity.
+
+The browser matrix asserts that real fonts load, computed heading family is IBM Plex Mono, search suggestions work on phones, and the six destinations remain without horizontal page overflow at 390/768/1440/1920. Existing populated captures and control regressions remain in CI. No backend, permission, order handler, migration or environment changes. Not merged or deployed; actual device/Safari review remains open.

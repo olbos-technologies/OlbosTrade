@@ -106,3 +106,68 @@
 .desk-auxiliary-tools .legacy-desk-tabbar > div:first-child {flex-wrap:wrap;}
 
 .context-route {display:block;font:11px/1.5 var(--sans);color:var(--ink-dim);margin-bottom:8px;}
+
+/* UX-1 / UX-5: source typography and spacious mobile layout trial.
+   Font families/weights come from the supplied Figma export, served locally. */
+.app-shell {
+ --mono:"IBM Plex Mono",monospace;
+ --sans:"Inter",system-ui,sans-serif;
+ --line:#303638; --line-dim:#242a2e;
+ --ink-dim:#b5bab7; --ink-faint:#9aa39f;
+ --design-action:#ffc247;
+ font-family:var(--sans);
+}
+.app-shell :is(h1,h2,h3,.data-val,.positions-summary strong,.mh-balance,.mh-counts strong,.chart-quote strong,.chart-quote > span) {
+ font-family:var(--mono) !important;font-weight:600;letter-spacing:-.045em;
+}
+.app-shell :is(.design-eyebrow,.mh-eyebrow,.positions-summary__label,.context-eyebrow) {
+ font:600 10px/1.5 var(--mono);letter-spacing:.15em;text-transform:uppercase;
+}
+.app-shell :is(.compact-workspace-nav > div > button > span,.mobile-bottom-nav__tab) {
+ font-family:var(--mono);text-transform:uppercase;letter-spacing:.06em;
+}
+.app-shell .workspace-command-search input {font:500 12px var(--mono);border-radius:3px;}
+.app-shell .workspace-frame__heading h1,.app-shell .design-page-heading h1,.app-shell .design-signal-feed .page-header__title {font-family:var(--mono);font-weight:600;letter-spacing:-.045em;}
+.app-shell .dc-metric strong {font-family:var(--mono);font-weight:600;}
+.app-shell :is(.instrument-card,.mission-card,.panel,.dc-panel,.dc-metric) {border-radius:3px;}
+.app-shell .design-signal-card {padding:24px;}
+.app-shell .signal-rationale p {line-height:1.8;}
+.app-shell .design-review {border-radius:3px;font:600 11px var(--mono);text-transform:uppercase;letter-spacing:.06em;}
+.app-shell .chart-symbol-picker {border:1px solid var(--line-dim);gap:0;border-radius:3px;overflow-x:auto;}
+.app-shell .chart-symbol-picker button {border:0;border-radius:0;background:transparent;font-family:var(--mono);}
+.app-shell .chart-symbol-picker button[aria-pressed="true"] {border-left:2px solid var(--design-action);background:#ffc24714;}
+.mobile-workspace-search {padding:16px 16px 0;}
+.mobile-workspace-search .workspace-command-search {display:block;width:100%;max-width:none;position:relative;}
+.mobile-workspace-search .workspace-command-search input {width:100%;min-height:48px;padding:12px 14px;border-left:2px solid var(--design-action);font-size:16px;box-sizing:border-box;}
+.mobile-workspace-search .workspace-command-results {z-index:40;top:100%;left:0;right:0;}
+.mh-session-intro {grid-column:1/-1;order:-8;padding:18px 0 28px;border-bottom:1px solid var(--line-dim);}
+.mh-session-intro h2 {font:600 clamp(24px,6.5vw,32px)/1.2 var(--mono);letter-spacing:-.055em;margin:12px 0 16px;}
+.mh-session-intro h2 span {color:var(--design-action);}
+.mh-session-intro p {color:var(--ink-dim);line-height:1.8;}
+.mh-session-intro .mh-primary {margin-top:24px;}
+.mh-session-intro .mh-link {justify-content:center;}
+@media(max-width:768px) {
+ .app-shell .home-workspace .mobile-home {padding:24px 20px;gap:20px;}
+ .app-shell .home-workspace .mh-card {border-radius:3px;padding:24px 20px;background:#080c12;}
+ .app-shell .home-workspace .mh-account {border-left:3px solid var(--design-action);background:#080c12;}
+ .app-shell .home-workspace .mh-heading h1 {font-size:24px;}
+ .app-shell .home-workspace .mh-section-title {font:600 16px var(--mono);}
+ .app-shell .home-workspace .mh-balance {font-size:clamp(24px,7vw,32px);}
+ .app-shell .home-workspace .mh-primary,.app-shell .home-workspace .mh-secondary {border-radius:3px;font:600 11px var(--mono);text-transform:uppercase;letter-spacing:.05em;min-height:48px;}
+ .app-shell .home-workspace .mh-counts > div {border-radius:3px;background:transparent;border:1px solid var(--line-dim);}
+ .app-shell .chart-workspace,.app-shell .positions-workspace {padding:24px 20px;}
+ .app-shell .design-page-heading h1,.app-shell .design-signal-feed .page-header__title,.app-shell .workspace-frame__heading h1 {font-size:24px;line-height:1.2;}
+ .app-shell .design-page-heading p {font-family:var(--mono);font-size:12px;line-height:1.7;}
+ .app-shell .positions-workspace .positions-summary {padding:24px 20px;border-radius:3px;}
+ .app-shell .positions-workspace .t-table--cards tbody tr {border-radius:3px;padding:20px;}
+ .app-shell .design-signal-card {padding:22px 18px;border-radius:3px;}
+ .app-shell .design-signal-feed .mission-list {gap:24px;}
+ .app-shell .brokers-workspace .broker-sign-in {padding:24px 18px !important;border-radius:3px;}
+ .app-shell .brokers-workspace .broker-sign-in > div > article {padding:20px 16px !important;border-radius:3px !important;}
+ .app-shell .brokers-workspace .broker-sign-in > div > article > button {width:100%;margin-top:12px;}
+ .app-shell .workspace-frame__heading {padding:28px 20px 24px;}
+}
+.mobile-workspace-search .workspace-command-results {position:absolute;background:#0b1017;border:1px solid var(--line);box-shadow:0 8px 20px #0008;}
+.mobile-workspace-search .workspace-command-results button,.mobile-workspace-search .workspace-command-results > span {display:block;width:100%;min-height:44px;padding:12px;text-align:left;background:transparent;border:0;color:var(--ink);font:12px/1.5 var(--mono);}
+.mobile-workspace-search .workspace-command-results button {cursor:pointer;}
+.mobile-workspace-search .workspace-command-results button:hover {background:#ffc24714;}
