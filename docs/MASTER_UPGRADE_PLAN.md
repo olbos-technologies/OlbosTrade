@@ -79,17 +79,17 @@ Verify tenancy, RBAC, auth, broker credentials, audit, billing, privacy, data li
 ## Status ledger
 | Track | Status | Evidence / next gate |
 | --- | --- | --- |
-| R0 | Incomplete | CI passes for onboarding PR #123; full production verification not established |
-| R1 | Partial; follow-up proposed | DB failure already denies on reviewed main; broker-read denial + recovery/entry-path tests in this branch. Freshness, complete exposure, and paper validation remain open |
-| R2 | Incomplete / WIP | PRs #148/#149 are unmerged; authenticated history, durable authorization and complete reconciliation proof remain open |
-| UX-1 | Partial / existing components | Inventory and browser verification needed |
+| R0 | Incomplete | Offline paper preflight exists; production deploy + real paper drill still required |
+| R1 | Partial | Broker-read fail-closed on main; freshness, complete exposure, paper disconnect/reconnect remain open |
+| R2 | Incomplete / WIP | Flex intake #170 merged (unverified); history staging rebase open; #148/#149 deny-all WIP must not merge without a verified authorization path |
+| UX-1 | Partial | Navy/gold shell and typography (#169) on main; specialist panels remain |
 | UX-2 | Partial | PR #123 merged; app-wide preference integration needed |
 | UX-3 | Partial existing attribution | Standard explanation contract + testing needed |
 | UX-4 | Partial glossary/onboarding | Paper guided simulation not verified |
-| UX-5 | Not verified | Device/novice/pro test records needed |
+| UX-5 | Partial | Chromium 320/390/768/1440/1920 matrix green on main `c79f736`; Safari/iOS and novice/pro records still open |
 | ML-1 | Research baseline exists | Cost-inclusive walk-forward evidence needed |
 | PERF-1 | Not prioritized | Benchmark first |
-| SaaS-1 | Not certified | Commercial and security gates pending |
+| SaaS-1 | Not certified | OAuth/health/snapshot/preflight merged; vendor registration + isolated paper drill pending |
 
 ## Agent handoff protocol
 Every task, regardless of IDE/agent, must leave a PR or handoff note with: `Milestone ID`, `base SHA`, `branch`, `files changed`, `what passed`, `what was not run`, `migration implications`, `trading safety implications`, `deployment status`, `open risks`, `next owner`. A different tool must verify the latest branch rather than trust chat summaries.
@@ -178,6 +178,16 @@ and is not a safety mitigation. CI results and merge SHA belong in the PR.
 - Integration: existing order_reconciliation_preflight calls this policy, but neither constitutes durable authorization nor complete-history proof. PR #149 remains WIP; live execution is not enabled.
 - Next owner: review CI and integration; complete trusted proof production/consumption and isolated paper-broker evidence. Reverting restores permissive truthiness; not a safety mitigation.
 
+## R2 history ingestion staging — proposed
+
+Offline single-writer quarantine on `codex/r2-history-staging` (rebased as
+`cursor/r2-history-staging-rebase-d67f`) tracks declared periods, page receipts,
+restart/resume, duplicates and conflicting executions. Complete imports remain
+`staged_unverified`; native Flex parsing, authenticated retrieval,
+complete-history attestation and PostgreSQL promotion remain open. See
+`HISTORY_IMPORT_STAGING.md` for usage, validation and handoff. No entry
+authorization or broker operation is enabled. Complements merged Flex intake #170.
+
 ## R2 native Flex intake — merged via #170, not deployed
 
 Branch `codex/r2-flex-evidence-intake` / rebase `cursor/r2-flex-rebase-d67f` landed on main. Adds a versioned, offline Activity Flex
@@ -228,14 +238,15 @@ mode activation, risk-limit changes, merge or deployment. R2 remains incomplete.
   deployment or real broker drill. See `BROKER_PAPER_ACCOUNT_DATA.md` for bounds,
   rollback and the remaining execution requirements.
 
-## SaaS-1 offline configuration preflight — proposed
+## SaaS-1 offline configuration preflight — merged via #171, not drilled
 
-Base `e79e2b103141092dc23f833685aec7f1837d941e`, rebased onto current main.
-Adds a secret-free offline operator command and paper validation runbook. No
-database/broker calls, migration, deployment, execution authorization or real
-broker evidence. The command validates only loaded settings; application
-registration, exact callback registration, schema, proxy redaction and real
-isolated paper drills remain external gates.
+Merged to main via PR #171. `python -m app.broker_paper_preflight` is secret-free
+and offline-only. Local shape checks: exit 1 with empty settings; exit 0 with
+synthetic shaped env (throwaway Fernet key + placeholder OAuth values — not
+production secrets). See `BROKER_PAPER_VALIDATION_RUNBOOK.md`. Application
+registration, exact callback registration, schema deploy, proxy redaction and a
+real isolated paper disconnect/reconnect/exit drill remain external gates.
+No deployment or broker order was performed.
 
 ## UX-1 / UX-5 reference integration — proposed
 

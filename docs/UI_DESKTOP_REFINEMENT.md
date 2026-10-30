@@ -124,4 +124,10 @@ Base main f626acc5; branch codex/figma-typography-layout. The user selected the 
 
 Page headings, values, navigation and eyebrow labels use the source typography. Primary panels have thin borders and small radii. Mobile has a workspace-only search above page content, an introductory Home section with links to Positions and Risk, larger section gaps, a gold account accent, spacious signal/holding cards and full-width broker sign-in buttons. Existing risk/connection warnings remain visible, original controls and data reads remain authoritative. No synthetic prototype values, risk gauges, security claims or reconciliation verdicts are imported. The source photo has perspective distortion, and existing workflow content differs; this is a closer functional interpretation, not a claim of pixel identity.
 
-The browser matrix asserts that real fonts load, computed heading family is IBM Plex Mono, search suggestions work on phones, and the six destinations remain without horizontal page overflow at 390/768/1440/1920. Existing populated captures and control regressions remain in CI. No backend, permission, order handler, migration or environment changes. Not merged or deployed; actual device/Safari review remains open.
+The browser matrix asserts that real fonts load, computed heading family is IBM Plex Mono, search suggestions work on phones, and the six destinations remain without horizontal page overflow at 390/768/1440/1920. Existing populated captures and control regressions remain in CI. No backend, permission, order handler, migration or environment changes.
+
+Merged to main via PR #169 (`032ba7d`). Post-merge Chromium verification on `c79f736`:
+`refined-app` + `mobile-signals-focus` + `terminal-shell` — 44 passed at
+320/390/768/1440/1920 including overflow, fonts, mobile search and Signals
+capital-at-risk context. Actual Safari/iOS and novice/pro feedback remain open.
+Not deployed.
