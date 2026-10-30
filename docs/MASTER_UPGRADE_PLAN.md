@@ -238,14 +238,15 @@ mode activation, risk-limit changes, merge or deployment. R2 remains incomplete.
   deployment or real broker drill. See `BROKER_PAPER_ACCOUNT_DATA.md` for bounds,
   rollback and the remaining execution requirements.
 
-## SaaS-1 offline configuration preflight — proposed
+## SaaS-1 offline configuration preflight — merged via #171, not drilled
 
-Base `e79e2b103141092dc23f833685aec7f1837d941e`, rebased onto current main.
-Adds a secret-free offline operator command and paper validation runbook. No
-database/broker calls, migration, deployment, execution authorization or real
-broker evidence. The command validates only loaded settings; application
-registration, exact callback registration, schema, proxy redaction and real
-isolated paper drills remain external gates.
+Merged to main via PR #171. `python -m app.broker_paper_preflight` is secret-free
+and offline-only. Local shape checks: exit 1 with empty settings; exit 0 with
+synthetic shaped env (throwaway Fernet key + placeholder OAuth values — not
+production secrets). See `BROKER_PAPER_VALIDATION_RUNBOOK.md`. Application
+registration, exact callback registration, schema deploy, proxy redaction and a
+real isolated paper disconnect/reconnect/exit drill remain external gates.
+No deployment or broker order was performed.
 
 ## UX-1 / UX-5 reference integration — proposed
 
