@@ -178,10 +178,9 @@ and is not a safety mitigation. CI results and merge SHA belong in the PR.
 - Integration: existing order_reconciliation_preflight calls this policy, but neither constitutes durable authorization nor complete-history proof. PR #149 remains WIP; live execution is not enabled.
 - Next owner: review CI and integration; complete trusted proof production/consumption and isolated paper-broker evidence. Reverting restores permissive truthiness; not a safety mitigation.
 
-## R2 native Flex intake proposal — 2026-10-27
+## R2 native Flex intake — merged via #170, not deployed
 
-Branch `codex/r2-flex-evidence-intake`, based on main `df31690f1fce`,
-rebased onto current main for review. Adds a versioned, offline Activity Flex
+Branch `codex/r2-flex-evidence-intake` / rebase `cursor/r2-flex-rebase-d67f` landed on main. Adds a versioned, offline Activity Flex
 XML parser and safe-summary inspector for stock/individual-option execution
 candidates. Rejects summary-only, mixed-scope, malformed, ambiguous-time and
 visible correction/conflict cases. Every result remains unauthenticated and
@@ -191,7 +190,7 @@ the separate draft staging work without merging it. See
 authenticated transport, complete-history, current-book, authorization and paper
 validation gates. R2 remains incomplete; no merge/deployment is implied.
 
-## SaaS-1 broker-hosted onboarding prerequisite — proposed
+## SaaS-1 broker-hosted onboarding prerequisite — merged, not deployed
 
 Base `df31690f1fce3a65effe7d408925f659c7165554`, branch
 `codex/broker-oauth-onboarding`. See `BROKER_OAUTH_ONBOARDING.md` for behavior,
@@ -200,7 +199,7 @@ Alpaca paper/read-only OAuth, encrypted isolated grants and one-use session-boun
 state. IBKR/Schwab remain unavailable. No execution routing, order permission,
 mode activation, risk-limit changes, merge or deployment. R2 remains incomplete.
 
-## SaaS-1 account health prerequisite — proposed
+## SaaS-1 account health prerequisite — merged, not deployed
 
 - PR #160 merged as `ca0e9a080948855defafe604167de5f112eea561` after green
   CI run 40632369474. Merge does not establish deployment or real broker proof.
@@ -215,10 +214,11 @@ mode activation, risk-limit changes, merge or deployment. R2 remains incomplete.
 - No order submission, risk-limit or mode changes; no deployment. Registered
   app credentials/approval and a real paper account are still external gates.
 
-## SaaS-1 selected paper account data — proposed
+## SaaS-1 selected paper account data — merged, not deployed
 
-- Base `9c4fa1c0f0aa38ad8ee77c97dd75bd9dd2ed303e` (unmerged PR #161), branch
-  `codex/broker-paper-snapshot`. Stacked review only; no default-branch change.
+- PR #161 merged as `9549e4aec1e0c8315d952ff0c29818562a38965f`; PR #162
+  merged as `e79e2b103141092dc23f833685aec7f1837d941e`. These merges do not
+  establish deployment, real connectivity or execution readiness.
 - Add a read-only selected paper-account data view with balances, positions,
   nested open-order results, partial/unavailable/stale states and clear limits.
 - Validate broker account identity before/after collection and reuse the
@@ -227,6 +227,15 @@ mode activation, risk-limit changes, merge or deployment. R2 remains incomplete.
 - No migration beyond dependency 0044, order mutations, risk/mode changes,
   deployment or real broker drill. See `BROKER_PAPER_ACCOUNT_DATA.md` for bounds,
   rollback and the remaining execution requirements.
+
+## SaaS-1 offline configuration preflight — proposed
+
+Base `e79e2b103141092dc23f833685aec7f1837d941e`, rebased onto current main.
+Adds a secret-free offline operator command and paper validation runbook. No
+database/broker calls, migration, deployment, execution authorization or real
+broker evidence. The command validates only loaded settings; application
+registration, exact callback registration, schema, proxy redaction and real
+isolated paper drills remain external gates.
 
 ## UX-1 / UX-5 reference integration — proposed
 

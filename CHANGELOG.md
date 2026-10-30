@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased — Paper broker setup validation
+
+- Add an offline configuration check with secret-free output and nonzero exit codes for missing or invalid paper OAuth setup. It does not contact a broker or database, enable trading, or certify deployment readiness.
+- Add a paper validation runbook and record the merged health/data prerequisites. No migration or new setting.
+
 ## Unreleased — Read-only native Flex evidence intake
 
 - Validate a bounded, versioned Activity Flex XML execution subset, preserving scoped contract and decimal financial fields. Reject summary-only data, account mismatches, ambiguous timestamps, visible corrections and conflicting duplicate executions.
