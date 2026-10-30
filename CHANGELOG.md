@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased — Read-only native Flex evidence intake
+
+- Validate a bounded, versioned Activity Flex XML execution subset, preserving scoped contract and decimal financial fields. Reject summary-only data, account mismatches, ambiguous timestamps, visible corrections and conflicting duplicate executions.
+- Add an offline safe-summary inspector and synthetic regression tests. Results always remain unverified; no credentials, broker calls, ledger writes, order permissions, schema changes or deployment.
+
 ## Unreleased — Workspace style continuity
 
 - Extend navy/gold headings, cards, tabs and mobile layouts to Risk, Journal, Analytics, Backtesting, Research, System and Account pages; align credential screens while preserving the official logo.
