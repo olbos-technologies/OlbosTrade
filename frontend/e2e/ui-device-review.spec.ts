@@ -27,8 +27,11 @@ for (const width of [320,390,768,1440]) {
       await expect(page.locator('main').first()).toBeVisible();
       await page.waitForTimeout(1200); // Let unavailable-state requests settle before capture.
       if (surface === 'dashboard' && width === 1440) {
+        await expect(page.locator('.home-advanced')).not.toHaveAttribute('open', '');
+        await page.getByText('Advanced dashboard and analytics', {exact:true}).click();
         await expect(page.locator('.home-advanced')).toHaveAttribute('open', '');
         const guide = page.getByRole('region', {name:'Getting started with OlbosTrade'});
+        await expect(guide).toBeVisible();
         expect((await guide.boundingBox())!.height).toBeLessThan(250);
         await expect(guide.getByRole('group', {name:'Choose your experience level'})).toBeHidden();
         await page.screenshot({path:'ui-audit-artifacts/home-analytics-open-1440.png',fullPage:true});

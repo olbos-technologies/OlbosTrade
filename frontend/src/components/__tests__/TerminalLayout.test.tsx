@@ -102,7 +102,7 @@ describe("TerminalLayout ticker strip", () => {
     );
 
     await waitFor(() => expect(screen.getByText("page content")).toBeInTheDocument());
-    expect(screen.getByText("MARKETS · CHART")).toBeInTheDocument();
+    expect(document.querySelector(".instrument-status")).toHaveTextContent("MARKETS · CHART");
     // The old bug was a second status span always reading TRADE DESK.
     const matches = screen.queryAllByText("TRADE DESK");
     expect(matches.length).toBe(0);

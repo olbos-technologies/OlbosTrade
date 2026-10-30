@@ -81,7 +81,7 @@ for(const width of [320,390,768,1440]) for(const [surface,title] of surfaces) {
     }
     if(surface==='options/income') {
       await expect(page.locator('.workspace-frame input[type="number"]').first())
-        .toHaveCSS('background-color','rgb(20, 35, 55)');
+        .toHaveCSS('background-color','rgb(17, 25, 35)');
     }
     if(surface==='journal') {
       for(const label of ['PERFORMANCE','MISTAKES','MONTHLY REVIEW','ENTRIES']) {

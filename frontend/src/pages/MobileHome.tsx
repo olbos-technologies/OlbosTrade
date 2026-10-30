@@ -7,14 +7,14 @@ import "./MobileHome.css";
 
 type Mode = { mode: string; persistence?: string; detail?: string };
 type Summary = { total_equity: number | null; total_pnl: number; day_pnl: number };
-type Position = { symbol?: string; strategy?: string; option_type?: string; quantity?: number; unrealized_pnl?: number | null; tracked?: boolean };
+type Position = { symbol?: string; strategy?: string; option_type?: string; quantity?: number; avg_cost?: number; unrealized_pnl?: number | null; tracked?: boolean };
 type Pending = { id: string; queued_at?: string | null };
 type Broker = { broker: string; paper_mode: boolean; status: string };
 type Coverage = { available?: boolean; source?: string; unprotected_is_reliable?: boolean; positions_error?: string; positions_without_stop?: { ticker: string }[] };
 type Resource<T> = { data: T | null; at: number | null; error: boolean; loading: boolean };
 const FRESH_MS = 45000;
 
-async function json<T>(path: string): Promise<T> {
+export async function json<T>(path: string): Promise<T> {
   const r = await fetch(path, { credentials: "same-origin" });
   if (!r.ok) throw new Error("Read failed");
   const d = await r.json();
@@ -24,7 +24,7 @@ async function json<T>(path: string): Promise<T> {
 
 // Independent reads: one failed panel must not turn the others into zeroes.
 // Serial polling prevents an older response from overwriting a newer one.
-function useResource<T>(read: () => Promise<T>, now: number) {
+export function useResource<T>(read: () => Promise<T>, now: number) {
   const [state, setState] = useState<Resource<T>>({ data: null, at: null, error: false, loading: true });
   const [revision, setRevision] = useState(0);
   const refresh = useCallback(() => setRevision(n => n + 1), []);
@@ -49,40 +49,40 @@ function useResource<T>(read: () => Promise<T>, now: number) {
   return { ...state, value: fresh ? state.data : null, fresh, refresh };
 }
 
-const readSummary = async () => {
+export const readSummary = async () => {
   const d = await json<Summary>("/api/dashboard/summary");
   if (!(d.total_equity === null || (typeof d.total_equity === "number" && Number.isFinite(d.total_equity)))) throw new Error("Account value unavailable");
   return d;
 };
-const readBroker = async () => {
+export const readBroker = async () => {
   const d = await json<Broker>("/api/market/broker");
   if (typeof d.broker !== "string" || typeof d.paper_mode !== "boolean" || typeof d.status !== "string") throw new Error("Broker unavailable");
   return d;
 };
 type Guard = { trading_allowed: boolean; reason?: string; daily_loss_pct?: number; max_daily_loss_pct?: number; weekly_loss_pct?: number; max_weekly_loss_pct?: number };
-const readGuard = async () => {
+export const readGuard = async () => {
   const value = await json<Guard>("/api/guardrails/status");
   if (typeof value.trading_allowed !== "boolean") throw new Error("Risk checks unavailable");
   return value;
 };
-const readRiskState = () => json<{ state?: Record<string, unknown> }>("/api/risk/portfolio-state");
-const readCoverage = () => json<Coverage>("/api/portfolio/open-orders");
-const readMode = async () => {
+export const readRiskState = () => json<{ state?: Record<string, unknown> }>("/api/risk/portfolio-state");
+export const readCoverage = () => json<Coverage>("/api/portfolio/open-orders");
+export const readMode = async () => {
   const d = await api.getExecutionMode() as Mode;
   if (!["manual", "copilot", "autopilot"].includes(d?.mode)) throw new Error("Unknown mode");
   return d;
 };
-const readKill = async () => {
+export const readKill = async () => {
   const d = await api.getTradeDeskKillSwitch() as { engaged: boolean };
   if (typeof d?.engaged !== "boolean") throw new Error("Unknown kill switch");
   return d;
 };
-const readPositions = async () => {
+export const readPositions = async () => {
   const d = await api.getPositions() as { positions: Position[] };
   if (!Array.isArray(d?.positions)) throw new Error("Positions unavailable");
   return d.positions;
 };
-const readPending = async () => {
+export const readPending = async () => {
   const d = await api.getPendingApprovals() as { pending: Pending[] };
   if (!Array.isArray(d?.pending)) throw new Error("Queue unavailable");
   return d.pending;
@@ -97,7 +97,7 @@ export function splitPending(rows: Pending[], now: number) {
     return out;
   }, { recent: 0, older: 0, unknown: 0 });
 }
-const money = (n: unknown, signed = false) =>
+export const money = (n: unknown, signed = false) =>
   typeof n === "number" && Number.isFinite(n)
     ? (signed ? (n < 0 ? "−" : "+") : n < 0 ? "−" : "") +
       Math.abs(n).toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2 })

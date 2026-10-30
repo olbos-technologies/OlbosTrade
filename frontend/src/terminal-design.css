@@ -239,3 +239,122 @@
 @media (max-width: 380px) {
   .app-shell [data-testid="mobile-exec-trigger"] { padding-inline: 8px !important; }
 }
+
+/* UX-1 desktop: Bloomberg-inspired information density, with Olbos branding.
+   Phone card presentation remains scoped to its existing media queries. */
+@media (min-width: 769px) {
+  .app-shell { --bg: #080f19; --bg-2: #101b29; --bg-3: #142337; --design-action: #efb454; --radius-card: 3px; }
+  .app-shell .desktop-terminal-header {
+    display: grid !important; grid-template-columns: 232px minmax(0,1fr) auto;
+    padding: 0 !important; overflow: visible !important; background: #0c1623;
+  }
+  .desktop-brand { grid-column: 1; grid-row: 1; min-height: 56px; }
+  .desktop-brand > button { min-height: 44px; }
+  .desktop-brand .brand-lockup-word { width: 140px; height: 36px; }
+  .desktop-execution-control { grid-column: 2; grid-row: 1; justify-content: end; padding: 8px 16px !important; border-left: 0 !important; }
+  .desktop-market-clock { grid-column: 3; grid-row: 1; min-height: 44px; }
+  .desktop-market-strip { grid-column: 1/-1; grid-row: 2; min-height: 28px; padding: 6px 16px; border-top: 1px solid var(--line-dim); background: #070e18; }
+  .desktop-execution-control [aria-label="Execution mode"] { height: 32px !important; padding: 3px !important; border-radius: 3px !important; }
+  .desktop-execution-control [aria-label="Execution mode"] > button { height: 24px !important; padding: 0 12px !important; border-radius: 2px !important; font: 600 11px var(--mono) !important; letter-spacing: .03em !important; }
+  .desktop-workspace-nav { padding: 8px 4px !important; background: #0b1522 !important; }
+  .desktop-workspace-nav button { border-radius: 2px; }
+  .desktop-workspace-nav button[aria-label] { min-height: 34px; }
+  .desktop-workspace-nav button[aria-label] > span { font-family: var(--mono) !important; letter-spacing: .02em !important; text-transform: uppercase !important; font-size: 11px !important; }
+  .desktop-workspace-nav button[aria-current="page"] { color: var(--design-action) !important; border-left-color: var(--design-action) !important; background: #efb45412 !important; }
+  .app-shell .instrument-card, .app-shell .panel, .app-shell .mission-card,
+  .app-shell .workspace-frame .instrument-stat-strip,
+  .app-shell .workspace-mode-card, .app-shell .workspace-table-scroll,
+  .app-shell .chart-quote, .app-shell .chart-workspace .watch-item,
+  .app-shell .positions-summary { border-radius: 3px; box-shadow: none; }
+  .app-shell .panel-head { padding: 8px 12px; background: #142133; }
+  .app-shell .panel-title, .app-shell .workspace-frame .panel-title { font: 600 12px var(--mono) !important; letter-spacing: .04em; text-transform: uppercase; }
+  .app-shell .workspace-frame { max-width: none; }
+  .app-shell .workspace-frame__heading { padding: 14px 16px 12px; border-bottom: 1px solid var(--line-dim); }
+  .app-shell .workspace-frame__heading h1 { font: 600 22px/1.2 var(--sans); margin: 4px 0; }
+  .app-shell .workspace-frame__heading p { font-size: 12px; }
+  .app-shell .workspace-frame [role="tab"] { min-height: 34px; padding: 8px 12px !important; font: 600 11px var(--mono) !important; text-transform: uppercase !important; }
+  .app-shell .workspace-frame .t-table th, .app-shell .workspace-frame .t-table td { padding: 7px 10px; font-family: var(--mono); }
+  .app-shell .design-page-heading { margin-bottom: 12px; }
+  .app-shell .design-page-heading h1 { font-size: 24px; }
+  .app-shell .design-review, .app-shell .design-search-row input { border-radius: 3px; min-height: 34px; padding: 7px 10px; font-size: 12px; }
+  .home-workspace .mobile-home {
+    max-width: none; padding: 16px; gap: 8px;
+    grid-template-columns: repeat(3,minmax(0,1fr)); align-items: stretch;
+  }
+  .home-workspace .mh-heading { margin-bottom: 4px; }
+  .home-workspace .mh-heading h1 { font-size: 26px; }
+  .home-workspace .mh-card { grid-column: auto; padding: 12px; border-radius: 3px; background: #101b29; }
+  .home-workspace .mh-account { order: 1; }
+  .home-workspace .mh-status { order: 2; }
+  .home-workspace .mh-attention { order: 3; }
+  .home-workspace .mh-holdings { order: 4; }
+  .home-workspace .mh-protection { order: 5; }
+  .home-workspace .mh-controls { order: 6; }
+  .home-workspace .mh-risk-alert { grid-column: 1/-1; order: 0; }
+  .home-workspace .mh-section-title { margin-bottom: 8px; font: 600 12px var(--mono); text-transform: uppercase; letter-spacing: .04em; }
+  .home-workspace .mh-balance { font: 600 30px/1.2 var(--mono); margin: 12px 0 18px; }
+  .home-workspace .mh-pnl-grid strong { font: 600 17px var(--mono); }
+  .home-workspace .mh-counts { margin: 10px 0 6px; }
+  .home-workspace .mh-counts > div { padding: 8px; border-radius: 2px; }
+  .home-workspace .mh-counts strong { font: 600 22px var(--mono); }
+  .home-workspace .mh-position { padding: 9px 0; font: 12px var(--mono); }
+  .home-workspace .mh-primary, .home-workspace .mh-secondary { border-radius: 3px; min-height: 34px; padding: 7px 10px; }
+  .home-workspace .mh-link { min-height: 34px; font-size: 12px; }
+  .home-advanced { max-width: none; margin: 0 16px 16px; border-radius: 3px; }
+  .home-advanced > summary { min-height: 34px; padding: 9px 12px; font: 600 12px var(--mono); }
+  .app-shell .design-signal-feed .page-header { padding: 12px; }
+  .app-shell .design-signal-feed .page-header__title { font-size: 24px; }
+  .app-shell .design-signal-feed .mission-list { gap: 8px; }
+  .app-shell .design-signal-card { padding: 12px; }
+  .app-shell .signal-rationale { padding: 10px 0; margin-top: 8px; }
+  .app-shell .signal-rationale p { font-size: 12px; line-height: 1.5; }
+  .app-shell .positions-workspace { max-width: none; padding: 16px; }
+  .app-shell .positions-summary { padding: 10px 12px; margin-bottom: 12px; }
+  .app-shell .positions-summary strong { font: 600 22px var(--mono); }
+  /* A real, aligned holdings grid on desktop; keep phone cards intact. */
+  .app-shell .positions-workspace .t-table--cards { display: table; table-layout: auto; }
+  .app-shell .positions-workspace .t-table--cards thead { display: table-header-group; }
+  .app-shell .positions-workspace .t-table--cards tbody { display: table-row-group; }
+  .app-shell .positions-workspace .t-table--cards tbody tr,
+  .app-shell .positions-workspace .t-table--cards tbody tr:has(td[colspan]) { display: table-row; background: transparent; }
+  .app-shell .positions-workspace .t-table--cards th { padding: 8px; font: 600 10px var(--mono); background: #162538; white-space: nowrap; }
+  .app-shell .positions-workspace .t-table--cards td { display: table-cell; padding: 8px; font: 12px var(--mono) !important; border-bottom: 1px solid var(--line-dim); vertical-align: middle; white-space: nowrap; }
+  .app-shell .positions-workspace .t-table--cards td::before { display: none; }
+  .app-shell .positions-workspace .t-table--cards td[data-col="strategy"] { max-width: 190px; white-space: normal; }
+  .app-shell .positions-workspace .t-table--cards td[data-col="symbol"] { font-weight: 650 !important; }
+  .app-shell .positions-workspace .t-table--cards td[data-col="symbol"] small { display: block; margin-top: 3px; }
+  .app-shell .positions-workspace .t-table--cards td[data-col="action"] { padding: 8px !important; border-top: 0 !important; }
+  .app-shell .positions-workspace .t-table--cards td[data-col="action"] button { min-height: 30px; border-radius: 2px; }
+  .app-shell .positions-workspace .t-table--cards tbody tr:nth-child(even) { background: #101c2b; }
+  .app-shell .positions-workspace .t-table--cards td:nth-child(n+4):not(:last-child) { text-align: right; }
+}
+@media (min-width: 769px) and (max-width: 1199px) {
+  .home-workspace .mobile-home { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .home-workspace .mh-card { grid-column: auto !important; }
+  .desktop-market-clock { display: none !important; }
+  .app-shell .desktop-terminal-header { grid-template-columns: 232px minmax(0,1fr); }
+}
+@media (min-width: 769px) and (max-width: 999px) {
+  .home-workspace .mobile-home { grid-template-columns: minmax(0,1fr); }
+}
+
+.positions-table-scroll { min-width: 0; width: 100%; overflow-x: auto; }
+
+@media(min-width:769px) {
+ .app-shell .desktop-terminal-header { grid-template-columns:232px minmax(0,1fr) auto auto; }
+ .desktop-execution-control {grid-column:3;}
+ .desktop-market-clock {grid-column:4;}
+ .workspace-command-search {grid-column:2;grid-row:1;position:relative;min-width:0;margin:8px 16px;}
+ .workspace-command-search input {width:100%;min-width:0;background:#081321;border:1px solid var(--line);padding:10px 12px;color:var(--ink);font:12px var(--mono);border-radius:2px;}
+ .workspace-command-results {position:absolute;top:100%;left:0;right:0;background:#101b29;border:1px solid var(--line);z-index:80;box-shadow:0 8px 20px #0008;}
+ .workspace-command-results button,.workspace-command-results > span {display:block;width:100%;padding:12px;text-align:left;background:transparent;border:0;color:var(--ink);font:12px var(--sans);}
+ .workspace-command-results button {cursor:pointer;}
+ .workspace-command-results button:hover {background:#efb45418;}
+}
+@media(min-width:769px) and (max-width:1199px) {
+ .app-shell .desktop-terminal-header {grid-template-columns:232px minmax(0,1fr) auto;}
+ .workspace-command-search {margin-inline:8px;}
+ .workspace-command-search input {font-size:11px;padding-inline:8px;}
+}
+
+.workspace-command-search label { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }

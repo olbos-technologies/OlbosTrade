@@ -66,7 +66,7 @@ export const NAV_MODEL_LEGACY: NavGroup[] = [
   ]},
   { id: "journal",   label: "Journal & Replay", icon: "journal",   key: "journal" },
   { id: "analytics", label: "Performance",      icon: "analytics", key: "analytics" },
-  { id: "system", label: "System", icon: "data", children: [
+  { id: "system", label: "System", icon: "connections", children: [
     { key: "system:broker",  label: "Broker" },
     { key: "system:market",  label: "Market Data", advanced: true },
     { key: "system:quality", label: "Data Quality", advanced: true },
@@ -81,7 +81,7 @@ export const NAV_MODEL_LEGACY: NavGroup[] = [
   // a group added to one alone disappears when the flag flips. #78 missed the
   // nav model entirely and shipped My Brokers reachable only by URL; adding it
   // to one model would be the same bug with a longer fuse.
-  { id: "account", label: "Account", icon: "data", requiresAuth: true, children: [
+  { id: "account", label: "Account", icon: "account", requiresAuth: true, children: [
     { key: "account:profile",  label: "Profile" },
     { key: "account:password", label: "Password" },
     { key: "account:sessions", label: "Sessions" },
@@ -146,7 +146,7 @@ export const NAV_MODEL_V2: NavGroup[] = [
   ]},
   { id: "journal",   label: "Journal",     icon: "journal",   key: "journal" },
   { id: "analytics", label: "Performance", icon: "analytics", key: "analytics" },
-  { id: "system", label: "Data & Integrations", icon: "data", children: [
+  { id: "system", label: "Data & Integrations", icon: "connections", children: [
     { key: "system:broker",  label: "Broker Connections" },
     { key: "system:market",  label: "Market Data", advanced: true },
     { key: "system:quality", label: "Data Quality", advanced: true },
@@ -161,7 +161,7 @@ export const NAV_MODEL_V2: NavGroup[] = [
   // a group added to one alone disappears when the flag flips. #78 missed the
   // nav model entirely and shipped My Brokers reachable only by URL; adding it
   // to one model would be the same bug with a longer fuse.
-  { id: "account", label: "Account", icon: "data", requiresAuth: true, children: [
+  { id: "account", label: "Account", icon: "account", requiresAuth: true, children: [
     { key: "account:profile",  label: "Profile" },
     { key: "account:password", label: "Password" },
     { key: "account:sessions", label: "Sessions" },
