@@ -4,6 +4,7 @@
  * Execution modes: MANUAL (signals only) · COPILOT (you approve) · AUTOPILOT (auto-execute)
  */
 import React, { useState, useEffect, useCallback } from "react";
+import { useIsMobile } from "../hooks/useIsMobile";
 import { usePaperTrade } from "../hooks/usePaperTrade";
 import TradingModeSelector from "../components/TradingModeSelector";
 import SignalAttribution from "../components/SignalAttribution";
@@ -21,6 +22,12 @@ import { Button } from "../components/ui";
 import ManualTradePanel from "../trade-desk/orders/ManualTradePanel";
 import { tint } from "../utils/tint";
 import { useTabRoute } from "../hooks/useTabRoute";
+
+function AuxiliaryDeskTools({embedded,children}:{embedded:boolean;children:React.ReactNode}) {
+ const isMobile=useIsMobile();
+ if(!embedded||isMobile)return <>{children}</>;
+ return <details className="desk-auxiliary-tools"><summary>Additional desk tools & execution settings</summary><div>{children}</div></details>;
+}
 
 function HintedTh({ label }: { label: string }) {
   return (
@@ -636,6 +643,7 @@ export default function TradeDesk({
       {/* On a phone the Positions workspace prioritizes the holdings list.
           Execution state remains visible in the terminal trigger and Desk
           session rail; the full selector stays available everywhere else. */}
+      <AuxiliaryDeskTools embedded={embedded}>
       <ExecModeBar hideOnMobile={tab === "positions"} />
 
       {/* Tab bar */}
@@ -657,6 +665,8 @@ export default function TradeDesk({
           {loading ? "Running…" : "▶ Run signal cycle"}
         </Button>
       </div>
+
+      </AuxiliaryDeskTools>
 
       <div style={{ flex: 1, overflow: "auto" }}>
         {/* OVERVIEW */}

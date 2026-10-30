@@ -2,6 +2,7 @@ import React from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import "./index.css";
 import "./terminal-design.css";
+import "./refined-theme.css";
 import { canonicalPageKey, pageKeyToUrl, pathToPageKey } from "./terminalRoutes";
 import TerminalLayout  from "./components/TerminalLayout";
 import WorkspaceFrame from "./components/WorkspaceFrame";

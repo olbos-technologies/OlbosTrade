@@ -28,6 +28,8 @@ import { TerminalNavProvider } from "./TerminalNavContext";
 import { Badge, Button } from "./ui";
 import BrandWordmark from "./BrandWordmark";
 import WorkspaceSearch from "./WorkspaceSearch";
+import CompactWorkspaceNav from "./CompactWorkspaceNav";
+import WorkspaceContext from "./WorkspaceContext";
 
 // ── Icons (inline SVG — no dep) ───────────────────────────────────────────────
 const Icon = ({ d, size = 16 }: { d: string; size?: number }) => (
@@ -1440,15 +1442,16 @@ export default function TerminalLayout({ children, activePage, onNav, isDeskV2Sh
 }) {
   const isMobile = useIsMobile();
   // Desktop starts labeled; phones keep their closed overlay drawer.
-  const [sidebarExpanded, setSidebarExpanded] = useState(() => !isMobile);
+  const [sidebarExpanded, setSidebarExpanded] = useState(false);
+  const showContext = !useIsMobile(1599);
 
   // Crossing the breakpoint must not leave a desktop rail covering a phone.
-  useEffect(() => { setSidebarExpanded(!isMobile); }, [isMobile]);
+  useEffect(() => { setSidebarExpanded(false); }, [isMobile]);
 
   // On mobile, navigating closes the overlay.
   const handleNav = (key: string) => {
     onNav(key);
-    if (isMobile) setSidebarExpanded(false);
+    setSidebarExpanded(false);
   };
 
   return (
@@ -1487,12 +1490,12 @@ export default function TerminalLayout({ children, activePage, onNav, isDeskV2Sh
       </ErrorBoundary>
       <div style={{ display: "flex", flex: 1, overflow: "hidden", position: "relative" }}>
         <ErrorBoundary label="Navigation">
-          <Sidebar
+          {!isMobile && !sidebarExpanded ? <CompactWorkspaceNav active={activePage} onNav={handleNav} onMore={()=>setSidebarExpanded(true)} /> : <Sidebar
             active={activePage}
             onNav={handleNav}
             expanded={sidebarExpanded}
             isMobile={isMobile}
-          />
+          />}
         </ErrorBoundary>
         {/* Tap-away backdrop when the overlay sidebar is open on mobile */}
         {isMobile && sidebarExpanded && (
@@ -1511,6 +1514,7 @@ export default function TerminalLayout({ children, activePage, onNav, isDeskV2Sh
             {children}
           </ErrorBoundary>
         </main>
+        {showContext && <ErrorBoundary label="Workspace context"><WorkspaceContext page={activePage}/></ErrorBoundary>}
       </div>
       <StatusBar page={activePage} />
       {/* Phones navigate from the bottom. The sidebar stays as the overflow,

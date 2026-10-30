@@ -80,3 +80,39 @@ GET. No decorative sparklines or prototype health values enter production.
 Advanced analytics now mount on disclosure opening and unmount on close,
 so the first desktop view does not run a second hidden dashboard or duplicate
 its polling. Existing browser checks open the disclosure and verify it renders.
+
+## Combined clean application reference
+
+The user supplied Improve OlbosTrade App(1).zip and selected its simple layout
+as the main visual reference. Retain the working Command Center chart, table,
+broker flows and truthful reads from the previous iteration. Apply a shared
+near-black navy/gold palette, restrained borders, readable sans headings and
+aligned numeric data across primary pages, advanced workspaces and mobile.
+The full approved logo remains; no prototype metrics, connection toggles,
+security claims, audit events or model scores are imported.
+
+Desktop starts with an 84px labeled Home/Markets/Signals/Positions/Risk/More
+rail. More opens the existing full navigation, retaining signed-in Account
+filtering and every advanced destination. Navigation selection closes the
+expanded rail. The original kill-switch confirmation remains reachable.
+Workspace search supports slash and Ctrl/Cmd+K; typing never executes trades.
+
+At >=1600px, a right context panel reports independently read mode, environment,
+broker state, entry checks, kill switch, approval counts and actionable
+exceptions. Failed polls remove previous successful values. Read receipt ages
+are not broker-as-of timestamps or audit evidence. Home's duplicate execution
+panel is hidden only when these readings/links are present in the wide rail;
+on narrower screens its existing execution panel remains. The rail is not
+mounted on phones/tablets. No fabricated session health score or audit trail.
+
+In the embedded desktop Trade Desk, redundant legacy tabs and execution
+settings sit behind Additional desk tools, while the outer workspace tabs and
+status remain. Opening preserves all original controls, including signal-cycle
+submission; review tests open/close only, never submit. Phone and standalone
+legacy execution controls keep their existing presentation.
+
+Coverage adds shared-style/route/browser checks at 390/768/1440/1920, compact
+navigation/full-menu reachability, context unavailable states, keyboard search,
+auxiliary tool disclosure and no order/settings writes. Final CI/captures in
+the PR supersede previous screenshots. No backend, migration, environment,
+permission, execution handler or risk-limit change. No merge/deployment.
