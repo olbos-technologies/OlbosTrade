@@ -3,7 +3,18 @@
  * Exported so TerminalLayout and tests share one lookup.
  */
 
-export type NavLeaf = { key: string; label: string; /** Hidden until Advanced is open */ advanced?: boolean };
+export type NavLeaf = {
+  key: string;
+  label: string;
+  /** Hidden until Advanced is open (utility / tests; sidebar may always show advanced). */
+  advanced?: boolean;
+  /**
+   * When false, keep the leaf for route ownership / accordion highlight but
+   * omit it from the sidebar list — used for Trade Desk destinations that
+   * already appear as in-desk tabs.
+   */
+  sidebar?: boolean;
+};
 export type NavGroup = {
   id: string;
   label: string;
@@ -72,9 +83,10 @@ export function filterNavForDisplay(
       continue;
     }
 
-    const children = group.children.filter(
-      (c) => !c.advanced || showAdvanced || c.key === activePage,
-    );
+    const children = group.children.filter((c) => {
+      if (c.sidebar === false && c.key !== activePage) return false;
+      return !c.advanced || showAdvanced || c.key === activePage;
+    });
     if (children.length === 0 && !group.key) continue;
     out.push({ ...group, children });
   }

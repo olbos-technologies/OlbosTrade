@@ -15,5 +15,12 @@ for(const width of [390,1440]) test(`strategy menu separates daily review from r
  await expect(nav.getByRole('button',{name:'Crypto Research',exact:true})).toBeVisible();
  await expect(nav.getByRole('button',{name:'Strategy Builder',exact:true})).toBeVisible();
  await nav.getByRole('button',{name:'Trade Desk',exact:true}).click();
+ for(const name of ['Command Overview','Equity Desk','Options Desk','Positions']) {
+  await expect(nav.getByRole('button',{name,exact:true})).toBeVisible();
+ }
+ // Options scanners live under Research, not as a 13-row Trade Desk dump.
+ await expect(nav.getByRole('button',{name:'Options Chain',exact:true})).toHaveCount(0);
+ await expect(nav.getByRole('button',{name:'Copilot Queue',exact:true})).toHaveCount(0);
+ await nav.getByRole('button',{name:'Research',exact:true}).click();
  await expect(nav.getByRole('button',{name:'Options Chain',exact:true})).toBeVisible();
 });

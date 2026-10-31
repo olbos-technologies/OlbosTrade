@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased — Trade Desk sidebar slim
+
+- Trade Desk sidebar lists four daily workspaces (Command Overview, Equity Desk, Options Desk, Positions). Copilot / Orders / Execution / Replay / Settings stay as in-desk tabs; options scanners move under Research. Presentation / IA only; no risk, permission or order-path change.
+
 ## Unreleased — Live Signals plain-language rationale
 
 - Live equity signal cards format the scanner `reasons` map (RSI/MACD/VWAP/…) into "Why it appeared" instead of always showing the empty-producer placeholder. Presentation of existing producer data; no scoring or order-path change.

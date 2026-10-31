@@ -91,24 +91,28 @@ describe("panel layout defaults", () => {
 });
 
 describe("nav model v2", () => {
-  it("puts Command Overview and Options tools under Trade Desk in both nav models", () => {
+  it("puts Command Overview under Trade Desk and keeps Options off the top level", () => {
     expect(groupIdForKey("trade:overview", NAV_MODEL_V2)).toBe("trade");
     expect(NAV_MODEL_V2.find((g) => g.id === "options")).toBeUndefined();
-    // Legacy also folded its separate top-level Options Desk group into
-    // Trade Desk — merged so operators see options tools alongside the
-    // rest of the desk without needing the V2 flag.
     expect(NAV_MODEL_LEGACY.find((g) => g.id === "options")).toBeUndefined();
     expect(groupIdForKey("options:chain", NAV_MODEL_LEGACY)).toBe("trade");
+    expect(groupIdForKey("options:chain", NAV_MODEL_V2)).toBe("lab");
   });
 
-  it("keeps options tools under Trade Desk as advanced", () => {
-    const strat = NAV_MODEL_V2.find((g) => g.id === "trade");
-    expect(strat?.children?.some((c) => c.key === "options:chain" && c.advanced)).toBe(true);
+  it("lists only the four daily Trade Desk leaves in the sidebar", () => {
+    const filtered = filterNavForDisplay(NAV_MODEL_V2, true, "dashboard");
+    const trade = filtered.find((g) => g.id === "trade");
+    expect(trade?.children?.map((c) => c.key)).toEqual([
+      "trade:overview",
+      "trade:equity",
+      "trade:options",
+      "trade:positions",
+    ]);
   });
 
-  it("filterNavForDisplay hides advanced options tools until advanced is on", () => {
-    const filtered = filterNavForDisplay(NAV_MODEL_V2, false, "dashboard");
-    const strat = filtered.find((g) => g.id === "trade");
-    expect(strat?.children?.some((c) => c.key === "options:chain")).toBe(false);
+  it("keeps desk-tab destinations for route ownership without listing them", () => {
+    expect(groupIdForKey("trade:copilot", NAV_MODEL_V2)).toBe("trade");
+    const onCopilot = filterNavForDisplay(NAV_MODEL_V2, true, "trade:copilot");
+    expect(onCopilot.find((g) => g.id === "trade")?.children?.some((c) => c.key === "trade:copilot")).toBe(true);
   });
 });

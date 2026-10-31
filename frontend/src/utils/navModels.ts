@@ -21,17 +21,20 @@ export const NAV_MODEL_LEGACY: NavGroup[] = [
     { key: "markets:news",       label: "News & Events", advanced: true },
     { key: "markets:sector-rotation", label: "Sector Rotation", advanced: true },
   ]},
+  // Daily Trade Desk leaves only. Copilot / orders / execution / P&L stay on
+  // the model for route ownership but sidebar:false — they live as desk tabs /
+  // in-desk tools (MASTER_SPEC: do not sidebar every scanner).
   { id: "trade", label: "Trade Desk", icon: "paper", children: [
     { key: "trade:overview",  label: "Overview" },
     { key: "trade:positions", label: "Positions" },
-    { key: "trade:copilot",   label: "Copilot Review", advanced: true },
-    { key: "trade:orders",    label: "Desk signals", advanced: true },
-    { key: "trade:execlog",   label: "Execution Monitor", advanced: true },
-    { key: "trade:logs",      label: "P&L Breakdown", advanced: true },
-    { key: "options:chain",   label: "Options Chain", advanced: true },
-    { key: "scan",            label: "Spread Scanner", advanced: true },
-    { key: "options:income",  label: "Income Strategies", advanced: true },
-    { key: "options:flow",    label: "Options Flow", advanced: true },
+    { key: "trade:copilot",   label: "Copilot Review", sidebar: false },
+    { key: "trade:orders",    label: "Desk signals", sidebar: false },
+    { key: "trade:execlog",   label: "Execution Monitor", sidebar: false },
+    { key: "trade:logs",      label: "P&L Breakdown", sidebar: false },
+    { key: "options:chain",   label: "Options Chain", sidebar: false },
+    { key: "scan",            label: "Spread Scanner", sidebar: false },
+    { key: "options:income",  label: "Income Strategies", sidebar: false },
+    { key: "options:flow",    label: "Options Flow", sidebar: false },
   ]},
   { id: "strat", label: "Strategies", icon: "strategy", children: [
     { key: "strat:alpha-edge", label: "Alpha Edge" },
@@ -85,7 +88,9 @@ export const NAV_MODEL_LEGACY: NavGroup[] = [
 
 /**
  * Trade Desk 2.0 IA — daily strategy review is separate from research.
- * Options tools remain reachable under Trade Desk through Advanced.
+ * Sidebar Trade Desk lists the four daily workspaces; Copilot / Orders /
+ * Execution / Replay / Settings and options scanners stay reachable as
+ * in-desk tabs or Research tools (MASTER_SPEC).
  */
 export const NAV_MODEL_V2: NavGroup[] = [
   { id: "dashboard", label: "Command Center", icon: "dashboard", key: "dashboard" },
@@ -101,16 +106,11 @@ export const NAV_MODEL_V2: NavGroup[] = [
     { key: "trade:equity",    label: "Equity Desk" },
     { key: "trade:options",   label: "Options Desk" },
     { key: "trade:positions", label: "Positions" },
-    { key: "trade:copilot",   label: "Copilot Queue", advanced: true },
-    { key: "trade:orders",    label: "Orders", advanced: true },
-    { key: "trade:execlog",   label: "Execution Monitor", advanced: true },
-    { key: "trade:replay",    label: "Trade Replay", advanced: true },
-    { key: "trade:settings",  label: "Desk Settings", advanced: true },
-    { key: "options:chain", label: "Options Chain", advanced: true },
-    { key: "scan", label: "Spread Scanner", advanced: true },
-    { key: "options:income", label: "Income Strategies", advanced: true },
-    { key: "options:flow", label: "Options Flow", advanced: true },
-
+    { key: "trade:copilot",   label: "Copilot Queue", sidebar: false },
+    { key: "trade:orders",    label: "Orders", sidebar: false },
+    { key: "trade:execlog",   label: "Execution Monitor", sidebar: false },
+    { key: "trade:replay",    label: "Trade Replay", sidebar: false },
+    { key: "trade:settings",  label: "Desk Settings", sidebar: false },
   ]},
   { id: "strat", label: "Strategies", icon: "strategy", children: [
     { key: "strat:alpha-edge", label: "Alpha Edge" },
@@ -129,6 +129,10 @@ export const NAV_MODEL_V2: NavGroup[] = [
     { key: "strat:builder", label: "Strategy Builder" },
     { key: "strat:alerts", label: "Alerts" },
     { key: "crypto:signals", label: "Crypto Research" },
+    { key: "options:chain", label: "Options Chain" },
+    { key: "scan", label: "Spread Scanner" },
+    { key: "options:income", label: "Income Strategies" },
+    { key: "options:flow", label: "Options Flow" },
     { key: "lab:scenario",   label: "Scenario Lab" },
     { key: "lab:strategy",   label: "Strategy Research" },
     { key: "lab:market",     label: "Market & Regime" },

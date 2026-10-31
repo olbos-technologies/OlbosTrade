@@ -7,7 +7,11 @@ describe.each([['legacy',NAV_MODEL_LEGACY],['v2',NAV_MODEL_V2]] as const)('%s st
     expect(simple.find(g=>g.id==='strat')?.children?.map(c=>c.key)).toEqual(['strat:alpha-edge','equity','strat:signal-history','strat:cards','strat:health']);
     expect(simple.some(g=>g.id==='lab')).toBe(false);
     for(const key of ['crypto:signals','strat:research','strat:calendar','strat:builder','strat:alerts']) expect(groupIdForKey(key,model)).toBe('lab');
-    for(const key of ['options:chain','scan','options:income','options:flow']) expect(groupIdForKey(key,model)).toBe('trade');
+    // Options scanners sit under Trade Desk in legacy (sidebar:false) and under
+    // Research in V2 — still owned for accordion / deep-link highlight.
+    for(const key of ['options:chain','scan','options:income','options:flow']) {
+      expect(groupIdForKey(key,model)).toBe(model===NAV_MODEL_V2?'lab':'trade');
+    }
   });
   it('keeps a deep-linked research page visible with Advanced closed',()=>{
     expect(filterNavForDisplay(model,false,'crypto:signals').find(g=>g.id==='lab')?.children?.some(c=>c.key==='crypto:signals')).toBe(true);
