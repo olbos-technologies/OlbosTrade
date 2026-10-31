@@ -43,7 +43,10 @@ for(const width of [390,768,1440,1920])for(const [route,heading] of routes){
    const navH=await page.locator('.mobile-bottom-nav').evaluate(el=>(el as HTMLElement).getBoundingClientRect().height);
    expect(navH).toBeLessThanOrEqual(64);
   }
-  await expect(page.locator('.app-shell')).toHaveCSS('background-color','rgb(5, 8, 13)');
+  await expect(page.locator('.app-shell')).toHaveCSS('background-color','rgb(3, 4, 5)');
+  if(route==='dashboard') {
+   await expect(page.locator(width<=768?'.mh-session-intro':'.dc-heading')).toHaveCSS('background-image',/linear-gradient/);
+  }
   if(width>768){
    const nav=page.getByRole('navigation',{name:'Workspace navigation'});
    expect(await nav.getByRole('button').evaluateAll(nodes=>nodes.slice(0,6).map(n=>n.getAttribute('aria-label')))).toEqual(['Home','Markets','Signals','Positions','Risk','More']);

@@ -1,0 +1,47 @@
+/* Visual tokens adapted from Improve OlbosTrade App(2), without its demo data
+   or simulated execution/account interactions. Existing production controls own behavior. */
+.app-shell {
+  --bg: #030405; --bg-2: #080a0b; --bg-3: #101315; --bg-4: #161a1c;
+  --line: #353a3d; --line-dim: #1c2022;
+  --ink: #f0f1eb; --ink-dim: #b5bab7; --ink-faint: #9aa39f;
+  --design-action: #ffc247;
+  background: #030405 !important;
+}
+.app-shell .desktop-terminal-header,
+.app-shell .desktop-workspace-nav { background: rgba(4,5,6,.94) !important; }
+.app-shell .compact-workspace-nav {
+  background: linear-gradient(180deg,rgba(8,10,11,.99),rgba(3,4,5,.99));
+}
+.app-shell .compact-workspace-nav > div > button[aria-current="page"] {
+  background: linear-gradient(90deg,rgba(246,168,33,.11),rgba(13,12,9,.78));
+}
+.app-shell .workspace-context { background: #060809; }
+.app-shell .desktop-command-center { --line: #353a3d; --line-dim: #1c2022; --design-action: #ffc247; }
+.app-shell .dc-heading {
+  position: relative; isolation: isolate; overflow: hidden;
+  min-height: 140px; padding: 28px 30px; border: 1px solid var(--line-dim);
+  border-top-color: #4d4026; border-radius: 3px; align-items: center;
+  background: linear-gradient(110deg,rgba(246,168,33,.075),transparent 42%),
+    radial-gradient(circle at 80% 40%,rgba(246,168,33,.07),transparent 34%),#07090a;
+}
+.app-shell .dc-heading::after {
+  content: ''; position: absolute; z-index: -1; inset: 0; pointer-events: none;
+  background: repeating-linear-gradient(90deg,transparent 0,transparent 79px,rgba(255,255,255,.012) 80px);
+}
+.app-shell .dc-heading h1 { font-size: clamp(26px,3vw,40px); line-height: 1.15; }
+.app-shell .dc-panel, .app-shell .dc-metrics { background: #080a0b; }
+.app-shell .dc-positions th { background: #101315; }
+.app-shell .dc-positions tbody tr:nth-child(even) { background: #0b0e0f; }
+.app-shell .dc-primary {
+  border-color: #8d6821; background: linear-gradient(180deg,#30230d,#251a08);
+  color: #ffc247; box-shadow: inset 0 1px rgba(255,213,121,.08);
+}
+.app-shell .mh-session-intro {
+  padding: 24px 20px; border: 1px solid #1c2022; border-top-color: #4d4026;
+  background: linear-gradient(110deg,rgba(246,168,33,.075),transparent 65%),#07090a;
+}
+@media (max-width: 768px) {
+  .app-shell .home-workspace .mh-card { background: #080a0b; }
+  .app-shell .home-workspace .mh-account { background: #080a0b; }
+  .app-shell .dc-heading { padding: 20px; min-height: auto; }
+}
