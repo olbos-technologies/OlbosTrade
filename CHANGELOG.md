@@ -1,8 +1,14 @@
 # Changelog
 
+<<<<<<< HEAD
 ## Unreleased — Strategies navigation focus
 
 - Keep five daily Strategies destinations: Alpha Edge, Live Signals, History, Strategy Library, Health. Move signal research/calendar/builder/alerts/crypto into Advanced Research and V2 options tooling into Advanced Trade Desk. Presentation only; no risk, permission or order-path change.
+=======
+## Unreleased — Reference shell palette v2
+
+- Adopt near-black shell surfaces, restrained gold accents, and a layered Command Center / Home intro background from the approved reference. Presentation only; no risk, permission or order-path change.
+>>>>>>> 96d0873 (docs: note reference shell palette under Unreleased)
 
 ## Unreleased — Mobile safe areas
 
