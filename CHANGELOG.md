@@ -3,6 +3,9 @@
 ## Unreleased — Desk-loop sidebar (Bloomberg focus)
 
 - Sidebar keeps the daily desk loop only: Command Center, Markets (Chart/Watchlists), Signals (Alpha Edge / Live / History), Trade Desk (four workspaces), Risk, Journal, Performance, Brokers. Research lab, strategy library/health, scanners and ops extras stay URL-reachable but off the sidebar. Presentation / IA only; no risk, permission or order-path change.
+## Unreleased — Signal rationale label parity guard
+
+- Added a guard test asserting the factor labels in `frontend/src/utils/equitySignalRationale.ts` (added by #192) stay in step with the keys `score_equity_signal()` emits, in both directions, and that the two volume labels keep the VWAP condition the engine actually gates them on. Test only; no behaviour change.
 
 ## Unreleased — Live Signals plain-language rationale
 
