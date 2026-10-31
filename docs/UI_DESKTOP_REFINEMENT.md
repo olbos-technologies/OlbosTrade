@@ -130,4 +130,15 @@ Merged to main via PR #169 (`032ba7d`). Post-merge Chromium verification on `c79
 `refined-app` + `mobile-signals-focus` + `terminal-shell` — 44 passed at
 320/390/768/1440/1920 including overflow, fonts, mobile search and Signals
 capital-at-risk context. Actual Safari/iOS and novice/pro feedback remain open.
-Not deployed.
+
+## UX-5 — Mobile cleanup pass
+
+Branch `cursor/mobile-cleanup-d67f`. After production deploy of #169–#172 the
+phone surfaces still felt airy and chrome-heavy (tall header/nav, large Home
+marketing block, oversized card padding fighting denser `terminal-design`
+rules). This pass keeps IBM Plex Mono / Inter and navy/gold branding, but
+reclaims vertical space on ≤768px: 52px header, 56px bottom nav, compact
+workspace search, unified 16px page inset, denser cards/headings, and a
+one-line Home session intro with side-by-side Positions/Risk actions. Risk and
+unavailable states remain visible. No backend, permission, order handler,
+migration or environment change.

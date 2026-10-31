@@ -158,11 +158,12 @@ export default function MobileHome() {
       </header>
 
       <section className="mh-session-intro" aria-label="Session overview">
-        <span className="mh-eyebrow">COMMAND CENTER / PORTFOLIO OVERSIGHT</span>
-        <h2>Control the session.<br /><span>Protect the capital.</span></h2>
-        <p>One operational view for portfolio state, developing signals and exceptions requiring your attention.</p>
-        <button className="mh-primary" onClick={() => nav("trade:positions")}>Review positions <span aria-hidden="true">→</span></button>
-        <button className="mh-link" onClick={() => nav("risk:heat")}>Open Risk Center <span aria-hidden="true">↗</span></button>
+        <span className="mh-eyebrow">COMMAND CENTER</span>
+        <h2>Control the session. <span>Protect the capital.</span></h2>
+        <div className="mh-session-actions">
+          <button className="mh-primary" onClick={() => nav("trade:positions")}>Review positions <span aria-hidden="true">→</span></button>
+          <button className="mh-link" onClick={() => nav("risk:heat")}>Open Risk <span aria-hidden="true">↗</span></button>
+        </div>
       </section>
 
       {warnings.length > 0 && <section className="mh-card mh-risk-alert" aria-label="Needs attention">

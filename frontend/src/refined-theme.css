@@ -107,8 +107,7 @@
 
 .context-route {display:block;font:11px/1.5 var(--sans);color:var(--ink-dim);margin-bottom:8px;}
 
-/* UX-1 / UX-5: source typography and spacious mobile layout trial.
-   Font families/weights come from the supplied Figma export, served locally. */
+/* UX-1 / UX-5: source typography (Figma export, self-hosted). */
 .app-shell {
  --mono:"IBM Plex Mono",monospace;
  --sans:"Inter",system-ui,sans-serif;
@@ -130,44 +129,148 @@
 .app-shell .workspace-frame__heading h1,.app-shell .design-page-heading h1,.app-shell .design-signal-feed .page-header__title {font-family:var(--mono);font-weight:600;letter-spacing:-.045em;}
 .app-shell .dc-metric strong {font-family:var(--mono);font-weight:600;}
 .app-shell :is(.instrument-card,.mission-card,.panel,.dc-panel,.dc-metric) {border-radius:3px;}
-.app-shell .design-signal-card {padding:24px;}
-.app-shell .signal-rationale p {line-height:1.8;}
+.app-shell .design-signal-card {padding:20px;}
+.app-shell .signal-rationale p {line-height:1.55;}
 .app-shell .design-review {border-radius:3px;font:600 11px var(--mono);text-transform:uppercase;letter-spacing:.06em;}
 .app-shell .chart-symbol-picker {border:1px solid var(--line-dim);gap:0;border-radius:3px;overflow-x:auto;}
 .app-shell .chart-symbol-picker button {border:0;border-radius:0;background:transparent;font-family:var(--mono);}
 .app-shell .chart-symbol-picker button[aria-pressed="true"] {border-left:2px solid var(--design-action);background:#ffc24714;}
-.mobile-workspace-search {padding:16px 16px 0;}
-.mobile-workspace-search .workspace-command-search {display:block;width:100%;max-width:none;position:relative;}
-.mobile-workspace-search .workspace-command-search input {width:100%;min-height:48px;padding:12px 14px;border-left:2px solid var(--design-action);font-size:16px;box-sizing:border-box;}
-.mobile-workspace-search .workspace-command-results {z-index:40;top:100%;left:0;right:0;}
-.mh-session-intro {grid-column:1/-1;order:-8;padding:18px 0 28px;border-bottom:1px solid var(--line-dim);}
-.mh-session-intro h2 {font:600 clamp(24px,6.5vw,32px)/1.2 var(--mono);letter-spacing:-.055em;margin:12px 0 16px;}
+
+/* Home session intro — compact on all widths; phone rules tighten further. */
+.mh-session-intro {grid-column:1/-1;order:-8;padding:8px 0 14px;border-bottom:1px solid var(--line-dim);}
+.mh-session-intro h2 {font:600 clamp(18px,5vw,22px)/1.25 var(--mono);letter-spacing:-.04em;margin:6px 0 10px;}
 .mh-session-intro h2 span {color:var(--design-action);}
-.mh-session-intro p {color:var(--ink-dim);line-height:1.8;}
-.mh-session-intro .mh-primary {margin-top:24px;}
-.mh-session-intro .mh-link {justify-content:center;}
-@media(max-width:768px) {
- .app-shell .home-workspace .mobile-home {padding:24px 20px;gap:20px;}
- .app-shell .home-workspace .mh-card {border-radius:3px;padding:24px 20px;background:#080c12;}
- .app-shell .home-workspace .mh-account {border-left:3px solid var(--design-action);background:#080c12;}
- .app-shell .home-workspace .mh-heading h1 {font-size:24px;}
- .app-shell .home-workspace .mh-section-title {font:600 16px var(--mono);}
- .app-shell .home-workspace .mh-balance {font-size:clamp(24px,7vw,32px);}
- .app-shell .home-workspace .mh-primary,.app-shell .home-workspace .mh-secondary {border-radius:3px;font:600 11px var(--mono);text-transform:uppercase;letter-spacing:.05em;min-height:48px;}
- .app-shell .home-workspace .mh-counts > div {border-radius:3px;background:transparent;border:1px solid var(--line-dim);}
- .app-shell .chart-workspace,.app-shell .positions-workspace {padding:24px 20px;}
- .app-shell .design-page-heading h1,.app-shell .design-signal-feed .page-header__title,.app-shell .workspace-frame__heading h1 {font-size:24px;line-height:1.2;}
- .app-shell .design-page-heading p {font-family:var(--mono);font-size:12px;line-height:1.7;}
- .app-shell .positions-workspace .positions-summary {padding:24px 20px;border-radius:3px;}
- .app-shell .positions-workspace .t-table--cards tbody tr {border-radius:3px;padding:20px;}
- .app-shell .design-signal-card {padding:22px 18px;border-radius:3px;}
- .app-shell .design-signal-feed .mission-list {gap:24px;}
- .app-shell .brokers-workspace .broker-sign-in {padding:24px 18px !important;border-radius:3px;}
- .app-shell .brokers-workspace .broker-sign-in > div > article {padding:20px 16px !important;border-radius:3px !important;}
- .app-shell .brokers-workspace .broker-sign-in > div > article > button {width:100%;margin-top:12px;}
- .app-shell .workspace-frame__heading {padding:28px 20px 24px;}
-}
-.mobile-workspace-search .workspace-command-results {position:absolute;background:#0b1017;border:1px solid var(--line);box-shadow:0 8px 20px #0008;}
-.mobile-workspace-search .workspace-command-results button,.mobile-workspace-search .workspace-command-results > span {display:block;width:100%;min-height:44px;padding:12px;text-align:left;background:transparent;border:0;color:var(--ink);font:12px/1.5 var(--mono);}
+.mh-session-actions {display:flex;flex-wrap:wrap;gap:8px;align-items:stretch;}
+.mh-session-actions .mh-primary,.mh-session-actions .mh-link {margin:0;flex:1 1 140px;min-height:44px;justify-content:center;}
+
+.mobile-workspace-search {padding:10px 16px 0;}
+.mobile-workspace-search .workspace-command-search {display:block;width:100%;max-width:none;position:relative;}
+.mobile-workspace-search .workspace-command-search input {width:100%;min-height:44px;padding:10px 12px;border-left:2px solid var(--design-action);font-size:16px;box-sizing:border-box;}
+.mobile-workspace-search .workspace-command-results {z-index:40;top:100%;left:0;right:0;position:absolute;background:#0b1017;border:1px solid var(--line);box-shadow:0 8px 20px #0008;}
+.mobile-workspace-search .workspace-command-results button,.mobile-workspace-search .workspace-command-results > span {display:block;width:100%;min-height:44px;padding:10px 12px;text-align:left;background:transparent;border:0;color:var(--ink);font:12px/1.5 var(--mono);}
 .mobile-workspace-search .workspace-command-results button {cursor:pointer;}
 .mobile-workspace-search .workspace-command-results button:hover {background:#ffc24714;}
+
+/*
+  UX-5 mobile cleanup (all workspaces): reclaim vertical space after the
+  spacious Figma trial. Risk/unavailable copy stays visible; this is padding,
+  type scale and chrome only. Loaded last so it beats terminal-design bloat.
+*/
+@media(max-width:768px) {
+ .app-shell .mobile-terminal-header {
+  height:52px !important;padding:0 10px 0 0 !important;gap:6px !important;
+  background:#080c12 !important;border-bottom:1px solid var(--line-dim) !important;
+ }
+ .app-shell .mobile-nav-trigger {
+  width:44px !important;height:44px !important;border:0 !important;border-radius:0 !important;
+ }
+ .app-shell [data-testid="mobile-exec-trigger"] {
+  font:600 10px var(--mono) !important;letter-spacing:.04em !important;
+  padding-inline:8px !important;border-radius:3px !important;min-height:36px !important;
+ }
+ .app-shell .mobile-bottom-nav {background:#080c12 !important;min-height:56px;}
+ .app-shell .mobile-bottom-nav__tab {
+  min-height:56px !important;font-size:9px !important;letter-spacing:.04em !important;gap:4px !important;
+ }
+ .app-shell .mobile-bottom-nav__tab svg {width:20px !important;height:20px !important;}
+
+ .app-shell .global-risk-status {gap:6px !important;padding:6px 12px !important;}
+
+ /* Shared content inset for primary + More destinations. */
+ .app-shell .home-workspace .mobile-home,
+ .app-shell .chart-workspace,
+ .app-shell .positions-workspace,
+ .app-shell .brokers-workspace,
+ .app-shell .workspace-frame,
+ .app-shell .design-signal-feed,
+ .app-shell main > .page,
+ .app-shell .page-wrap,
+ .app-shell [class$="-workspace"] {
+  padding-left:16px !important;padding-right:16px !important;box-sizing:border-box;
+ }
+ .app-shell .home-workspace .mobile-home,
+ .app-shell .chart-workspace,
+ .app-shell .positions-workspace,
+ .app-shell .brokers-workspace,
+ .app-shell .design-signal-feed {
+  padding-top:12px !important;padding-bottom:20px !important;gap:12px !important;
+ }
+ .app-shell .workspace-frame__heading {
+  padding:14px 16px 10px !important;border-bottom:0 !important;margin:0 !important;
+ }
+ .app-shell .design-page-heading,
+ .app-shell .design-signal-feed .page-header {
+  padding:12px 0 10px !important;border-bottom:0 !important;margin:0 !important;
+ }
+ .app-shell .design-page-heading h1,
+ .app-shell .design-signal-feed .page-header__title,
+ .app-shell .workspace-frame__heading h1,
+ .app-shell .chart-workspace .markets-toolbar h1 {
+  font-size:20px !important;line-height:1.2 !important;margin:0 !important;
+ }
+ .app-shell .design-page-heading p,
+ .app-shell .workspace-frame__heading p {
+  font:11px/1.45 var(--sans) !important;color:var(--ink-dim);margin:6px 0 0 !important;
+ }
+
+ .app-shell .home-workspace .mobile-home {display:grid;grid-template-columns:minmax(0,1fr);}
+ .app-shell .home-workspace .mh-heading h1 {font-size:20px !important;}
+ .app-shell .home-workspace .mh-section-title {font:600 13px var(--mono) !important;margin-bottom:8px !important;}
+ .app-shell .home-workspace .mh-balance {font-size:clamp(22px,6.5vw,28px) !important;}
+ .app-shell .home-workspace .mh-card {
+  border-radius:3px !important;padding:14px 14px !important;background:#080c12 !important;
+  border:1px solid var(--line-dim) !important;box-shadow:none !important;
+ }
+ .app-shell .home-workspace .mh-account {
+  border-left:2px solid var(--design-action) !important;background:#080c12 !important;
+ }
+ .app-shell .home-workspace .mh-primary,
+ .app-shell .home-workspace .mh-secondary,
+ .app-shell .home-workspace .mh-link {
+  border-radius:3px !important;font:600 10px var(--mono) !important;
+  text-transform:uppercase;letter-spacing:.05em;min-height:44px !important;
+ }
+ .app-shell .home-workspace .mh-counts {gap:8px !important;margin:8px 0 0 !important;}
+ .app-shell .home-workspace .mh-counts > div {
+  border-radius:3px !important;background:transparent !important;border:1px solid var(--line-dim) !important;padding:8px 10px !important;
+ }
+ .app-shell .home-workspace .mh-counts strong {font-size:18px !important;}
+ .mh-session-intro {padding:4px 0 12px;margin:0;}
+ .mh-session-intro .mh-eyebrow {margin:0;}
+ .mh-session-intro h2 {font-size:17px !important;margin:4px 0 8px;}
+
+ .app-shell .positions-workspace .positions-summary {
+  padding:14px !important;border-radius:3px !important;gap:10px !important;
+ }
+ .app-shell .positions-workspace .positions-summary strong {font-size:20px !important;}
+ .app-shell .positions-workspace .t-table--cards tbody tr {
+  border-radius:3px !important;padding:12px 14px !important;
+ }
+ .app-shell .design-signal-card {padding:14px !important;border-radius:3px !important;}
+ .app-shell .design-signal-feed .mission-list {gap:12px !important;}
+ .app-shell .design-signal-feed .page-header {padding:0 0 10px !important;}
+ .app-shell .chart-quote {padding:12px 14px !important;border-radius:3px !important;}
+ .app-shell .chart-symbol-picker button {padding-inline:10px !important;min-height:40px;}
+ .app-shell .brokers-workspace .broker-sign-in {
+  padding:14px !important;border-radius:3px !important;background:#080c12 !important;
+ }
+ .app-shell .brokers-workspace .broker-sign-in > div > article,
+ .app-shell .brokers-workspace .broker-sign-in article {
+  padding:14px !important;border-radius:3px !important;background:#090e14 !important;
+ }
+ .app-shell .brokers-workspace .broker-sign-in > div > article > button,
+ .app-shell .brokers-workspace .broker-sign-in article button {
+  width:100%;margin-top:10px;min-height:44px;border-radius:3px !important;
+ }
+ .app-shell .workspace-frame .panel,
+ .app-shell .workspace-frame .instrument-card,
+ .app-shell .panel {
+  border-radius:3px !important;padding:12px 14px !important;
+ }
+ .app-shell .panel-head {padding:10px 12px !important;}
+ .app-shell .workspace-frame input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+ .app-shell .workspace-frame select,
+ .app-shell .workspace-frame textarea {
+  min-height:44px;font-size:16px !important; /* avoid iOS focus zoom */
+ }
+}

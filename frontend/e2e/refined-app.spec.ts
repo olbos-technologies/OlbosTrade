@@ -32,7 +32,16 @@ for(const width of [390,768,1440,1920])for(const [route,heading] of routes){
    await expect(page.getByRole('button',{name:'Journal →',exact:true})).toBeVisible();
    await search.press('Escape');
    await expect(page.getByRole('button',{name:'Journal →',exact:true})).toHaveCount(0);
-   if(route==='dashboard')await expect(page.getByRole('region',{name:'Session overview'})).toContainText('Protect the capital.');
+   if(route==='dashboard'){
+    const intro=page.getByRole('region',{name:'Session overview'});
+    await expect(intro).toContainText('Protect the capital.');
+    await expect(intro).not.toContainText('One operational view');
+    await expect(intro.getByRole('button',{name:/Review positions/i})).toBeVisible();
+    await expect(intro.getByRole('button',{name:/Open Risk/i})).toBeVisible();
+   }
+   // Chrome reclaim: bottom nav must not reclaim a second full card row.
+   const navH=await page.locator('.mobile-bottom-nav').evaluate(el=>(el as HTMLElement).getBoundingClientRect().height);
+   expect(navH).toBeLessThanOrEqual(64);
   }
   await expect(page.locator('.app-shell')).toHaveCSS('background-color','rgb(5, 8, 13)');
   if(width>768){
