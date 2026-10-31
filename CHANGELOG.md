@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased — Strategies navigation focus
+
+- Keep five daily Strategies destinations: Alpha Edge, Live Signals, History, Strategy Library, Health. Move signal research/calendar/builder/alerts/crypto into Advanced Research and V2 options tooling into Advanced Trade Desk. Presentation only; no risk, permission or order-path change.
+
 ## Unreleased — Mobile safe areas
 
 - Opt the viewport into `viewport-fit=cover` and apply notch/home-indicator insets on the terminal shell, with 12px scroll clearance above the phone tab bar. Presentation only; no risk, permission or order-path change.
