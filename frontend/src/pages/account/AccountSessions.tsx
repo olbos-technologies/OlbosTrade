@@ -104,7 +104,7 @@ export default function AccountSessions() {
             display: "flex", alignItems: "center", gap: 12, padding: "12px 0",
             borderBottom: "1px solid var(--line-dim)", flexWrap: "wrap",
           }}>
-            <span className={`dot ${s.current ? "live" : "dead"}`} />
+            <span className={`dot ${s.current ? "live" : ""}`} aria-hidden="true" />
             <div style={{ flex: 1, minWidth: 190 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                 <span title={s.user_agent || ""}
@@ -118,6 +118,7 @@ export default function AccountSessions() {
                     this browser
                   </Badge>
                 )}
+                {!s.current && <span style={{ color: "var(--ink-faint)", fontSize: 11 }}>Other session</span>}
               </div>
               <div style={{ fontFamily: MONO, fontSize: 10.5, color: "var(--ink-faint)", marginTop: 3 }}>
                 {s.ip ? `${s.ip} · ` : ""}signed in {when(s.created_at)} · last seen {when(s.last_seen_at)}

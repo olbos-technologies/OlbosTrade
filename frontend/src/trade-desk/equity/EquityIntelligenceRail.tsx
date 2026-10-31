@@ -30,8 +30,10 @@ export default function EquityIntelligenceRail({
 
   useEffect(() => {
     let alive = true;
+    setSetup(null);
+    setHeat("—");
     fetch("/api/portfolio/heat")
-      .then((r) => r.json())
+      .then((r) => { if (!r.ok) throw new Error("Heat unavailable"); return r.json(); })
       .then((d) => {
         if (!alive) return;
         if (typeof d.portfolio_heat_pct === "number") setHeat(`${d.portfolio_heat_pct.toFixed(1)}%`);
@@ -133,9 +135,18 @@ export default function EquityIntelligenceRail({
         </div>
       )}
 
-      <MarketBiasPanel symbol={symbol} />
-      <TimeframeAlignmentPanel symbol={symbol} />
-      <MarketStructurePanel symbol={symbol} timeframe="1d" />
+      <details open>
+        <summary className="equity-research-summary">Market bias</summary>
+        <MarketBiasPanel symbol={symbol} />
+      </details>
+      <details>
+        <summary className="equity-research-summary">Timeframe alignment</summary>
+        <TimeframeAlignmentPanel symbol={symbol} />
+      </details>
+      <details>
+        <summary className="equity-research-summary">Market structure</summary>
+        <MarketStructurePanel symbol={symbol} timeframe="1d" />
+      </details>
     </div>
   );
 }

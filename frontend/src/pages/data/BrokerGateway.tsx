@@ -63,7 +63,7 @@ function BrokerOptionRow({ opt, active }: { opt: BrokerOption; active: boolean }
       display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 0",
       borderBottom: "1px solid var(--line-dim)",
     }}>
-      <span className={`dot ${active ? "live" : "dead"}`} style={{ marginTop: 4 }} />
+      <span className={`dot ${active ? "live" : ""}`} style={{ marginTop: 4 }} aria-hidden="true" />
       <div style={{ flex: 1 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span style={{ fontFamily: "var(--mono)", fontSize: 12, fontWeight: 700, color: "var(--ink)" }}>
@@ -120,7 +120,7 @@ export default function BrokerGateway() {
   return (
     <div style={{ padding: 16, height: "100%", overflowY: "auto" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 14, flexWrap: "wrap" }}>
-        <span className="panel-title">Broker Gateway</span>
+        <span className="panel-title">Platform broker connection</span>
         <span style={{ fontFamily: "var(--mono)", fontSize: 10, color: "var(--ink-faint)" }}>
           {loading ? "checking…" : "polls every 15s"}
         </span>
@@ -153,7 +153,7 @@ export default function BrokerGateway() {
       </div>
 
       <div style={{ marginTop: 14, fontFamily: "var(--mono)", fontSize: 11, color: "var(--ink-faint)", borderLeft: "2px solid var(--line-dim)", paddingLeft: 10, maxWidth: 520 }}>
-        This is the platform's own broker connection. To connect your own account, use the My Brokers tab. IBKR live ports are 4001 (Gateway) / 7496 (TWS); anything else is treated as paper.
+        This status describes the platform broker. Your own broker connections are managed under Account → My Brokers. Connection status does not establish account trading permissions.
       </div>
 
       <div style={{ marginTop: 24, maxWidth: 520 }}>
@@ -162,11 +162,6 @@ export default function BrokerGateway() {
           {SUPPORTED_BROKERS.map(opt => (
             <BrokerOptionRow key={opt.id} opt={opt} active={(b?.broker ?? "").toLowerCase() === opt.id} />
           ))}
-        </div>
-        <div style={{ marginTop: 10, fontFamily: "var(--mono)", fontSize: 10.5, color: "var(--ink-faint)", lineHeight: 1.6 }}>
-          Switch broker via BROKER=ibkr|alpaca in the backend's .env, then restart. Alpaca is a
-          plain REST API — no per-account Gateway process to run — which is why it's the
-          practical choice for connecting many customers' own brokerage accounts.
         </div>
       </div>
     </div>

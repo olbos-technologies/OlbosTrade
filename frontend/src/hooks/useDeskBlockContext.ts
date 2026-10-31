@@ -9,8 +9,10 @@ import type { DeskBlockContext } from "../utils/signalBlockReason";
 
 const GLOBAL_MAX_FALLBACK = 5;
 
-export function useDeskBlockContext(): DeskBlockContext & { reload: () => void } {
+export function useDeskBlockContext(): DeskBlockContext & { reload: () => void; guardrailAvailable: boolean; killStatusAvailable: boolean } {
   const { minConfidence, mode } = useTradingStyleFloor();
+  const [guardrailAvailable, setGuardrailAvailable] = useState(false);
+  const [killStatusAvailable, setKillStatusAvailable] = useState(false);
   const [ctx, setCtx] = useState<Omit<DeskBlockContext, "minConfidence">>({
     killEngaged: false,
     tradingAllowed: true,
@@ -37,6 +39,11 @@ export function useDeskBlockContext(): DeskBlockContext & { reload: () => void }
       const killEngaged = Boolean(
         deskKill?.engaged || kill?.engaged || kill?.is_engaged || kill?.active,
       );
+      setGuardrailAvailable(typeof guard?.trading_allowed === "boolean");
+      setKillStatusAvailable(killEngaged || (
+        typeof deskKill?.engaged === "boolean" &&
+        [kill?.engaged, kill?.is_engaged, kill?.active].some(v => typeof v === "boolean")
+      ));
 
       const list = Array.isArray(positions?.positions)
         ? positions.positions
@@ -76,7 +83,8 @@ export function useDeskBlockContext(): DeskBlockContext & { reload: () => void }
         maxConcurrent,
       });
     } catch {
-      /* keep last */
+      setGuardrailAvailable(false);
+      setKillStatusAvailable(false);
     }
   }, []);
 
@@ -86,5 +94,5 @@ export function useDeskBlockContext(): DeskBlockContext & { reload: () => void }
     return () => clearInterval(id);
   }, [reload, mode]);
 
-  return { ...ctx, minConfidence, reload };
+  return { ...ctx, minConfidence, reload, guardrailAvailable, killStatusAvailable };
 }
