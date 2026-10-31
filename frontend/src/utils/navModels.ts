@@ -1,15 +1,13 @@
 /**
- * Sidebar nav models — legacy vs Trade Desk 2.0 (Options under Trade Desk).
+ * Sidebar nav models — legacy vs Trade Desk 2.0.
+ *
+ * Product loop (Bloomberg-style desk): Command Center → Markets → Signals →
+ * Trade Desk → Risk → Performance / Journal → Brokers. Lab/research and
+ * secondary scanners stay in the model for URL / deep-link ownership but are
+ * omitted from the sidebar (`sidebar: false`).
  */
 
 import type { NavGroup } from "./navLabels";
-
-// Simple-by-default IA: the everyday loop is "check signals → check
-// positions → check performance", with everything else (manual chart/options
-// research tooling, strategy config, risk-rule config, ops/debug pages)
-// marked advanced for docs/tests; the sidebar always shows the full tree.
-// Journal and Performance were previously advanced-only despite being core
-// to "is this working" — promoted to simple here.
 
 /** Pre–Trade Desk 2.0 sidebar (rollback when trade_desk_v2 is off). */
 export const NAV_MODEL_LEGACY: NavGroup[] = [
@@ -17,34 +15,35 @@ export const NAV_MODEL_LEGACY: NavGroup[] = [
   { id: "markets",   label: "Markets",        icon: "markets", children: [
     { key: "markets:chart",      label: "Chart" },
     { key: "markets:watchlists", label: "Watchlists" },
-    { key: "markets:heatmaps",   label: "Heatmaps", advanced: true },
-    { key: "markets:news",       label: "News & Events", advanced: true },
-    { key: "markets:sector-rotation", label: "Sector Rotation", advanced: true },
+    { key: "markets:heatmaps",   label: "Heatmaps", sidebar: false },
+    { key: "markets:news",       label: "News & Events", sidebar: false },
+    { key: "markets:sector-rotation", label: "Sector Rotation", sidebar: false },
   ]},
   { id: "trade", label: "Trade Desk", icon: "paper", children: [
     { key: "trade:overview",  label: "Overview" },
     { key: "trade:positions", label: "Positions" },
-    { key: "trade:copilot",   label: "Copilot Review", advanced: true },
-    { key: "trade:orders",    label: "Desk signals", advanced: true },
-    { key: "trade:execlog",   label: "Execution Monitor", advanced: true },
-    { key: "trade:logs",      label: "P&L Breakdown", advanced: true },
-    { key: "options:chain",   label: "Options Chain", advanced: true },
-    { key: "scan",            label: "Spread Scanner", advanced: true },
-    { key: "options:income",  label: "Income Strategies", advanced: true },
-    { key: "options:flow",    label: "Options Flow", advanced: true },
+    { key: "trade:copilot",   label: "Copilot Review", sidebar: false },
+    { key: "trade:orders",    label: "Desk signals", sidebar: false },
+    { key: "trade:execlog",   label: "Execution Monitor", sidebar: false },
+    { key: "trade:logs",      label: "P&L Breakdown", sidebar: false },
+    { key: "options:chain",   label: "Options Chain", sidebar: false },
+    { key: "scan",            label: "Spread Scanner", sidebar: false },
+    { key: "options:income",  label: "Income Strategies", sidebar: false },
+    { key: "options:flow",    label: "Options Flow", sidebar: false },
   ]},
-  { id: "strat", label: "Strategies", icon: "strategy", children: [
+  { id: "strat", label: "Signals", icon: "strategy", children: [
     { key: "strat:alpha-edge", label: "Alpha Edge" },
     { key: "equity", label: "Live Signals" },
     { key: "strat:signal-history", label: "History" },
-    { key: "strat:cards", label: "Strategy Library" },
-    { key: "strat:health", label: "Health" },
+    { key: "strat:cards", label: "Strategy Library", sidebar: false },
+    { key: "strat:health", label: "Health", sidebar: false },
   ]},
-  { id: "risk", label: "Portfolio & Risk", icon: "risk", key: "risk", children: [
+  { id: "risk", label: "Risk", icon: "risk", key: "risk", children: [
     { key: "risk:heat",     label: "Risk Overview" },
-    { key: "risk:rules",    label: "Risk Rules", advanced: true },
+    { key: "risk:rules",    label: "Risk Rules", sidebar: false },
   ]},
-  { id: "lab", label: "Research", icon: "lab", advanced: true, children: [
+  // Lab stays URL-reachable; not part of the daily desk sidebar.
+  { id: "lab", label: "Research", icon: "lab", sidebar: false, children: [
     { key: "strat:research", label: "Signal Research" },
     { key: "strat:calendar", label: "Signal Calendar" },
     { key: "strat:builder", label: "Strategy Builder" },
@@ -58,23 +57,13 @@ export const NAV_MODEL_LEGACY: NavGroup[] = [
     { key: "lab:intel",      label: "Intelligence" },
     { key: "backtest",       label: "Backtests" },
   ]},
-  { id: "journal",   label: "Journal & Replay", icon: "journal",   key: "journal" },
-  { id: "analytics", label: "Performance",      icon: "analytics", key: "analytics" },
-  { id: "system", label: "System", icon: "connections", children: [
-    { key: "system:broker",  label: "Broker" },
-    { key: "system:market",  label: "Market Data", advanced: true },
-    { key: "system:quality", label: "Data Quality", advanced: true },
+  { id: "journal",   label: "Journal",     icon: "journal",   key: "journal" },
+  { id: "analytics", label: "Performance", icon: "analytics", key: "analytics" },
+  { id: "system", label: "Brokers", icon: "connections", children: [
+    { key: "system:broker",  label: "Broker Connections" },
+    { key: "system:market",  label: "Market Data", sidebar: false },
+    { key: "system:quality", label: "Data Quality", sidebar: false },
   ]},
-  // Everything belonging to the signed-in person, as opposed to the platform.
-  // Last in the list because it is visited rarely, unlike the trading surfaces
-  // above it. The group above is what the PLATFORM connects to; this is what
-  // you own, which is why My Brokers moved out of it.
-  //
-  // ADDED TO BOTH MODELS deliberately. This file defines NAV_MODEL_LEGACY and
-  // NAV_MODEL_V2, and which one renders depends on the trade_desk_v2 flag, so
-  // a group added to one alone disappears when the flag flips. #78 missed the
-  // nav model entirely and shipped My Brokers reachable only by URL; adding it
-  // to one model would be the same bug with a longer fuse.
   { id: "account", label: "Account", icon: "account", requiresAuth: true, children: [
     { key: "account:profile",  label: "Profile" },
     { key: "account:password", label: "Password" },
@@ -83,52 +72,48 @@ export const NAV_MODEL_LEGACY: NavGroup[] = [
   ]},
 ];
 
-/**
- * Trade Desk 2.0 IA — daily strategy review is separate from research.
- * Options tools remain reachable under Trade Desk through Advanced.
- */
+/** Trade Desk 2.0 — same product loop; Equity/Options desks under Trade Desk. */
 export const NAV_MODEL_V2: NavGroup[] = [
   { id: "dashboard", label: "Command Center", icon: "dashboard", key: "dashboard" },
   { id: "markets",   label: "Markets",        icon: "markets", children: [
     { key: "markets:chart",      label: "Chart" },
     { key: "markets:watchlists", label: "Watchlists" },
-    { key: "markets:heatmaps",   label: "Heatmaps", advanced: true },
-    { key: "markets:news",       label: "News & Events", advanced: true },
-    { key: "markets:sector-rotation", label: "Sector Rotation", advanced: true },
+    { key: "markets:heatmaps",   label: "Heatmaps", sidebar: false },
+    { key: "markets:news",       label: "News & Events", sidebar: false },
+    { key: "markets:sector-rotation", label: "Sector Rotation", sidebar: false },
   ]},
   { id: "trade", label: "Trade Desk", icon: "paper", children: [
     { key: "trade:overview",  label: "Command Overview" },
     { key: "trade:equity",    label: "Equity Desk" },
     { key: "trade:options",   label: "Options Desk" },
     { key: "trade:positions", label: "Positions" },
-    { key: "trade:copilot",   label: "Copilot Queue", advanced: true },
-    { key: "trade:orders",    label: "Orders", advanced: true },
-    { key: "trade:execlog",   label: "Execution Monitor", advanced: true },
-    { key: "trade:replay",    label: "Trade Replay", advanced: true },
-    { key: "trade:settings",  label: "Desk Settings", advanced: true },
-    { key: "options:chain", label: "Options Chain", advanced: true },
-    { key: "scan", label: "Spread Scanner", advanced: true },
-    { key: "options:income", label: "Income Strategies", advanced: true },
-    { key: "options:flow", label: "Options Flow", advanced: true },
-
+    { key: "trade:copilot",   label: "Copilot Queue", sidebar: false },
+    { key: "trade:orders",    label: "Orders", sidebar: false },
+    { key: "trade:execlog",   label: "Execution Monitor", sidebar: false },
+    { key: "trade:replay",    label: "Trade Replay", sidebar: false },
+    { key: "trade:settings",  label: "Desk Settings", sidebar: false },
   ]},
-  { id: "strat", label: "Strategies", icon: "strategy", children: [
+  { id: "strat", label: "Signals", icon: "strategy", children: [
     { key: "strat:alpha-edge", label: "Alpha Edge" },
     { key: "equity", label: "Live Signals" },
     { key: "strat:signal-history", label: "History" },
-    { key: "strat:cards", label: "Strategy Library" },
-    { key: "strat:health", label: "Health" },
+    { key: "strat:cards", label: "Strategy Library", sidebar: false },
+    { key: "strat:health", label: "Health", sidebar: false },
   ]},
-  { id: "risk", label: "Portfolio & Risk", icon: "risk", key: "risk", children: [
+  { id: "risk", label: "Risk", icon: "risk", key: "risk", children: [
     { key: "risk:heat",     label: "Risk Overview" },
-    { key: "risk:rules",    label: "Risk Rules", advanced: true },
+    { key: "risk:rules",    label: "Risk Rules", sidebar: false },
   ]},
-  { id: "lab", label: "Research", icon: "lab", advanced: true, children: [
+  { id: "lab", label: "Research", icon: "lab", sidebar: false, children: [
     { key: "strat:research", label: "Signal Research" },
     { key: "strat:calendar", label: "Signal Calendar" },
     { key: "strat:builder", label: "Strategy Builder" },
     { key: "strat:alerts", label: "Alerts" },
     { key: "crypto:signals", label: "Crypto Research" },
+    { key: "options:chain", label: "Options Chain" },
+    { key: "scan", label: "Spread Scanner" },
+    { key: "options:income", label: "Income Strategies" },
+    { key: "options:flow", label: "Options Flow" },
     { key: "lab:scenario",   label: "Scenario Lab" },
     { key: "lab:strategy",   label: "Strategy Research" },
     { key: "lab:market",     label: "Market & Regime" },
@@ -138,21 +123,11 @@ export const NAV_MODEL_V2: NavGroup[] = [
   ]},
   { id: "journal",   label: "Journal",     icon: "journal",   key: "journal" },
   { id: "analytics", label: "Performance", icon: "analytics", key: "analytics" },
-  { id: "system", label: "Data & Integrations", icon: "connections", children: [
+  { id: "system", label: "Brokers", icon: "connections", children: [
     { key: "system:broker",  label: "Broker Connections" },
-    { key: "system:market",  label: "Market Data", advanced: true },
-    { key: "system:quality", label: "Data Quality", advanced: true },
+    { key: "system:market",  label: "Market Data", sidebar: false },
+    { key: "system:quality", label: "Data Quality", sidebar: false },
   ]},
-  // Everything belonging to the signed-in person, as opposed to the platform.
-  // Last in the list because it is visited rarely, unlike the trading surfaces
-  // above it. The group above is what the PLATFORM connects to; this is what
-  // you own, which is why My Brokers moved out of it.
-  //
-  // ADDED TO BOTH MODELS deliberately. This file defines NAV_MODEL_LEGACY and
-  // NAV_MODEL_V2, and which one renders depends on the trade_desk_v2 flag, so
-  // a group added to one alone disappears when the flag flips. #78 missed the
-  // nav model entirely and shipped My Brokers reachable only by URL; adding it
-  // to one model would be the same bug with a longer fuse.
   { id: "account", label: "Account", icon: "account", requiresAuth: true, children: [
     { key: "account:profile",  label: "Profile" },
     { key: "account:password", label: "Password" },

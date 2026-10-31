@@ -65,7 +65,7 @@ async function navigateTo(page: Page, label: string, via: "bottom" | "drawer") {
       await page.getByRole("button", {name:"Trade Desk", exact:true}).click();
       await page.getByRole("button", {name:/^(Overview|Command Overview)$/}).click();
     } else if (label === "Risk") {
-      await page.getByRole("button", {name:"Portfolio & Risk", exact:true}).click();
+      await page.getByRole("button", {name:"Risk", exact:true}).click();
       await page.getByRole("button", {name:"Risk Overview", exact:true}).click();
     } else await page.getByText(new RegExp(`^${label}$`, "i")).first().click();
   }

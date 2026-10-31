@@ -150,4 +150,23 @@ describe("filterNavForDisplay", () => {
     );
     expect(keys).not.toContain("lab:scenario");
   });
+
+  it("omits sidebar:false groups unless they own the active page", () => {
+    const deskLoop: NavGroup[] = [
+      { id: "dashboard", label: "Command Center", icon: "dashboard", key: "dashboard" },
+      {
+        id: "lab",
+        label: "Research",
+        icon: "lab",
+        sidebar: false,
+        children: [{ key: "lab:scenario", label: "Scenario Lab" }],
+      },
+    ];
+    expect(filterNavForDisplay(deskLoop, true, "dashboard").map((g) => g.id)).toEqual(["dashboard"]);
+    expect(
+      filterNavForDisplay(deskLoop, true, "lab:scenario").find((g) => g.id === "lab")?.children?.map(
+        (c) => c.key,
+      ),
+    ).toEqual(["lab:scenario"]);
+  });
 });

@@ -3,13 +3,30 @@
  * Exported so TerminalLayout and tests share one lookup.
  */
 
-export type NavLeaf = { key: string; label: string; /** Hidden until Advanced is open */ advanced?: boolean };
+export type NavLeaf = {
+  key: string;
+  label: string;
+  /** Hidden until Advanced is open (utility / tests; sidebar may always show advanced). */
+  advanced?: boolean;
+  /**
+   * When false, keep the leaf for route ownership / accordion highlight but
+   * omit it from the sidebar list — used for Trade Desk destinations that
+   * already appear as in-desk tabs.
+   */
+  sidebar?: boolean;
+};
 export type NavGroup = {
   id: string;
   label: string;
   icon: string;
   key?: string;
   /** Whole group lives under Advanced */ advanced?: boolean;
+  /**
+   * When false, omit the group from the sidebar unless it owns the active
+   * page (deep-link safety). Used for lab/research surfaces that stay
+   * URL-reachable but are not part of the daily desk loop.
+   */
+  sidebar?: boolean;
   /**
    * Group only exists for a signed-in user.
    *
@@ -65,6 +82,7 @@ export function filterNavForDisplay(
     // on an install with no accounts — it 401s either way, and showing the
     // group would only make the dead end look navigable.
     if (group.requiresAuth && !signedIn) continue;
+    if (group.sidebar === false && !ownsActive) continue;
     if (group.advanced && !showAdvanced && !ownsActive) continue;
 
     if (!group.children) {
@@ -72,9 +90,10 @@ export function filterNavForDisplay(
       continue;
     }
 
-    const children = group.children.filter(
-      (c) => !c.advanced || showAdvanced || c.key === activePage,
-    );
+    const children = group.children.filter((c) => {
+      if (c.sidebar === false && c.key !== activePage) return false;
+      return !c.advanced || showAdvanced || c.key === activePage;
+    });
     if (children.length === 0 && !group.key) continue;
     out.push({ ...group, children });
   }

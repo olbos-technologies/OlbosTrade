@@ -28,7 +28,7 @@ import { stubBackend } from "./helpers";
  */
 const PAGES = [
   { url: "/terminal/journal",        label: "JOURNAL" },
-  { url: "/terminal/risk",           label: "PORTFOLIO & RISK" },
+  { url: "/terminal/risk",           label: "RISK" },
   { url: "/terminal/markets/chart",  label: "MARKETS · CHART" },
   { url: "/terminal/trade/overview", label: "TRADE DESK · COMMAND OVERVIEW" },
 ];
@@ -176,7 +176,7 @@ test.describe("URL spellings that should still resolve", () => {
     // React Router matches /terminal/* case-insensitively, so this mounts the
     // terminal; the key parsing has to agree with the router that accepted it.
     await open(page, "/TERMINAL/risk");
-    expect(await statusLabel(page)).toBe("PORTFOLIO & RISK");
+    expect(await statusLabel(page)).toBe("RISK");
   });
 });
 
@@ -204,7 +204,7 @@ test.describe("history has one entry per real navigation", () => {
   async function selectRisk(page: Page) {
     await page.locator(".mobile-bottom-nav").getByRole("button", {name:"More", exact:true}).click();
     const target=page.getByRole("button", {name:"Risk Overview", exact:true});
-    if(await target.count()===0) await page.getByRole("button", {name:"Portfolio & Risk", exact:true}).click();
+    if(await target.count()===0) await page.getByRole("button", {name:"Risk", exact:true}).click();
     await target.click();
   }
 
@@ -245,6 +245,6 @@ test.describe("history has one entry per real navigation", () => {
     // The URL is still allowed to canonicalise (risk -> risk:heat), which adds
     // the leaf name to the status label — so assert the page, not the exact
     // string. What must not change is the history depth, above.
-    expect(await statusLabel(page)).toMatch(/^PORTFOLIO & RISK/);
+    expect(await statusLabel(page)).toMatch(/^RISK/);
   });
 });
