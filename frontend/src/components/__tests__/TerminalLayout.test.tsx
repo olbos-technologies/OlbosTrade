@@ -94,6 +94,46 @@ describe("TerminalLayout ticker strip", () => {
     expect(screen.queryByText("REGIME")).not.toBeInTheDocument();
   });
 
+  it("surfaces ENTRIES PAUSED in the ticker when equity_allowed is false", async () => {
+    (globalThis.fetch as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+      if (url.includes("/api/market/regime")) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ regime: "crisis", equity_allowed: false }),
+        });
+      }
+      if (url.includes("/api/market/snapshot/")) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ symbol: "SPY", error: "No data returned" }),
+        });
+      }
+      if (url.includes("/api/mode/current")) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ mode: "aggressive" }) });
+      }
+      if (url.includes("/api/trade-desk/execution-mode")) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ mode: "autopilot" }) });
+      }
+      if (url.includes("/api/market/broker")) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ broker: "ibkr", paper_mode: true, status: "connected" }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+    });
+
+    render(
+      <TerminalLayout activePage="dashboard" onNav={() => {}}>
+        <div>page content</div>
+      </TerminalLayout>
+    );
+
+    // Marquee duplicates its content for the scroll loop — assert at least one.
+    await waitFor(() => expect(screen.getAllByText("ENTRIES PAUSED").length).toBeGreaterThan(0));
+    expect(screen.getAllByText(/crisis/i).length).toBeGreaterThan(0);
+  });
+
   it("shows a human status label for the active page, not a hardcoded TRADE DESK", async () => {
     render(
       <TerminalLayout activePage="markets:chart" onNav={() => {}}>

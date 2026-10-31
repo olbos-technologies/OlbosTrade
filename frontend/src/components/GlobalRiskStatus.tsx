@@ -12,6 +12,7 @@
  *   - GET /api/market/broker              → broker name, paper_mode, connection status
  *   - GET /api/trade-desk/kill-switch (falls back to /api/risk/kill-switch/status)
  *   - GET /api/risk/portfolio-state       → daily/weekly loss pct + limits
+ *   - GET /api/market/regime              → equity_allowed (entries blocked vs preference)
  *
  * Remaining risk budget is derived only from two values pulled from the
  * same verified source (portfolio-state) in the same unit (fraction of
@@ -23,6 +24,11 @@ import React, { useEffect, useState } from "react";
 import { api } from "../api/client";
 import { useIsMobile } from "../hooks/useIsMobile";
 import type { Availability } from "../types/signal";
+import {
+  regimeEntriesStatusChip,
+  regimeEntryAllowance,
+  type RegimeEntryPayload,
+} from "../utils/regimeEntryChrome";
 import { tint } from "../utils/tint";
 
 interface ExecMode {
@@ -151,6 +157,12 @@ export default function GlobalRiskStatus() {
     }
   });
   const riskAvail = useAvailability<{ state: RiskState }>(() => api.getPortfolioState() as Promise<{ state: RiskState }>);
+  const regimeAvail = useAvailability<RegimeEntryPayload>(() =>
+    fetch("/api/market/regime").then((r) => {
+      if (!r.ok) throw new Error(`regime status ${r.status}`);
+      return r.json();
+    })
+  );
 
   // ── 1. Live vs paper environment ──────────────────────────────────────
   let envChip: React.ReactNode;
@@ -246,30 +258,47 @@ export default function GlobalRiskStatus() {
     }
   }
 
-  // ── 6. Connection / freshness ────────────────────────────────────────
-  const reads = [execAvail, brokerAvail, killAvail, riskAvail];
+  // ── 6. Regime entry allowance ────────────────────────────────────────
+  // Preferences (autopilot / aggressive) can stay selected while the regime
+  // refuses new entries. Surface that as an alert chip so it never folds away
+  // on phones. When entries are allowed, omit the chip — quiet when safe.
+  let entriesChip: React.ReactElement | null = null;
+  if (regimeAvail.status === "loading") {
+    entriesChip = <Chip label="ENTRIES" value="LOADING" tone="var(--ink-faint)" order={6} />;
+  } else if (regimeAvail.status !== "available") {
+    const unk = regimeEntriesStatusChip("unknown")!;
+    entriesChip = <Chip label={unk.label} value={unk.value} tone={unk.tone} order={6} title={unk.title} />;
+  } else {
+    const chip = regimeEntriesStatusChip(regimeEntryAllowance(regimeAvail.value));
+    if (chip) {
+      entriesChip = <Chip label={chip.label} value={chip.value} tone={chip.tone} order={6} title={chip.title} />;
+    }
+  }
+
+  // ── 7. Connection / freshness ────────────────────────────────────────
+  const reads = [execAvail, brokerAvail, killAvail, riskAvail, regimeAvail];
   const anyError = reads.some((a) => a.status === "error");
   const allRead = reads.every((a) => a.status === "available");
   const connChip = anyError ? (
-    <Chip label="DATA" value="PARTIAL" tone="var(--amber)" order={6} title="One or more risk-status fields failed to load; see individual chips." />
+    <Chip label="DATA" value="PARTIAL" tone="var(--amber)" order={7} title="One or more risk-status fields failed to load; see individual chips." />
   ) : (
-    <Chip label="STATUS" value={allRead ? "READ OK" : "LOADING"} tone={allRead ? "var(--ink-dim)" : "var(--amber)"} order={6} title="Status endpoints responded. This does not confirm quote freshness or permission to trade." />
+    <Chip label="STATUS" value={allRead ? "READ OK" : "LOADING"} tone={allRead ? "var(--ink-dim)" : "var(--amber)"} order={7} title="Status endpoints responded. This does not confirm quote freshness or permission to trade." />
   );
 
   // ── Mobile: show what needs attention, fold away what does not ───────
-  // Six chips wrap to three rows on a 375px screen and eat roughly an eighth
-  // of the viewport, mostly to report that nothing is wrong. Collapsing is by
-  // *severity*, never by name: an armed kill switch, a disconnected broker, a
-  // breached drawdown or an exhausted risk budget all carry an alert tone and
-  // stay on screen. Only nominal chips fold, behind a count that says how many
-  // and opens them on tap — so the row is short when the desk is calm and
-  // grows exactly when something wants looking at.
+  // Chips wrap on a phone and eat viewport when everything is nominal.
+  // Collapsing is by *severity*, never by name: an armed kill switch, a
+  // disconnected broker, a breached drawdown, an exhausted risk budget, or
+  // regime-blocked entries all carry an alert tone and stay on screen. Only
+  // nominal chips fold, behind a count that says how many and opens them on
+  // tap — so the row is short when the desk is calm and grows exactly when
+  // something wants looking at.
   // Keyed by label, not index: the collapsed and expanded lists differ in
   // length, and an index key would make React reuse the wrong chip's DOM
   // across a toggle.
-  const chips = [envChip, autoChip, killChip, drawdownChip, budgetChip, connChip].map((c) =>
-    React.cloneElement(c, { key: (c.props as { label: string }).label }),
-  );
+  const chips = [envChip, autoChip, killChip, drawdownChip, budgetChip, entriesChip, connChip]
+    .filter((c): c is React.ReactElement => c != null)
+    .map((c) => React.cloneElement(c, { key: (c.props as { label: string }).label }));
   const alerts = chips.filter(isAlertChip);
   const nominal = chips.filter((c) => !isAlertChip(c));
   const collapsed = isMobile && !expanded && nominal.length > 0;

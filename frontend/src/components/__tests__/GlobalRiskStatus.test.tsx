@@ -21,11 +21,24 @@ const mockedApi = api as unknown as {
   getPortfolioState: ReturnType<typeof vi.fn>;
 };
 
-function mockBroker(body: object, ok = true) {
-  globalThis.fetch = vi.fn().mockResolvedValue({
-    ok,
-    status: ok ? 200 : 500,
-    json: () => Promise.resolve(body),
+function mockBroker(
+  body: object,
+  ok = true,
+  regime: object = { equity_allowed: true, regime: "risk_on" },
+) {
+  globalThis.fetch = vi.fn().mockImplementation((url: string) => {
+    if (String(url).includes("/api/market/regime")) {
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(regime),
+      });
+    }
+    return Promise.resolve({
+      ok,
+      status: ok ? 200 : 500,
+      json: () => Promise.resolve(body),
+    });
   }) as unknown as typeof fetch;
 }
 
@@ -146,5 +159,41 @@ describe("GlobalRiskStatus", () => {
 
     render(<GlobalRiskStatus />);
     await waitFor(() => expect(screen.getAllByText("UNAVAILABLE").length).toBeGreaterThan(0));
+  });
+
+  it("shows ENTRIES BLOCKED when the regime refuses new equity entries", async () => {
+    mockBroker(
+      { broker: "ibkr", paper_mode: true, status: "connected" },
+      true,
+      { equity_allowed: false, regime: "crisis" },
+    );
+    mockedApi.getExecutionMode.mockResolvedValue({ mode: "autopilot" });
+    mockedApi.getTradeDeskKillSwitch.mockResolvedValue({ engaged: false });
+    mockedApi.getPortfolioState.mockResolvedValue({
+      state: { daily_loss_pct: 0, max_daily_loss_pct: 0.02 },
+    });
+
+    render(<GlobalRiskStatus />);
+    await waitFor(() => expect(screen.getByText("BLOCKED")).toBeInTheDocument());
+    expect(screen.getByText("AUTOPILOT ON")).toBeInTheDocument();
+    expect(screen.getByText("ENTRIES")).toBeInTheDocument();
+  });
+
+  it("omits the entries chip when the regime allows equity entries", async () => {
+    mockBroker(
+      { broker: "ibkr", paper_mode: true, status: "connected" },
+      true,
+      { equity_allowed: true, regime: "risk_on" },
+    );
+    mockedApi.getExecutionMode.mockResolvedValue({ mode: "autopilot" });
+    mockedApi.getTradeDeskKillSwitch.mockResolvedValue({ engaged: false });
+    mockedApi.getPortfolioState.mockResolvedValue({
+      state: { daily_loss_pct: 0, max_daily_loss_pct: 0.02 },
+    });
+
+    render(<GlobalRiskStatus />);
+    await waitFor(() => expect(screen.getByText("AUTOPILOT ON")).toBeInTheDocument());
+    expect(screen.queryByText("BLOCKED")).not.toBeInTheDocument();
+    expect(screen.queryByText("ENTRIES")).not.toBeInTheDocument();
   });
 });
