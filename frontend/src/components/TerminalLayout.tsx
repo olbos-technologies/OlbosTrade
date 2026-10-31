@@ -10,7 +10,8 @@
  * The full official wordmark remains visible in either state.
  */
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useIsMobile } from "../hooks/useIsMobile";
 import GlobalRiskStatus from "./GlobalRiskStatus";
 import UserMenu from "./UserMenu";
@@ -1002,11 +1003,21 @@ function Sidebar({ active, onNav, expanded, isMobile = false }: {
   isMobile?: boolean;
 }) {
   const [hovered, setHovered] = useState<string | null>(null);
+  /** Collapsed icon-rail tip — portaled so overflow:hidden on the rail cannot clip it. */
+  const [iconTip, setIconTip] = useState<{ label: string; top: number; left: number } | null>(null);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [accountMenuPos, setAccountMenuPos] = useState<{ bottom: number; left: number } | null>(null);
+  const accountBtnRef = useRef<HTMLButtonElement>(null);
   // Accordion state: which group section is expanded. Auto-opens the group that
   // owns the active page.
   const navModel = activeNavModel();
   const [openGroup, setOpenGroup] = useState<string | null>(() => groupIdForKey(active, navModel));
+
+  const showIconTip = (label: string, el: HTMLElement) => {
+    const r = el.getBoundingClientRect();
+    setIconTip({ label, top: r.top + r.height / 2, left: r.right + 8 });
+  };
+  const clearIconTip = () => setIconTip(null);
 
   useEffect(() => {
     const g = groupIdForKey(active, navModel);
@@ -1069,8 +1080,11 @@ function Sidebar({ active, onNav, expanded, isMobile = false }: {
       <div key={g.id} style={{ width: "100%" }}>
         <div
           style={{ position: "relative", width: "100%" }}
-          onMouseEnter={() => setHovered(g.id)}
-          onMouseLeave={() => setHovered(null)}
+          onMouseEnter={(e) => {
+            setHovered(g.id);
+            if (!showLabels) showIconTip(g.label, e.currentTarget);
+          }}
+          onMouseLeave={() => { setHovered(null); clearIconTip(); }}
         >
           <button
             onClick={onHeaderClick}
@@ -1102,18 +1116,6 @@ function Sidebar({ active, onNav, expanded, isMobile = false }: {
               </span>
             )}
           </button>
-
-          {/* Tooltip — only on the collapsed desktop icon rail */}
-          {!showLabels && isHovered && (
-            <div style={{
-              position: "absolute", left: 52, top: "50%", transform: "translateY(-50%)",
-              background: "var(--bg-4)", border: "1px solid var(--line-dim)", padding: "4px 10px",
-              whiteSpace: "nowrap", fontFamily: "var(--mono)", fontSize: 10, letterSpacing: "0.06em",
-              textTransform: "uppercase", color: "var(--ink)", zIndex: 100, pointerEvents: "none",
-            }}>
-              {g.label}
-            </div>
-          )}
         </div>
 
         {/* Sub-items — only when expanded and open. Identity and sign-out live
@@ -1178,12 +1180,28 @@ function Sidebar({ active, onNav, expanded, isMobile = false }: {
 
       {/* No account/auth controls are shown until a real identity backend exists. */}
       <div
-        onMouseEnter={() => setHovered("account")}
-        onMouseLeave={() => setHovered(null)}
+        onMouseEnter={(e) => {
+          setHovered("account");
+          if (!showLabels && !accountMenuOpen) showIconTip("System", e.currentTarget);
+        }}
+        onMouseLeave={() => { setHovered(null); clearIconTip(); }}
         style={{ position: "relative", width: "100%" }}
       >
         <button
-          onClick={() => setAccountMenuOpen(o => !o)}
+          ref={accountBtnRef}
+          onClick={() => {
+            clearIconTip();
+            setAccountMenuOpen((o) => {
+              const next = !o;
+              if (next && !showLabels && accountBtnRef.current) {
+                const r = accountBtnRef.current.getBoundingClientRect();
+                setAccountMenuPos({ bottom: window.innerHeight - r.bottom, left: r.right + 8 });
+              } else {
+                setAccountMenuPos(null);
+              }
+              return next;
+            });
+          }}
           title="Open system status"
           style={{
             width: "100%", height: 44, display: "flex", alignItems: "center",
@@ -1213,44 +1231,53 @@ function Sidebar({ active, onNav, expanded, isMobile = false }: {
             </span>
           )}
         </button>
-        {!showLabels && !accountMenuOpen && hovered === "account" && (
-          <div style={{
-            position: "absolute", left: 52, top: "50%", transform: "translateY(-50%)",
-            background: "var(--bg-4)", border: "1px solid var(--line-dim)", padding: "4px 10px",
-            whiteSpace: "nowrap", fontFamily: "var(--mono)", fontSize: 10, letterSpacing: "0.06em",
-            textTransform: "uppercase", color: "var(--ink)", zIndex: 100, pointerEvents: "none",
-          }}>
-            System
-          </div>
-        )}
 
-        {/* Account menu — opens upward, anchored to the plate. On the collapsed
-            icon rail it opens to the right instead, like the hover tooltips. */}
+        {/* Account menu — opens upward when labeled; portaled to the right on the
+            collapsed icon rail so overflow:hidden cannot clip it. */}
         {accountMenuOpen && (
           <>
             <div
               onClick={() => setAccountMenuOpen(false)}
               style={{ position: "fixed", inset: 0, zIndex: 90 }}
             />
-            <div className="glass-surface" style={{
-              position: "absolute",
-              ...(showLabels
-                ? { bottom: "100%", left: 8, right: 8, marginBottom: 4 }
-                : { bottom: 0, left: 52 }),
-              width: showLabels ? undefined : 200,
-              border: "1px solid var(--line-dim)",
-              borderRadius: 6, boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
-              zIndex: 100, overflow: "hidden",
-            }}>
-              <div style={{ padding: "10px 12px", borderBottom: "1px solid var(--line-dim)" }}>
-                <div style={{ fontFamily: "var(--sans)", fontSize: 12, color: "var(--ink)" }}>System Operations</div>
-                <div style={{ fontFamily: "var(--mono)", fontSize: 10, color: "var(--ink-faint)", marginTop: 2 }}>
-                  broker · data · health
+            {showLabels ? (
+              <div className="glass-surface" style={{
+                position: "absolute",
+                bottom: "100%", left: 8, right: 8, marginBottom: 4,
+                border: "1px solid var(--line-dim)",
+                borderRadius: 6, boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+                zIndex: 100, overflow: "hidden",
+              }}>
+                <div style={{ padding: "10px 12px", borderBottom: "1px solid var(--line-dim)" }}>
+                  <div style={{ fontFamily: "var(--sans)", fontSize: 12, color: "var(--ink)" }}>System Operations</div>
+                  <div style={{ fontFamily: "var(--mono)", fontSize: 10, color: "var(--ink-faint)", marginTop: 2 }}>
+                    broker · data · health
+                  </div>
                 </div>
+                <AccountMenuItem icon="settings" label="System"
+                  onClick={() => { setAccountMenuOpen(false); onNav("settings"); }} />
               </div>
-              <AccountMenuItem icon="settings" label="System"
-                onClick={() => { setAccountMenuOpen(false); onNav("settings"); }} />
-            </div>
+            ) : accountMenuPos && createPortal(
+              <div className="glass-surface" style={{
+                position: "fixed",
+                bottom: accountMenuPos.bottom,
+                left: accountMenuPos.left,
+                width: 200,
+                border: "1px solid var(--line-dim)",
+                borderRadius: 6, boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+                zIndex: 400, overflow: "hidden",
+              }}>
+                <div style={{ padding: "10px 12px", borderBottom: "1px solid var(--line-dim)" }}>
+                  <div style={{ fontFamily: "var(--sans)", fontSize: 12, color: "var(--ink)" }}>System Operations</div>
+                  <div style={{ fontFamily: "var(--mono)", fontSize: 10, color: "var(--ink-faint)", marginTop: 2 }}>
+                    broker · data · health
+                  </div>
+                </div>
+                <AccountMenuItem icon="settings" label="System"
+                  onClick={() => { setAccountMenuOpen(false); onNav("settings"); }} />
+              </div>,
+              document.body,
+            )}
           </>
         )}
       </div>
@@ -1265,6 +1292,33 @@ function Sidebar({ active, onNav, expanded, isMobile = false }: {
       >
         <KillSwitchButton variant="sidebar" expanded={showLabels} />
       </div>
+
+      {/* Portaled outside the rail — overflow-x:hidden clips in-tree tips. */}
+      {!showLabels && iconTip && createPortal(
+        <div
+          role="tooltip"
+          style={{
+            position: "fixed",
+            left: iconTip.left,
+            top: iconTip.top,
+            transform: "translateY(-50%)",
+            background: "var(--bg-4)",
+            border: "1px solid var(--line-dim)",
+            padding: "4px 10px",
+            whiteSpace: "nowrap",
+            fontFamily: "var(--mono)",
+            fontSize: 10,
+            letterSpacing: "0.06em",
+            textTransform: "uppercase",
+            color: "var(--ink)",
+            zIndex: 400,
+            pointerEvents: "none",
+          }}
+        >
+          {iconTip.label}
+        </div>,
+        document.body,
+      )}
     </nav>
   );
 }
