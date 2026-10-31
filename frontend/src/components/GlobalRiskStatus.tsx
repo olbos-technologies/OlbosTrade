@@ -315,7 +315,7 @@ export default function GlobalRiskStatus() {
         overflowX: isMobile ? "auto" : undefined,
         gap: 6,
         alignItems: "center",
-        padding: isMobile ? "5px 10px" : "6px 12px",
+        padding: isMobile ? "5px 10px" : "6px 16px",
         background: "var(--bg-2)",
         borderBottom: "1px solid var(--line-dim)",
         fontFamily: "var(--mono)",

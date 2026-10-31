@@ -1523,9 +1523,6 @@ export default function TerminalLayout({ children, activePage, onNav, isDeskV2Sh
       <ErrorBoundary label="Ticker strip">
         <TickerStrip onToggle={() => setSidebarExpanded(p => !p)} sidebarExpanded={sidebarExpanded} isMobile={isMobile} />
       </ErrorBoundary>
-      <ErrorBoundary label="Capital-at-risk status">
-        <GlobalRiskStatus />
-      </ErrorBoundary>
       <div style={{ display: "flex", flex: 1, overflow: "hidden", position: "relative" }}>
         <ErrorBoundary label="Navigation">
           <Sidebar
@@ -1542,18 +1539,29 @@ export default function TerminalLayout({ children, activePage, onNav, isDeskV2Sh
             style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 45 }}
           />
         )}
-        <main style={{
-          flex: 1,
-          overflow: "auto",
-          background: "var(--bg)",
-          minWidth: 0,   // allow children to shrink instead of forcing overflow
+        {/* Risk strip lives in the body column (not full-bleed over the sidebar)
+            so its chips share a left edge with page content. */}
+        <div className="workspace-body-column" style={{
+          flex: 1, minWidth: 0, display: "flex", flexDirection: "column", overflow: "hidden",
         }}>
-          {isMobile && <div className="mobile-workspace-search"><WorkspaceSearch /></div>}
-          <ErrorBoundary label="Page content">
-            {children}
+          <ErrorBoundary label="Capital-at-risk status">
+            <GlobalRiskStatus />
           </ErrorBoundary>
-        </main>
-        {showContext && <ErrorBoundary label="Workspace context"><WorkspaceContext page={activePage}/></ErrorBoundary>}
+          <div style={{ display: "flex", flex: 1, minHeight: 0, overflow: "hidden" }}>
+            <main style={{
+              flex: 1,
+              overflow: "auto",
+              background: "var(--bg)",
+              minWidth: 0,   // allow children to shrink instead of forcing overflow
+            }}>
+              {isMobile && <div className="mobile-workspace-search"><WorkspaceSearch /></div>}
+              <ErrorBoundary label="Page content">
+                {children}
+              </ErrorBoundary>
+            </main>
+            {showContext && <ErrorBoundary label="Workspace context"><WorkspaceContext page={activePage}/></ErrorBoundary>}
+          </div>
+        </div>
       </div>
       <StatusBar page={activePage} />
       {/* Phones navigate from the bottom. The sidebar stays as the overflow,

@@ -174,7 +174,8 @@
  }
  .app-shell .mobile-bottom-nav__tab svg {width:20px !important;height:20px !important;}
 
- .app-shell .global-risk-status {gap:6px !important;padding:6px 12px !important;}
+ /* Match shared content inset (16px) so chips line up with the body column. */
+ .app-shell .global-risk-status {gap:6px !important;padding:6px 16px !important;}
 
  /* Shared content inset for primary + More destinations. */
  .app-shell .home-workspace .mobile-home,
