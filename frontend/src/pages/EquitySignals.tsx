@@ -43,6 +43,7 @@ interface Signal {
   orderflow_score: number;
   iv_overlay_boost: number;
   earnings_gated: boolean;
+  /** Unused by the live scanner; kept only as a last-resort UI fallback. Prefer `reasons`. */
   reason?: string;
   /** Scanner contributing factors — map of factor → weight (see equity_signal_engine). */
   reasons?: Record<string, number> | string[] | string;
@@ -264,7 +265,7 @@ function SignalCard({
     <SignalDetailDrawer
       open={reviewing}
       onClose={() => setReviewing(false)}
-      signal={{ ...sig, reasons: [equitySignalRationale(sig)] }}
+      signal={sig}
       symbol={sig.ticker}
       timeframe="unknown"
       latestBar={null}

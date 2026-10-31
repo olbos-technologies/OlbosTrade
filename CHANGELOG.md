@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased — Signal rationale drawer
+
+- Signal detail drawer lists every contributing factor with its weight (card still shows the top four). Stops preferring the unused string `reason` over the scanner `reasons` map. Presentation only; no scoring or order-path change. (Label↔engine parity guard already on main via #200.)
+
 <<<<<<< HEAD
 ## Unreleased — Collapsed icon-rail hover labels
 
