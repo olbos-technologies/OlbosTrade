@@ -15,6 +15,45 @@ from app.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
+#: How far the configured capital base may drift from the real account before
+#: the percentage limits stop meaning what the policy says they mean. At 2x,
+#: a "2% daily loss" limit is already only 1% of the book being guarded.
+CAPITAL_BASE_DIVERGENCE_FACTOR = 2.0
+
+#: Flag raised on GuardrailStatus when that happens. Not a block: the limits
+#: are unchanged and trading_allowed is untouched.
+CAPITAL_BASE_DIVERGENT_FLAG = "capital_base_divergent"
+
+
+def capital_base_is_divergent(
+    starting_capital: float,
+    current_value: float,
+    factor: float = CAPITAL_BASE_DIVERGENCE_FACTOR,
+) -> bool:
+    """Has the configured base drifted far enough to distort every limit?
+
+    Every percentage this module produces — daily, weekly, monthly, capital
+    remaining — divides by `starting_capital`, a configured constant. A fixed
+    base is deliberate: it stops the limits loosening as the account grows.
+    But it only means what TRADING_POLICY.md says while the constant still
+    resembles the account it guards.
+
+    Observed in production: STARTING_CAPITAL left at its 25,000 default while
+    the account held about 245,000. A -$2,927 day — ordinary at that size, and
+    -1.2% of the real book — was computed as -11.71% and tripped the 2% daily
+    limit, suspending bull_put_spread across 101 of 102 tickers for a month.
+    Nothing was broken; every number was correctly derived from a base that
+    was ten times too small, which is exactly why it went unnoticed.
+
+    Returns False when either figure is non-positive: a missing account read
+    is not evidence of divergence, and must not be reported as though it were.
+    """
+    if starting_capital <= 0 or current_value <= 0 or factor <= 0:
+        return False
+    ratio = current_value / starting_capital
+    return ratio >= factor or ratio <= (1.0 / factor)
+
+
 @dataclass
 class GuardrailStatus:
     """Result of a full guardrail check. trading_allowed must be True to place any trade."""
@@ -85,6 +124,24 @@ class GuardrailEngine:
         base = Decimal(str(portfolio.starting_capital)) if portfolio.starting_capital > 0 else Decimal("1")
         capital_pct = float(portfolio.current_value) / float(base)
 
+        # Raised before the first return below so it survives every exit path,
+        # including the cooling-off one. It changes no limit and no decision —
+        # it only refuses to let a distorted base stay silent.
+        if capital_base_is_divergent(portfolio.starting_capital, portfolio.current_value):
+            flags.append(CAPITAL_BASE_DIVERGENT_FLAG)
+            logger.warning(
+                "Capital base divergent: STARTING_CAPITAL=%.2f against an account of "
+                "%.2f (%.1fx). Every percentage limit below is a share of the "
+                "configured base, not of the account — a %.2f%% daily limit is "
+                "%.2f%% of the real book. Set STARTING_CAPITAL to match.",
+                portfolio.starting_capital, portfolio.current_value,
+                (portfolio.current_value / portfolio.starting_capital)
+                if portfolio.starting_capital > 0 else float("inf"),
+                self.max_daily_loss_pct * 100,
+                (self.max_daily_loss_pct * portfolio.starting_capital
+                 / portfolio.current_value * 100) if portfolio.current_value > 0 else 0.0,
+            )
+
         # Use Decimal arithmetic for monetary comparisons — avoids float rounding errors
         daily_loss_pct   = float(Decimal(str(portfolio.daily_pnl))   / base)
         weekly_loss_pct  = float(Decimal(str(portfolio.weekly_pnl))  / base)
@@ -120,7 +177,7 @@ class GuardrailEngine:
                     consecutive_losses=portfolio.consecutive_losses,
                     trades_today=portfolio.trades_today,
                     capital_pct_remaining=capital_pct,
-                    flags=["cooling_off_active"],
+                    flags=flags + ["cooling_off_active"],
                 )
 
         # ── 2. Daily loss limit ────────────────────────────────────────────

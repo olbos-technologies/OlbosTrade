@@ -6,8 +6,17 @@
 - Moved the sign-out control from the sidebar's Account group into the status bar, which is always rendered, so it is reachable from every page in every nav state. Added a guard asserting it is reachable from the rendered shell. Presentation only; no risk, permission or order-path change.
 
 ## Unreleased — Desk-loop sidebar (Bloomberg focus)
+## Unreleased — Options rejection log records the real regime
+
+- Fixed: `app/main.py` read `_current_regime.regime_type`, a field `RegimeState` has never defined (its name is `regime`), behind a `getattr` default. Every options scan rejection was therefore stored with no regime, so the rejection report read "BY REGIME (unknown) 100%", and the equity-skip log line always said "regime unknown". Both now read the real field through one helper that raises on a rename instead of returning a default. Diagnostics only; no change to scanning, strategy selection, risk gates or order paths.
+- Added a guard test that fails on any `getattr(_current_regime, ...)` naming an attribute `RegimeState` does not define.
+
+## Unreleased — API payload contract guard
 
 - Sidebar keeps the daily desk loop only: Command Center, Markets (Chart/Watchlists), Signals (Alpha Edge / Live / History), Trade Desk (four workspaces), Risk, Journal, Performance, Brokers. Research lab, strategy library/health, scanners and ops extras stay URL-reachable but off the sidebar. Presentation / IA only; no risk, permission or order-path change.
+## Unreleased — Signal rationale label parity guard
+
+- Added a guard test asserting the factor labels in `frontend/src/utils/equitySignalRationale.ts` (added by #192) stay in step with the keys `score_equity_signal()` emits, in both directions, and that the two volume labels keep the VWAP condition the engine actually gates them on. Test only; no behaviour change.
 
 ## Unreleased — Live Signals plain-language rationale
 
@@ -115,6 +124,9 @@
 
 - Read-only contract comparison returns unverified for malformed identity or quantities, including fractional quantities previously truncated to integers. Broker and database evidence use the same validation.
 - Valid signed aggregation and normalization remain supported. No order-routing, broker-operation, schema or configuration change.
+## Unreleased — Trade attribution report
+
+- Added `backend/scripts/trade_attribution_report.py`: a read-only breakdown of closed trades by strategy, exit reason and regime, with date-clustered bootstrap intervals, a small-cell floor, an explicit refusal to rank strategies whose intervals overlap, cost-drag analysis and a trade-level AUC on `signal_score`. Analysis only; no writes, no orders, no broker calls.
 
 ## Unreleased — Paper-pilot reliability gates
 
