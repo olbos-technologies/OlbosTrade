@@ -24,8 +24,15 @@ import re
 
 import pytest
 
-ROUTES = pathlib.Path(__file__).resolve().parents[1] / "app" / "api" / "routes"
-SERVICES = pathlib.Path(__file__).resolve().parents[1] / "app" / "services"
+_APP = pathlib.Path(__file__).resolve().parents[1] / "app"
+ROUTES = _APP / "api" / "routes"
+SERVICES = _APP / "services"
+#: main.py too. It holds route handlers that query `trades` directly —
+#: /api/dashboard/summary summed every organization's closed trades with no
+#: ownership filter at all, and this scan did not see it because main.py was
+#: outside both roots above. A guard that covers the tidy half of the
+#: codebase reports clean while the untidy half is where the leak lives.
+MAIN = _APP / "main.py"
 
 #: A comparison or IS NULL test written directly against the ownership column.
 _HAND_ROLLED = re.compile(
@@ -42,6 +49,8 @@ def _python_files():
         for p in sorted(root.rglob("*.py")):
             if "__pycache__" not in str(p):
                 yield p
+    if MAIN.exists():
+        yield MAIN
 
 
 def test_the_scan_actually_reads_something():
