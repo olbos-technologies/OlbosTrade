@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased — Institutional Markets chart polish
+
+- Keep the phone legend as a compact on-plot toggle (not a document-flow disclosure) so candles stay in the first viewport.
+- Move catalyst chips above the plot, require 44px timeframe targets, and label the price canvas for assistive tech. Presentation only; no risk, permission or order-path change.
+
 ## Unreleased — Mobile Markets chart readability
 
 - Collapse the candlestick legend behind a Legend toggle on phones so the overlay no longer covers the candle pane; desktop keeps the key open.
