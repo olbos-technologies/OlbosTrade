@@ -16,7 +16,7 @@ export const NAV_MODEL_LEGACY: NavGroup[] = [
   { id: "dashboard", label: "Command Center", icon: "dashboard", key: "dashboard" },
   { id: "markets",   label: "Markets",        icon: "markets", children: [
     { key: "markets:chart",      label: "Chart" },
-    { key: "markets:watchlists", label: "Watchlists" },
+    { key: "markets:watchlists", label: "Watchlists", advanced: true },
     { key: "markets:heatmaps",   label: "Heatmaps", advanced: true },
     { key: "markets:news",       label: "News & Events", advanced: true },
     { key: "markets:sector-rotation", label: "Sector Rotation", advanced: true },
@@ -34,11 +34,18 @@ export const NAV_MODEL_LEGACY: NavGroup[] = [
     { key: "options:flow",    label: "Options Flow", advanced: true },
   ]},
   { id: "strat", label: "Strategies", icon: "strategy", children: [
-    { key: "strat:alpha-edge", label: "Alpha Edge" },
-    { key: "equity", label: "Live Signals" },
-    { key: "strat:signal-history", label: "History" },
-    { key: "strat:cards", label: "Strategy Library" },
-    { key: "strat:health", label: "Health" },
+    { key: "equity", label: "Equity Signals" },
+    // Promoted out of advanced Research. The product's second goal names BOTH
+    // asset classes; options signals were reachable only behind the Advanced
+    // toggle, which is not what "we trade options too" looks like in a nav.
+    { key: "options:signals", label: "Options Signals" },
+    // Everything below is real, kept, and one Advanced click away. It is off
+    // the daily rail because it is read, not acted on: Alpha Edge is scored
+    // on demand and never persisted, so nothing routes on it.
+    { key: "strat:alpha-edge", label: "Alpha Edge", advanced: true },
+    { key: "strat:signal-history", label: "History", advanced: true },
+    { key: "strat:cards", label: "Strategy Library", advanced: true },
+    { key: "strat:health", label: "Health", advanced: true },
   ]},
   { id: "risk", label: "Portfolio & Risk", icon: "risk", key: "risk", children: [
     { key: "risk:heat",     label: "Risk Overview" },
@@ -50,7 +57,6 @@ export const NAV_MODEL_LEGACY: NavGroup[] = [
     { key: "strat:builder", label: "Strategy Builder" },
     { key: "strat:alerts", label: "Alerts" },
     { key: "crypto:signals", label: "Crypto Research" },
-    { key: "options:signals", label: "Options Signals" },
     { key: "lab:scenario",   label: "Scenario Lab" },
     { key: "lab:strategy",   label: "Strategy Research" },
     { key: "lab:market",     label: "Market & Regime" },
@@ -58,8 +64,8 @@ export const NAV_MODEL_LEGACY: NavGroup[] = [
     { key: "lab:intel",      label: "Intelligence" },
     { key: "backtest",       label: "Backtests" },
   ]},
-  { id: "journal",   label: "Journal & Replay", icon: "journal",   key: "journal" },
-  { id: "analytics", label: "Performance",      icon: "analytics", key: "analytics" },
+  { id: "journal",   label: "Journal & Replay", icon: "journal",   key: "journal", advanced: true },
+  { id: "analytics", label: "Performance",      icon: "analytics", key: "analytics", advanced: true },
   { id: "system", label: "System", icon: "connections", children: [
     { key: "system:broker",  label: "Broker" },
     { key: "system:market",  label: "Market Data", advanced: true },
@@ -75,7 +81,7 @@ export const NAV_MODEL_LEGACY: NavGroup[] = [
   // a group added to one alone disappears when the flag flips. #78 missed the
   // nav model entirely and shipped My Brokers reachable only by URL; adding it
   // to one model would be the same bug with a longer fuse.
-  { id: "account", label: "Account", icon: "account", requiresAuth: true, children: [
+  { id: "account", label: "Account", icon: "account", requiresAuth: true, advanced: true, children: [
     { key: "account:profile",  label: "Profile" },
     { key: "account:password", label: "Password" },
     { key: "account:sessions", label: "Sessions" },
@@ -91,7 +97,7 @@ export const NAV_MODEL_V2: NavGroup[] = [
   { id: "dashboard", label: "Command Center", icon: "dashboard", key: "dashboard" },
   { id: "markets",   label: "Markets",        icon: "markets", children: [
     { key: "markets:chart",      label: "Chart" },
-    { key: "markets:watchlists", label: "Watchlists" },
+    { key: "markets:watchlists", label: "Watchlists", advanced: true },
     { key: "markets:heatmaps",   label: "Heatmaps", advanced: true },
     { key: "markets:news",       label: "News & Events", advanced: true },
     { key: "markets:sector-rotation", label: "Sector Rotation", advanced: true },
@@ -113,11 +119,18 @@ export const NAV_MODEL_V2: NavGroup[] = [
 
   ]},
   { id: "strat", label: "Strategies", icon: "strategy", children: [
-    { key: "strat:alpha-edge", label: "Alpha Edge" },
-    { key: "equity", label: "Live Signals" },
-    { key: "strat:signal-history", label: "History" },
-    { key: "strat:cards", label: "Strategy Library" },
-    { key: "strat:health", label: "Health" },
+    { key: "equity", label: "Equity Signals" },
+    // Promoted out of advanced Research. The product's second goal names BOTH
+    // asset classes; options signals were reachable only behind the Advanced
+    // toggle, which is not what "we trade options too" looks like in a nav.
+    { key: "options:signals", label: "Options Signals" },
+    // Everything below is real, kept, and one Advanced click away. It is off
+    // the daily rail because it is read, not acted on: Alpha Edge is scored
+    // on demand and never persisted, so nothing routes on it.
+    { key: "strat:alpha-edge", label: "Alpha Edge", advanced: true },
+    { key: "strat:signal-history", label: "History", advanced: true },
+    { key: "strat:cards", label: "Strategy Library", advanced: true },
+    { key: "strat:health", label: "Health", advanced: true },
   ]},
   { id: "risk", label: "Portfolio & Risk", icon: "risk", key: "risk", children: [
     { key: "risk:heat",     label: "Risk Overview" },
@@ -136,8 +149,8 @@ export const NAV_MODEL_V2: NavGroup[] = [
     { key: "lab:intel",      label: "Intelligence" },
     { key: "backtest",       label: "Backtests" },
   ]},
-  { id: "journal",   label: "Journal",     icon: "journal",   key: "journal" },
-  { id: "analytics", label: "Performance", icon: "analytics", key: "analytics" },
+  { id: "journal",   label: "Journal",     icon: "journal",   key: "journal", advanced: true },
+  { id: "analytics", label: "Performance", icon: "analytics", key: "analytics", advanced: true },
   { id: "system", label: "Data & Integrations", icon: "connections", children: [
     { key: "system:broker",  label: "Broker Connections" },
     { key: "system:market",  label: "Market Data", advanced: true },
@@ -153,7 +166,7 @@ export const NAV_MODEL_V2: NavGroup[] = [
   // a group added to one alone disappears when the flag flips. #78 missed the
   // nav model entirely and shipped My Brokers reachable only by URL; adding it
   // to one model would be the same bug with a longer fuse.
-  { id: "account", label: "Account", icon: "account", requiresAuth: true, children: [
+  { id: "account", label: "Account", icon: "account", requiresAuth: true, advanced: true, children: [
     { key: "account:profile",  label: "Profile" },
     { key: "account:password", label: "Password" },
     { key: "account:sessions", label: "Sessions" },

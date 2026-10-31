@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased — Goal-aligned navigation
+
+- Cut the default sidebar from 18 destinations across 9 groups to 8 across 6 (legacy; 20 to 10 on v2), keeping only what serves the stated goals: a dense terminal, equity AND options signals, automated execution with its risk controls. **Promoted Options Signals onto the rail** — it was reachable only behind the Advanced toggle. Demoted Alpha Edge, History, Strategy Library, Health, Watchlists, Journal, Performance and the Account group behind Advanced. Nothing was deleted; every page keeps its URL and its code, and one `advanced` flag restores any of it. Supersedes the five-destination Strategies rail. Presentation only; no risk, permission or order-path change.
+
 ## Unreleased — Live Signals plain-language rationale
 
 - Live equity signal cards format the scanner `reasons` map (RSI/MACD/VWAP/…) into "Why it appeared" instead of always showing the empty-producer placeholder. Presentation of existing producer data; no scoring or order-path change.
