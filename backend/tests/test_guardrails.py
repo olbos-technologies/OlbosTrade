@@ -303,3 +303,88 @@ def test_paper_visibility_mode_lowers_signal_threshold(monkeypatch):
     status = engine.check_all(make_portfolio())
 
     assert engine.get_signal_threshold(status) == 0.35
+
+
+# ── Capital base divergence ───────────────────────────────────────────────────
+#
+# The limits in this module are percentages of `starting_capital`, a configured
+# constant. Keeping that base fixed is deliberate — it stops the limits
+# loosening as the account grows — but it only means what TRADING_POLICY.md
+# says while the constant resembles the account it guards.
+#
+# Production ran with STARTING_CAPITAL at its 25,000 default against an account
+# of about 245,000. A -$2,927 day, -1.2% of the real book, was computed as
+# -11.71% and tripped the 2% daily limit, suspending bull_put_spread across
+# 101 of 102 tickers for a month. Every number was correctly derived from a
+# base ten times too small, which is why nobody saw it.
+#
+# These pin the detector. They do NOT pin a behaviour change: the flag must
+# never alter trading_allowed, or this turns a misconfiguration into an outage.
+
+from app.services.guardrails import (  # noqa: E402
+    CAPITAL_BASE_DIVERGENT_FLAG,
+    capital_base_is_divergent,
+)
+
+
+def test_divergence_helper_flags_an_account_far_above_the_base():
+    assert capital_base_is_divergent(25_000.0, 244_861.92) is True
+
+
+def test_divergence_helper_flags_an_account_far_below_the_base():
+    """Symmetric: a base set too HIGH makes every limit far too loose, which
+    is the more dangerous direction — the desk would keep trading through a
+    loss the policy meant to stop."""
+    assert capital_base_is_divergent(250_000.0, 25_000.0) is True
+
+
+def test_divergence_helper_accepts_an_ordinary_working_account():
+    # Up 40% on the configured base: real growth, limits still meaningful.
+    assert capital_base_is_divergent(25_000.0, 35_000.0) is False
+    assert capital_base_is_divergent(25_000.0, 25_000.0) is False
+
+
+def test_divergence_helper_is_silent_when_a_figure_is_missing():
+    """A failed broker read leaves current_value at 0. That is an unknown,
+    not a divergence, and must not be reported as one."""
+    assert capital_base_is_divergent(25_000.0, 0.0) is False
+    assert capital_base_is_divergent(0.0, 244_861.92) is False
+    assert capital_base_is_divergent(-1.0, 100.0) is False
+    assert capital_base_is_divergent(25_000.0, 100.0, factor=0) is False
+
+
+def test_divergent_base_raises_the_flag(engine):
+    status = engine.check_all(make_portfolio(
+        starting_capital=25_000.0, current_value=244_861.92,
+    ))
+    assert CAPITAL_BASE_DIVERGENT_FLAG in status.flags
+
+
+def test_divergent_base_does_not_block_trading(engine):
+    """The whole point: it reports, it does not halt. A flag that suspended
+    the desk would turn a wrong constant into an outage."""
+    status = engine.check_all(make_portfolio(
+        starting_capital=25_000.0, current_value=244_861.92,
+    ))
+    assert status.trading_allowed is True
+    assert status.trading_mode == "normal"
+
+
+def test_matching_base_raises_no_flag(engine):
+    status = engine.check_all(make_portfolio(
+        starting_capital=25_000.0, current_value=25_000.0,
+    ))
+    assert CAPITAL_BASE_DIVERGENT_FLAG not in status.flags
+
+
+def test_the_flag_survives_the_cooling_off_early_return(engine):
+    """That path builds its own flag list and returned before this existed,
+    so it would have dropped the flag exactly when an operator is most
+    likely to be reading the status."""
+    status = engine.check_all(make_portfolio(
+        starting_capital=25_000.0, current_value=244_861.92,
+        cooling_off_until=datetime.now(timezone.utc) + timedelta(hours=4),
+    ))
+    assert status.trading_allowed is False
+    assert "cooling_off_active" in status.flags
+    assert CAPITAL_BASE_DIVERGENT_FLAG in status.flags
