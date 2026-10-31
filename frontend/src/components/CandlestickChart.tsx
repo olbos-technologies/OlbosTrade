@@ -7,7 +7,7 @@
  * colors, SMA/VWAP colors, dark background) so this is a charting-engine
  * upgrade, not a visual rebrand.
  */
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   createChart,
   CandlestickSeries,
@@ -20,6 +20,8 @@ import {
   type HistogramData,
   type LineData,
 } from "lightweight-charts";
+import { useIsMobile } from "../hooks/useIsMobile";
+import "./CandlestickChart.css";
 
 export interface ChartBar {
   timestamp: string;
@@ -48,6 +50,16 @@ const COLOR = {
   sma: "#f4c64f",
   vwap: "#8e7cfb",  // matches index.css --violet — lightweight-charts takes plain color strings, not var(), so keep these in sync by convention
 };
+
+/** Short axis titles so level labels do not cover candles on a phone. */
+export function axisTitleForLevel(label: string, compact: boolean): string {
+  if (!compact) return label;
+  const key = label.trim().toUpperCase();
+  if (key.startsWith("RES")) return "R";
+  if (key.startsWith("SUP")) return "S";
+  if (key.startsWith("ENT")) return "E";
+  return key.slice(0, 1) || label;
+}
 
 export function toUnixSeconds(iso: string): UTCTimestamp {
   return Math.floor(new Date(iso).getTime() / 1000) as UTCTimestamp;
@@ -102,6 +114,12 @@ function barsToVwapData(bars: ChartBar[]): LineData[] {
   return rollingVwap(bars).map((value, idx) => ({ time: toUnixSeconds(bars[idx].timestamp), value }));
 }
 
+const LEGEND_ITEMS_BASE = [
+  { label: "SMA-20", color: COLOR.sma, style: "solid" as const },
+  { label: "VWAP", color: COLOR.vwap, style: "dashed" as const },
+  { label: "Volume", color: "rgba(148,163,184,0.7)", style: "bar" as const },
+];
+
 export default function CandlestickChart({
   bars,
   levels,
@@ -117,6 +135,13 @@ export default function CandlestickChart({
   const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
   const smaSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const vwapSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const isMobile = useIsMobile();
+  const [legendOpen, setLegendOpen] = useState(!isMobile);
+
+  useEffect(() => {
+    // Phones start collapsed so the candle pane is readable; desktop keeps the key.
+    setLegendOpen(!isMobile);
+  }, [isMobile]);
 
   // Chart + series lifecycle — created once per mount.
   useEffect(() => {
@@ -194,11 +219,11 @@ export default function CandlestickChart({
         lineWidth: 1,
         lineStyle: 2,
         axisLabelVisible: true,
-        title: level.label,
+        title: axisTitleForLevel(level.label, isMobile),
       }),
     );
     return () => { priceLines.forEach((line) => series.removePriceLine(line)); };
-  }, [levels]);
+  }, [levels, isMobile]);
 
   if (!bars.length) {
     return (
@@ -211,41 +236,49 @@ export default function CandlestickChart({
     );
   }
 
+  const legendItems = [
+    ...LEGEND_ITEMS_BASE,
+    ...levels.map((level) => ({ label: level.label, color: level.color, style: "level" as const })),
+  ];
+
   return (
-    <div style={{ position: "relative", height }}>
-      <div
-        aria-label="Chart legend"
-        style={{
-          position: "absolute", left: 12, top: 10, zIndex: 2,
-          display: "flex", flexDirection: "column", gap: 4,
-          padding: "8px 10px", background: "rgba(6,11,23,0.82)",
-          border: "1px solid var(--line-dim)", pointerEvents: "none",
-        }}
-      >
-        {[
-          { label: "SMA-20", color: COLOR.sma, style: "solid" as const },
-          { label: "VWAP", color: COLOR.vwap, style: "dashed" as const },
-          { label: "Volume", color: "rgba(148,163,184,0.7)", style: "bar" as const },
-          ...levels.map((level) => ({ label: level.label, color: level.color, style: "level" as const })),
-        ].map((item) => (
-          <div key={item.label} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span
-              aria-hidden="true"
-              style={{
-                width: 18,
-                height: item.style === "bar" ? 8 : 2,
-                background: item.style === "dashed" ? "transparent" : item.color,
-                borderTop: item.style === "dashed" ? `2px dashed ${item.color}` : undefined,
-                boxShadow: item.style === "level" ? `0 0 0 1px ${item.color}` : undefined,
-              }}
-            />
-            <span style={{ fontFamily: "var(--mono)", fontSize: 10, color: "var(--ink-dim)", letterSpacing: "0.04em" }}>
-              {item.label}
-            </span>
+    <div className={`candlestick-chart${isMobile ? " candlestick-chart--mobile" : ""}`} style={{ height }}>
+      <div className="candlestick-chart__legend-chrome">
+        {isMobile && (
+          <button
+            type="button"
+            className="candlestick-chart__legend-toggle"
+            aria-expanded={legendOpen}
+            aria-controls="candlestick-chart-legend"
+            onClick={() => setLegendOpen((open) => !open)}
+          >
+            {legendOpen ? "Hide legend" : "Legend"}
+          </button>
+        )}
+        {(legendOpen || !isMobile) && (
+          <div
+            id="candlestick-chart-legend"
+            className="candlestick-chart__legend"
+            aria-label="Chart legend"
+          >
+            {legendItems.map((item) => (
+              <div key={item.label} className="candlestick-chart__legend-row">
+                <span
+                  aria-hidden="true"
+                  className={`candlestick-chart__swatch candlestick-chart__swatch--${item.style}`}
+                  style={{
+                    background: item.style === "dashed" ? "transparent" : item.color,
+                    borderTop: item.style === "dashed" ? `2px dashed ${item.color}` : undefined,
+                    boxShadow: item.style === "level" ? `0 0 0 1px ${item.color}` : undefined,
+                  }}
+                />
+                <span>{item.label}</span>
+              </div>
+            ))}
           </div>
-        ))}
+        )}
       </div>
-      <div ref={containerRef} style={{ width: "100%", height: "100%" }} />
+      <div ref={containerRef} className="candlestick-chart__canvas" />
     </div>
   );
 }

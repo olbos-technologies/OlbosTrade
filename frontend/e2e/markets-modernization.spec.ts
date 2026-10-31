@@ -54,3 +54,29 @@ test("chart symbol links and focus mode keep the chart available",async({page})=
   await expect(page.locator(".workstation-right")).toHaveCount(0);
   await expectNoHorizontalOverflow(page,1440);
 });
+
+test("phone chart keeps the legend collapsed until asked for",async({page})=>{
+  await stubBackend(page);
+  // Same deny-all pattern as the desktop chart test: empty 200 bodies make
+  // research panels call .map/.includes on missing fields and trip the page
+  // ErrorBoundary. Fail those reads, then override only the equity chart.
+  await page.route("**/api/**", r => r.fulfill(r.request().url().includes("/api/auth/status")
+    ? reply({auth_enabled:false,authenticated:false,user:null})
+    : {status:503,contentType:"application/json",body:"{}"}));
+  await page.route("**/api/equity/chart/**", r => r.fulfill(reply({
+    bars: [
+      {timestamp:"2026-08-14T09:30:00-04:00",open:100,high:102,low:99,close:101,volume:1000},
+      {timestamp:"2026-08-14T09:45:00-04:00",open:101,high:103,low:100,close:102,volume:1100},
+      {timestamp:"2026-08-14T10:00:00-04:00",open:102,high:104,low:101,close:103,volume:1200},
+    ],
+  })));
+  await page.setViewportSize({width:390,height:844});
+  await page.goto("/terminal/markets/chart?symbol=AAPL");
+  await expect(page.getByRole("heading",{name:"Market workspace"})).toBeVisible();
+  await expect(page.getByRole("button",{name:"Legend",exact:true})).toBeVisible();
+  await expect(page.getByLabel("Chart legend")).toHaveCount(0);
+  await page.getByRole("button",{name:"Legend",exact:true}).click();
+  await expect(page.getByLabel("Chart legend")).toBeVisible();
+  await expect(page.getByText("SMA-20")).toBeVisible();
+  await expectNoHorizontalOverflow(page,390);
+});
