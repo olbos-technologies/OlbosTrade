@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased — Signal rationale label parity guard
+
+- Added a guard test asserting the factor labels in `frontend/src/utils/equitySignalRationale.ts` (added by #192) stay in step with the keys `score_equity_signal()` emits, in both directions, and that the two volume labels keep the VWAP condition the engine actually gates them on. Test only; no behaviour change.
+
 ## Unreleased — Live Signals plain-language rationale
 
 - Live equity signal cards format the scanner `reasons` map (RSI/MACD/VWAP/…) into "Why it appeared" instead of always showing the empty-producer placeholder. Presentation of existing producer data; no scoring or order-path change.
