@@ -61,3 +61,20 @@
   .app-shell .chart-timeframe-controls button:last-child { grid-column: 1 / -1; }
   .app-shell .chart-panel-body { padding: 10px !important; }
 }
+
+/* The browser owns toolbar resizing; dynamic viewport units follow it. */
+@media (max-width: 768px) {
+  body, #root { min-height: 100dvh; }
+  .app-shell {
+    --terminal-safe-top: env(safe-area-inset-top, 0px);
+    --terminal-safe-right: env(safe-area-inset-right, 0px);
+    --terminal-safe-bottom: env(safe-area-inset-bottom, 0px);
+    --terminal-safe-left: env(safe-area-inset-left, 0px);
+    box-sizing: border-box;
+    padding-top: var(--terminal-safe-top);
+    padding-left: var(--terminal-safe-left);
+    padding-right: var(--terminal-safe-right);
+  }
+  .app-shell main { min-height: 0; scroll-padding-block: 12px; }
+  .app-shell .mobile-bottom-nav { padding-bottom: var(--terminal-safe-bottom); }
+}
