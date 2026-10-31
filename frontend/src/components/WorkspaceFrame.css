@@ -58,3 +58,19 @@
   .workspace-frame .workspace-stat-grid .data-val { font-size: 22px; }
   .workspace-frame .workspace-backtest-layout > div { overflow: visible !important; }
 }
+
+/* UX-1: consistent, compact workstation surfaces across secondary workspaces. */
+.workspace-frame__heading { padding: 20px 24px 16px; }
+.workspace-frame__heading h1 { font-family: var(--mono); font-size: 26px; margin: 5px 0 6px; }
+.workspace-frame__heading p { line-height: 1.45; }
+.workspace-frame .panel, .workspace-frame .instrument-card, .workspace-frame .instrument-stat-strip,
+.workspace-frame .workspace-mode-card { border-radius: 4px; }
+.workspace-frame .panel-title { color: var(--ink); font-family: var(--mono) !important; font-size: 14px !important; }
+.workspace-frame .btn-t, .workspace-frame input, .workspace-frame select, .workspace-frame textarea { border-radius: 4px !important; }
+.workspace-frame .workspace-table-scroll { border-radius: 4px; }
+.workspace-frame .t-table th, .workspace-frame .t-table td { padding: 8px 12px; }
+.workspace-frame :focus-visible { outline: 2px solid var(--design-action); outline-offset: 2px; }
+@media (max-width: 768px) {
+  .workspace-frame__heading { padding: 18px 16px 14px; }
+  .workspace-frame__heading h1 { font-size: 24px; }
+}

@@ -281,6 +281,7 @@ export default function CommandOverview({
   const [equitySignals, setEquitySignals] = useState<any[]>([]);
   const [optionsSignals, setOptionsSignals] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [available, setAvailable] = useState({ pending: false, log: false, positions: false, equity: false, options: false });
   const blockCtx = useDeskBlockContext();
   const { minConfidence } = blockCtx;
 
@@ -289,20 +290,21 @@ export default function CommandOverview({
     const load = async () => {
       try {
         const [pend, log, pos, risk, eqSig, optSig, heatResp] = await Promise.all([
-          api.getPendingApprovals().catch(() => ({ pending: [], count: 0 })),
-          api.getExecutionLog().catch(() => ({ events: [], log: [] })),
-          api.getPositions().catch(() => ({ positions: [] })),
+          api.getPendingApprovals().catch(() => null),
+          api.getExecutionLog().catch(() => null),
+          api.getPositions().catch(() => null),
           api.getPortfolioState().catch(() => ({})),
-          api.getEquitySignals(20).catch(() => ({ signals: [] })),
-          api.getOptionsSignals(20).catch(() => ({ signals: [] })),
-          fetch("/api/portfolio/heat").then((r) => r.json()).catch(() => ({})),
+          api.getEquitySignals(20).catch(() => null),
+          api.getOptionsSignals(20).catch(() => null),
+          fetch("/api/portfolio/heat").then((r) => { if (!r.ok) throw new Error("Heat unavailable"); return r.json(); }).catch(() => ({})),
         ]);
         if (!alive) return;
-        const p = (pend as any).pending || [];
+        const p = (pend as any)?.pending || [];
+        setAvailable({ pending: Array.isArray((pend as any)?.pending), log: Array.isArray((log as any)?.events) || Array.isArray((log as any)?.log), positions: Array.isArray((pos as any)?.positions) || Array.isArray(pos), equity: Array.isArray((eqSig as any)?.signals), options: Array.isArray((optSig as any)?.signals) });
         setPending(p);
-        setPendingCount((pend as any).count ?? p.length);
-        setExecLog((log as any).events || (log as any).log || []);
-        setPositions((pos as any).positions || (Array.isArray(pos) ? pos : []));
+        setPendingCount((pend as any)?.count ?? p.length);
+        setExecLog((log as any)?.events || (log as any)?.log || []);
+        setPositions((pos as any)?.positions || (Array.isArray(pos) ? pos : []));
 
         const s = (risk as any).state || risk;
         if (typeof s.daily_loss_pct === "number" && typeof s.max_daily_loss_pct === "number") {
@@ -329,8 +331,8 @@ export default function CommandOverview({
           setHeatTone("muted");
         }
 
-        setEquitySignals((eqSig as any).signals || []);
-        setOptionsSignals((optSig as any).signals || []);
+        setEquitySignals((eqSig as any)?.signals || []);
+        setOptionsSignals((optSig as any)?.signals || []);
         setError(null);
       } catch (e: any) {
         if (alive) setError(e?.message || "Failed to load overview");
@@ -448,7 +450,7 @@ export default function CommandOverview({
     consecLim != null && blockCtx.consecutiveLosses >= Math.max(1, consecLim - 2) ? "warn" :
     "muted";
   const ksTone: "ok" | "warn" | "crit" | "muted" = blockCtx.killEngaged ? "crit" : "ok";
-  const nextAction = deskNextAction(blockCtx, openCount);
+  const nextAction = available.positions && blockCtx.guardrailAvailable && blockCtx.killStatusAvailable ? deskNextAction(blockCtx, openCount) : null;
 
   const pendingEmpty = nextAction && pendingCount === 0
     ? nextAction
@@ -459,10 +461,10 @@ export default function CommandOverview({
   const submittedEmpty =
     openCount <= 0 && blockCtx.tradingAllowed
       ? "Flat · nothing submitted yet — queue a signal that clears the style floor"
-      : "No recent submitted fills in the execution log.";
+      : "No recent submitted events in the execution log.";
 
   return (
-    <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 14, maxWidth: 1100 }}>
+    <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 14, width: "100%", boxSizing: "border-box" }}>
       <div className="instrument-card page-header" style={{ margin: 0 }}>
         <div>
           <div className="page-header__title">Command Overview</div>
@@ -497,19 +499,19 @@ export default function CommandOverview({
         }}
         aria-label="Desk positions and risk readout"
       >
-        <ReadoutCell label="Open" value={`${openCount}/${maxOpen}`} tone={openTone} />
+        <ReadoutCell label="Open" value={available.positions ? `${openCount}/${maxOpen}` : "Unavailable"} tone={available.positions ? openTone : "muted"} />
         <ReadoutCell label="Heat" value={heat} tone={heatTone} />
-        <ReadoutCell label="Consec losses" value={consecLabel} tone={consecTone} />
+        <ReadoutCell label="Consec losses" value={blockCtx.guardrailAvailable ? consecLabel : "Unavailable"} tone={blockCtx.guardrailAvailable ? consecTone : "muted"} />
         <ReadoutCell label="Risk budget" value={riskBudget} tone={riskBudget === "—" ? "muted" : "ok"} />
         <ReadoutCell
           label="Kill switch"
-          value={blockCtx.killEngaged ? "ENGAGED" : "Clear"}
-          tone={ksTone}
+          value={!blockCtx.killStatusAvailable ? "Unavailable" : blockCtx.killEngaged ? "ENGAGED" : "Clear"}
+          tone={blockCtx.killStatusAvailable ? ksTone : "muted"}
         />
         <ReadoutCell
           label="Trading"
-          value={blockCtx.tradingAllowed ? "Allowed" : "Suspended"}
-          tone={blockCtx.tradingAllowed ? "ok" : "crit"}
+          value={!blockCtx.guardrailAvailable ? "Unavailable" : blockCtx.tradingAllowed ? "Allowed" : "Suspended"}
+          tone={!blockCtx.guardrailAvailable ? "muted" : blockCtx.tradingAllowed ? "ok" : "crit"}
         />
         <div style={{ flex: 1, minWidth: 8 }} />
         <div style={{ display: "flex", alignItems: "center", padding: "8px 12px", gap: 8 }}>
@@ -552,19 +554,19 @@ export default function CommandOverview({
         <QueueCard
           primary
           title="Pending"
-          count={pendingCount}
+          count={available.pending ? pendingCount : "—"}
           items={pendingLines}
-          empty={pendingEmpty}
+          empty={available.pending ? pendingEmpty : "Approval queue unavailable."}
           tone={pendingCount > 0 ? "warn" : "muted"}
           onOpen={() => onNavigateTab("copilot")}
           actionLabel="Review queue"
         />
         <QueueCard
           primary
-          title="Blocked"
-          count={blockedLines.length || execBlocked.length}
+          title={blockedSignalLines.length > 0 ? "Blocked signals" : "Recent execution failures"}
+          count={blockedSignalLines.length > 0 ? blockedSignalLines.length : available.log ? execBlocked.length : "—"}
           items={blockedLines}
-          empty={blockedEmpty}
+          empty={available.log && available.equity ? blockedEmpty : "Some signal or execution data is unavailable."}
           tone={(blockedLines.length || execBlocked.length) > 0 ? "crit" : "muted"}
           onOpen={() => onNavigateTab("execution")}
           actionLabel="Execution log"
@@ -572,9 +574,9 @@ export default function CommandOverview({
         <QueueCard
           primary
           title="Submitted"
-          count={submitted.length}
+          count={available.log ? submitted.length : "—"}
           items={submittedLines}
-          empty={submittedEmpty}
+          empty={available.log ? submittedEmpty : "Execution log unavailable."}
           tone={submitted.length > 0 ? "ok" : "muted"}
           onOpen={() => onNavigateTab("execution")}
           actionLabel="Execution log"
@@ -593,12 +595,12 @@ export default function CommandOverview({
           score={equityAvgConfidence}
           scoreLabel="avg confidence"
           stats={[
-            { label: "BUY", value: String(equityBuyCount), tone: "var(--green)" },
-            { label: "SELL", value: String(equitySellCount), tone: "var(--red)" },
-            { label: "SIGNALS", value: String(actionableEquity.length) },
+            { label: "BUY", value: available.equity ? String(equityBuyCount) : "—", tone: "var(--green)" },
+            { label: "SELL", value: available.equity ? String(equitySellCount) : "—", tone: "var(--red)" },
+            { label: "SIGNALS", value: available.equity ? String(actionableEquity.length) : "—" },
           ]}
           items={equityLines}
-          empty="No actionable equity signals right now."
+          empty={available.equity ? "No actionable equity signals right now." : "Equity signals unavailable."}
           onOpen={() => onNavigateTab("equities")}
           actionLabel="Desk signals"
         />
@@ -607,12 +609,12 @@ export default function CommandOverview({
           score={optionsAvgConfidence}
           scoreLabel="avg confidence"
           stats={[
-            { label: "CREDIT", value: String(optionsCreditCount), tone: "var(--green)" },
-            { label: "DEBIT", value: String(optionsDebitCount), tone: "var(--amber)" },
-            { label: "SIGNALS", value: String(optionsSignals.length) },
+            { label: "CREDIT", value: available.options ? String(optionsCreditCount) : "—", tone: "var(--green)" },
+            { label: "DEBIT", value: available.options ? String(optionsDebitCount) : "—", tone: "var(--amber)" },
+            { label: "SIGNALS", value: available.options ? String(optionsSignals.length) : "—" },
           ]}
           items={optionsLines}
-          empty="No recent options spread signals."
+          empty={available.options ? "No recent options spread signals." : "Options signals unavailable."}
           onOpen={() => onNavigateTab("options")}
           actionLabel="Spread Scanner"
         />

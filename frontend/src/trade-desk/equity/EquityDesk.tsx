@@ -9,6 +9,7 @@ import { PanelChrome, usePanelLayout } from "../PanelLayoutManager";
 import EquityDiscoveryRail from "./EquityDiscoveryRail";
 import EquityIntelligenceRail, { type EligibilitySnapshot } from "./EquityIntelligenceRail";
 import EquityOrderComposer from "./EquityOrderComposer";
+import "./EquityDesk.css";
 
 export default function EquityDesk() {
   const [symbol, setSymbol] = useState("AAPL");
@@ -39,16 +40,13 @@ export default function EquityDesk() {
       </div>
 
       <div
+        className="equity-desk-grid"
         style={{
-          flex: 1,
-          minHeight: 0,
-          display: "grid",
-          gridTemplateColumns: `${layout.discoveryCollapsed ? 36 : layout.discoveryWidth}px minmax(0, 1fr) ${
-            layout.intelligenceCollapsed ? 36 : layout.intelligenceWidth
-          }px`,
-          gap: 0,
-        }}
+          "--discovery-width": `${layout.discoveryCollapsed ? 36 : layout.discoveryWidth}px`,
+          "--intelligence-width": `${layout.intelligenceCollapsed ? 36 : layout.intelligenceWidth}px`,
+        } as React.CSSProperties}
       >
+        <div className="equity-desk-discovery">
         <PanelChrome
           title="Discovery"
           collapsed={layout.discoveryCollapsed}
@@ -57,9 +55,10 @@ export default function EquityDesk() {
         >
           <EquityDiscoveryRail symbol={symbol} onSelect={setSymbol} />
         </PanelChrome>
+        </div>
 
-        <div style={{ display: "flex", flexDirection: "column", minHeight: 0, borderLeft: "1px solid var(--line-dim)", borderRight: "1px solid var(--line-dim)" }}>
-          <div style={{ flex: 1, minHeight: 0, overflow: "auto", padding: 8 }}>
+        <div className="equity-desk-center">
+          <div className="equity-desk-chart">
             <ChartWorkstation symbol={symbol} onSymbolChange={setSymbol} compact />
           </div>
           {!layout.activityCollapsed && (
@@ -68,6 +67,7 @@ export default function EquityDesk() {
           <button
             type="button"
             onClick={() => toggle("activity")}
+            aria-expanded={!layout.activityCollapsed}
             className="desk-tool-rail__btn"
             style={{
               width: "100%",
@@ -80,6 +80,7 @@ export default function EquityDesk() {
           </button>
         </div>
 
+        <div className="equity-desk-intelligence">
         <PanelChrome
           title="Intelligence"
           collapsed={layout.intelligenceCollapsed}
@@ -88,6 +89,7 @@ export default function EquityDesk() {
         >
           <EquityIntelligenceRail symbol={symbol} eligibility={eligibility} />
         </PanelChrome>
+        </div>
       </div>
     </div>
   );
