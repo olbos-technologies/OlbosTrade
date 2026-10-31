@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased — Live Signals plain-language rationale
+
+- Live equity signal cards format the scanner `reasons` map (RSI/MACD/VWAP/…) into "Why it appeared" instead of always showing the empty-producer placeholder. Presentation of existing producer data; no scoring or order-path change.
+
 ## Unreleased — Sidebar full tree + icon rail
 
 - Remove Show/Hide advanced from the workspace sidebar; the full nav tree is always available when the rail is labeled.
