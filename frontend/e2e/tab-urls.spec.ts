@@ -29,21 +29,21 @@ const HUBS = [
     from: "/terminal/risk/heat",
     tab: /guardrails/i,
     to: "/terminal/risk/rules",
-    label: "PORTFOLIO & RISK \u00b7 RISK RULES",
+    label: "RISK \u00b7 RISK RULES",
   },
   {
     name: "System",
     from: "/terminal/system/broker",
     tab: /data quality/i,
     to: "/terminal/system/quality",
-    label: "DATA & INTEGRATIONS \u00b7 DATA QUALITY",
+    label: "BROKERS \u00b7 DATA QUALITY",
   },
   {
     name: "Signals",
     from: "/terminal/equity",
     tab: /strategy library/i,
     to: "/terminal/strat/cards",
-    label: "STRATEGIES \u00b7 STRATEGY LIBRARY",
+    label: "SIGNALS \u00b7 STRATEGY LIBRARY",
   },
 ];
 
