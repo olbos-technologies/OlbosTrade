@@ -35,28 +35,22 @@ export const NAV_MODEL_LEGACY: NavGroup[] = [
   ]},
   { id: "strat", label: "Strategies", icon: "strategy", children: [
     { key: "strat:alpha-edge", label: "Alpha Edge" },
-    { key: "equity",           label: "Equity Signals" },
-    // ADDED TO BOTH MODELS, like the Account group below — see that comment for
-    // why one is never enough. Not marked advanced: phase 1 is read-only, and a
-    // feature whose whole purpose is to accumulate observations nobody looks at
-    // is not worth shipping behind a toggle.
-    { key: "crypto:signals",   label: "Crypto Signals" },
-    { key: "options:signals",  label: "Options Signals" },
-    { key: "strat:research",   label: "Signal Research" },
-    { key: "strat:cards",   label: "Strategy Cards", advanced: true },
-    { key: "strat:health",  label: "Strategy Health", advanced: true },
-    { key: "strat:calendar", label: "Signal Calendar" },
-    // Was in SignalsCenter TABS and the page registry but in neither nav
-    // model, so it was reachable only from the tab strip or by URL.
-    { key: "strat:signal-history", label: "Signal History", advanced: true },
-    { key: "strat:builder", label: "Strategy Builder", advanced: true },
-    { key: "strat:alerts",  label: "Alerts", advanced: true },
+    { key: "equity", label: "Live Signals" },
+    { key: "strat:signal-history", label: "History" },
+    { key: "strat:cards", label: "Strategy Library" },
+    { key: "strat:health", label: "Health" },
   ]},
   { id: "risk", label: "Portfolio & Risk", icon: "risk", key: "risk", children: [
     { key: "risk:heat",     label: "Risk Overview" },
     { key: "risk:rules",    label: "Risk Rules", advanced: true },
   ]},
   { id: "lab", label: "Research", icon: "lab", advanced: true, children: [
+    { key: "strat:research", label: "Signal Research" },
+    { key: "strat:calendar", label: "Signal Calendar" },
+    { key: "strat:builder", label: "Strategy Builder" },
+    { key: "strat:alerts", label: "Alerts" },
+    { key: "crypto:signals", label: "Crypto Research" },
+    { key: "options:signals", label: "Options Signals" },
     { key: "lab:scenario",   label: "Scenario Lab" },
     { key: "lab:strategy",   label: "Strategy Research" },
     { key: "lab:market",     label: "Market & Regime" },
@@ -90,9 +84,8 @@ export const NAV_MODEL_LEGACY: NavGroup[] = [
 ];
 
 /**
- * Trade Desk 2.0 IA — Options tools remain reachable under Strategies (advanced)
- * until Phase D moves them into the Options Desk workspace. Trade Desk group
- * hosts Command Overview + desk tabs.
+ * Trade Desk 2.0 IA — daily strategy review is separate from research.
+ * Options tools remain reachable under Trade Desk through Advanced.
  */
 export const NAV_MODEL_V2: NavGroup[] = [
   { id: "dashboard", label: "Command Center", icon: "dashboard", key: "dashboard" },
@@ -113,30 +106,29 @@ export const NAV_MODEL_V2: NavGroup[] = [
     { key: "trade:execlog",   label: "Execution Monitor", advanced: true },
     { key: "trade:replay",    label: "Trade Replay", advanced: true },
     { key: "trade:settings",  label: "Desk Settings", advanced: true },
+    { key: "options:chain", label: "Options Chain", advanced: true },
+    { key: "scan", label: "Spread Scanner", advanced: true },
+    { key: "options:income", label: "Income Strategies", advanced: true },
+    { key: "options:flow", label: "Options Flow", advanced: true },
+
   ]},
   { id: "strat", label: "Strategies", icon: "strategy", children: [
     { key: "strat:alpha-edge", label: "Alpha Edge" },
-    { key: "equity",        label: "Signal Center" },
-    { key: "crypto:signals", label: "Crypto Signals" },
-    { key: "strat:research", label: "Signal Research" },
-    { key: "strat:cards",   label: "Strategy Cards", advanced: true },
-    { key: "strat:health",  label: "Strategy Health", advanced: true },
-    { key: "strat:calendar", label: "Signal Calendar" },
-    // Was in SignalsCenter TABS and the page registry but in neither nav
-    // model, so it was reachable only from the tab strip or by URL.
-    { key: "strat:signal-history", label: "Signal History", advanced: true },
-    { key: "strat:builder", label: "Strategy Builder", advanced: true },
-    { key: "strat:alerts",  label: "Alerts", advanced: true },
-    { key: "options:chain",  label: "Options Chain", advanced: true },
-    { key: "scan",           label: "Spread Scanner", advanced: true },
-    { key: "options:income", label: "Income Strategies", advanced: true },
-    { key: "options:flow",   label: "Options Flow", advanced: true },
+    { key: "equity", label: "Live Signals" },
+    { key: "strat:signal-history", label: "History" },
+    { key: "strat:cards", label: "Strategy Library" },
+    { key: "strat:health", label: "Health" },
   ]},
   { id: "risk", label: "Portfolio & Risk", icon: "risk", key: "risk", children: [
     { key: "risk:heat",     label: "Risk Overview" },
     { key: "risk:rules",    label: "Risk Rules", advanced: true },
   ]},
   { id: "lab", label: "Research", icon: "lab", advanced: true, children: [
+    { key: "strat:research", label: "Signal Research" },
+    { key: "strat:calendar", label: "Signal Calendar" },
+    { key: "strat:builder", label: "Strategy Builder" },
+    { key: "strat:alerts", label: "Alerts" },
+    { key: "crypto:signals", label: "Crypto Research" },
     { key: "lab:scenario",   label: "Scenario Lab" },
     { key: "lab:strategy",   label: "Strategy Research" },
     { key: "lab:market",     label: "Market & Regime" },
