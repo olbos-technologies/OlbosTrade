@@ -1,6 +1,6 @@
 import React,{useEffect,useRef,useState} from "react";
 import {useTerminalNav} from "./TerminalNavContext";
-const destinations=[['Command Center','dashboard'],['Markets','markets:chart'],['Signals','equity'],['Positions','trade:positions'],['Risk','risk:heat'],['Journal','journal'],['Performance','analytics'],['Data & Integrations','system:broker']] as const;
+const destinations=[['Command Center','dashboard'],['Markets','markets:chart'],['Signals','equity'],['Positions','trade:positions'],['Risk','risk:heat'],['Journal','journal'],['Performance','analytics'],['Brokers','system:broker']] as const;
 export default function WorkspaceSearch(){
  const nav=useTerminalNav(),input=useRef<HTMLInputElement>(null);
  const [query,setQuery]=useState('');

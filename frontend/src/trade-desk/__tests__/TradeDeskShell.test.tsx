@@ -108,6 +108,12 @@ describe("nav model v2", () => {
       "trade:options",
       "trade:positions",
     ]);
+    expect(filtered.some((g) => g.id === "lab")).toBe(false);
+    expect(filtered.find((g) => g.id === "strat")?.children?.map((c) => c.key)).toEqual([
+      "strat:alpha-edge",
+      "equity",
+      "strat:signal-history",
+    ]);
   });
 
   it("keeps desk-tab destinations for route ownership without listing them", () => {

@@ -204,7 +204,7 @@ test.describe("history has one entry per real navigation", () => {
   async function selectRisk(page: Page) {
     await page.locator(".mobile-bottom-nav").getByRole("button", {name:"More", exact:true}).click();
     const target=page.getByRole("button", {name:"Risk Overview", exact:true});
-    if(await target.count()===0) await page.getByRole("button", {name:"Portfolio & Risk", exact:true}).click();
+    if(await target.count()===0) await page.getByRole("button", {name:"Risk", exact:true}).click();
     await target.click();
   }
 

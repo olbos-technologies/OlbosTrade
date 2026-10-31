@@ -32,7 +32,7 @@ for(const width of [820,1280,1440,1920]) for(const surface of ['dashboard','mark
       expect(riskBox!.x).toBeGreaterThanOrEqual((await nav.boundingBox())!.x+(await nav.boundingBox())!.width-1);
     }
     const accountIcon=await nav.getByRole('button',{name:'Account',exact:true}).locator(':scope > span:first-child svg path').getAttribute('d');
-    const integrationsIcon=await nav.getByRole('button',{name:/^(Data & Integrations|System)$/}).locator(':scope > span:first-child svg path').getAttribute('d');
+    const integrationsIcon=await nav.getByRole('button',{name:/^(Brokers|Data & Integrations|System)$/}).locator(':scope > span:first-child svg path').getAttribute('d');
     expect(accountIcon).toBeTruthy();
     expect(integrationsIcon).toBeTruthy();
     expect(accountIcon).not.toBe(integrationsIcon);

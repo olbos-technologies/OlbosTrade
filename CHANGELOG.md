@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased — Trade Desk sidebar slim
+## Unreleased — Desk-loop sidebar (Bloomberg focus)
 
-- Trade Desk sidebar lists four daily workspaces (Command Overview, Equity Desk, Options Desk, Positions). Copilot / Orders / Execution / Replay / Settings stay as in-desk tabs; options scanners move under Research. Presentation / IA only; no risk, permission or order-path change.
+- Sidebar keeps the daily desk loop only: Command Center, Markets (Chart/Watchlists), Signals (Alpha Edge / Live / History), Trade Desk (four workspaces), Risk, Journal, Performance, Brokers. Research lab, strategy library/health, scanners and ops extras stay URL-reachable but off the sidebar. Presentation / IA only; no risk, permission or order-path change.
 
 ## Unreleased — Live Signals plain-language rationale
 

@@ -51,7 +51,7 @@ for(const width of [390,768,1440,1920])for(const [route,heading] of routes){
    const nav=page.getByRole('navigation',{name:'Workspace navigation'});
    await expect(nav).toHaveClass(/desktop-workspace-nav/);
    // Top-level groups only — open sections insert child buttons into DOM order.
-   for(const name of ['Command Center','Markets','Trade Desk','Strategies']){
+   for(const name of ['Command Center','Markets','Trade Desk','Signals']){
     await expect(nav.getByRole('button',{name,exact:true})).toBeVisible();
    }
    await expect(nav.getByRole('button',{name:'More',exact:true})).toHaveCount(0);

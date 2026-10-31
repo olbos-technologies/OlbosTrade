@@ -22,6 +22,12 @@ export type NavGroup = {
   key?: string;
   /** Whole group lives under Advanced */ advanced?: boolean;
   /**
+   * When false, omit the group from the sidebar unless it owns the active
+   * page (deep-link safety). Used for lab/research surfaces that stay
+   * URL-reachable but are not part of the daily desk loop.
+   */
+  sidebar?: boolean;
+  /**
    * Group only exists for a signed-in user.
    *
    * A flag rather than a hardcoded group id in the filter, so the rule stays
@@ -76,6 +82,7 @@ export function filterNavForDisplay(
     // on an install with no accounts — it 401s either way, and showing the
     // group would only make the dead end look navigable.
     if (group.requiresAuth && !signedIn) continue;
+    if (group.sidebar === false && !ownsActive) continue;
     if (group.advanced && !showAdvanced && !ownsActive) continue;
 
     if (!group.children) {
