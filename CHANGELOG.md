@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased — Trade attribution report
+
+- Added `backend/scripts/trade_attribution_report.py`: a read-only breakdown of closed trades by strategy, exit reason and regime, with date-clustered bootstrap intervals, a small-cell floor, an explicit refusal to rank strategies whose intervals overlap, cost-drag analysis and a trade-level AUC on `signal_score`. Analysis only; no writes, no orders, no broker calls.
+
 ## Unreleased — Paper-pilot reliability gates
 
 - Database backups are written privately to a temporary file, verified before publication, and retain previous copies when dump or configured off-site transfer fails. No schema or environment-variable change.
