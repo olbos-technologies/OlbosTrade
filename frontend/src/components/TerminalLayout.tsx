@@ -1570,7 +1570,11 @@ export default function TerminalLayout({ children, activePage, onNav, isDeskV2Sh
               background: "var(--bg)",
               minWidth: 0,   // allow children to shrink instead of forcing overflow
             }}>
-              {isMobile && <div className="mobile-workspace-search"><WorkspaceSearch /></div>}
+              {/* Signals desk is already chrome-heavy on phones — jump via bottom
+                  nav / More instead of a always-on Find workspace field. */}
+              {isMobile && !(activePage === "equity" || activePage.startsWith("strat:")) && (
+                <div className="mobile-workspace-search"><WorkspaceSearch /></div>
+              )}
               <ErrorBoundary label="Page content">
                 {children}
               </ErrorBoundary>

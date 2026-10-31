@@ -27,11 +27,15 @@ for(const width of [390,768,1440,1920])for(const [route,heading] of routes){
   await expect(page.getByRole('heading',{name:route==='dashboard'&&width<=768?'Overview':heading,exact:true}).first()).toHaveCSS('font-family',/IBM Plex Mono/);
   if(width<=768){
    const search=page.getByRole('textbox',{name:'Find a workspace'});
-   await expect(search).toBeVisible();
-   await search.fill('Journal');
-   await expect(page.getByRole('button',{name:'Journal →',exact:true})).toBeVisible();
-   await search.press('Escape');
-   await expect(page.getByRole('button',{name:'Journal →',exact:true})).toHaveCount(0);
+   // Signals pages drop the always-on Find workspace field — bottom nav is enough.
+   if(route==='equity') await expect(search).toHaveCount(0);
+   else {
+    await expect(search).toBeVisible();
+    await search.fill('Journal');
+    await expect(page.getByRole('button',{name:'Journal →',exact:true})).toBeVisible();
+    await search.press('Escape');
+    await expect(page.getByRole('button',{name:'Journal →',exact:true})).toHaveCount(0);
+   }
    if(route==='dashboard'){
     const intro=page.getByRole('region',{name:'Session overview'});
     await expect(intro).toContainText('Protect the capital.');
