@@ -1394,8 +1394,16 @@ summary span[aria-hidden="true"] { display: inline-block; transition: transform 
 /* 100vh on mobile Safari counts the URL bar, so the bottom of a
    height:100vh shell sits under it and the status bar is unreachable.
    100dvh tracks the visible viewport; the 100vh line stays as the fallback
-   for browsers without dvh. */
-.app-shell { height: 100vh; height: 100dvh; }
+   for browsers without dvh. viewport-fit=cover (index.html) is required
+   before env(safe-area-inset-*) returns non-zero on notched devices. */
+.app-shell {
+  height: 100vh;
+  height: 100dvh;
+  --terminal-safe-top: env(safe-area-inset-top, 0px);
+  --terminal-safe-right: env(safe-area-inset-right, 0px);
+  --terminal-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --terminal-safe-left: env(safe-area-inset-left, 0px);
+}
 
 .mobile-bottom-nav {
   display: flex;
@@ -1404,8 +1412,24 @@ summary span[aria-hidden="true"] { display: inline-block; transition: transform 
   background: var(--bg-panel, var(--bg));
   border-top: 1px solid var(--line);
   /* Clear the home indicator on notched phones without padding a device
-     that has none. */
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+     that has none. Vars stay overridable in browser tests. */
+  padding-bottom: var(--terminal-safe-bottom, env(safe-area-inset-bottom, 0px));
+}
+
+@media (max-width: 768px) {
+  body, #root { min-height: 100dvh; }
+  .app-shell {
+    box-sizing: border-box;
+    padding-top: var(--terminal-safe-top);
+    padding-left: var(--terminal-safe-left);
+    padding-right: var(--terminal-safe-right);
+  }
+  /* Leave breathing room so the last content can scroll clear of the tab bar. */
+  .app-shell main {
+    min-height: 0;
+    scroll-padding-block: 12px;
+    padding-bottom: 12px;
+  }
 }
 
 .mobile-bottom-nav__tab {
