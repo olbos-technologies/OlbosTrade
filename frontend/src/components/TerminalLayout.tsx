@@ -70,8 +70,6 @@ const ICONS: Record<string, string> = {
 // or a section (has `children`, expands to sub-items). Each leaf `key` routes
 // through the alias map in App.tsx. Models live in utils/navModels.ts —
 // Trade Desk 2.0 swaps NAV_MODEL_V2 when the feature flag is on.
-const NAV_ADVANCED_KEY = "olbos.nav.advanced";
-
 function activeNavModel(): NavGroup[] {
   return isTradeDeskV2Enabled() ? NAV_MODEL_V2 : NAV_MODEL_LEGACY;
 }
@@ -1009,42 +1007,24 @@ function Sidebar({ active, onNav, expanded, isMobile = false }: {
   // owns the active page.
   const navModel = activeNavModel();
   const [openGroup, setOpenGroup] = useState<string | null>(() => groupIdForKey(active, navModel));
-  const [showAdvanced, setShowAdvanced] = useState(() => {
-    try {
-      return localStorage.getItem(NAV_ADVANCED_KEY) === "1";
-    } catch {
-      return false;
-    }
-  });
 
   useEffect(() => {
     const g = groupIdForKey(active, navModel);
     if (g) setOpenGroup(g);
   }, [active, navModel]);
 
-  const toggleAdvanced = () => {
-    setShowAdvanced((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem(NAV_ADVANCED_KEY, next ? "1" : "0");
-      } catch {
-        /* ignore */
-      }
-      return next;
-    });
-  };
-
   // Account is hidden unless somebody is actually signed in. Same predicate
   // UserMenu uses to hide itself, so the two cannot disagree about whether
   // this install has accounts at all.
+  // Always show the full nav tree (no Show/Hide advanced). Auth still gates Account.
   const navAuth = useAuthOptional();
   const visibleNav = filterNavForDisplay(
-    navModel, showAdvanced, active,
+    navModel, true, active,
     navAuth?.phase === "signed-in" && !!navAuth?.user,
   );
 
-  // On mobile, labels always show (it's a full overlay panel); on desktop they
-  // appear only when expanded (icon rail otherwise).
+  // On mobile, labels always show (it's a full overlay panel); on desktop the
+  // narrow rail is icons-only — no group labels, submenus, or advanced chrome.
   const showLabels = expanded || isMobile;
   const W = isMobile ? 240 : (expanded ? RAIL_EXPANDED : RAIL_COLLAPSED);
 
@@ -1184,32 +1164,14 @@ function Sidebar({ active, onNav, expanded, isMobile = false }: {
   };
 
   return (
-    <nav aria-label="Workspace navigation" className="desktop-workspace-nav" style={containerStyle}>
+    <nav
+      aria-label="Workspace navigation"
+      className={`desktop-workspace-nav${showLabels ? "" : " desktop-workspace-nav--icons"}`}
+      style={containerStyle}
+    >
 
-      {/* Grouped nav — Core by default; Advanced leaves/groups behind toggle */}
+      {/* Full nav tree — icons-only when the desktop rail is collapsed. */}
       {visibleNav.map(renderGroup)}
-
-      {showLabels && (
-        <button
-          type="button"
-          onClick={toggleAdvanced}
-          aria-expanded={showAdvanced}
-          style={{
-            width: "100%", height: 32, display: "flex", alignItems: "center",
-            paddingLeft: 14, gap: 8, marginTop: 4,
-            background: "transparent", border: "none",
-            borderTop: "1px solid var(--line-dim)",
-            color: "var(--ink-dim)", cursor: "pointer",
-            fontFamily: "var(--mono)", fontSize: 10, letterSpacing: "0.04em",
-            textTransform: "uppercase",
-          }}
-        >
-          <span style={{ transform: showAdvanced ? "rotate(90deg)" : "none", transition: "transform 0.15s" }}>
-            <Icon d="M9 18l6-6-6-6" size={11} />
-          </span>
-          {showAdvanced ? "Hide advanced" : "Show advanced"}
-        </button>
-      )}
 
       {/* Operational system access — pinned above the kill switch. */}
       <div style={{ flex: 1 }} />

@@ -7,7 +7,7 @@ import type { NavGroup } from "./navLabels";
 // Simple-by-default IA: the everyday loop is "check signals → check
 // positions → check performance", with everything else (manual chart/options
 // research tooling, strategy config, risk-rule config, ops/debug pages)
-// tucked behind "Show advanced" rather than cluttering the default view.
+// marked advanced for docs/tests; the sidebar always shows the full tree.
 // Journal and Performance were previously advanced-only despite being core
 // to "is this working" — promoted to simple here.
 

@@ -8,9 +8,9 @@ for(const width of [390,1440]) test(`strategy menu separates daily review from r
  const nav=page.locator('.desktop-workspace-nav');
  await nav.getByRole('button',{name:'Strategies',exact:true}).click();
  for(const name of ['Alpha Edge','Live Signals','History','Strategy Library','Health']) await expect(nav.getByRole('button',{name,exact:true})).toBeVisible();
- await expect(nav.getByRole('button',{name:'Crypto Research',exact:true})).toHaveCount(0);
+ await expect(nav.getByRole('button',{name:'Show advanced',exact:true})).toHaveCount(0);
+ await expect(nav.getByRole('button',{name:'Hide advanced',exact:true})).toHaveCount(0);
  await page.screenshot({path:`ui-audit-artifacts/strategy-navigation-${width}.png`,fullPage:true});
- await nav.getByRole('button',{name:'Show advanced',exact:true}).click();
  await nav.getByRole('button',{name:'Research',exact:true}).click();
  await expect(nav.getByRole('button',{name:'Crypto Research',exact:true})).toBeVisible();
  await expect(nav.getByRole('button',{name:'Strategy Builder',exact:true})).toBeVisible();
