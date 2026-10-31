@@ -142,10 +142,9 @@ function UpcomingCatalysts({ events }: { events: CatalystEvent[] }) {
   return (
     <div
       aria-label="Upcoming catalysts"
+      className="chart-catalysts"
       style={{
-        position: "absolute",
-        right: 12,
-        top: 10,
+        position: "relative",
         zIndex: 2,
         display: "flex",
         flexDirection: "column",
@@ -510,10 +509,11 @@ export default function ChartWorkstation({
             <p>Last close snapshot · {latestBar ? `Chart bar: ${new Date(latestBar.timestamp).toLocaleString()}` : "Chart data unavailable"}</p>
           </div>
           <Panel
+            className="workstation-chart-panel"
             sectionStyle={{ overflow: "hidden" }}
             padding={0}
             title={
-              <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+              <div className="chart-instrument-title" style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
                 <span style={{ fontFamily: "var(--mono)", fontSize: 28, fontWeight: 700, color: "var(--cyan)" }}>{symbol}</span>
                 <span style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--ink-dim)" }}>
                   {selectedSnapshot?.last_close != null ? fmtMoney(selectedSnapshot.last_close, 2) : "—"} · {fmtPct(selectedSnapshot?.change_pct, 2)}
@@ -521,7 +521,7 @@ export default function ChartWorkstation({
               </div>
             }
             action={
-              <div style={{ display: "flex", gap: 8, marginLeft: "auto", flexWrap: "wrap" }}>
+              <div className="chart-timeframe-controls" style={{ display: "flex", gap: 8, marginLeft: "auto", flexWrap: "wrap" }}>
                 {TIMEFRAMES.map((item) => (
                   <Button key={item.key} active={timeframe === item.key} onClick={() => setTimeframe(item.key)}>
                     {item.label}

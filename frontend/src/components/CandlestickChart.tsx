@@ -212,14 +212,16 @@ export default function CandlestickChart({
   }
 
   return (
-    <div style={{ position: "relative", height }}>
+    <div className="candlestick-frame" style={{ position: "relative" }}>
+      <details className="chart-legend-disclosure">
+        <summary>Chart legend</summary>
       <div
         aria-label="Chart legend"
         style={{
-          position: "absolute", left: 12, top: 10, zIndex: 2,
+
           display: "flex", flexDirection: "column", gap: 4,
           padding: "8px 10px", background: "rgba(6,11,23,0.82)",
-          border: "1px solid var(--line-dim)", pointerEvents: "none",
+          border: "1px solid var(--line-dim)",
         }}
       >
         {[
@@ -245,7 +247,8 @@ export default function CandlestickChart({
           </div>
         ))}
       </div>
-      <div ref={containerRef} style={{ width: "100%", height: "100%" }} />
+      </details>
+      <div aria-label="Price chart" ref={containerRef} style={{ width: "100%", height }} />
     </div>
   );
 }
