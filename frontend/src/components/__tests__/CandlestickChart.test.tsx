@@ -29,6 +29,7 @@ import CandlestickChart, {
   toUnixSeconds,
   barsToCandlestickData,
   barsToVolumeData,
+  axisTitleForLevel,
   type ChartBar,
 } from "../CandlestickChart";
 
@@ -54,6 +55,14 @@ describe("data-mapping functions (pure, no DOM)", () => {
     expect(data[0]).toMatchObject({ value: 1000, color: "rgba(24,195,126,0.32)" }); // close >= open
     expect(data[1]).toMatchObject({ value: 2000, color: "rgba(255,95,109,0.32)" }); // close < open
   });
+
+  it("axisTitleForLevel keeps full labels on desktop and shortens phone axis titles", () => {
+    expect(axisTitleForLevel("Resistance 1", false)).toBe("Resistance 1");
+    expect(axisTitleForLevel("Resistance 1", true)).toBe("R");
+    expect(axisTitleForLevel("Support 2", true)).toBe("S");
+    expect(axisTitleForLevel("Entry", true)).toBe("E");
+    expect(axisTitleForLevel("VWAP", true)).toBe("V");
+  });
 });
 
 describe("CandlestickChart component", () => {
@@ -71,16 +80,26 @@ describe("CandlestickChart component", () => {
     expect(mockSeries.setData).toHaveBeenCalled();
   });
 
-  it("draws a price line per support/resistance level", () => {
+  it("draws a price line per support/resistance level with full titles on desktop", () => {
     cleanup();
     mockSeries.createPriceLine.mockClear();
     render(
       <CandlestickChart
         bars={sampleBars}
-        levels={[{ label: "R1", value: 105, color: "#f00" }, { label: "S1", value: 95, color: "#0f0" }]}
+        levels={[{ label: "Resistance 1", value: 105, color: "#f00" }, { label: "Support 1", value: 95, color: "#0f0" }]}
       />,
     );
     expect(mockSeries.createPriceLine).toHaveBeenCalledTimes(2);
+    expect(mockSeries.createPriceLine).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Resistance 1" }),
+    );
+  });
+
+  it("keeps the legend open on desktop without a collapse toggle", () => {
+    cleanup();
+    render(<CandlestickChart bars={sampleBars} levels={[]} />);
+    expect(screen.getByLabelText("Chart legend")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /legend/i })).not.toBeInTheDocument();
   });
 
   it("removes the chart on unmount", () => {

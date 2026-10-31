@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased — Mobile Markets chart readability
+
+- Collapse the candlestick legend behind a Legend toggle on phones so the overlay no longer covers the candle pane; desktop keeps the key open.
+- Shorten support/resistance axis titles on phones (R/S/E) and tighten the Markets chart header, timeframe row and chart height. Presentation only; no risk, permission or order-path change.
+
 ## Unreleased — Mobile workspace cleanup
 
 - Tighten phone chrome and content spacing across Home, Markets, Signals, Positions, Risk, Brokers and More destinations: shorter header/nav, compact search, denser cards and headings.

@@ -141,6 +141,7 @@ function UpcomingCatalysts({ events }: { events: CatalystEvent[] }) {
   const upcoming = [...events].sort((a, b) => a.days_away - b.days_away).slice(0, 3);
   return (
     <div
+      className="chart-catalysts"
       aria-label="Upcoming catalysts"
       style={{
         position: "absolute",
@@ -521,12 +522,14 @@ export default function ChartWorkstation({
               </div>
             }
             action={
-              <div style={{ display: "flex", gap: 8, marginLeft: "auto", flexWrap: "wrap" }}>
-                {TIMEFRAMES.map((item) => (
-                  <Button key={item.key} active={timeframe === item.key} onClick={() => setTimeframe(item.key)}>
-                    {item.label}
-                  </Button>
-                ))}
+              <div className="chart-panel-actions">
+                <div className="chart-timeframes" role="group" aria-label="Chart timeframe">
+                  {TIMEFRAMES.map((item) => (
+                    <Button key={item.key} active={timeframe === item.key} onClick={() => setTimeframe(item.key)}>
+                      {item.label}
+                    </Button>
+                  ))}
+                </div>
                 <Button onClick={() => setSignalDrawerOpen(true)}>Signal Detail</Button>
               </div>
             }
@@ -554,15 +557,15 @@ export default function ChartWorkstation({
                 ))}
               </div>
 
-              <div className="instrument-card--flat" style={{ position: "relative" }}>
+              <div className="instrument-card--flat chart-canvas-wrap" style={{ position: "relative" }}>
                 {chartLoading ? (
-                  <div className="skeleton-block" style={{ height: 460 }} aria-busy="true" aria-label="Loading chart">
+                  <div className="skeleton-block" style={{ height: isMobile ? 280 : 460 }} aria-busy="true" aria-label="Loading chart">
                     <div className="skeleton-shimmer" />
                   </div>
                 ) : (
                   <>
                     <UpcomingCatalysts events={catalystEvents} />
-                    <CandlestickChart bars={chartBars} levels={levels} />
+                    <CandlestickChart bars={chartBars} levels={levels} height={isMobile ? 280 : 460} />
                   </>
                 )}
               </div>
