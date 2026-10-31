@@ -21,7 +21,7 @@ export default function Watchlists() {
     (!onlySaved || saved.includes(s.sym)) && (s.sym + " " + s.name).toLowerCase().includes(query.toLowerCase())) }));
   const rows = groups.flatMap(g => g.symbols);
   if (sort !== "group") rows.sort((a,b) => {
-    if (sort === "symbol") return a.sym.localeCompare(b.sym);
+    if (sort === "symbol" || stale) return a.sym.localeCompare(b.sym);
     const av = snaps[a.sym]?.change_pct, bv = snaps[b.sym]?.change_pct;
     if (av == null) return bv == null ? a.sym.localeCompare(b.sym) : 1;
     if (bv == null) return -1;
@@ -31,7 +31,7 @@ export default function Watchlists() {
     const d = stale ? undefined : snaps[s.sym], pct = d?.change_pct;
     const delta = d?.last_close != null && d.prev_close != null ? d.last_close-d.prev_close : null;
     return <tr key={s.sym}>
-      <td><button aria-label={`Save ${s.sym}`} aria-pressed={saved.includes(s.sym)} onClick={() => toggle(s.sym)}>{saved.includes(s.sym) ? "★" : "☆"}</button></td>
+      <td><button className="watchlist-favorite" aria-label={`Save ${s.sym}`} aria-pressed={saved.includes(s.sym)} onClick={() => toggle(s.sym)}>{saved.includes(s.sym) ? "★" : "☆"}</button></td>
       <td><a className="ticker-link" href={chartHref(s.api ?? s.sym)}>{s.sym}</a></td><td>{s.name}</td>
       <td className="markets-number">{d?.last_close?.toFixed(2) ?? "—"}</td>
       <td className="markets-number">{d?.prev_close?.toFixed(2) ?? "—"}</td>
@@ -46,6 +46,7 @@ export default function Watchlists() {
       <button aria-pressed={onlySaved} onClick={()=>setOnlySaved(v=>!v)}>{onlySaved ? "Saved only" : "All symbols"}</button>
     </MarketToolbar>
     {(stale || failed > 0) && <p className="markets-notice" role="status">{stale ? "Snapshot refresh overdue. Values withheld until refreshed." : `${failed} symbols unavailable. Missing prices are not zero returns.`}</p>}
+    {stale && (sort === "gainers" || sort === "decliners") && <p className="markets-notice">Return sorting is unavailable while snapshots are stale; symbols are shown alphabetically.</p>}
     {saveError && <p className="markets-notice">Favorites apply for this visit but could not be saved on this device.</p>}
     <div className="markets-table-wrap"><table className="markets-table"><thead><tr><th>Save</th><th>Symbol</th><th>Name</th><th className="markets-number">Last close</th><th className="markets-number">Previous close</th><th className="markets-number">Change $</th><th className="markets-number">Change %</th></tr></thead><tbody>
       {rows.length === 0 ? <tr><td colSpan={7} className="markets-empty">No symbols match your filters.</td></tr>
