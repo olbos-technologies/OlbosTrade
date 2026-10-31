@@ -5,6 +5,10 @@
 
 - Keep five daily Strategies destinations: Alpha Edge, Live Signals, History, Strategy Library, Health. Move signal research/calendar/builder/alerts/crypto into Advanced Research and V2 options tooling into Advanced Trade Desk. Presentation only; no risk, permission or order-path change.
 =======
+## Unreleased — R0 UX deploy handoff
+
+- Record the merged UX batch (#179–#183) at main `30ef70d` and the operator deploy + paper-drill gates in the master upgrade plan. Documentation only; does not deploy or certify R0.
+
 ## Unreleased — Reference shell palette v2
 
 - Adopt near-black shell surfaces, restrained gold accents, and a layered Command Center / Home intro background from the approved reference. Presentation only; no risk, permission or order-path change.
