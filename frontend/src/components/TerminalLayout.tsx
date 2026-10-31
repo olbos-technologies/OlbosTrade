@@ -1150,6 +1150,23 @@ function Sidebar({ active, onNav, expanded, isMobile = false }: {
                 </button>
               );
             })}
+            {/*
+              Phone only. On a phone the status bar is not where an operator
+              looks for identity, and e2e/terminal-shell.spec.ts pins the route
+              deliberately: More -> Account -> the chip, with the bottom strip
+              asserted to hold NO account control. On desktop the chip lives in
+              the status bar instead (see StatusBar), so it is reachable without
+              opening a nav group — exactly one of the two renders at a time.
+            */}
+            {isMobile && g.id === "account" && (
+              <div style={{
+                display: "flex", alignItems: "center",
+                margin: "4px 12px 8px 40px", paddingTop: 8,
+                borderTop: "1px solid var(--line-dim)",
+              }}>
+                <UserMenu />
+              </div>
+            )}
           </>
         )}
       </div>
@@ -1357,7 +1374,7 @@ function StatusLamp({
   );
 }
 
-function StatusBar({ page }: { page: string }) {
+function StatusBar({ page, isMobile }: { page: string; isMobile: boolean }) {
   const label = statusLabelForPage(page, activeNavModel());
   // null = not read yet, or the read failed. These three answer "is the desk
   // about to move real money unattended", so each defaulted to its reassuring
@@ -1483,7 +1500,7 @@ function StatusBar({ page }: { page: string }) {
         the email's local part because "the status bar is tight", and its
         portal opens upward from the button's rect.
       */}
-      <UserMenu />
+      {!isMobile && <UserMenu />}
       <span style={{ color: "var(--brand)", fontWeight: 700 }}>
         Olbos{import.meta.env.VITE_GIT_SHA ? ` ${String(import.meta.env.VITE_GIT_SHA).slice(0, 7)}` : " v5.0"}
       </span>
@@ -1589,7 +1606,7 @@ export default function TerminalLayout({ children, activePage, onNav, isDeskV2Sh
           </div>
         </div>
       </div>
-      <StatusBar page={activePage} />
+      <StatusBar page={activePage} isMobile={isMobile} />
       {/* Phones navigate from the bottom. The sidebar stays as the overflow,
           reached through "More", rather than becoming a second nav surface. */}
       {isMobile && (
