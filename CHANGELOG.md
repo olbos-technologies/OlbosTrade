@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased — Options rejection log records the real regime
+
+- Fixed: `app/main.py` read `_current_regime.regime_type`, a field `RegimeState` has never defined (its name is `regime`), behind a `getattr` default. Every options scan rejection was therefore stored with no regime, so the rejection report read "BY REGIME (unknown) 100%", and the equity-skip log line always said "regime unknown". Both now read the real field through one helper that raises on a rename instead of returning a default. Diagnostics only; no change to scanning, strategy selection, risk gates or order paths.
+- Added a guard test that fails on any `getattr(_current_regime, ...)` naming an attribute `RegimeState` does not define.
+
 ## Unreleased — API payload contract guard
 
 - Added an opt-in `@api-source` annotation: a frontend interface names the backend function that produces its payload, and a guard test fails if any declared field is not a key that function emits. Caught and removed a phantom `reason` field on the equity signal interface that no producer has ever sent. Test and types only; no behaviour change.
