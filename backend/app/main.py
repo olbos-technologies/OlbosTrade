@@ -166,6 +166,28 @@ async def request_id_middleware(request: Request, call_next):
 
 # ── Global singletons (populated at startup) ───────────────────────────────
 _current_regime: Optional[object] = None   # RegimeState
+
+
+def _regime_name(default: str = "unknown") -> str:
+    """
+    The active regime's name, read from the field RegimeState actually has.
+
+    Two call sites read `_current_regime.regime_type`, which RegimeState has
+    never defined — its field is `regime`. Both used getattr with a default, so
+    neither raised: the equity-skip log line always said "regime unknown does
+    not allow equities", and every options rejection was persisted with
+    regime=None. The rejection report consequently read "BY REGIME (unknown)
+    100%" and could not answer the one question it exists to answer — which
+    strategies the regime permitted when the scan found nothing.
+
+    Reading the attribute by its real name, with no silent default on the field
+    itself, keeps a future rename loud. The `default` applies only to the
+    genuine absence: no classification has run yet.
+    """
+    if _current_regime is None:
+        return default
+    regime = _current_regime.regime           # AttributeError if renamed — deliberate
+    return str(getattr(regime, "value", regime)) or default
 _greeks_tracker: Optional[object] = None   # PortfolioGreeksTracker
 _signal_scorer: Optional[object] = None    # SignalScorer (lazy — loads model pkl)
 
@@ -598,7 +620,7 @@ async def _background_scheduler() -> None:
                 else:
                     logger.info(
                         "Equity scan skipped — regime %s does not allow equities",
-                        getattr(_current_regime, "regime_type", "unknown"),
+                        _regime_name(),
                     )
                 last_equity = now
 
@@ -990,10 +1012,7 @@ async def _record_options_rejection(
     # A rejection profile is only interpretable against which strategies the
     # regime allowed at the time, so stamp it. None when the regime has never
     # classified or has been reset to UNKNOWN — an honest absence.
-    regime_name = None
-    regime_type = getattr(_current_regime, "regime_type", None)
-    if regime_type is not None:
-        regime_name = str(getattr(regime_type, "value", regime_type))
+    regime_name = _regime_name(default="") or None
 
     await record_rejection(
         ticker=symbol,
@@ -1118,7 +1137,7 @@ async def _run_equity_scan() -> None:
                         # Same gap as signal_score: without this key, record_fill's
                         # signal.get("regime", "unknown") always fell back to "unknown"
                         # and every equity trade's journal "market context" was useless.
-                        "regime": getattr(getattr(_current_regime, "regime", None), "value", None) or "unknown",
+                        "regime": _regime_name(),
                         "indicators": {
                             "rsi":          ind.get("rsi"),
                             "macd":         ind.get("macd"),
@@ -3186,7 +3205,7 @@ async def health_detail() -> dict:
             "last_tick_age_seconds": round(age, 1) if age is not None else None,
         },
         "kill_switch": {"engaged": _ks.is_engaged, "reason": _ks.status.get("reason")},
-        "regime": getattr(getattr(_current_regime, "regime", None), "value", None),
+        "regime": _regime_name(default="") or None,
         "database": {"connected": _db_connected},
         "signal_model": _model_status,
         "observability": observability.snapshot(),

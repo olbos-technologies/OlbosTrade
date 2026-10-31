@@ -1,6 +1,12 @@
 # Changelog
 
 ## Unreleased — Desk-loop sidebar (Bloomberg focus)
+## Unreleased — Options rejection log records the real regime
+
+- Fixed: `app/main.py` read `_current_regime.regime_type`, a field `RegimeState` has never defined (its name is `regime`), behind a `getattr` default. Every options scan rejection was therefore stored with no regime, so the rejection report read "BY REGIME (unknown) 100%", and the equity-skip log line always said "regime unknown". Both now read the real field through one helper that raises on a rename instead of returning a default. Diagnostics only; no change to scanning, strategy selection, risk gates or order paths.
+- Added a guard test that fails on any `getattr(_current_regime, ...)` naming an attribute `RegimeState` does not define.
+
+## Unreleased — API payload contract guard
 
 - Sidebar keeps the daily desk loop only: Command Center, Markets (Chart/Watchlists), Signals (Alpha Edge / Live / History), Trade Desk (four workspaces), Risk, Journal, Performance, Brokers. Research lab, strategy library/health, scanners and ops extras stay URL-reachable but off the sidebar. Presentation / IA only; no risk, permission or order-path change.
 
