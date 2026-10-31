@@ -101,14 +101,14 @@ describe("nav model v2", () => {
     expect(groupIdForKey("options:chain", NAV_MODEL_LEGACY)).toBe("trade");
   });
 
-  it("keeps options tools under Strategies as advanced", () => {
-    const strat = NAV_MODEL_V2.find((g) => g.id === "strat");
+  it("keeps options tools under Trade Desk as advanced", () => {
+    const strat = NAV_MODEL_V2.find((g) => g.id === "trade");
     expect(strat?.children?.some((c) => c.key === "options:chain" && c.advanced)).toBe(true);
   });
 
   it("filterNavForDisplay hides advanced options tools until advanced is on", () => {
     const filtered = filterNavForDisplay(NAV_MODEL_V2, false, "dashboard");
-    const strat = filtered.find((g) => g.id === "strat");
+    const strat = filtered.find((g) => g.id === "trade");
     expect(strat?.children?.some((c) => c.key === "options:chain")).toBe(false);
   });
 });
