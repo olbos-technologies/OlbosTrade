@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased — API payload contract guard
+
+- Added an opt-in `@api-source` annotation: a frontend interface names the backend function that produces its payload, and a guard test fails if any declared field is not a key that function emits. Caught and removed a phantom `reason` field on the equity signal interface that no producer has ever sent. Test and types only; no behaviour change.
+
 ## Unreleased — Resolve committed merge-conflict markers
 
 - Resolved unresolved `<<<<<<<`/`=======`/`>>>>>>>` markers committed in `CHANGELOG.md`, keeping all four Unreleased sections they had tangled together. Added a guard test that fails if any tracked file carries a conflict marker, so a hand-merge between parallel agent branches cannot land one in `main` again. Documentation and test only; no behaviour change.

@@ -24,6 +24,7 @@ import OptionsSignals from "./OptionsSignals";
 
 export type AssetTab = "equities" | "options";
 
+/** @api-source backend/app/services/equity_signal_engine.py#compute_equity_trade_plan */
 interface TradePlan {
   entry_price?: number;
   stop_price?: number;
@@ -34,6 +35,7 @@ interface TradePlan {
   risk_dollars?: number;
 }
 
+/** @api-source backend/app/main.py#_run_equity_scan._scan_one */
 interface Signal {
   id: string;
   ticker: string;
@@ -43,8 +45,11 @@ interface Signal {
   orderflow_score: number;
   iv_overlay_boost: number;
   earnings_gated: boolean;
-  reason?: string;
-  /** Factor name -> signed point contribution, as the scanner emits it. */
+  /**
+   * Factor name -> signed point contribution, as the scanner emits it.
+   * There is no sibling `reason` string: the UI declared one for months and no
+   * producer has ever sent it. See test_api_payload_contract.py.
+   */
   reasons?: Record<string, number>;
   source?: string;
   trade_plan?: TradePlan;
@@ -211,7 +216,7 @@ function SignalCard({
       }}
 
     >
-      <div className="signal-rationale"><span>Why it appeared</span><p>{describeSignalReasons(sig.reasons ?? sig.reason) || "No plain-language rationale supplied by this producer."}</p><small>Research only · Model scores are not probabilities of profit.</small></div>
+      <div className="signal-rationale"><span>Why it appeared</span><p>{describeSignalReasons(sig.reasons) || "No plain-language rationale supplied by this producer."}</p><small>Research only · Model scores are not probabilities of profit.</small></div>
       <time className="signal-generated" dateTime={sig.generated_at}>Generated {new Date(sig.generated_at).toLocaleString()}</time>
       <button className="design-review" onClick={() => setReviewing(true)}>Review idea <span aria-hidden="true">→</span></button>
       <details className="signal-evidence"><summary>Technical evidence and trade plan</summary>
@@ -261,7 +266,7 @@ function SignalCard({
       </div>
       </details>
     </MissionCard>
-    <SignalDetailDrawer open={reviewing} onClose={() => setReviewing(false)} signal={{ ...sig, reasons: reasonList(sig.reasons ?? sig.reason) }} symbol={sig.ticker} timeframe="unknown" latestBar={null} />
+    <SignalDetailDrawer open={reviewing} onClose={() => setReviewing(false)} signal={{ ...sig, reasons: reasonList(sig.reasons) }} symbol={sig.ticker} timeframe="unknown" latestBar={null} />
     </>
   );
 }
@@ -524,7 +529,7 @@ function EquitySignalsGrid() {
   // Min move % only makes sense for BUY/SELL — a HOLD has no trade_plan
   // (no target price to measure a move against), so it's left out of that
   // filter entirely rather than being silently dropped by an ?? 0 default.
-  const filteredSignals = signals.filter(s => `${s.ticker} ${describeSignalReasons(s.reasons ?? s.reason) || ""}`.toLowerCase().includes(query.toLowerCase()));
+  const filteredSignals = signals.filter(s => `${s.ticker} ${describeSignalReasons(s.reasons) || ""}`.toLowerCase().includes(query.toLowerCase()));
   const buySignals = filteredSignals
     .filter(s => s.action === "BUY" && !s.earnings_gated)
     .filter(s => (s.trade_plan?.target_move_pct ?? 0) >= minMovePct)
