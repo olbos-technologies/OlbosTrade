@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased — Options signals on the rail, sign out in the status bar
+
+- Swapped Alpha Edge for Options Signals in the Signals group, keeping the three-deep sidebar from #193. Options Signals had been in Research behind `sidebar: false`, so the navigation could not show that the system trades options; nothing routes on Alpha Edge, which is scored on demand and never persisted.
+- Moved the sign-out control from the sidebar's Account group into the status bar, which is always rendered, so it is reachable from every page in every nav state. Added a guard asserting it is reachable from the rendered shell. Presentation only; no risk, permission or order-path change.
+
 ## Unreleased — Desk-loop sidebar (Bloomberg focus)
 
 - Sidebar keeps the daily desk loop only: Command Center, Markets (Chart/Watchlists), Signals (Alpha Edge / Live / History), Trade Desk (four workspaces), Risk, Journal, Performance, Brokers. Research lab, strategy library/health, scanners and ops extras stay URL-reachable but off the sidebar. Presentation / IA only; no risk, permission or order-path change.

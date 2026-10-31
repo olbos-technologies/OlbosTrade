@@ -110,8 +110,8 @@ describe("nav model v2", () => {
     ]);
     expect(filtered.some((g) => g.id === "lab")).toBe(false);
     expect(filtered.find((g) => g.id === "strat")?.children?.map((c) => c.key)).toEqual([
-      "strat:alpha-edge",
       "equity",
+      "options:signals",
       "strat:signal-history",
     ]);
   });

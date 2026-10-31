@@ -32,8 +32,18 @@ export const NAV_MODEL_LEGACY: NavGroup[] = [
     { key: "options:flow",    label: "Options Flow", sidebar: false },
   ]},
   { id: "strat", label: "Signals", icon: "strategy", children: [
-    { key: "strat:alpha-edge", label: "Alpha Edge" },
+    // The rail stays three deep, per #193. The swap is deliberate: the second
+    // product goal names BOTH asset classes, and Options Signals sat in the
+    // Research group behind `sidebar: false`, so the navigation could not show
+    // that this system trades options at all. Alpha Edge takes its place there
+    // because nothing routes on it — compute_equity_alpha_edge() is only ever
+    // called from the on-demand /api/alpha-edge/{ticker} route and is never
+    // persisted, so no historical value of it exists (see
+    // backend/scripts/confidence_skill_test.py, which says exactly this about
+    // why it cannot be tested). A slot on a three-item rail should go to a
+    // surface a decision is made from.
     { key: "equity", label: "Live Signals" },
+    { key: "options:signals", label: "Options Signals" },
     { key: "strat:signal-history", label: "History" },
     { key: "strat:cards", label: "Strategy Library", sidebar: false },
     { key: "strat:health", label: "Health", sidebar: false },
@@ -44,12 +54,12 @@ export const NAV_MODEL_LEGACY: NavGroup[] = [
   ]},
   // Lab stays URL-reachable; not part of the daily desk sidebar.
   { id: "lab", label: "Research", icon: "lab", sidebar: false, children: [
+    { key: "strat:alpha-edge", label: "Alpha Edge" },
     { key: "strat:research", label: "Signal Research" },
     { key: "strat:calendar", label: "Signal Calendar" },
     { key: "strat:builder", label: "Strategy Builder" },
     { key: "strat:alerts", label: "Alerts" },
     { key: "crypto:signals", label: "Crypto Research" },
-    { key: "options:signals", label: "Options Signals" },
     { key: "lab:scenario",   label: "Scenario Lab" },
     { key: "lab:strategy",   label: "Strategy Research" },
     { key: "lab:market",     label: "Market & Regime" },
@@ -94,8 +104,18 @@ export const NAV_MODEL_V2: NavGroup[] = [
     { key: "trade:settings",  label: "Desk Settings", sidebar: false },
   ]},
   { id: "strat", label: "Signals", icon: "strategy", children: [
-    { key: "strat:alpha-edge", label: "Alpha Edge" },
+    // The rail stays three deep, per #193. The swap is deliberate: the second
+    // product goal names BOTH asset classes, and Options Signals sat in the
+    // Research group behind `sidebar: false`, so the navigation could not show
+    // that this system trades options at all. Alpha Edge takes its place there
+    // because nothing routes on it — compute_equity_alpha_edge() is only ever
+    // called from the on-demand /api/alpha-edge/{ticker} route and is never
+    // persisted, so no historical value of it exists (see
+    // backend/scripts/confidence_skill_test.py, which says exactly this about
+    // why it cannot be tested). A slot on a three-item rail should go to a
+    // surface a decision is made from.
     { key: "equity", label: "Live Signals" },
+    { key: "options:signals", label: "Options Signals" },
     { key: "strat:signal-history", label: "History" },
     { key: "strat:cards", label: "Strategy Library", sidebar: false },
     { key: "strat:health", label: "Health", sidebar: false },
@@ -105,6 +125,7 @@ export const NAV_MODEL_V2: NavGroup[] = [
     { key: "risk:rules",    label: "Risk Rules", sidebar: false },
   ]},
   { id: "lab", label: "Research", icon: "lab", sidebar: false, children: [
+    { key: "strat:alpha-edge", label: "Alpha Edge" },
     { key: "strat:research", label: "Signal Research" },
     { key: "strat:calendar", label: "Signal Calendar" },
     { key: "strat:builder", label: "Strategy Builder" },
