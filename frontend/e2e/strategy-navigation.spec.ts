@@ -8,7 +8,11 @@ for(const width of [390,1440]) test(`daily desk nav keeps signals and trade desk
  const nav=page.locator('.desktop-workspace-nav');
  await expect(nav.getByRole('button',{name:'Research',exact:true})).toHaveCount(0);
  await nav.getByRole('button',{name:'Signals',exact:true}).click();
- for(const name of ['Alpha Edge','Live Signals','History']) await expect(nav.getByRole('button',{name,exact:true})).toBeVisible();
+ // Still three deep. Alpha Edge traded places with Options Signals: the
+ // product's second goal names BOTH asset classes, and nothing routes on
+ // Alpha Edge — it is scored on demand and never persisted. See navModels.ts.
+ for(const name of ['Live Signals','Options Signals','History']) await expect(nav.getByRole('button',{name,exact:true})).toBeVisible();
+ await expect(nav.getByRole('button',{name:'Alpha Edge',exact:true})).toHaveCount(0);
  await expect(nav.getByRole('button',{name:'Strategy Library',exact:true})).toHaveCount(0);
  await expect(nav.getByRole('button',{name:'Health',exact:true})).toHaveCount(0);
  await page.screenshot({path:`ui-audit-artifacts/strategy-navigation-${width}.png`,fullPage:true});
