@@ -70,6 +70,24 @@ async def test_account_value_is_absent_not_fabricated_on_failure():
 
 # ── /api/dashboard/summary ────────────────────────────────────────────────────
 
+
+def _summary_conn():
+    """Caller stand-in for `dashboard_summary`.
+
+    Its P&L sums are scoped to the caller; the equity these tests assert on
+    is not, so the scope here only has to exist, not to match anything.
+    """
+    from types import SimpleNamespace as NS
+    import uuid
+    return NS(state=NS(user={"id": str(uuid.uuid4())}))
+
+
+def _pinned_scope():
+    async def _scope(session, conn):
+        return None
+    return patch("app.services.trade_scope.request_scope", _scope)
+
+
 @pytest.mark.asyncio
 async def test_total_equity_is_null_when_broker_read_fails():
     from app.main import dashboard_summary
@@ -82,8 +100,9 @@ async def test_total_equity_is_null_when_broker_read_fails():
     with patch("app.broker.broker_factory.get_broker", return_value=broker), \
          patch("app.core.database.AsyncSessionLocal", return_value=_db_ok()), \
          patch("app.broker.ibkr_coordinator.ibkr_coordinator.submit",
-               new=AsyncMock(side_effect=asyncio.TimeoutError())):
-        out = await dashboard_summary()
+               new=AsyncMock(side_effect=asyncio.TimeoutError())), \
+         _pinned_scope():
+        out = await dashboard_summary(_summary_conn())
 
     assert out["total_equity"] is None, (
         "a failed broker read must not be replaced by capital + realized P&L"
@@ -104,8 +123,9 @@ async def test_total_equity_uses_the_broker_value_when_available():
     with patch("app.broker.broker_factory.get_broker", return_value=broker), \
          patch("app.core.database.AsyncSessionLocal", return_value=_db_ok()), \
          patch("app.broker.ibkr_coordinator.ibkr_coordinator.submit",
-               new=AsyncMock(return_value=acct)):
-        out = await dashboard_summary()
+               new=AsyncMock(return_value=acct)), \
+         _pinned_scope():
+        out = await dashboard_summary(_summary_conn())
 
     assert out["total_equity"] == 254029.86
     assert out["total_equity_source"] == "broker"
