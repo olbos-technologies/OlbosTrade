@@ -85,15 +85,15 @@ export default function AccountSessions() {
   const otherCount = sessions.filter(s => !s.current).length;
 
   return (
-    <div className="acct-page">
-      <div className="acct-layout">
-        <div className="acct-main">
+    <div className="ws-page">
+      <div className="ws-layout">
+        <div className="ws-main">
 
-          <section className="acct-card">
-            <div className="acct-card__body">
-              <div className="acct-heading">
+          <section className="ws-card">
+            <div className="ws-card__body">
+              <div className="ws-heading">
                 <div>
-                  <span className="acct-eyebrow">Account</span>
+                  <span className="ws-eyebrow">Account</span>
                   <h1>Active sessions</h1>
                   <p>Each row is a browser signed in as you. If you do not
                     recognise one, sign it out and change your password.</p>
@@ -150,22 +150,22 @@ export default function AccountSessions() {
           </section>
         </div>
 
-        <aside className="acct-rail" aria-label="Session summary">
-          <div className="acct-rail__block">
-            <span className="acct-eyebrow">Live context</span>
-            <div className="acct-rail__row">
+        <aside className="ws-rail" aria-label="Session summary">
+          <div className="ws-rail__block">
+            <span className="ws-eyebrow">Live context</span>
+            <div className="ws-rail__row">
               <span>Signed-in browsers</span>
               <b className="tnum">{loading ? "—" : String(sessions.length)}</b>
             </div>
-            <div className="acct-rail__row">
+            <div className="ws-rail__row">
               <span>Other than this one</span>
               <b className="tnum">{loading ? "—" : String(otherCount)}</b>
             </div>
           </div>
 
-          <div className="acct-rail__block">
-            <span className="acct-eyebrow">If one looks wrong</span>
-            <div className="acct-rail__item">
+          <div className="ws-rail__block">
+            <span className="ws-eyebrow">If one looks wrong</span>
+            <div className="ws-rail__item">
               <i style={{ background: "var(--amber)" }} />
               <span><b>Sign it out, then change your password.</b>
                 Signing out one browser does not invalidate the others.</span>

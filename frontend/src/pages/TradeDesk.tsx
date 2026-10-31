@@ -617,6 +617,10 @@ export default function TradeDesk({
       : sum, 0);
   const allPositionPnlKnown = !positionsError && positionRows.length > 0 && positionRows.every((position: any) =>
     typeof position.unrealized_pnl === "number" && Number.isFinite(position.unrealized_pnl));
+  // Positions the broker did not price this cycle. Reported directly rather
+  // than left for the reader to infer from a "—" in the total beside it.
+  const unmarkedCount = positionRows.filter((position: any) =>
+    !(typeof position.unrealized_pnl === "number" && Number.isFinite(position.unrealized_pnl))).length;
 
   const confirmReviewedClose = () => {
     if (!closeReview) return;
@@ -735,22 +739,57 @@ export default function TradeDesk({
         {/* POSITIONS */}
         {tab === "positions" && (
           <div className="positions-workspace">
-            <header className="design-page-heading"><div><span className="design-eyebrow">YOUR PORTFOLIO</span><h1>Positions</h1><p>Holdings and exposure · broker marks may be unavailable</p></div><button className="design-review" onClick={refresh} aria-label="Refresh positions">↻</button></header>
-            <div className="design-search-row"><input aria-label="Search positions" placeholder="Search symbol or strategy" value={positionQuery} onChange={e => setPositionQuery(e.target.value)} /></div>
-            <div className="positions-summary" aria-label="Open positions summary">
+            <div className="ws-heading" style={{ marginBottom: 14 }}>
               <div>
-                <span className="positions-summary__label">Positions</span>
-                <strong>{positionsError || loading ? "—" : positionRows.length}</strong>
+                <span className="ws-eyebrow">Your portfolio</span>
+                <h1>Positions</h1>
+                <p>Holdings and exposure · broker marks may be unavailable</p>
               </div>
-              <div>
-                <span className="positions-summary__label">Open P&amp;L</span>
-                <strong style={{
+              <button className="design-review" onClick={refresh} aria-label="Refresh positions">↻</button>
+            </div>
+            <div className="design-search-row"><input aria-label="Search positions" placeholder="Search symbol or strategy" value={positionQuery} onChange={e => setPositionQuery(e.target.value)} /></div>
+            {/*
+              Three headline figures. The third is the one worth having: it
+              says how many broker marks are missing, which is the reason the
+              P&L beside it reads "—". Without it the dash is unexplained and
+              looks like a bug rather than an unread mark.
+            */}
+            <div className="ws-stats" aria-label="Open positions summary">
+              <div className="ws-stat">
+                <span className="ws-stat__label">Positions</span>
+                <strong className="ws-stat__value tnum">
+                  {positionsError || loading ? "—" : positionRows.length}
+                </strong>
+                <span className="ws-stat__note">
+                  {positionsError ? "Not confirmed" : loading ? "Loading…" : "Open now"}
+                </span>
+              </div>
+              <div className="ws-stat">
+                <span className="ws-stat__label">Open P&amp;L</span>
+                <strong className="ws-stat__value tnum" style={{
                   color: !allPositionPnlKnown
                     ? "var(--ink-faint)"
                     : knownPositionPnl >= 0 ? "var(--green)" : "var(--red)",
                 }} title={allPositionPnlKnown ? undefined : "Total unavailable because one or more broker marks are missing"}>
                   {allPositionPnlKnown ? fmtDollars(knownPositionPnl) : "—"}
                 </strong>
+                <span className="ws-stat__note">
+                  {allPositionPnlKnown ? "Every mark confirmed" : "Incomplete — not totalled"}
+                </span>
+              </div>
+              <div className="ws-stat">
+                <span className="ws-stat__label">Broker marks</span>
+                <strong className="ws-stat__value tnum" style={{
+                  color: unmarkedCount > 0 ? "var(--amber)" : "var(--ink)",
+                }}>
+                  {positionsError || loading ? "—" : `${positionRows.length - unmarkedCount}/${positionRows.length}`}
+                </strong>
+                <span className="ws-stat__note">
+                  {positionsError ? "Positions unavailable"
+                    : unmarkedCount > 0
+                      ? `${unmarkedCount} position${unmarkedCount === 1 ? "" : "s"} without a live mark`
+                      : "All positions priced"}
+                </span>
               </div>
             </div>
             {closeMsg && (

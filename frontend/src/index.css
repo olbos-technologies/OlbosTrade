@@ -1932,9 +1932,9 @@ summary span[aria-hidden="true"] { display: inline-block; transition: transform 
 
    Gold stays brand-and-active-nav only, so the primary affordance here is
    --accent, not the amber the Figma uses for its Connect button. */
-.acct-page { padding: 16px; height: 100%; overflow-y: auto; }
+.ws-page { padding: 16px; height: 100%; overflow-y: auto; }
 
-.acct-layout {
+.ws-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 276px;
   gap: 18px;
@@ -1943,70 +1943,70 @@ summary span[aria-hidden="true"] { display: inline-block; transition: transform 
 /* The rail is supplementary, so it drops below the content rather than
    squeezing it. 900px is where 276px stops being affordable beside a
    readable column. */
-.acct-layout--single { grid-template-columns: minmax(0, 760px); }
+.ws-layout--single { grid-template-columns: minmax(0, 760px); }
 
 @media (max-width: 900px) {
-  .acct-layout { grid-template-columns: minmax(0, 1fr); }
-  .acct-rail { position: static; }
+  .ws-layout { grid-template-columns: minmax(0, 1fr); }
+  .ws-rail { position: static; }
 }
 
-.acct-main { display: grid; gap: 16px; min-width: 0; }
+.ws-main { display: grid; gap: 16px; min-width: 0; }
 
 /* Flat, not raised. See the note above. */
-.acct-card {
+.ws-card {
   background: var(--bg-1);
   border: 1px solid var(--line-dim);
   border-radius: 6px;
 }
-.acct-card__body { padding: 18px; }
+.ws-card__body { padding: 18px; }
 
-.acct-eyebrow {
+.ws-eyebrow {
   display: block; color: var(--ink-faint); text-transform: uppercase;
   font: 600 9px/1 var(--mono); letter-spacing: 0.15em;
 }
-.acct-heading { display: flex; justify-content: space-between; gap: 24px; align-items: flex-start; }
-.acct-heading h1 {
+.ws-heading { display: flex; justify-content: space-between; gap: 24px; align-items: flex-start; }
+.ws-heading h1 {
   margin: 8px 0 10px; color: var(--ink);
   font: 600 23px/1.15 var(--mono); letter-spacing: -0.045em;
 }
-.acct-heading p {
+.ws-heading p {
   max-width: 510px; margin: 0; color: var(--ink-dim);
   font-size: 13px; line-height: 1.65;
 }
-.acct-badge {
+.ws-badge {
   flex: 0 0 auto; display: inline-flex; align-items: center; gap: 7px;
   padding: 8px 10px; border: 1px solid var(--line-dim); border-radius: 3px;
   color: var(--accent); font: 500 9px/1 var(--mono); text-transform: uppercase;
 }
 
-.acct-banner {
+.ws-banner {
   display: flex; align-items: center; flex-wrap: wrap; gap: 9px;
   padding: 10px 12px; border-left: 2px solid var(--amber);
   background: rgba(245, 158, 11, 0.06);
   color: var(--amber); font: 500 10px/1.5 var(--mono);
 }
-.acct-banner i { width: 3px; height: 3px; border-radius: 50%; background: currentColor; }
+.ws-banner i { width: 3px; height: 3px; border-radius: 50%; background: currentColor; }
 
-.acct-rail {
+.ws-rail {
   position: sticky; top: 16px; display: grid;
   border: 1px solid var(--line-dim); border-radius: 6px; background: var(--bg-1);
 }
-.acct-rail__block { padding: 15px 18px; border-bottom: 1px solid var(--line-dim); }
-.acct-rail__block:last-child { border-bottom: 0; }
-.acct-rail__row {
+.ws-rail__block { padding: 15px 18px; border-bottom: 1px solid var(--line-dim); }
+.ws-rail__block:last-child { border-bottom: 0; }
+.ws-rail__row {
   display: flex; align-items: baseline; gap: 10px;
   margin-top: 10px; font-size: 12px;
 }
-.acct-rail__row > span { color: var(--ink-dim); }
-.acct-rail__row > b { margin-left: auto; font-weight: 600; }
-.acct-rail__item {
+.ws-rail__row > span { color: var(--ink-dim); }
+.ws-rail__row > b { margin-left: auto; font-weight: 600; }
+.ws-rail__item {
   display: flex; gap: 9px; margin-top: 11px;
   font-size: 11.5px; line-height: 1.45; color: var(--ink-dim);
 }
-.acct-rail__item > i {
+.ws-rail__item > i {
   flex: 0 0 auto; width: 6px; height: 6px; border-radius: 50%; margin-top: 5px;
 }
-.acct-rail__item b { display: block; color: var(--ink); font-weight: 600; }
+.ws-rail__item b { display: block; color: var(--ink); font-weight: 600; }
 
 /* Broker choices read as a list of rows, not a wall of tiles: a 40px mark,
    the name and note, and the action pinned right. The mark is deliberately
@@ -2031,3 +2031,39 @@ summary span[aria-hidden="true"] { display: inline-block; transition: transform 
   .broker-row { grid-template-columns: 40px minmax(0, 1fr); row-gap: 11px; }
   .broker-row > button { grid-column: 1 / -1; width: 100%; }
 }
+
+/* A full-width workspace page: no rail. Positions is a wide table, and the
+   276px rail that suits a narrow page would cost the table the room it
+   needs — the Figma exploration makes the same call on its own Positions
+   screen. */
+.ws-page--wide .ws-layout { grid-template-columns: minmax(0, 1fr); }
+
+/* Headline figures above a table. Each card states what it is and says so
+   when it cannot be computed, rather than printing a zero. */
+.ws-stats {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px; margin-bottom: 14px;
+}
+@media (max-width: 760px) { .ws-stats { grid-template-columns: minmax(0, 1fr); } }
+.ws-stat {
+  padding: 13px 15px; border: 1px solid var(--line-dim);
+  border-radius: 6px; background: var(--bg-1);
+}
+.ws-stat__label {
+  display: block; color: var(--ink-faint); text-transform: uppercase;
+  font: 600 9px/1 var(--mono); letter-spacing: 0.15em;
+}
+.ws-stat__value { display: block; margin-top: 9px; font-size: 19px; font-weight: 700; }
+.ws-stat__note { display: block; margin-top: 5px; color: var(--ink-dim); font-size: 11px; }
+
+/* A panel that holds a table: the header sits on the surface, the table
+   runs to its edges. */
+.ws-panel {
+  border: 1px solid var(--line-dim); border-radius: 6px;
+  background: var(--bg-1); overflow: hidden;
+}
+.ws-panel__header {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 14px; padding: 12px 15px; border-bottom: 1px solid var(--line-dim);
+}
+.ws-panel__header h2 { margin: 5px 0 0; font: 600 13px/1.15 var(--mono); letter-spacing: -0.025em; }

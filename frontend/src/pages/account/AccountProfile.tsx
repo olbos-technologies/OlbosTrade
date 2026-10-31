@@ -64,15 +64,15 @@ export default function AccountProfile() {
   const limits = limitsForTier(tier);
 
   return (
-    <div className="acct-page">
-      <div className="acct-layout">
-        <div className="acct-main">
+    <div className="ws-page">
+      <div className="ws-layout">
+        <div className="ws-main">
 
-          <section className="acct-card">
-            <div className="acct-card__body">
-              <div className="acct-heading">
+          <section className="ws-card">
+            <div className="ws-card__body">
+              <div className="ws-heading">
                 <div>
-                  <span className="acct-eyebrow">Account</span>
+                  <span className="ws-eyebrow">Account</span>
                   <h1>Profile</h1>
                   <p>The identity you sign in with, and the plan it carries.</p>
                 </div>
@@ -96,9 +96,9 @@ export default function AccountProfile() {
           </section>
 
           {user && limits.length > 0 && (
-            <section className="acct-card">
-              <div className="acct-card__body">
-                <span className="acct-eyebrow">Your plan includes</span>
+            <section className="ws-card">
+              <div className="ws-card__body">
+                <span className="ws-eyebrow">Your plan includes</span>
                 <div style={{ marginTop: 10 }}>
                   {limits.map(row => (
                     <Row key={row.feature} label={row.feature}>{row.limit}</Row>
@@ -109,24 +109,24 @@ export default function AccountProfile() {
           )}
         </div>
 
-        <aside className="acct-rail" aria-label="Plan">
-          <div className="acct-rail__block">
-            <span className="acct-eyebrow">Plan</span>
-            <div className="acct-rail__row">
+        <aside className="ws-rail" aria-label="Plan">
+          <div className="ws-rail__block">
+            <span className="ws-eyebrow">Plan</span>
+            <div className="ws-rail__row">
               <span>Tier</span>
               <b style={{ textTransform: "uppercase", letterSpacing: "0.06em" }}>
                 {loading ? "—" : (user?.tier || "unknown")}
               </b>
             </div>
-            <div className="acct-rail__row">
+            <div className="ws-rail__row">
               <span>Entitlements</span>
               <b className="tnum">{loading ? "—" : String(limits.length)}</b>
             </div>
           </div>
 
-          <div className="acct-rail__block">
-            <span className="acct-eyebrow">Billing</span>
-            <div className="acct-rail__item">
+          <div className="ws-rail__block">
+            <span className="ws-eyebrow">Billing</span>
+            <div className="ws-rail__item">
               <i style={{ background: "var(--ink-faint)" }} />
               <span>Plan changes are made by hand — there is no billing in the
                 app. Ask the operator to move you between plans.</span>

@@ -98,14 +98,14 @@ export default function AccountPassword() {
   // Single column: this page has no live state of its own, and a rail
   // invented to fill the space would be decoration.
   return (
-    <div className="acct-page">
-      <div className="acct-layout acct-layout--single">
-        <div className="acct-main">
-          <section className="acct-card">
-            <div className="acct-card__body">
-              <div className="acct-heading">
+    <div className="ws-page">
+      <div className="ws-layout ws-layout--single">
+        <div className="ws-main">
+          <section className="ws-card">
+            <div className="ws-card__body">
+              <div className="ws-heading">
                 <div>
-                  <span className="acct-eyebrow">Account</span>
+                  <span className="ws-eyebrow">Account</span>
                   <h1>Password</h1>
                   <p>Changing your password signs out every other browser you
                     are logged in on. This one stays signed in.</p>

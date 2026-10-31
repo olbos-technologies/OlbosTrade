@@ -103,10 +103,12 @@ describe("positions render as cards on a phone", () => {
   });
 
   it("summarizes the book and explains broker-adopted history", () => {
-    expect(TSX).toContain('className="positions-summary"');
+    // The summary is now .ws-stats, a three-up grid that collapses to one
+    // column on a phone — same property this always pinned, new class.
+    expect(TSX).toContain('className="ws-stats"');
     expect(TSX).toContain('className="position-tracking-warning"');
     expect(TSX).toContain("history may be incomplete");
-    expect(phone).toMatch(/\.positions-summary\s*\{[^}]*display:\s*flex/);
+    expect(phone).toMatch(/\.ws-stats\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)/);
   });
 
   it("reviews a close before the hold-to-submit action", () => {

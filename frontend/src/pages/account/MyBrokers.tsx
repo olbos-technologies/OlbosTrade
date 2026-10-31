@@ -223,25 +223,25 @@ export default function MyBrokers() {
   const revokedCount = connections.length - activeCount;
 
   return (
-    <div className="acct-page">
-      <div className="acct-layout">
-        <div className="acct-main">
+    <div className="ws-page">
+      <div className="ws-layout">
+        <div className="ws-main">
 
-          <section className="acct-card">
-            <div className="acct-card__body">
-              <div className="acct-heading">
+          <section className="ws-card">
+            <div className="ws-card__body">
+              <div className="ws-heading">
                 <div>
-                  <span className="acct-eyebrow">Account connections</span>
+                  <span className="ws-eyebrow">Account connections</span>
                   <h1>My Brokers</h1>
                   <p>Choose a broker and review your connected accounts.</p>
                 </div>
-                <span className="acct-badge">OAuth secured</span>
+                <span className="ws-badge">OAuth secured</span>
               </div>
 
               {!routingEnabled && (
                 // The honest banner. See the file docstring — it is driven by
                 // the server so it disappears on its own when routing ships.
-                <div className="acct-banner" style={{ marginTop: 16 }}>
+                <div className="ws-banner" style={{ marginTop: 16 }}>
                   Your keys are stored encrypted, but orders are still placed through the
                   platform account. Connecting here does not route your trades to your own
                   broker yet.
@@ -252,8 +252,8 @@ export default function MyBrokers() {
 
           <BrokerSignIn />
 
-          <section className="acct-card">
-            <div className="acct-card__body">
+          <section className="ws-card">
+            <div className="ws-card__body">
               <details>
                 <summary style={{ cursor: "pointer" }}>Advanced: connect with API keys</summary>
                 <form onSubmit={submit} style={{ marginTop: 14 }}>
@@ -312,9 +312,9 @@ export default function MyBrokers() {
             </div>
           </section>
 
-          <section className="acct-card">
-            <div className="acct-card__body">
-              <span className="acct-eyebrow">Connected accounts</span>
+          <section className="ws-card">
+            <div className="ws-card__body">
+              <span className="ws-eyebrow">Connected accounts</span>
               <div style={{ marginTop: 10 }}>
                 {loading && (
                   <div style={{ padding: "12px 0", fontFamily: MONO, fontSize: 11,
@@ -336,18 +336,18 @@ export default function MyBrokers() {
           </section>
         </div>
 
-        <aside className="acct-rail" aria-label="Connection status">
-          <div className="acct-rail__block">
-            <span className="acct-eyebrow">Live context</span>
-            <div className="acct-rail__row">
+        <aside className="ws-rail" aria-label="Connection status">
+          <div className="ws-rail__block">
+            <span className="ws-eyebrow">Live context</span>
+            <div className="ws-rail__row">
               <span>API-key accounts</span>
               <b className="tnum">{loading ? "—" : String(connections.length)}</b>
             </div>
-            <div className="acct-rail__row">
+            <div className="ws-rail__row">
               <span>Active</span>
               <b className="tnum">{loading ? "—" : String(activeCount)}</b>
             </div>
-            <div className="acct-rail__row">
+            <div className="ws-rail__row">
               <span>Order routing</span>
               <b style={{ color: routingEnabled ? "var(--green)" : "var(--amber)" }}>
                 {routingEnabled ? "Your broker" : "Platform account"}
@@ -355,24 +355,24 @@ export default function MyBrokers() {
             </div>
           </div>
 
-          <div className="acct-rail__block">
-            <span className="acct-eyebrow">Exceptions</span>
+          <div className="ws-rail__block">
+            <span className="ws-eyebrow">Exceptions</span>
             {!routingEnabled && (
-              <div className="acct-rail__item">
+              <div className="ws-rail__item">
                 <i style={{ background: "var(--amber)" }} />
                 <span><b>Orders are not routed to you</b>
                   Connecting a broker here does not change where orders go.</span>
               </div>
             )}
             {revokedCount > 0 && (
-              <div className="acct-rail__item">
+              <div className="ws-rail__item">
                 <i style={{ background: "var(--red)" }} />
                 <span><b>{revokedCount} connection{revokedCount === 1 ? "" : "s"} revoked</b>
                   Reconnect to resume balance and position sync.</span>
               </div>
             )}
             {routingEnabled && revokedCount === 0 && (
-              <div className="acct-rail__item" style={{ color: "var(--ink-faint)" }}>
+              <div className="ws-rail__item" style={{ color: "var(--ink-faint)" }}>
                 <i style={{ background: "var(--green)" }} />
                 <span>Nothing to review.</span>
               </div>
