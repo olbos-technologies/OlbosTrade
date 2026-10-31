@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased — Signal rationale reaches the card
+
+- Fixed: every equity signal card showed "No plain-language rationale supplied by this producer" and every signal detail drawer showed an empty evidence list. The scanner emits `reasons` (a dict of scoring factor to signed points); the UI read `reason` (a string). Neither the key nor the type matched, so the rationale was discarded on arrival. Cards now name the strongest contributing factors in plain language. Presentation only; no change to scoring, risk gates or order paths.
+- Added a guard test asserting the scanner still emits `reasons`, that the UI reads that key, and that every scoring factor has a plain-language phrase.
+
 <<<<<<< HEAD
 ## Unreleased — Strategies navigation focus
 

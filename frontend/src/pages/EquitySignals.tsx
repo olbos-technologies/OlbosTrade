@@ -19,6 +19,7 @@ import { StatTile } from "../components/ui";
 import type { SignalAttributionData } from "../types/signal";
 import { useDeskBlockContext } from "../hooks/useDeskBlockContext";
 import { deriveSignalBlockReason } from "../utils/signalBlockReason";
+import { describeSignalReasons, reasonList } from "../utils/signalRationale";
 import OptionsSignals from "./OptionsSignals";
 
 export type AssetTab = "equities" | "options";
@@ -43,6 +44,8 @@ interface Signal {
   iv_overlay_boost: number;
   earnings_gated: boolean;
   reason?: string;
+  /** Factor name -> signed point contribution, as the scanner emits it. */
+  reasons?: Record<string, number>;
   source?: string;
   trade_plan?: TradePlan;
   indicators?: {
@@ -208,7 +211,7 @@ function SignalCard({
       }}
 
     >
-      <div className="signal-rationale"><span>Why it appeared</span><p>{sig.reason || "No plain-language rationale supplied by this producer."}</p><small>Research only · Model scores are not probabilities of profit.</small></div>
+      <div className="signal-rationale"><span>Why it appeared</span><p>{describeSignalReasons(sig.reasons ?? sig.reason) || "No plain-language rationale supplied by this producer."}</p><small>Research only · Model scores are not probabilities of profit.</small></div>
       <time className="signal-generated" dateTime={sig.generated_at}>Generated {new Date(sig.generated_at).toLocaleString()}</time>
       <button className="design-review" onClick={() => setReviewing(true)}>Review idea <span aria-hidden="true">→</span></button>
       <details className="signal-evidence"><summary>Technical evidence and trade plan</summary>
@@ -258,7 +261,7 @@ function SignalCard({
       </div>
       </details>
     </MissionCard>
-    <SignalDetailDrawer open={reviewing} onClose={() => setReviewing(false)} signal={{ ...sig, reasons: sig.reason ? [sig.reason] : [] }} symbol={sig.ticker} timeframe="unknown" latestBar={null} />
+    <SignalDetailDrawer open={reviewing} onClose={() => setReviewing(false)} signal={{ ...sig, reasons: reasonList(sig.reasons ?? sig.reason) }} symbol={sig.ticker} timeframe="unknown" latestBar={null} />
     </>
   );
 }
@@ -521,7 +524,7 @@ function EquitySignalsGrid() {
   // Min move % only makes sense for BUY/SELL — a HOLD has no trade_plan
   // (no target price to measure a move against), so it's left out of that
   // filter entirely rather than being silently dropped by an ?? 0 default.
-  const filteredSignals = signals.filter(s => `${s.ticker} ${s.reason || ""}`.toLowerCase().includes(query.toLowerCase()));
+  const filteredSignals = signals.filter(s => `${s.ticker} ${describeSignalReasons(s.reasons ?? s.reason) || ""}`.toLowerCase().includes(query.toLowerCase()));
   const buySignals = filteredSignals
     .filter(s => s.action === "BUY" && !s.earnings_gated)
     .filter(s => (s.trade_plan?.target_move_pct ?? 0) >= minMovePct)
