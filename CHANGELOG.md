@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased — Sidebar full tree + icon rail
+
+- Remove Show/Hide advanced from the workspace sidebar; the full nav tree is always available when the rail is labeled.
+- Collapsed desktop rail is icons-only (no group letters, submenus, or Advanced chrome); hover tooltips keep the destination name. Presentation only; no risk, permission or order-path change.
+
 ## Unreleased — Capital-at-risk strip body align
 
 - Keep the capital-at-risk status strip in the workspace body column (beside the sidebar), with the same 16px horizontal inset as page content, so chips share a left edge with the body rather than spanning over the nav rail. Presentation only; no risk, permission or order-path change.
