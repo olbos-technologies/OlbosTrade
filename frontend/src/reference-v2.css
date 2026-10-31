@@ -75,6 +75,6 @@
     padding-left: var(--terminal-safe-left);
     padding-right: var(--terminal-safe-right);
   }
-  .app-shell main { min-height: 0; scroll-padding-block: 12px; }
+  .app-shell main { min-height: 0; scroll-padding-block: 12px; padding-bottom: 12px; }
   .app-shell .mobile-bottom-nav { padding-bottom: var(--terminal-safe-bottom); }
 }
