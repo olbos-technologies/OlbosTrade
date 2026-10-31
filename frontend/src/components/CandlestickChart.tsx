@@ -1,11 +1,10 @@
 /**
  * CandlestickChart — TradingView lightweight-charts wrapper.
  *
- * Replaces ChartWorkstation.tsx's hand-rolled SVG ChartCanvas (~220 lines)
- * with a real charting engine: proper crosshair, zoom/pan, and price-axis
- * rendering, while keeping the exact same terminal color palette (candle
- * colors, SMA/VWAP colors, dark background) so this is a charting-engine
- * upgrade, not a visual rebrand.
+ * Multi-pane layout inspired by common mobile desks (price + volume + MACD)
+ * while keeping Olbos navy terminal colors — not a retail blue rebrand.
+ * Live MA/MACD readouts sit above the canvas so the key numbers stay visible
+ * without covering candles.
  */
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -38,17 +37,22 @@ export interface ChartLevel {
   color: string;
 }
 
-// Same palette ChartCanvas used — do not change without updating both.
 const COLOR = {
   bg: "#0b1120",
   gridLine: "rgba(255,255,255,0.06)",
   text: "rgba(148,163,184,0.8)",
   upCandle: "#18c37e",
   downCandle: "#ff5f6d",
-  upVolume: "rgba(24,195,126,0.32)",
-  downVolume: "rgba(255,95,109,0.32)",
-  sma: "#f4c64f",
-  vwap: "#8e7cfb",  // matches index.css --violet — lightweight-charts takes plain color strings, not var(), so keep these in sync by convention
+  upVolume: "rgba(24,195,126,0.45)",
+  downVolume: "rgba(255,95,109,0.45)",
+  ma5: "#5b9fd4",
+  ma10: "#f4a261",
+  ma20: "#f4c64f",
+  vwap: "#8e7cfb",
+  macd: "#5b9fd4",
+  macdSignal: "#f4a261",
+  macdHistUp: "rgba(24,195,126,0.55)",
+  macdHistDown: "rgba(255,95,109,0.55)",
 };
 
 /** Short axis titles so level labels do not cover candles on a phone. */
@@ -83,7 +87,7 @@ export function barsToVolumeData(bars: ChartBar[]): HistogramData[] {
   }));
 }
 
-function movingAverage(bars: ChartBar[], period: number): (number | null)[] {
+export function movingAverage(bars: ChartBar[], period: number): (number | null)[] {
   return bars.map((_, idx) => {
     if (idx < period - 1) return null;
     const slice = bars.slice(idx - period + 1, idx + 1);
@@ -102,7 +106,7 @@ function rollingVwap(bars: ChartBar[]): number[] {
   });
 }
 
-function barsToSmaData(bars: ChartBar[], period = 20): LineData[] {
+export function barsToSmaData(bars: ChartBar[], period: number): LineData[] {
   const out: LineData[] = [];
   movingAverage(bars, period).forEach((value, idx) => {
     if (value != null) out.push({ time: toUnixSeconds(bars[idx].timestamp), value });
@@ -110,15 +114,113 @@ function barsToSmaData(bars: ChartBar[], period = 20): LineData[] {
   return out;
 }
 
-function barsToVwapData(bars: ChartBar[]): LineData[] {
+export function barsToVwapData(bars: ChartBar[]): LineData[] {
   return rollingVwap(bars).map((value, idx) => ({ time: toUnixSeconds(bars[idx].timestamp), value }));
 }
 
+/** EMA seed = SMA of the first `period` closes, then standard EMA. */
+export function emaSeries(closes: number[], period: number): (number | null)[] {
+  const out: (number | null)[] = closes.map(() => null);
+  if (closes.length < period) return out;
+  const k = 2 / (period + 1);
+  let ema = closes.slice(0, period).reduce((a, b) => a + b, 0) / period;
+  out[period - 1] = ema;
+  for (let i = period; i < closes.length; i++) {
+    ema = closes[i] * k + ema * (1 - k);
+    out[i] = ema;
+  }
+  return out;
+}
+
+export function computeMacd(bars: ChartBar[], fast = 12, slow = 26, signal = 9): {
+  macd: LineData[];
+  signal: LineData[];
+  histogram: HistogramData[];
+} {
+  const closes = bars.map((b) => b.close);
+  const fastEma = emaSeries(closes, fast);
+  const slowEma = emaSeries(closes, slow);
+  const macdRaw: (number | null)[] = closes.map((_, i) =>
+    fastEma[i] != null && slowEma[i] != null ? (fastEma[i] as number) - (slowEma[i] as number) : null,
+  );
+  const macdValues = macdRaw.map((v) => (v == null ? 0 : v));
+  // Signal EMA only over defined MACD points — seed at first full MACD index.
+  const firstMacd = macdRaw.findIndex((v) => v != null);
+  const signalRaw: (number | null)[] = closes.map(() => null);
+  if (firstMacd >= 0 && closes.length - firstMacd >= signal) {
+    const seedEnd = firstMacd + signal;
+    let sig = 0;
+    for (let i = firstMacd; i < seedEnd; i++) sig += macdRaw[i] as number;
+    sig /= signal;
+    signalRaw[seedEnd - 1] = sig;
+    const k = 2 / (signal + 1);
+    for (let i = seedEnd; i < closes.length; i++) {
+      if (macdRaw[i] == null) continue;
+      sig = (macdRaw[i] as number) * k + sig * (1 - k);
+      signalRaw[i] = sig;
+    }
+  }
+
+  const macd: LineData[] = [];
+  const signalLine: LineData[] = [];
+  const histogram: HistogramData[] = [];
+  bars.forEach((bar, i) => {
+    const t = toUnixSeconds(bar.timestamp);
+    if (macdRaw[i] != null) macd.push({ time: t, value: macdRaw[i] as number });
+    if (signalRaw[i] != null) signalLine.push({ time: t, value: signalRaw[i] as number });
+    if (macdRaw[i] != null && signalRaw[i] != null) {
+      const hist = (macdRaw[i] as number) - (signalRaw[i] as number);
+      histogram.push({
+        time: t,
+        value: hist,
+        color: hist >= 0 ? COLOR.macdHistUp : COLOR.macdHistDown,
+      });
+    }
+  });
+  return { macd, signal: signalLine, histogram };
+}
+
+export function lastIndicatorReadout(bars: ChartBar[]): {
+  ma5: number | null;
+  ma10: number | null;
+  ma20: number | null;
+  vwap: number | null;
+  macd: number | null;
+  signal: number | null;
+  hist: number | null;
+} {
+  if (!bars.length) {
+    return { ma5: null, ma10: null, ma20: null, vwap: null, macd: null, signal: null, hist: null };
+  }
+  const ma = (period: number) => {
+    const series = movingAverage(bars, period);
+    return series[series.length - 1];
+  };
+  const vwapSeries = rollingVwap(bars);
+  const { macd, signal, histogram } = computeMacd(bars);
+  return {
+    ma5: ma(5),
+    ma10: ma(10),
+    ma20: ma(20),
+    vwap: vwapSeries[vwapSeries.length - 1] ?? null,
+    macd: macd.length ? macd[macd.length - 1].value : null,
+    signal: signal.length ? signal[signal.length - 1].value : null,
+    hist: histogram.length ? histogram[histogram.length - 1].value : null,
+  };
+}
+
 const LEGEND_ITEMS_BASE = [
-  { label: "SMA-20", color: COLOR.sma, style: "solid" as const },
+  { label: "MA5", color: COLOR.ma5, style: "solid" as const },
+  { label: "MA10", color: COLOR.ma10, style: "solid" as const },
+  { label: "MA20", color: COLOR.ma20, style: "solid" as const },
   { label: "VWAP", color: COLOR.vwap, style: "dashed" as const },
   { label: "Volume", color: "rgba(148,163,184,0.7)", style: "bar" as const },
+  { label: "MACD", color: COLOR.macd, style: "solid" as const },
 ];
+
+function fmtNum(n: number | null, digits = 2): string {
+  return n == null || !Number.isFinite(n) ? "—" : n.toFixed(digits);
+}
 
 export default function CandlestickChart({
   bars,
@@ -133,17 +235,20 @@ export default function CandlestickChart({
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
-  const smaSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const ma5Ref = useRef<ISeriesApi<"Line"> | null>(null);
+  const ma10Ref = useRef<ISeriesApi<"Line"> | null>(null);
+  const ma20Ref = useRef<ISeriesApi<"Line"> | null>(null);
   const vwapSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const macdLineRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const macdSignalRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const macdHistRef = useRef<ISeriesApi<"Histogram"> | null>(null);
   const isMobile = useIsMobile();
   const [legendOpen, setLegendOpen] = useState(!isMobile);
 
   useEffect(() => {
-    // Phones start collapsed so the candle pane is readable; desktop keeps the key.
     setLegendOpen(!isMobile);
   }, [isMobile]);
 
-  // Chart + series lifecycle — created once per mount.
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -160,7 +265,11 @@ export default function CandlestickChart({
       autoSize: true,
     });
 
-    const candleSeries = chart.addSeries(CandlestickSeries, {
+    const panes = chart.panes();
+    const pricePane = panes[0];
+    pricePane.setStretchFactor(3);
+
+    const candleSeries = pricePane.addSeries(CandlestickSeries, {
       upColor: "rgba(24,195,126,0.9)",
       downColor: "rgba(255,95,109,0.9)",
       borderUpColor: COLOR.upCandle,
@@ -169,46 +278,85 @@ export default function CandlestickChart({
       wickDownColor: COLOR.downCandle,
     });
 
-    const volumeSeries = chart.addSeries(HistogramSeries, {
-      priceFormat: { type: "volume" },
-      priceScaleId: "",
+    const ma5 = pricePane.addSeries(LineSeries, {
+      color: COLOR.ma5, lineWidth: 1, priceLineVisible: false, lastValueVisible: false,
     });
-    volumeSeries.priceScale().applyOptions({ scaleMargins: { top: 0.78, bottom: 0 } });
-
-    const smaSeries = chart.addSeries(LineSeries, {
-      color: COLOR.sma, lineWidth: 2, priceLineVisible: false, lastValueVisible: false,
+    const ma10 = pricePane.addSeries(LineSeries, {
+      color: COLOR.ma10, lineWidth: 1, priceLineVisible: false, lastValueVisible: false,
     });
-    const vwapSeries = chart.addSeries(LineSeries, {
+    const ma20 = pricePane.addSeries(LineSeries, {
+      color: COLOR.ma20, lineWidth: 2, priceLineVisible: false, lastValueVisible: false,
+    });
+    const vwapSeries = pricePane.addSeries(LineSeries, {
       color: COLOR.vwap, lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false,
+    });
+
+    const volumePane = chart.addPane(true);
+    volumePane.setStretchFactor(0.85);
+    const volumeSeries = volumePane.addSeries(HistogramSeries, {
+      priceFormat: { type: "volume" },
+      priceLineVisible: false,
+      lastValueVisible: false,
+    });
+
+    const macdPane = chart.addPane(true);
+    macdPane.setStretchFactor(1.1);
+    const macdHist = macdPane.addSeries(HistogramSeries, {
+      priceLineVisible: false,
+      lastValueVisible: false,
+    });
+    const macdLine = macdPane.addSeries(LineSeries, {
+      color: COLOR.macd, lineWidth: 1, priceLineVisible: false, lastValueVisible: false,
+    });
+    const macdSignal = macdPane.addSeries(LineSeries, {
+      color: COLOR.macdSignal, lineWidth: 1, priceLineVisible: false, lastValueVisible: false,
     });
 
     chartRef.current = chart;
     candleSeriesRef.current = candleSeries;
     volumeSeriesRef.current = volumeSeries;
-    smaSeriesRef.current = smaSeries;
+    ma5Ref.current = ma5;
+    ma10Ref.current = ma10;
+    ma20Ref.current = ma20;
     vwapSeriesRef.current = vwapSeries;
+    macdLineRef.current = macdLine;
+    macdSignalRef.current = macdSignal;
+    macdHistRef.current = macdHist;
 
     return () => {
       chart.remove();
       chartRef.current = null;
       candleSeriesRef.current = null;
       volumeSeriesRef.current = null;
-      smaSeriesRef.current = null;
+      ma5Ref.current = null;
+      ma10Ref.current = null;
+      ma20Ref.current = null;
       vwapSeriesRef.current = null;
+      macdLineRef.current = null;
+      macdSignalRef.current = null;
+      macdHistRef.current = null;
     };
   }, []);
 
-  // Data updates — re-run whenever bars change (new symbol/timeframe).
   useEffect(() => {
-    if (!candleSeriesRef.current || !volumeSeriesRef.current || !smaSeriesRef.current || !vwapSeriesRef.current) return;
+    if (
+      !candleSeriesRef.current || !volumeSeriesRef.current ||
+      !ma5Ref.current || !ma10Ref.current || !ma20Ref.current || !vwapSeriesRef.current ||
+      !macdLineRef.current || !macdSignalRef.current || !macdHistRef.current
+    ) return;
     candleSeriesRef.current.setData(barsToCandlestickData(bars));
     volumeSeriesRef.current.setData(barsToVolumeData(bars));
-    smaSeriesRef.current.setData(barsToSmaData(bars));
+    ma5Ref.current.setData(barsToSmaData(bars, 5));
+    ma10Ref.current.setData(barsToSmaData(bars, 10));
+    ma20Ref.current.setData(barsToSmaData(bars, 20));
     vwapSeriesRef.current.setData(barsToVwapData(bars));
+    const macd = computeMacd(bars);
+    macdLineRef.current.setData(macd.macd);
+    macdSignalRef.current.setData(macd.signal);
+    macdHistRef.current.setData(macd.histogram);
     chartRef.current?.timeScale().fitContent();
   }, [bars]);
 
-  // Support/resistance levels — cleared and redrawn on change.
   useEffect(() => {
     const series = candleSeriesRef.current;
     if (!series) return;
@@ -236,6 +384,7 @@ export default function CandlestickChart({
     );
   }
 
+  const readout = lastIndicatorReadout(bars);
   const legendItems = [
     ...LEGEND_ITEMS_BASE,
     ...levels.map((level) => ({ label: level.label, color: level.color, style: "level" as const })),
@@ -243,6 +392,17 @@ export default function CandlestickChart({
 
   return (
     <div className={`candlestick-chart${isMobile ? " candlestick-chart--mobile" : ""}`} style={{ height }}>
+      <div className="candlestick-chart__readout" aria-label="Indicator readout">
+        <span style={{ color: COLOR.ma5 }}>MA5 {fmtNum(readout.ma5)}</span>
+        <span style={{ color: COLOR.ma10 }}>MA10 {fmtNum(readout.ma10)}</span>
+        <span style={{ color: COLOR.ma20 }}>MA20 {fmtNum(readout.ma20)}</span>
+        <span style={{ color: COLOR.vwap }}>VWAP {fmtNum(readout.vwap)}</span>
+        <span style={{ color: COLOR.macd }}>MACD {fmtNum(readout.macd, 3)}</span>
+        <span style={{ color: COLOR.macdSignal }}>Sig {fmtNum(readout.signal, 3)}</span>
+        <span style={{ color: (readout.hist ?? 0) >= 0 ? COLOR.upCandle : COLOR.downCandle }}>
+          Hist {fmtNum(readout.hist, 3)}
+        </span>
+      </div>
       <div className="candlestick-chart__legend-chrome">
         {isMobile && (
           <button

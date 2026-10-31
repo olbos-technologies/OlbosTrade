@@ -559,11 +559,11 @@ export default function ChartWorkstation({
               {!chartLoading && <UpcomingCatalysts events={catalystEvents} />}
               <div className="instrument-card--flat chart-canvas-wrap" style={{ position: "relative" }}>
                 {chartLoading ? (
-                  <div className="skeleton-block" style={{ height: isMobile ? 280 : 460 }} aria-busy="true" aria-label="Loading chart">
+                  <div className="skeleton-block" style={{ height: isMobile ? 420 : 560 }} aria-busy="true" aria-label="Loading chart">
                     <div className="skeleton-shimmer" />
                   </div>
                 ) : (
-                  <CandlestickChart bars={chartBars} levels={levels} height={isMobile ? 280 : 460} />
+                  <CandlestickChart bars={chartBars} levels={levels} height={isMobile ? 420 : 560} />
                 )}
               </div>
               {chartError && (

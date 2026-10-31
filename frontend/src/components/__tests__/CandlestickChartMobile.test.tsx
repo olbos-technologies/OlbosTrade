@@ -18,8 +18,14 @@ const mockSeries = {
   removePriceLine: vi.fn(),
   priceScale: vi.fn(() => ({ applyOptions: vi.fn() })),
 };
+const mockPane = {
+  addSeries: vi.fn(() => mockSeries),
+  setStretchFactor: vi.fn(),
+};
 const mockChart = {
   addSeries: vi.fn(() => mockSeries),
+  addPane: vi.fn(() => mockPane),
+  panes: vi.fn(() => [mockPane]),
   remove: vi.fn(),
   timeScale: vi.fn(() => ({ fitContent: vi.fn() })),
 };
@@ -60,11 +66,18 @@ describe("CandlestickChart — mobile legend", () => {
     render(<CandlestickChart bars={sampleBars} levels={[]} />);
     fireEvent.click(screen.getByRole("button", { name: "Legend" }));
     expect(screen.getByLabelText("Chart legend")).toBeInTheDocument();
-    expect(screen.getByText("SMA-20")).toBeInTheDocument();
+    expect(screen.getByText("MA20")).toBeInTheDocument();
+    expect(screen.getByText("MACD")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Hide legend" })).toHaveAttribute("aria-expanded", "true");
 
     fireEvent.click(screen.getByRole("button", { name: "Hide legend" }));
     expect(screen.queryByLabelText("Chart legend")).not.toBeInTheDocument();
+  });
+
+  it("keeps the MA/MACD readout visible while the legend is collapsed", () => {
+    render(<CandlestickChart bars={sampleBars} levels={[]} />);
+    expect(screen.getByLabelText("Indicator readout")).toBeInTheDocument();
+    expect(screen.getByLabelText("Indicator readout").textContent).toMatch(/MA5/);
   });
 
   it("shortens price-line axis titles so labels do not cover candles", () => {

@@ -88,8 +88,16 @@
   .chart-catalysts { max-width: 100%; }
   .chart-catalysts > div { font-size: 9px !important; padding: 2px 6px !important; }
   .chart-panel-body { padding: 10px !important; }
-  .chart-canvas-wrap { min-height: 280px; }
+  .chart-canvas-wrap { min-height: 420px; }
   .chart-instrument-title > span { white-space: nowrap; }
+  /* Quote reads like a desk quote strip: symbol / last / change first. */
+  .chart-quote {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: end;
+    gap: 4px 12px;
+  }
+  .chart-quote p { grid-column: 1 / -1; margin: 0; }
 }
 
 .workstation-top-strip { grid-template-columns: repeat(4, minmax(0, 1fr)); }

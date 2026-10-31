@@ -1,10 +1,13 @@
 # Changelog
 
-<<<<<<< HEAD
+## Unreleased — Markets chart panes (MA + volume + MACD)
+
+- Split the Markets candlestick into price, volume and MACD panes with live MA5/10/20, VWAP and MACD readouts above the canvas (reference-desk layout, navy terminal colors). Taller phone chart so the three panes remain readable. Presentation only; no risk, permission or order-path change.
+
 ## Unreleased — Strategies navigation focus
 
 - Keep five daily Strategies destinations: Alpha Edge, Live Signals, History, Strategy Library, Health. Move signal research/calendar/builder/alerts/crypto into Advanced Research and V2 options tooling into Advanced Trade Desk. Presentation only; no risk, permission or order-path change.
-=======
+
 ## Unreleased — Regime entries chrome honesty
 
 - When the regime reports `equity_allowed=false`, the capital-at-risk row shows **ENTRIES BLOCKED**, the ticker shows **ENTRIES PAUSED**, and the status-bar style lamp is marked gated — so Autopilot/Aggressive preferences cannot be read as live entry authority in a crisis. Footer can show the short git SHA when baked into the build. Presentation only; does not change risk gates or order paths.
@@ -16,7 +19,6 @@
 ## Unreleased — Reference shell palette v2
 
 - Adopt near-black shell surfaces, restrained gold accents, and a layered Command Center / Home intro background from the approved reference. Presentation only; no risk, permission or order-path change.
->>>>>>> 96d0873 (docs: note reference shell palette under Unreleased)
 
 ## Unreleased — Mobile safe areas
 
