@@ -31,7 +31,9 @@ async function openExecutionSwitcher(page: Page, width: number) {
   // Positions intentionally suppresses this duplicate control on phones so
   // holdings get the screen. Switch to another legacy desk panel to verify
   // the selector remains readable and tappable everywhere it is displayed.
-  await page.getByRole("button", { name: "Desk signals", exact: true }).click();
+  // Scope to main: with Advanced always open, the sidebar also exposes a
+  // "Desk signals" leaf (aria-label), which would strict-mode collide.
+  await page.getByRole("main").getByRole("button", { name: "Desk signals", exact: true }).click();
   await page.waitForSelector(".exec-mode-row");
 }
 
