@@ -1,15 +1,18 @@
 # Changelog
 
+## Unreleased — Resolve committed merge-conflict markers
+
+- Resolved unresolved `<<<<<<<`/`=======`/`>>>>>>>` markers committed in `CHANGELOG.md`, keeping all four Unreleased sections they had tangled together. Added a guard test that fails if any tracked file carries a conflict marker, so a hand-merge between parallel agent branches cannot land one in `main` again. Documentation and test only; no behaviour change.
+
 ## Unreleased — Signal rationale reaches the card
 
 - Fixed: every equity signal card showed "No plain-language rationale supplied by this producer" and every signal detail drawer showed an empty evidence list. The scanner emits `reasons` (a dict of scoring factor to signed points); the UI read `reason` (a string). Neither the key nor the type matched, so the rationale was discarded on arrival. Cards now name the strongest contributing factors in plain language. Presentation only; no change to scoring, risk gates or order paths.
 - Added a guard test asserting the scanner still emits `reasons`, that the UI reads that key, and that every scoring factor has a plain-language phrase.
 
-<<<<<<< HEAD
 ## Unreleased — Strategies navigation focus
 
 - Keep five daily Strategies destinations: Alpha Edge, Live Signals, History, Strategy Library, Health. Move signal research/calendar/builder/alerts/crypto into Advanced Research and V2 options tooling into Advanced Trade Desk. Presentation only; no risk, permission or order-path change.
-=======
+
 ## Unreleased — Regime entries chrome honesty
 
 - When the regime reports `equity_allowed=false`, the capital-at-risk row shows **ENTRIES BLOCKED**, the ticker shows **ENTRIES PAUSED**, and the status-bar style lamp is marked gated — so Autopilot/Aggressive preferences cannot be read as live entry authority in a crisis. Footer can show the short git SHA when baked into the build. Presentation only; does not change risk gates or order paths.
@@ -21,7 +24,6 @@
 ## Unreleased — Reference shell palette v2
 
 - Adopt near-black shell surfaces, restrained gold accents, and a layered Command Center / Home intro background from the approved reference. Presentation only; no risk, permission or order-path change.
->>>>>>> 96d0873 (docs: note reference shell palette under Unreleased)
 
 ## Unreleased — Mobile safe areas
 
