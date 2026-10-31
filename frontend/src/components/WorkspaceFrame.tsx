@@ -10,7 +10,7 @@ const WORKSPACES: Record<string, Workspace> = {
   lab: { title: "Research workspace", eyebrow: "EXPLORE & EVALUATE", description: "Inspect scenarios, research evidence and model health.", kind: "research" },
   settings: { title: "System settings", eyebrow: "PLATFORM CONNECTIONS", description: "Review the platform broker, market feeds and data quality.", kind: "system" },
   account: { title: "Your account", eyebrow: "ACCOUNT & SECURITY", description: "Manage your profile, password and signed-in sessions.", kind: "account" },
-  strat: { title: "Strategy workspace", eyebrow: "RESEARCH & PLANNING", description: "Inspect strategies, evidence, calendars and alerts.", kind: "strategy" },
+  strat: { title: "Signals", eyebrow: "LIVE DESK", description: "Equity and options signals with entry, exit and risk context.", kind: "strategy" },
   options: { title: "Options workspace", eyebrow: "CONTRACTS & RESEARCH", description: "Review options data, strategies and research context.", kind: "options" },
   crypto: { title: "Crypto research", eyebrow: "MARKET RESEARCH", description: "Inspect crypto data and research signals.", kind: "crypto" },
   scan: { title: "Market scanners", eyebrow: "DISCOVER & REVIEW", description: "Review scan configuration and results before taking action.", kind: "scanner" },

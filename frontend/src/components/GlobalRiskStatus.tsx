@@ -90,12 +90,15 @@ function Chip({
   tone,
   order,
   title,
+  compact = false,
 }: {
   label: string;
   value: string;
   tone: string;
   order: number;
   title?: string;
+  /** Tighter padding / tracking so more chips fit a phone width before scroll. */
+  compact?: boolean;
 }) {
   return (
     <div
@@ -104,18 +107,19 @@ function Chip({
         order,
         display: "inline-flex",
         alignItems: "center",
-        gap: 6,
-        padding: "3px 9px",
+        gap: compact ? 4 : 6,
+        padding: compact ? "3px 7px" : "3px 9px",
         border: `1px solid ${tint(tone, 0.333)}`,
         borderRadius: 3,
         background: "var(--bg-3)",
         whiteSpace: "nowrap",
+        flexShrink: 0,
       }}
     >
-      <span className="mono" style={{ color: "var(--ink-faint)", fontSize: 9, letterSpacing: "0.08em" }}>
+      <span className="mono" style={{ color: "var(--ink-faint)", fontSize: 9, letterSpacing: compact ? "0.04em" : "0.08em" }}>
         {label}
       </span>
-      <span className="mono" style={{ color: tone, fontSize: 10.5, fontWeight: 700 }}>
+      <span className="mono" style={{ color: tone, fontSize: compact ? 10 : 10.5, fontWeight: 700 }}>
         {value}
       </span>
     </div>
@@ -164,61 +168,68 @@ export default function GlobalRiskStatus() {
     })
   );
 
+  const makeChip = (props: Omit<React.ComponentProps<typeof Chip>, "compact">) => (
+    <Chip {...props} compact={isMobile} />
+  );
+
   // ── 1. Live vs paper environment ──────────────────────────────────────
   let envChip: React.ReactNode;
   if (brokerAvail.status === "loading") {
-    envChip = <Chip label="ENV" value="LOADING" tone="var(--ink-faint)" order={1} />;
+    envChip = makeChip({ label: "ENV", value: "LOADING", tone: "var(--ink-faint)", order: 1 });
   } else if (brokerAvail.status !== "available") {
-    envChip = <Chip label="ENV" value="UNKNOWN" tone="var(--amber)" order={1} title="Broker status could not be read from /api/market/broker" />;
+    envChip = makeChip({ label: "ENV", value: "UNKNOWN", tone: "var(--amber)", order: 1, title: "Broker status could not be read from /api/market/broker" });
   } else {
     const b = brokerAvail.value;
     const connected = b.status === "connected";
     if (!connected) {
-      envChip = <Chip label="ENV" value="DISCONNECTED" tone="var(--red)" order={1} title={b.error || "Broker reports not connected"} />;
+      envChip = makeChip({ label: "ENV", value: "DISCONNECTED", tone: "var(--red)", order: 1, title: b.error || "Broker reports not connected" });
     } else {
-      const label = `${b.paper_mode ? "PAPER" : "LIVE"} — ${b.broker.toUpperCase()}`;
-      envChip = <Chip label="ENV" value={label} tone={b.paper_mode ? "var(--amber)" : "var(--green)"} order={1} />;
+      // Phone width: "PAPER — IBKR" plus MODE + ENTRIES overflows; keep meaning, shorten separator.
+      const label = isMobile
+        ? `${b.paper_mode ? "PAPER" : "LIVE"}·${b.broker.toUpperCase()}`
+        : `${b.paper_mode ? "PAPER" : "LIVE"} — ${b.broker.toUpperCase()}`;
+      envChip = makeChip({ label: "ENV", value: label, tone: b.paper_mode ? "var(--amber)" : "var(--green)", order: 1 });
     }
   }
 
   // ── 2. AUTOPILOT ───────────────────────────────────────────────────────
   let autoChip: React.ReactNode;
   if (execAvail.status === "loading") {
-    autoChip = <Chip label="MODE" value="LOADING" tone="var(--ink-faint)" order={2} />;
+    autoChip = makeChip({ label: "MODE", value: "LOADING", tone: "var(--ink-faint)", order: 2 });
   } else if (execAvail.status !== "available") {
-    autoChip = <Chip label="MODE" value="AUTOPILOT UNKNOWN" tone="var(--amber)" order={2} title="Execution mode could not be read" />;
+    autoChip = makeChip({ label: "MODE", value: "AUTOPILOT UNKNOWN", tone: "var(--amber)", order: 2, title: "Execution mode could not be read" });
   } else {
     const mode = execAvail.value.mode;
-    if (mode === "autopilot") autoChip = <Chip label="MODE" value="AUTOPILOT ON" tone="var(--amber)" order={2} />;
-    else if (mode === "copilot" || mode === "manual") autoChip = <Chip label="MODE" value="AUTOPILOT OFF" tone="var(--ink-dim)" order={2} />;
-    else autoChip = <Chip label="MODE" value="AUTOPILOT UNKNOWN" tone="var(--amber)" order={2} title={`Unrecognized mode value: ${mode}`} />;
+    if (mode === "autopilot") autoChip = makeChip({ label: "MODE", value: "AUTOPILOT ON", tone: "var(--amber)", order: 2 });
+    else if (mode === "copilot" || mode === "manual") autoChip = makeChip({ label: "MODE", value: "AUTOPILOT OFF", tone: "var(--ink-dim)", order: 2 });
+    else autoChip = makeChip({ label: "MODE", value: "AUTOPILOT UNKNOWN", tone: "var(--amber)", order: 2, title: `Unrecognized mode value: ${mode}` });
   }
 
   // ── 3. Kill switch ───────────────────────────────────────────────────
   let killChip: React.ReactNode;
   if (killAvail.status === "loading") {
-    killChip = <Chip label="KILL" value="LOADING" tone="var(--ink-faint)" order={3} />;
+    killChip = makeChip({ label: "KILL", value: "LOADING", tone: "var(--ink-faint)", order: 3 });
   } else if (killAvail.status !== "available") {
-    killChip = <Chip label="KILL" value="UNKNOWN" tone="var(--amber)" order={3} title="Kill switch status could not be read" />;
+    killChip = makeChip({ label: "KILL", value: "UNKNOWN", tone: "var(--amber)", order: 3, title: "Kill switch status could not be read" });
   } else {
     const engaged = killAvail.value.engaged;
     killChip = engaged
-      ? <Chip label="KILL" value="HALTED" tone="var(--red)" order={3} title="Kill switch engaged — new orders halted" />
-      : <Chip label="KILL" value="NOT ARMED" tone="var(--ink-dim)" order={3} />;
+      ? makeChip({ label: "KILL", value: "HALTED", tone: "var(--red)", order: 3, title: "Kill switch engaged — new orders halted" })
+      : makeChip({ label: "KILL", value: "NOT ARMED", tone: "var(--ink-dim)", order: 3 });
   }
 
   // ── 4. Drawdown / 5. Risk budget ─────────────────────────────────────
   let drawdownChip: React.ReactNode;
   let budgetChip: React.ReactNode;
   if (riskAvail.status === "loading") {
-    drawdownChip = <Chip label="DD" value="LOADING" tone="var(--ink-faint)" order={4} />;
-    budgetChip = <Chip label="RISK BUDGET" value="LOADING" tone="var(--ink-faint)" order={5} />;
+    drawdownChip = makeChip({ label: "DD", value: "LOADING", tone: "var(--ink-faint)", order: 4 });
+    budgetChip = makeChip({ label: "RISK BUDGET", value: "LOADING", tone: "var(--ink-faint)", order: 5 });
   } else if (riskAvail.status !== "available" || !riskAvail.value?.state
       || riskAvail.value.state.error
       || typeof riskAvail.value.state.daily_loss_pct !== "number"
       || !Number.isFinite(riskAvail.value.state.daily_loss_pct)) {
-    drawdownChip = <Chip label="DD" value="UNAVAILABLE" tone="var(--amber)" order={4} title="Portfolio state could not be read" />;
-    budgetChip = <Chip label="RISK BUDGET" value="UNAVAILABLE" tone="var(--amber)" order={5} />;
+    drawdownChip = makeChip({ label: "DD", value: "UNAVAILABLE", tone: "var(--amber)", order: 4, title: "Portfolio state could not be read" });
+    budgetChip = makeChip({ label: "RISK BUDGET", value: "UNAVAILABLE", tone: "var(--amber)", order: 5 });
   } else {
     const s = riskAvail.value.state;
     // daily_loss_pct is a signed P&L ratio (positive on a gain day), not
@@ -231,30 +242,22 @@ export default function GlobalRiskStatus() {
     const dailyLoss = pct(dailyLossUsed);
     const dailyLimit = pct(s.max_daily_loss_pct);
     drawdownChip =
-      dailyLoss !== null ? (
-        <Chip
-          label="DAILY DD"
-          value={dailyLimit ? `${dailyLoss} / ${dailyLimit}` : dailyLoss}
-          tone={typeof s.max_daily_loss_pct === "number" && dailyLossUsed >= s.max_daily_loss_pct ? "var(--red)" : "var(--ink)"}
-          order={4}
-        />
-      ) : (
-        <Chip label="DAILY DD" value="UNAVAILABLE" tone="var(--amber)" order={4} />
-      );
+      dailyLoss !== null
+        ? makeChip({
+            label: "DAILY DD",
+            value: dailyLimit ? `${dailyLoss} / ${dailyLimit}` : dailyLoss,
+            tone: typeof s.max_daily_loss_pct === "number" && dailyLossUsed >= s.max_daily_loss_pct ? "var(--red)" : "var(--ink)",
+            order: 4,
+          })
+        : makeChip({ label: "DAILY DD", value: "UNAVAILABLE", tone: "var(--amber)", order: 4 });
 
     if (typeof s.daily_loss_pct === "number" && typeof s.max_daily_loss_pct === "number") {
       const remaining = Math.max(0, s.max_daily_loss_pct - dailyLossUsed);
       budgetChip = (
-        <Chip
-          label="RISK BUDGET LEFT"
-          value={`${(remaining * 100).toFixed(1)}%`}
-          tone={remaining <= 0 ? "var(--red)" : "var(--ink)"}
-          order={5}
-          title="Derived: max daily loss limit − current daily loss, both from /api/risk/portfolio-state"
-        />
+        makeChip({ label: "RISK BUDGET LEFT", value: `${(remaining * 100).toFixed(1)}%`, tone: remaining <= 0 ? "var(--red)" : "var(--ink)", order: 5, title: "Derived: max daily loss limit − current daily loss, both from /api/risk/portfolio-state" })
       );
     } else {
-      budgetChip = <Chip label="RISK BUDGET LEFT" value="UNAVAILABLE" tone="var(--amber)" order={5} title="Requires both current daily loss and the daily loss limit" />;
+      budgetChip = makeChip({ label: "RISK BUDGET LEFT", value: "UNAVAILABLE", tone: "var(--amber)", order: 5, title: "Requires both current daily loss and the daily loss limit" });
     }
   }
 
@@ -264,14 +267,14 @@ export default function GlobalRiskStatus() {
   // on phones. When entries are allowed, omit the chip — quiet when safe.
   let entriesChip: React.ReactElement | null = null;
   if (regimeAvail.status === "loading") {
-    entriesChip = <Chip label="ENTRIES" value="LOADING" tone="var(--ink-faint)" order={6} />;
+    entriesChip = makeChip({ label: "ENTRIES", value: "LOADING", tone: "var(--ink-faint)", order: 6 });
   } else if (regimeAvail.status !== "available") {
     const unk = regimeEntriesStatusChip("unknown")!;
-    entriesChip = <Chip label={unk.label} value={unk.value} tone={unk.tone} order={6} title={unk.title} />;
+    entriesChip = makeChip({ label: unk.label, value: unk.value, tone: unk.tone, order: 6, title: unk.title });
   } else {
     const chip = regimeEntriesStatusChip(regimeEntryAllowance(regimeAvail.value));
     if (chip) {
-      entriesChip = <Chip label={chip.label} value={chip.value} tone={chip.tone} order={6} title={chip.title} />;
+      entriesChip = makeChip({ label: chip.label, value: chip.value, tone: chip.tone, order: 6, title: chip.title });
     }
   }
 
@@ -280,9 +283,9 @@ export default function GlobalRiskStatus() {
   const anyError = reads.some((a) => a.status === "error");
   const allRead = reads.every((a) => a.status === "available");
   const connChip = anyError ? (
-    <Chip label="DATA" value="PARTIAL" tone="var(--amber)" order={7} title="One or more risk-status fields failed to load; see individual chips." />
+    makeChip({ label: "DATA", value: "PARTIAL", tone: "var(--amber)", order: 7, title: "One or more risk-status fields failed to load; see individual chips." })
   ) : (
-    <Chip label="STATUS" value={allRead ? "READ OK" : "LOADING"} tone={allRead ? "var(--ink-dim)" : "var(--amber)"} order={7} title="Status endpoints responded. This does not confirm quote freshness or permission to trade." />
+    makeChip({ label: "STATUS", value: allRead ? "READ OK" : "LOADING", tone: allRead ? "var(--ink-dim)" : "var(--amber)", order: 7, title: "Status endpoints responded. This does not confirm quote freshness or permission to trade." })
   );
 
   // ── Mobile: show what needs attention, fold away what does not ───────
@@ -313,7 +316,8 @@ export default function GlobalRiskStatus() {
         // One scrolling line on a phone instead of three wrapped rows.
         flexWrap: isMobile ? "nowrap" : "wrap",
         overflowX: isMobile ? "auto" : undefined,
-        gap: 6,
+        WebkitOverflowScrolling: isMobile ? "touch" : undefined,
+        gap: isMobile ? 5 : 6,
         alignItems: "center",
         padding: isMobile ? "5px 10px" : "6px 16px",
         background: "var(--bg-2)",

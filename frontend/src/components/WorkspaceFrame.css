@@ -1,5 +1,13 @@
 /* Remaining operational workspaces share the approved navy/gold presentation. */
-.workspace-frame { max-width: 1600px; width: 100%; height: 100%; margin-inline: auto; display: flex; flex-direction: column; min-width: 0; font-family: var(--sans); overflow-wrap: anywhere; }
+.workspace-frame { max-width: 1600px; width: 100%; height: 100%; margin-inline: auto; display: flex; flex-direction: column; min-width: 0; font-family: var(--sans); overflow-wrap: break-word; }
+/* KPI strip labels must stay whole words — overflow-wrap:anywhere was
+   splitting "Open positions" into Ope/n/posit/ions on a 4-up phone grid. */
+.workspace-frame .instrument-stat-strip .kicker,
+.workspace-frame .instrument-stat-strip .data-val {
+  overflow-wrap: normal;
+  word-break: normal;
+  hyphens: none;
+}
 .workspace-frame__heading { padding: 26px 24px 20px; flex-shrink: 0; }
 .workspace-frame__heading h1 { font: 650 30px/1.2 var(--sans); letter-spacing: -.03em; margin: 7px 0 10px; }
 .workspace-frame__heading p { font: 14px/1.6 var(--sans); color: var(--ink-dim); max-width: 700px; margin: 0; }
@@ -47,6 +55,10 @@
   .workspace-frame__heading { padding: 22px 16px 18px; }
   .workspace-frame__heading h1 { font-size: 28px; }
   .workspace-frame__heading p { font-size: 13px; }
+  /* Signals desk: less chrome so cards start higher on the phone. */
+  .workspace-frame--strategy .workspace-frame__heading { padding: 14px 16px 8px; }
+  .workspace-frame--strategy .workspace-frame__heading h1 { font-size: 22px; margin: 4px 0 0; }
+  .workspace-frame--strategy .workspace-frame__heading p { display: none; }
   .workspace-frame__body { flex: none; }
   .workspace-frame__body > div, .workspace-frame .workspace-page { height: auto !important; overflow: visible !important; }
   .workspace-frame [role="tablist"] { flex-wrap: nowrap !important; overflow-x: auto; padding: 0 12px; }
@@ -54,9 +66,13 @@
   .workspace-frame input:not([type="checkbox"]):not([type="radio"]), .workspace-frame select, .workspace-frame textarea { font-size: 16px !important; min-height: 44px; box-sizing: border-box; }
   .workspace-frame button { min-height: 44px; }
   .workspace-frame .workspace-table-scroll .t-table { min-width: 600px; }
-  .workspace-frame .workspace-stat-grid > * { min-width: 0; overflow-wrap: anywhere; }
+  .workspace-frame .workspace-stat-grid > * { min-width: 0; overflow-wrap: break-word; }
   .workspace-frame .workspace-stat-grid .data-val { font-size: 22px; }
   .workspace-frame .workspace-backtest-layout > div { overflow: visible !important; }
+  /* Inline 4-up grids still win without !important — force 2×2 on phones. */
+  .workspace-frame .instrument-stat-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
 }
 
 /* UX-1: consistent, compact workstation surfaces across secondary workspaces. */
