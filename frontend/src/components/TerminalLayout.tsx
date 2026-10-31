@@ -30,6 +30,10 @@ import BrandWordmark from "./BrandWordmark";
 import WorkspaceSearch from "./WorkspaceSearch";
 import CompactWorkspaceNav from "./CompactWorkspaceNav";
 import WorkspaceContext from "./WorkspaceContext";
+import {
+  regimeEntriesTickerLabel,
+  regimeEntryAllowance,
+} from "../utils/regimeEntryChrome";
 
 // ── Icons (inline SVG — no dep) ───────────────────────────────────────────────
 const Icon = ({ d, size = 16 }: { d: string; size?: number }) => (
@@ -720,7 +724,7 @@ function TickerStrip({ onToggle, sidebarExpanded, isMobile }: {
         {sep}
         <span style={{ color: "var(--ink-dim)", marginRight: 6 }}>REGIME</span>
         <span style={{
-          fontFamily: "var(--mono)", fontSize: 10, marginRight: 20,
+          fontFamily: "var(--mono)", fontSize: 10, marginRight: 12,
           color: regime.regime === "crisis" ? "var(--red)" :
                  regime.regime.includes("high_vol") ? "var(--amber)" : "var(--cyan)",
           fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em",
@@ -728,6 +732,23 @@ function TickerStrip({ onToggle, sidebarExpanded, isMobile }: {
           {regime.regime.replace(/_/g, " ")}
         </span>
       </>}
+      {(() => {
+        const cue = regimeEntriesTickerLabel(regimeEntryAllowance(regime));
+        if (!cue) return null;
+        return <>
+          {sep}
+          <span
+            style={{
+              fontFamily: "var(--mono)", fontSize: 10, marginRight: 20,
+              color: cue === "ENTRIES PAUSED" ? "var(--red)" : "var(--amber)",
+              fontWeight: 700, letterSpacing: "0.06em",
+            }}
+            title="Regime refuses new risk-increasing equity entries. Autopilot and style preferences can stay selected without authorizing entries."
+          >
+            {cue}
+          </span>
+        </>;
+      })()}
       {sep}
     </span>
   );
@@ -1345,6 +1366,7 @@ function StatusBar({ page }: { page: string }) {
   const [styleMode, setStyleMode] = useState("balanced");
   const [rotationOn, setRotationOn] = useState(false);
   const [paper, setPaper] = useState<boolean | null>(null);
+  const [entriesAllowance, setEntriesAllowance] = useState<"allowed" | "blocked" | "unknown">("unknown");
 
   useEffect(() => {
     let alive = true;
@@ -1357,7 +1379,8 @@ function StatusBar({ page }: { page: string }) {
         api.getCurrentMode().catch(() => ({})),
         api.getGuardrailStatus().catch(() => ({})),
         fetch("/api/market/broker").then((r) => r.json()).catch(() => ({})),
-      ]).then(([kill, exec, mode, guard, broker]) => {
+        fetch("/api/market/regime").then((r) => (r.ok ? r.json() : {})).catch(() => ({})),
+      ]).then(([kill, exec, mode, guard, broker, regime]) => {
         if (!alive) return;
         // Only assert a value the payload actually carried; a failed fetch
         // resolves to {} above, which must read as unknown, not as safe.
@@ -1369,6 +1392,7 @@ function StatusBar({ page }: { page: string }) {
 
         setStyleMode(((mode as any).mode || "balanced").toLowerCase());
         setRotationOn(!!(guard as any).position_rotation_on_max);
+        setEntriesAllowance(regimeEntryAllowance(regime as any));
 
         if ((broker as any).paper_mode === false) setPaper(false);
         else if ((broker as any).paper_mode === true) setPaper(true);
@@ -1384,6 +1408,11 @@ function StatusBar({ page }: { page: string }) {
       clearInterval(id);
     };
   }, []);
+
+  const styleGated = entriesAllowance !== "allowed";
+  const styleLabel = styleGated
+    ? `Style ${styleMode}${entriesAllowance === "blocked" ? " · gated" : " · ?"}`
+    : `Style ${styleMode}`;
 
   return (
     <div className="instrument-status" style={{
@@ -1424,11 +1453,19 @@ function StatusBar({ page }: { page: string }) {
         warn={execMode === "autopilot"}
         unknown={execMode === null}
       />
-      <StatusLamp className="status-dup" label={`Style ${styleMode}`} on />
+      <StatusLamp
+        className="status-dup"
+        label={styleLabel}
+        on={!styleGated}
+        warn={entriesAllowance === "blocked"}
+        unknown={entriesAllowance === "unknown"}
+      />
       <StatusLamp label="Rotation" on={rotationOn} />
       <div style={{ flex: 1 }} />
       <span id="broker-status-bar" className="status-dup">IBKR GATEWAY</span>
-      <span style={{ color: "var(--brand)", fontWeight: 700 }}>Olbos v5.0</span>
+      <span style={{ color: "var(--brand)", fontWeight: 700 }}>
+        Olbos{import.meta.env.VITE_GIT_SHA ? ` ${String(import.meta.env.VITE_GIT_SHA).slice(0, 7)}` : " v5.0"}
+      </span>
     </div>
   );
 }

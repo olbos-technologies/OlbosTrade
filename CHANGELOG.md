@@ -5,6 +5,10 @@
 
 - Keep five daily Strategies destinations: Alpha Edge, Live Signals, History, Strategy Library, Health. Move signal research/calendar/builder/alerts/crypto into Advanced Research and V2 options tooling into Advanced Trade Desk. Presentation only; no risk, permission or order-path change.
 =======
+## Unreleased — Regime entries chrome honesty
+
+- When the regime reports `equity_allowed=false`, the capital-at-risk row shows **ENTRIES BLOCKED**, the ticker shows **ENTRIES PAUSED**, and the status-bar style lamp is marked gated — so Autopilot/Aggressive preferences cannot be read as live entry authority in a crisis. Footer can show the short git SHA when baked into the build. Presentation only; does not change risk gates or order paths.
+
 ## Unreleased — R0 UX deploy handoff
 
 - Record the merged UX batch (#179–#183) at main `30ef70d` and the operator deploy + paper-drill gates in the master upgrade plan. Documentation only; does not deploy or certify R0.

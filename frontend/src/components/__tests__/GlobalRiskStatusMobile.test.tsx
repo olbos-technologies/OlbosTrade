@@ -30,11 +30,24 @@ vi.mock("../../api/client", () => ({
 
 const mockedApi = api as unknown as Record<string, ReturnType<typeof vi.fn>>;
 
-function mockBroker(body: object, ok = true) {
-  globalThis.fetch = vi.fn().mockResolvedValue({
-    ok,
-    status: ok ? 200 : 500,
-    json: () => Promise.resolve(body),
+function mockBroker(
+  body: object,
+  ok = true,
+  regime: object = { equity_allowed: true, regime: "risk_on" },
+) {
+  globalThis.fetch = vi.fn().mockImplementation((url: string) => {
+    if (String(url).includes("/api/market/regime")) {
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(regime),
+      });
+    }
+    return Promise.resolve({
+      ok,
+      status: ok ? 200 : 500,
+      json: () => Promise.resolve(body),
+    });
   }) as unknown as typeof fetch;
 }
 
@@ -45,7 +58,7 @@ function mockAllNominal() {
   mockedApi.getPortfolioState.mockResolvedValue({
     state: { daily_loss_pct: 0.001, max_daily_loss_pct: 0.03 },
   });
-  mockBroker({ broker: "IBKR", paper_mode: false, connected: true });
+  mockBroker({ broker: "IBKR", paper_mode: false, status: "connected" });
 }
 
 // Braces matter: a bare arrow returns VitestUtils, which does not satisfy the
