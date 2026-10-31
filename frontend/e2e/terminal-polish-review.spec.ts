@@ -37,6 +37,18 @@ for (const width of [390, 768, 1440, 1920]) {
         expect(gap).toBeGreaterThanOrEqual(0);
         expect(gap).toBeLessThan(100);
         if (width >= 1440) expect((await chart.boundingBox())!.width).toBeGreaterThan(400);
+        if (width <= 1100) {
+          const separated = await page.locator('.equity-desk-grid').evaluate(grid => {
+            const center = grid.querySelector('.equity-desk-center')!.getBoundingClientRect();
+            const intel = grid.querySelector('.equity-desk-intelligence')!.getBoundingClientRect();
+            return intel.top >= center.bottom;
+          });
+          expect(separated).toBe(true);
+        }
+        await composer.scrollIntoViewIfNeeded();
+        await expect(page.getByRole('button', { name: 'Evaluate', exact: true })).toBeVisible();
+        await page.screenshot({ path: `ui-audit-artifacts/polish-trade-equity-composer-${width}.png`, fullPage: true });
+        await chart.scrollIntoViewIfNeeded();
       } else if (route === 'trade/overview') {
         await expect(page.getByText('Approval queue unavailable.', { exact: true })).toBeVisible();
       } else if (route === 'system/market') {

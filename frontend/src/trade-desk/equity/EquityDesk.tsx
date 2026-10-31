@@ -18,6 +18,7 @@ export default function EquityDesk() {
 
   return (
     <div
+      className="equity-desk"
       style={{
         display: "flex",
         flexDirection: "column",
