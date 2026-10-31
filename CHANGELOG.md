@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased — Signal rationale drawer + label parity
+
+- Signal detail drawer lists every contributing factor with its weight (card still shows the top four). Stops preferring the unused string `reason` over the scanner `reasons` map. Guard test keeps `REASON_LABELS` in step with `equity_signal_engine` factor keys (including VWAP wording on volume-confirmed factors). Presentation / test only; no scoring or order-path change.
+
 ## Unreleased — Live Signals plain-language rationale
 
 - Live equity signal cards format the scanner `reasons` map (RSI/MACD/VWAP/…) into "Why it appeared" instead of always showing the empty-producer placeholder. Presentation of existing producer data; no scoring or order-path change.

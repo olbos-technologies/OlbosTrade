@@ -9,6 +9,10 @@ import React, { useEffect, useRef } from "react";
 import { Panel, StatTile, Button } from "./ui";
 import BottomSheet from "./BottomSheet";
 import { useIsMobile } from "../hooks/useIsMobile";
+import {
+  formatWeightedFactor,
+  weightedFactorsFromReasonsMap,
+} from "../utils/equitySignalRationale";
 
 interface SignalLike {
   id?: string;
@@ -41,7 +45,11 @@ interface LatestBar {
   volume: number;
 }
 
+/** Full factor list for the drawer — unbounded, one bullet with weight. */
 function normalizeReasons(value: unknown): string[] {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return weightedFactorsFromReasonsMap(value as Record<string, unknown>).map(formatWeightedFactor);
+  }
   if (Array.isArray(value)) return value.filter((item): item is string => typeof item === "string");
   if (typeof value === "string" && value.trim()) return [value];
   return [];
@@ -160,7 +168,7 @@ export default function SignalDetailDrawer({
                 </div>
               </Panel>
 
-              <Panel title="Narrative">
+              <Panel title="Why it appeared">
                 {reasons.length ? (
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     {reasons.map((reason, index) => (
@@ -170,7 +178,7 @@ export default function SignalDetailDrawer({
                     ))}
                   </div>
                 ) : (
-                  <div style={{ color: "var(--ink-faint)", fontSize: 12 }}>No signal narrative available yet.</div>
+                  <div style={{ color: "var(--ink-faint)", fontSize: 12 }}>No contributing factors supplied by this producer.</div>
                 )}
               </Panel>
 
