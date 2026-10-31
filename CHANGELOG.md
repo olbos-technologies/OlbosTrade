@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased — Collapsed icon-rail hover labels
+
+- Portaled sidebar hover tooltips (and the System menu) so they render beside the collapsed 80px icon rail instead of being clipped by `overflow-x: hidden`. Presentation only; no risk, permission or order-path change.
+
 ## Unreleased — Desk-loop sidebar (Bloomberg focus)
 ## Unreleased — Options rejection log records the real regime
 
