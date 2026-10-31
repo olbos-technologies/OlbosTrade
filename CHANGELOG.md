@@ -1,14 +1,16 @@
 # Changelog
 
-<<<<<<< HEAD
-## Unreleased — Markets chart panes (MA + volume + MACD)
+## Unreleased — Capital-at-risk strip body align
 
-- Split the Markets candlestick into price, volume and MACD panes with live MA5/10/20, VWAP and MACD readouts above the canvas (reference-desk layout, navy terminal colors). Taller phone chart so the three panes remain readable. Presentation only; no risk, permission or order-path change.
-=======
+- Keep the capital-at-risk status strip in the workspace body column (beside the sidebar), with the same 16px horizontal inset as page content, so chips share a left edge with the body rather than spanning over the nav rail. Presentation only; no risk, permission or order-path change.
+
 ## Unreleased — Desktop full workspace nav
 
 - Desktop always opens the labeled workspace sidebar (Command Center, Markets, Trade Desk, …). Remove the compact More rail; header toggle still collapses to the icon rail. Phone bottom-nav More is unchanged. Presentation only; no risk, permission or order-path change.
->>>>>>> b07a8e4 (fix(UX-1): always show full labeled desktop workspace nav)
+
+## Unreleased — Markets chart panes (MA + volume + MACD)
+
+- Split the Markets candlestick into price, volume and MACD panes with live MA5/10/20, VWAP and MACD readouts above the canvas (reference-desk layout, navy terminal colors). Taller phone chart so the three panes remain readable. Presentation only; no risk, permission or order-path change.
 
 ## Unreleased — Strategies navigation focus
 

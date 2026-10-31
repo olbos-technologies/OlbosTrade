@@ -19,6 +19,18 @@ for(const width of [820,1280,1440,1920]) for(const surface of ['dashboard','mark
     await expect(nav.getByRole('button',{name:'Markets',exact:true})).toBeVisible();
     await expect(nav.getByRole('button',{name:'More',exact:true})).toHaveCount(0);
     expect((await nav.boundingBox())!.width).toBe(232);
+    // Capital-at-risk strip sits in the body column, not full-bleed over the sidebar.
+    if(surface==='dashboard'){
+      const risk=page.getByRole('region',{name:'Capital-at-risk status'});
+      const main=page.locator('main').first();
+      await expect(risk).toBeVisible();
+      const riskBox=await risk.boundingBox();
+      const mainBox=await main.boundingBox();
+      expect(riskBox).toBeTruthy();
+      expect(mainBox).toBeTruthy();
+      expect(Math.round(riskBox!.x)).toBe(Math.round(mainBox!.x));
+      expect(riskBox!.x).toBeGreaterThanOrEqual((await nav.boundingBox())!.x+(await nav.boundingBox())!.width-1);
+    }
     const accountIcon=await nav.getByRole('button',{name:'Account',exact:true}).locator(':scope > span:first-child svg path').getAttribute('d');
     const integrationsIcon=await nav.getByRole('button',{name:/^(Data & Integrations|System)$/}).locator(':scope > span:first-child svg path').getAttribute('d');
     expect(accountIcon).toBeTruthy();
