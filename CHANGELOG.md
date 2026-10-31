@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased — Mobile safe areas
+
+- Opt the viewport into `viewport-fit=cover` and apply notch/home-indicator insets on the terminal shell, with 12px scroll clearance above the phone tab bar. Presentation only; no risk, permission or order-path change.
+
 ## Unreleased — Institutional Markets chart polish
 
 - Keep the phone legend as a compact on-plot toggle (not a document-flow disclosure) so candles stay in the first viewport.
