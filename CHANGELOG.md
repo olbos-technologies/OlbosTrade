@@ -110,6 +110,9 @@
 
 - Read-only contract comparison returns unverified for malformed identity or quantities, including fractional quantities previously truncated to integers. Broker and database evidence use the same validation.
 - Valid signed aggregation and normalization remain supported. No order-routing, broker-operation, schema or configuration change.
+## Unreleased — Trade attribution report
+
+- Added `backend/scripts/trade_attribution_report.py`: a read-only breakdown of closed trades by strategy, exit reason and regime, with date-clustered bootstrap intervals, a small-cell floor, an explicit refusal to rank strategies whose intervals overlap, cost-drag analysis and a trade-level AUC on `signal_score`. Analysis only; no writes, no orders, no broker calls.
 
 ## Unreleased — Paper-pilot reliability gates
 
