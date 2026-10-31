@@ -249,7 +249,14 @@ def test_self_selected_exit_buckets_carry_their_caveat(monkeypatch, capsys):
     _run(monkeypatch, [_trade(d) for d in range(40)])
     out = capsys.readouterr().out
     assert "SELF-SELECTED" in out
-    assert "disposition effect" in out
+    assert "disposition" in out and "effect" in out
+    assert "loss-realiser" in out, (
+        "rotation closes only losing positions by construction "
+        "(position_rotation.py:152); without saying so, its profit factor near "
+        "zero reads as a defect and someone 'fixes' a working control"
+    )
+    assert "designed value, not a defect" in out
+    assert "the totals are not" in out
 
 
 def test_the_report_never_claims_authority_to_change_live_trading(monkeypatch, capsys):
