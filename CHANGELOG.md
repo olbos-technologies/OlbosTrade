@@ -1,14 +1,17 @@
 # Changelog
 
-<<<<<<< HEAD
+## Unreleased — Signal rationale drawer
+
+- Signal detail drawer lists every contributing factor with its weight (card still shows the top four). Stops preferring the unused string `reason` over the scanner `reasons` map. Presentation only; no scoring or order-path change. (Label↔engine parity guard already on main via #200.)
+
 ## Unreleased — Collapsed icon-rail hover labels
 
 - Portaled sidebar hover tooltips (and the System menu) so they render beside the collapsed 80px icon rail instead of being clipped by `overflow-x: hidden`. Presentation only; no risk, permission or order-path change.
-=======
+
 ## Unreleased — Mobile Signals density
 
 - Phone KPI strips use a 2×2 grid and stop mid-word wrapping ("Open positions" no longer reads Ope/n/posit/ions). Capital-at-risk chips are tighter and ENV uses a shorter separator so PAPER/MODE/ENTRIES fit before scroll. Signals workspace title is desk-focused; Find workspace is hidden on Signals pages on phones. Presentation only; no risk, permission or order-path change.
->>>>>>> a2604be (fix(UX-5): mobile Signals density and readable KPI labels)
+
 
 ## Unreleased — Desk-loop sidebar (Bloomberg focus)
 ## Unreleased — Options rejection log records the real regime

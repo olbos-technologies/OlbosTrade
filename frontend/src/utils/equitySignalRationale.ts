@@ -1,6 +1,6 @@
 /**
- * Turn the equity scanner's `reasons` score map into a short plain-language
- * line for "Why it appeared".
+ * Turn the equity scanner's `reasons` score map into plain-language copy
+ * for "Why it appeared".
  *
  * The live feed API stores contributing factors as
  * `{ rsi_oversold: 0.15, macd_above_signal: 0.1, … }` under `reasons`.
@@ -36,6 +36,8 @@ const REASON_LABELS: Record<string, string> = {
 
 const EMPTY = "No plain-language rationale supplied by this producer.";
 
+export type WeightedFactor = { key: string; label: string; weight: number };
+
 function humanizeKey(key: string): string {
   return key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
@@ -44,30 +46,50 @@ function labelFor(key: string): string {
   return REASON_LABELS[key] ?? humanizeKey(key);
 }
 
+/**
+ * Rank contributing factors by absolute weight.
+ * Omit `limit` (or pass null) for the full set — cards truncate; the drawer does not.
+ */
+export function weightedFactorsFromReasonsMap(
+  reasons: Record<string, unknown> | null | undefined,
+  limit?: number | null,
+): WeightedFactor[] {
+  if (!reasons || typeof reasons !== "object") return [];
+  const ranked = Object.entries(reasons)
+    .filter(([, v]) => typeof v === "number" && Number.isFinite(v) && v !== 0)
+    .sort((a, b) => Math.abs(b[1] as number) - Math.abs(a[1] as number))
+    .map(([key, weight]) => ({
+      key,
+      label: labelFor(key),
+      weight: weight as number,
+    }));
+  if (limit == null) return ranked;
+  return ranked.slice(0, limit);
+}
+
 /** Rank contributing factors by absolute weight and return plain phrases. */
 export function phrasesFromReasonsMap(
   reasons: Record<string, unknown> | null | undefined,
   limit = 4,
 ): string[] {
-  if (!reasons || typeof reasons !== "object") return [];
-  return Object.entries(reasons)
-    .filter(([, v]) => typeof v === "number" && Number.isFinite(v) && v !== 0)
-    .sort((a, b) => Math.abs(b[1] as number) - Math.abs(a[1] as number))
-    .slice(0, limit)
-    .map(([key]) => labelFor(key));
+  return weightedFactorsFromReasonsMap(reasons, limit).map((f) => f.label);
+}
+
+/** Format one factor for a drawer / list bullet, including its weight. */
+export function formatWeightedFactor(factor: WeightedFactor): string {
+  const sign = factor.weight >= 0 ? "+" : "";
+  return `${factor.label} (${sign}${factor.weight.toFixed(3)})`;
 }
 
 /**
- * Prefer an explicit string `reason`, else format the scanner `reasons` map,
- * else the shared empty-state copy (honest: producer sent nothing usable).
+ * Format the scanner `reasons` map (or string/array forms) into a short
+ * card line. The unused string `reason` field is only a last-resort fallback
+ * — preferring it is what hid the live map behind empty-state copy.
  */
 export function equitySignalRationale(signal: {
   reason?: string | null;
   reasons?: Record<string, unknown> | string[] | string | null;
 }): string {
-  if (typeof signal.reason === "string" && signal.reason.trim()) {
-    return signal.reason.trim();
-  }
   const raw = signal.reasons;
   if (typeof raw === "string" && raw.trim()) return raw.trim();
   if (Array.isArray(raw)) {
@@ -77,6 +99,9 @@ export function equitySignalRationale(signal: {
   if (raw && typeof raw === "object" && !Array.isArray(raw)) {
     const phrases = phrasesFromReasonsMap(raw as Record<string, unknown>);
     if (phrases.length) return phrases.join(" · ");
+  }
+  if (typeof signal.reason === "string" && signal.reason.trim()) {
+    return signal.reason.trim();
   }
   return EMPTY;
 }
