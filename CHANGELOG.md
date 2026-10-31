@@ -1,6 +1,9 @@
 # Changelog
 
-<<<<<<< HEAD
+## Unreleased — Conflict markers cannot reach main again
+
+- Removed unresolved `<<<<<<<`/`=======`/`>>>>>>>` markers from `CHANGELOG.md` (third occurrence today), reattached the Desk-loop sidebar entry's body to its own heading, and dropped an entry describing a guard that is not on `main`. Added a test that fails if any tracked file carries a conflict marker. Documentation and test only; no behaviour change.
+
 ## Unreleased — Signal rationale drawer
 
 - Signal detail drawer lists every contributing factor with its weight (card still shows the top four). Stops preferring the unused string `reason` over the scanner `reasons` map. Presentation only; no scoring or order-path change. (Label↔engine parity guard already on main via #200.)
@@ -13,22 +16,20 @@
 
 - Phone KPI strips use a 2×2 grid and stop mid-word wrapping ("Open positions" no longer reads Ope/n/posit/ions). Capital-at-risk chips are tighter and ENV uses a shorter separator so PAPER/MODE/ENTRIES fit before scroll. Signals workspace title is desk-focused; Find workspace is hidden on Signals pages on phones. Presentation only; no risk, permission or order-path change.
 
-=======
 ## Unreleased — Options signals on the rail, sign out in the status bar
 
 - Swapped Alpha Edge for Options Signals in the Signals group, keeping the three-deep sidebar from #193. Options Signals had been in Research behind `sidebar: false`, so the navigation could not show that the system trades options; nothing routes on Alpha Edge, which is scored on demand and never persisted.
 - Moved the sign-out control from the sidebar's Account group into the status bar, which is always rendered, so it is reachable from every page in every nav state. Added a guard asserting it is reachable from the rendered shell. Presentation only; no risk, permission or order-path change.
->>>>>>> 60147c7 (fix(nav): put options signals on the rail, sign out in the status bar)
 
 ## Unreleased — Desk-loop sidebar (Bloomberg focus)
+
+- Sidebar keeps the daily desk loop only: Command Center, Markets (Chart/Watchlists), Signals (Alpha Edge / Live / History), Trade Desk (four workspaces), Risk, Journal, Performance, Brokers. Research lab, strategy library/health, scanners and ops extras stay URL-reachable but off the sidebar. Presentation / IA only; no risk, permission or order-path change.
+
 ## Unreleased — Options rejection log records the real regime
 
 - Fixed: `app/main.py` read `_current_regime.regime_type`, a field `RegimeState` has never defined (its name is `regime`), behind a `getattr` default. Every options scan rejection was therefore stored with no regime, so the rejection report read "BY REGIME (unknown) 100%", and the equity-skip log line always said "regime unknown". Both now read the real field through one helper that raises on a rename instead of returning a default. Diagnostics only; no change to scanning, strategy selection, risk gates or order paths.
 - Added a guard test that fails on any `getattr(_current_regime, ...)` naming an attribute `RegimeState` does not define.
 
-## Unreleased — API payload contract guard
-
-- Sidebar keeps the daily desk loop only: Command Center, Markets (Chart/Watchlists), Signals (Alpha Edge / Live / History), Trade Desk (four workspaces), Risk, Journal, Performance, Brokers. Research lab, strategy library/health, scanners and ops extras stay URL-reachable but off the sidebar. Presentation / IA only; no risk, permission or order-path change.
 ## Unreleased — Signal rationale label parity guard
 
 - Added a guard test asserting the factor labels in `frontend/src/utils/equitySignalRationale.ts` (added by #192) stay in step with the keys `score_equity_signal()` emits, in both directions, and that the two volume labels keep the VWAP condition the engine actually gates them on. Test only; no behaviour change.
