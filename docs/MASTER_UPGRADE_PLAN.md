@@ -79,14 +79,14 @@ Verify tenancy, RBAC, auth, broker credentials, audit, billing, privacy, data li
 ## Status ledger
 | Track | Status | Evidence / next gate |
 | --- | --- | --- |
-| R0 | Incomplete | Offline paper preflight exists; production deploy + real paper drill still required |
+| R0 | Incomplete | Offline paper preflight on main; **operator must deploy `30ef70d` then run the paper drill** in `BROKER_PAPER_VALIDATION_RUNBOOK.md` (see R0 handoff below) |
 | R1 | Partial | Broker-read fail-closed on main; freshness, complete exposure, paper disconnect/reconnect remain open |
-| R2 | Incomplete / WIP | Flex intake #170 merged (unverified); history staging rebase open; #148/#149 deny-all WIP must not merge without a verified authorization path |
-| UX-1 | Partial | Navy/gold shell and typography (#169) on main; specialist panels remain |
+| R2 | Incomplete / WIP | Flex intake #170 + history staging #172 on main (unverified / offline). #148/#149 deny-all WIP must not merge without a verified authorization path |
+| UX-1 | Partial | Reference shell palette (#183) + Strategies daily-nav focus (#182) on main; specialist panels / UX-2 preference wiring remain |
 | UX-2 | Partial | PR #123 merged; app-wide preference integration needed |
 | UX-3 | Partial existing attribution | Standard explanation contract + testing needed |
 | UX-4 | Partial glossary/onboarding | Paper guided simulation not verified |
-| UX-5 | Partial | Chromium 320/390/768/1440/1920 matrix green on main `c79f736`; Safari/iOS and novice/pro records still open |
+| UX-5 | Partial | Chart legend/catalysts (#179/#180), safe areas (#181) on main; Chromium matrix still green; Safari/iOS and novice/pro records still open |
 | ML-1 | Research baseline exists | Cost-inclusive walk-forward evidence needed |
 | PERF-1 | Not prioritized | Benchmark first |
 | SaaS-1 | Not certified | OAuth/health/snapshot/preflight merged; vendor registration + isolated paper drill pending |
@@ -262,3 +262,40 @@ presentation to Risk, Journal, Analytics, Backtesting, Research, System and
 Account/credential pages. See `UI_WORKSPACE_CONTINUITY.md` for exact coverage,
 unknown-data fixes, validation and remaining specialist-panel/device gaps.
 No merge, deployment, migration, permission or execution change.
+
+## R0 / UX batch deploy handoff — awaiting operator (2026-10-31)
+
+Merged to `main` and CI-green on GitHub; **not deployed** from this agent
+(no production SSH). Target SHA: `30ef70df66f9f6552a16e40fa9e2bb55df8b3a86`.
+
+| PR | Milestone | What landed |
+| --- | --- | --- |
+| #179 / #180 | UX-5 | Institutional Markets chart: on-plot Legend toggle, short R/S/E titles, catalysts above plot, 44px timeframe targets |
+| #181 | UX-5 | `viewport-fit=cover` + shell safe-area insets + phone tab clearance |
+| #182 | UX-1 | Strategies daily nav (Alpha Edge / Live Signals / History / Library / Health); research under Advanced |
+| #183 | UX-1 | `reference-v2.css` near-black shell + layered Command Center / Home intro |
+
+Also already on main ahead of this batch: Flex intake #170, history staging #172,
+paper preflight #171. Presentation / offline tooling only — no live trading,
+risk-limit, or authorization-path change.
+
+### Operator steps (explicit authorization required)
+
+1. Two-stage Hetzner deploy per `docs/runbook.md` → Deploying:
+   `git pull --ff-only origin main` then `bash deploy/hetzner/update.sh`.
+2. Confirm `/api/health/detail` and that `git rev-parse HEAD` on the host is
+   `30ef70d` (or a later ff-only main tip that contains it).
+3. Offline: `python -m app.broker_paper_preflight` (or the compose form in
+   `BROKER_PAPER_VALIDATION_RUNBOOK.md`). Exit 0 is configuration shape only.
+4. Run the isolated Alpaca paper drill table in that runbook. Record
+   pass/fail/not-run with sanitized timestamps. Do not mark R0 complete if
+   steps were skipped.
+5. Phone spot-check: Markets chart Legend toggle, Strategies five daily tabs,
+   notch/home-indicator clearance. Safari/iOS remains a separate UX-5 gate.
+
+Rollback: prior reviewed image via the existing update/rollback path. Do not
+rotate `BROKER_ENCRYPTION_KEY` as a rollback. No migration is required for this
+UX batch; preflight/Flex/history staging brought their own docs only.
+
+Next owner after deploy evidence: R1 freshness/disconnect-reconnect paper
+proof, then R2 authorization (do not merge deny-all #148/#149).
