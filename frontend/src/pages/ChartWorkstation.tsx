@@ -134,25 +134,23 @@ function normalizeReasons(value: unknown): string[] {
 
 function UpcomingCatalysts({ events }: { events: CatalystEvent[] }) {
   if (!events.length) return null;
-  // Nearest 3, soonest first — a glance at "what's coming up for this
-  // symbol" pinned near the chart, not spatially mapped onto the x-axis
-  // (candles are index-spaced, and these events mostly fall beyond the
-  // last loaded bar, so a literal date→pixel marker would be misleading).
+  // Nearest 3, soonest first — above the plot so chips never cover candles.
+  // Not spatially mapped onto the x-axis (candles are index-spaced, and these
+  // events mostly fall beyond the last loaded bar).
   const upcoming = [...events].sort((a, b) => a.days_away - b.days_away).slice(0, 3);
   return (
     <div
       className="chart-catalysts"
       aria-label="Upcoming catalysts"
       style={{
-        position: "absolute",
-        right: 12,
-        top: 10,
-        zIndex: 2,
+        position: "relative",
+        zIndex: 1,
         display: "flex",
-        flexDirection: "column",
+        flexDirection: "row",
+        flexWrap: "wrap",
         gap: 4,
-        alignItems: "flex-end",
-        pointerEvents: "none",
+        justifyContent: "flex-end",
+        marginBottom: 8,
       }}
     >
       {upcoming.map((ev, idx) => {
@@ -511,10 +509,11 @@ export default function ChartWorkstation({
             <p>Last close snapshot · {latestBar ? `Chart bar: ${new Date(latestBar.timestamp).toLocaleString()}` : "Chart data unavailable"}</p>
           </div>
           <Panel
+            className="workstation-chart-panel"
             sectionStyle={{ overflow: "hidden" }}
             padding={0}
             title={
-              <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+              <div className="chart-instrument-title" style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
                 <span style={{ fontFamily: "var(--mono)", fontSize: 28, fontWeight: 700, color: "var(--cyan)" }}>{symbol}</span>
                 <span style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--ink-dim)" }}>
                   {selectedSnapshot?.last_close != null ? fmtMoney(selectedSnapshot.last_close, 2) : "—"} · {fmtPct(selectedSnapshot?.change_pct, 2)}
@@ -557,16 +556,14 @@ export default function ChartWorkstation({
                 ))}
               </div>
 
+              {!chartLoading && <UpcomingCatalysts events={catalystEvents} />}
               <div className="instrument-card--flat chart-canvas-wrap" style={{ position: "relative" }}>
                 {chartLoading ? (
                   <div className="skeleton-block" style={{ height: isMobile ? 280 : 460 }} aria-busy="true" aria-label="Loading chart">
                     <div className="skeleton-shimmer" />
                   </div>
                 ) : (
-                  <>
-                    <UpcomingCatalysts events={catalystEvents} />
-                    <CandlestickChart bars={chartBars} levels={levels} height={isMobile ? 280 : 460} />
-                  </>
+                  <CandlestickChart bars={chartBars} levels={levels} height={isMobile ? 280 : 460} />
                 )}
               </div>
               {chartError && (

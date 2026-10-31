@@ -70,9 +70,22 @@ test("phone chart keeps the legend collapsed until asked for",async({page})=>{
       {timestamp:"2026-08-14T10:00:00-04:00",open:102,high:104,low:101,close:103,volume:1200},
     ],
   })));
+  await page.route("**/api/intel/calendar**", r => r.fulfill(reply({
+    events:[{name:"AAPL earnings",date:"2026-11-01",days_away:1,severity:"high",kind:"earnings",source:"stub"}],
+  })));
   await page.setViewportSize({width:390,height:844});
   await page.goto("/terminal/markets/chart?symbol=AAPL");
   await expect(page.getByRole("heading",{name:"Market workspace"})).toBeVisible();
+  const panel = page.locator(".workstation-chart-panel");
+  for (const button of await panel.locator(".chart-timeframes button").all()) {
+    expect((await button.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  }
+  const catalysts = panel.getByLabel("Upcoming catalysts");
+  const plot = panel.getByLabel("Price chart", { exact: true });
+  await expect(catalysts).toContainText("AAPL earnings");
+  expect((await plot.boundingBox())!.y).toBeGreaterThanOrEqual(
+    (await catalysts.boundingBox())!.y + (await catalysts.boundingBox())!.height,
+  );
   await expect(page.getByRole("button",{name:"Legend",exact:true})).toBeVisible();
   await expect(page.getByLabel("Chart legend")).toHaveCount(0);
   await page.getByRole("button",{name:"Legend",exact:true}).click();

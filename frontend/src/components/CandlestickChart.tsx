@@ -278,7 +278,7 @@ export default function CandlestickChart({
           </div>
         )}
       </div>
-      <div ref={containerRef} className="candlestick-chart__canvas" />
+      <div ref={containerRef} className="candlestick-chart__canvas" aria-label="Price chart" />
     </div>
   );
 }
