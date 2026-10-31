@@ -5,7 +5,10 @@ describe.each([['legacy',NAV_MODEL_LEGACY],['v2',NAV_MODEL_V2]] as const)('%s st
   it('keeps the daily signals loop short in the sidebar',()=>{
     const simple=filterNavForDisplay(model,true,'dashboard');
     expect(simple.find(g=>g.id==='strat')?.label).toBe('Signals');
-    expect(simple.find(g=>g.id==='strat')?.children?.map(c=>c.key)).toEqual(['strat:alpha-edge','equity','strat:signal-history']);
+    // Still three deep (#193). Alpha Edge traded places with Options Signals:
+    // goal 2 names both asset classes, and nothing routes on Alpha Edge —
+    // it is scored on demand and never persisted. See navModels.ts.
+    expect(simple.find(g=>g.id==='strat')?.children?.map(c=>c.key)).toEqual(['equity','options:signals','strat:signal-history']);
     expect(simple.some(g=>g.id==='lab')).toBe(false);
     for(const key of ['crypto:signals','strat:research','strat:calendar','strat:builder','strat:alerts']) expect(groupIdForKey(key,model)).toBe('lab');
     for(const key of ['options:chain','scan','options:income','options:flow']) {

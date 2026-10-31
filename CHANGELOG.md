@@ -1,5 +1,6 @@
 # Changelog
 
+<<<<<<< HEAD
 ## Unreleased — Signal rationale drawer
 
 - Signal detail drawer lists every contributing factor with its weight (card still shows the top four). Stops preferring the unused string `reason` over the scanner `reasons` map. Presentation only; no scoring or order-path change. (Label↔engine parity guard already on main via #200.)
@@ -12,6 +13,12 @@
 
 - Phone KPI strips use a 2×2 grid and stop mid-word wrapping ("Open positions" no longer reads Ope/n/posit/ions). Capital-at-risk chips are tighter and ENV uses a shorter separator so PAPER/MODE/ENTRIES fit before scroll. Signals workspace title is desk-focused; Find workspace is hidden on Signals pages on phones. Presentation only; no risk, permission or order-path change.
 
+=======
+## Unreleased — Options signals on the rail, sign out in the status bar
+
+- Swapped Alpha Edge for Options Signals in the Signals group, keeping the three-deep sidebar from #193. Options Signals had been in Research behind `sidebar: false`, so the navigation could not show that the system trades options; nothing routes on Alpha Edge, which is scored on demand and never persisted.
+- Moved the sign-out control from the sidebar's Account group into the status bar, which is always rendered, so it is reachable from every page in every nav state. Added a guard asserting it is reachable from the rendered shell. Presentation only; no risk, permission or order-path change.
+>>>>>>> 60147c7 (fix(nav): put options signals on the rail, sign out in the status bar)
 
 ## Unreleased — Desk-loop sidebar (Bloomberg focus)
 ## Unreleased — Options rejection log records the real regime

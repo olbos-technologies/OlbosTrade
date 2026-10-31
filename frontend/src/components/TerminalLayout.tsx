@@ -1150,15 +1150,6 @@ function Sidebar({ active, onNav, expanded, isMobile = false }: {
                 </button>
               );
             })}
-            {g.id === "account" && (
-              <div style={{
-                display: "flex", alignItems: "center",
-                margin: "4px 12px 8px 40px", paddingTop: 8,
-                borderTop: "1px solid var(--line-dim)",
-              }}>
-                <UserMenu />
-              </div>
-            )}
           </>
         )}
       </div>
@@ -1478,6 +1469,21 @@ function StatusBar({ page }: { page: string }) {
       <StatusLamp label="Rotation" on={rotationOn} />
       <div style={{ flex: 1 }} />
       <span id="broker-status-bar" className="status-dup">IBKR GATEWAY</span>
+      {/*
+        Sign out lives here, not in the sidebar's Account group.
+
+        UserMenu holds the only sign-out control in the application and used to
+        render inside that group's children, so it existed only while the group
+        did — and was one expand deep into a nav even then, which is why it
+        reads as "there is no logout". A sign-out is not a destination; it
+        should not be reached by navigating.
+
+        The status bar renders once at the shell root and is present on every
+        page in every nav state. UserMenu already assumed this home: it shows
+        the email's local part because "the status bar is tight", and its
+        portal opens upward from the button's rect.
+      */}
+      <UserMenu />
       <span style={{ color: "var(--brand)", fontWeight: 700 }}>
         Olbos{import.meta.env.VITE_GIT_SHA ? ` ${String(import.meta.env.VITE_GIT_SHA).slice(0, 7)}` : " v5.0"}
       </span>
