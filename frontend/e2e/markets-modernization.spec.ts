@@ -86,10 +86,13 @@ test("phone chart keeps the legend collapsed until asked for",async({page})=>{
   expect((await plot.boundingBox())!.y).toBeGreaterThanOrEqual(
     (await catalysts.boundingBox())!.y + (await catalysts.boundingBox())!.height,
   );
+  await expect(page.getByLabel("Indicator readout")).toContainText("MA5");
+  await expect(page.getByLabel("Indicator readout")).toContainText("MACD");
   await expect(page.getByRole("button",{name:"Legend",exact:true})).toBeVisible();
   await expect(page.getByLabel("Chart legend")).toHaveCount(0);
   await page.getByRole("button",{name:"Legend",exact:true}).click();
   await expect(page.getByLabel("Chart legend")).toBeVisible();
-  await expect(page.getByText("SMA-20")).toBeVisible();
+  // Exact + scoped: readout also contains "MA20 …" and would strict-mode collide.
+  await expect(page.getByLabel("Chart legend").getByText("MA20", { exact: true })).toBeVisible();
   await expectNoHorizontalOverflow(page,390);
 });
