@@ -190,15 +190,66 @@ def test_cost_drag_is_flagged_when_it_eats_the_edge(monkeypatch, capsys):
     assert "a sizing change, not" in out
 
 
-def test_a_useless_score_produces_the_dominating_verdict(monkeypatch, capsys):
+def test_a_score_with_no_information_is_called_absent_not_inverted(monkeypatch, capsys):
+    """
+    The trap this guards: a point estimate below 0.5 on ~40 trades reads as an
+    inverted signal, and someone flips the sign. With the interval printed it
+    reads as what it is — nothing measurable either way.
+    """
     trades = (
         [_trade(d, pnl=10.0, score=0.5) for d in range(20)]
         + [_trade(d, pnl=-10.0, score=0.5) for d in range(20)]
     )
     _run(monkeypatch, trades)
     out = capsys.readouterr().out
-    assert "does not separate" in out
-    assert "trades less, not better" in out
+    assert "NO MEASURABLE SKILL" in out
+    assert "it is an absent one" in out
+    assert "do not raise the threshold" in out
+
+
+def test_the_auc_carries_an_interval_like_every_other_number(monkeypatch, capsys):
+    trades = (
+        [_trade(d, pnl=10.0, score=0.6) for d in range(20)]
+        + [_trade(d, pnl=-10.0, score=0.4) for d in range(20)]
+    )
+    _run(monkeypatch, trades)
+    out = capsys.readouterr().out
+    assert "AUC" in out and ("[" in out.split("AUC")[1].split("\n")[0])
+
+
+def test_inherited_positions_are_split_out_from_the_desks_own_trades(monkeypatch, capsys):
+    trades = (
+        [_trade(d, pnl=100.0, strategy="equity") for d in range(20)]
+        + [_trade(d, pnl=-300.0, strategy="adopted_untracked") for d in range(20)]
+    )
+    _run(monkeypatch, trades)
+    out = capsys.readouterr().out
+    assert "DESK vs INHERITED" in out
+    assert "no strategy chose it" in out
+    assert "the account disagree" in out, (
+        "a positive desk line against a negative account must be stated, not averaged away"
+    )
+
+
+def test_the_cross_tab_locates_which_book_is_hitting_the_stops(monkeypatch, capsys):
+    trades = (
+        [_trade(d, pnl=50.0, strategy="equity", exit_reason="profit_target")
+         for d in range(10)]
+        + [_trade(d, pnl=-900.0, strategy="adopted_untracked", exit_reason="stop_hit")
+           for d in range(10)]
+    )
+    _run(monkeypatch, trades)
+    out = capsys.readouterr().out
+    assert "STRATEGY x EXIT REASON" in out
+    row = [ln for ln in out.splitlines() if ln.strip().startswith("stop_hit")][0]
+    assert "-9000.00" in row and row.index("-9000.00") > row.index("stop_hit")
+
+
+def test_self_selected_exit_buckets_carry_their_caveat(monkeypatch, capsys):
+    _run(monkeypatch, [_trade(d) for d in range(40)])
+    out = capsys.readouterr().out
+    assert "SELF-SELECTED" in out
+    assert "disposition effect" in out
 
 
 def test_the_report_never_claims_authority_to_change_live_trading(monkeypatch, capsys):

@@ -148,6 +148,44 @@ def auc(scored_wins: list[float], scored_losses: list[float]) -> float:
     return wins / (len(scored_wins) * len(scored_losses))
 
 
+def auc_ci(
+    rows: list[tuple[str, float, bool]], reps: int = 1500,
+) -> tuple[float, float, float]:
+    """
+    AUC with a 95% CI, resampling DAYS — the same clustering as every mean here.
+
+    Section 8 originally printed a bare point estimate while every other number
+    carried an interval. On ~40 scored trades over ~20 days that is the most
+    over-readable number in the report: an AUC of 0.39 looks like an inverted
+    signal and is routinely indistinguishable from a coin flip at this size.
+    rows: (day, score, is_win).
+    """
+    def _auc_of(sample: list[tuple[float, bool]]) -> float:
+        wins = [s for s, w in sample if w]
+        losses = [s for s, w in sample if not w]
+        return auc(wins, losses)
+
+    by_day: dict[str, list[tuple[float, bool]]] = defaultdict(list)
+    for day, score, win in rows:
+        by_day[day].append((score, win))
+    days = list(by_day)
+    point = _auc_of([(s, w) for _, s, w in rows])
+    if len(days) < 3:
+        return point, float("nan"), float("nan")
+
+    rng = random.Random(SEED)
+    draws = []
+    for _ in range(reps):
+        flat = [v for _ in days for v in by_day[rng.choice(days)]]
+        value = _auc_of(flat)
+        if value == value:            # skip draws with only one class
+            draws.append(value)
+    if len(draws) < 50:
+        return point, float("nan"), float("nan")
+    draws.sort()
+    return point, draws[int(0.025 * len(draws))], draws[min(int(0.975 * len(draws)), len(draws) - 1)]
+
+
 def profit_factor(values: list[float]) -> float:
     gains = sum(v for v in values if v > 0)
     losses = -sum(v for v in values if v < 0)
@@ -241,6 +279,9 @@ async def main(days: int, mode: str | None) -> None:
     mean, lo, hi = clustered_bootstrap_mean(
         [(t.entry_date.date().isoformat(), _f(t.pnl)) for t in trades]
     )
+    desk = [t for t in trades if (t.strategy or "") != "adopted_untracked"]
+    adopted = [t for t in trades if (t.strategy or "") == "adopted_untracked"]
+
     print(f"\n2 HEADLINE — is there an edge at all?")
     print(f"  total P&L              : {sum(all_pnl):+.2f}")
     print(f"  mean per trade         : {mean:+.2f}  {_ci(lo, hi)}")
@@ -261,17 +302,58 @@ async def main(days: int, mode: str | None) -> None:
         print("  VERDICT                : mean per-trade P&L is positive with 95%")
         print("                           confidence. Now the breakdown below is worth reading.")
 
+    if adopted:
+        d_pnl = [_f(x.pnl) for x in desk]
+        a_pnl = [_f(x.pnl) for x in adopted]
+        print(f"\n2b DESK vs INHERITED — who lost the money?")
+        print( "  `adopted_untracked` is the reconciler's label for a broker position the")
+        print( "  desk found rather than opened. Its dollars are real and stay in every")
+        print( "  account total; its ATTRIBUTION is not, because no strategy chose it.")
+        print( "  See app/services/trade_attribution.py — both lines are true and both matter.")
+        print(f"  desk-originated        : n={len(desk):<4} total={sum(d_pnl):+11.2f}  "
+              f"PF={profit_factor(d_pnl):.2f}")
+        print(f"  inherited from broker  : n={len(adopted):<4} total={sum(a_pnl):+11.2f}  "
+              f"PF={profit_factor(a_pnl):.2f}")
+        if sum(d_pnl) > 0 > sum(a_pnl):
+            print( "  The desk's own decisions and the account disagree. Reporting only the")
+            print( "  combined line hides that; reporting only the desk line hides a real loss.")
+
+    # ---------- 3b CROSS-TAB ----------
+    print(f"\n3b STRATEGY x EXIT REASON — whose trades are hitting the stops?")
+    print( "  The decisive cross-tab: a stop-loss profile on desk-originated trades is an")
+    print( "  exit-management problem the desk owns. The same profile on inherited")
+    print( "  positions is someone else's entry, discovered late.")
+    reasons = sorted({(x.exit_reason or "(none)") for x in trades})
+    strategies = sorted({(x.strategy or "(none)") for x in trades})
+    print(f"  {'exit reason':<28}" + "".join(f"{s:>26}" for s in strategies))
+    for reason in reasons:
+        cells = []
+        for s in strategies:
+            rows = [x for x in trades
+                    if (x.exit_reason or "(none)") == reason and (x.strategy or "(none)") == s]
+            cells.append(f"n={len(rows):<3} {sum(_f(x.pnl) for x in rows):+11.2f}" if rows else "—")
+        print(f"  {reason:<28}" + "".join(f"{c:>26}" for c in cells))
+
     # ---------- 3-5 BREAKDOWNS ----------
     for title, note, key in (
         ("3 BY STRATEGY", "the question asked", lambda t: t.strategy),
-        ("4 BY EXIT REASON", "where money leaves", lambda t: t.exit_reason),
+        ("4 BY EXIT REASON", "where money leaves (see the caveat under this section)",
+         lambda t: t.exit_reason),
         ("5 BY REGIME", "is the edge conditional?", lambda t: t.regime),
     ):
         print(f"\n{title} — {note}")
         groups = _group(trades, key)
         for name, rows in groups.items():
             print(_cell(name, rows))
-        if title.startswith("3"):
+        if title.startswith("4"):
+            print()
+            print("  CAVEAT, and it is a big one: an exit-reason cell is SELF-SELECTED by")
+            print("  the exit rule, so its interval does not measure skill. A `manual` bucket")
+            print("  that is 90% winners usually means a human closes trades when they are up")
+            print("  and leaves the rest to reach the stop — the disposition effect. Its tight")
+            print("  positive interval and the stop bucket's large negative one are then two")
+            print("  halves of ONE behaviour, not two independent findings.")
+        if title.startswith("3 "):
             ranked = {
                 n: clustered_bootstrap_mean(
                     [(t.entry_date.date().isoformat(), _f(t.pnl)) for t in r])
@@ -337,9 +419,27 @@ async def main(days: int, mode: str | None) -> None:
         print("  Note: signal_score was added after trading began, so early trades may")
         print("  legitimately carry none — check the span above before reading this as a bug.")
     else:
-        a = auc(wins, losses)
-        print(f"  AUC                    : {a:.3f}   (0.5 = coin flip, n_win={len(wins)}, n_loss={len(losses)})")
-        if a < 0.55:
+        rows = [
+            (x.entry_date.date().isoformat(), _f(x.signal_score), _f(x.pnl) > 0)
+            for x in scored
+        ]
+        a, a_lo, a_hi = auc_ci(rows)
+        interval = ("CI n/a" if math.isnan(a_lo) else f"[{a_lo:.3f}, {a_hi:.3f}]")
+        print(f"  AUC                    : {a:.3f}  {interval}"
+              f"   (0.5 = coin flip, n_win={len(wins)}, n_loss={len(losses)})")
+        if not math.isnan(a_lo) and a_lo <= 0.5 <= a_hi:
+            print("  VERDICT                : the interval covers 0.5 — at this sample size")
+            print("                           the score shows NO MEASURABLE SKILL either way.")
+            print("                           A point estimate below 0.5 here is not an")
+            print("                           inverted signal; it is an absent one. Do not")
+            print("                           flip the score, and do not raise the threshold:")
+            print("                           both act on a difference that is not there.")
+        elif not math.isnan(a_hi) and a_hi < 0.5:
+            print("  VERDICT                : the score is INVERTED with 95% confidence —")
+            print("                           higher-scoring trades lost more often. Treat as")
+            print("                           a model defect to investigate, never as a signal")
+            print("                           to trade backwards.")
+        elif a < 0.55:
             print("  VERDICT                : the score that GATES ROUTING does not separate")
             print("                           winners from losers. This is the finding that")
             print("                           dominates every other one in this report: there")
