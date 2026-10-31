@@ -28,7 +28,6 @@ import { TerminalNavProvider } from "./TerminalNavContext";
 import { Badge, Button } from "./ui";
 import BrandWordmark from "./BrandWordmark";
 import WorkspaceSearch from "./WorkspaceSearch";
-import CompactWorkspaceNav from "./CompactWorkspaceNav";
 import WorkspaceContext from "./WorkspaceContext";
 import {
   regimeEntriesTickerLabel,
@@ -1478,12 +1477,14 @@ export default function TerminalLayout({ children, activePage, onNav, isDeskV2Sh
   isDeskV2Shell?: boolean;
 }) {
   const isMobile = useIsMobile();
-  // Desktop starts labeled; phones keep their closed overlay drawer.
-  const [sidebarExpanded, setSidebarExpanded] = useState(false);
+  // Desktop keeps the full labeled workspace nav (no compact More rail).
+  // Phones keep a closed overlay drawer opened from bottom-nav More.
+  const [sidebarExpanded, setSidebarExpanded] = useState(!isMobile);
   const showContext = !useIsMobile(1599);
 
-  // Crossing the breakpoint must not leave a desktop rail covering a phone.
-  useEffect(() => { setSidebarExpanded(false); }, [isMobile]);
+  // Crossing the breakpoint must not leave a desktop rail covering a phone,
+  // and returning to desktop restores the labeled sidebar.
+  useEffect(() => { setSidebarExpanded(!isMobile); }, [isMobile]);
 
   // On mobile, navigating closes the overlay.
   const handleNav = (key: string) => {
@@ -1527,12 +1528,12 @@ export default function TerminalLayout({ children, activePage, onNav, isDeskV2Sh
       </ErrorBoundary>
       <div style={{ display: "flex", flex: 1, overflow: "hidden", position: "relative" }}>
         <ErrorBoundary label="Navigation">
-          {!isMobile && !sidebarExpanded ? <CompactWorkspaceNav active={activePage} onNav={handleNav} onMore={()=>setSidebarExpanded(true)} /> : <Sidebar
+          <Sidebar
             active={activePage}
             onNav={handleNav}
             expanded={sidebarExpanded}
             isMobile={isMobile}
-          />}
+          />
         </ErrorBoundary>
         {/* Tap-away backdrop when the overlay sidebar is open on mobile */}
         {isMobile && sidebarExpanded && (
