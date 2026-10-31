@@ -14,10 +14,11 @@ for(const width of [820,1280,1440,1920]) for(const surface of ['dashboard','mark
     const brand=header.getByRole('img',{name:'Olbos Trade'});
     await expect(brand).toHaveAttribute('src','/olbos-trade-lockup.webp');
     const nav=page.getByRole('navigation',{name:'Workspace navigation'});
+    await expect(nav).toHaveClass(/desktop-workspace-nav/);
+    await expect(nav.getByRole('button',{name:'Command Center',exact:true})).toBeVisible();
     await expect(nav.getByRole('button',{name:'Markets',exact:true})).toBeVisible();
-    expect((await nav.boundingBox())!.width).toBe(84);
-    await nav.getByRole('button',{name:'More',exact:true}).click();
-    await expect.poll(async()=>Math.round((await nav.boundingBox())!.width)).toBe(232);
+    await expect(nav.getByRole('button',{name:'More',exact:true})).toHaveCount(0);
+    expect((await nav.boundingBox())!.width).toBe(232);
     const accountIcon=await nav.getByRole('button',{name:'Account',exact:true}).locator(':scope > span:first-child svg path').getAttribute('d');
     const integrationsIcon=await nav.getByRole('button',{name:/^(Data & Integrations|System)$/}).locator(':scope > span:first-child svg path').getAttribute('d');
     expect(accountIcon).toBeTruthy();
@@ -28,8 +29,9 @@ for(const width of [820,1280,1440,1920]) for(const surface of ['dashboard','mark
     expect(logo!.width).toBeGreaterThanOrEqual(140);
     expect(logo!.height).toBeGreaterThanOrEqual(36);
     expect(ticker!.y).toBeGreaterThanOrEqual(logo!.y+logo!.height);
+    // Toggle collapses to the icon rail (not a compact More menu).
     await header.getByRole('button',{name:'Toggle sidebar',exact:true}).click();
-    await expect.poll(async()=>Math.round((await nav.boundingBox())!.width)).toBe(84);
+    await expect.poll(async()=>Math.round((await nav.boundingBox())!.width)).toBe(80);
     await page.waitForTimeout(500);
     await expectNoHorizontalOverflow(page,width);
     await page.screenshot({path:`ui-audit-artifacts/desktop-workspace-${surface.replace(/\//g,'-')}-${width}.png`,fullPage:true});
@@ -47,7 +49,7 @@ for(const width of [820,1280,1440,1920]) for(const surface of ['dashboard','mark
     await header.getByRole('button',{name:'Toggle sidebar',exact:true}).click();
     await expect.poll(async()=>Math.round((await nav.boundingBox())!.width)).toBe(232);
     await header.getByRole('button',{name:'Toggle sidebar',exact:true}).click();
-    await expect.poll(async()=>Math.round((await nav.boundingBox())!.width)).toBe(84);
+    await expect.poll(async()=>Math.round((await nav.boundingBox())!.width)).toBe(80);
     await expect(brand).toBeVisible();
     expect(writes).toEqual([]);
   });

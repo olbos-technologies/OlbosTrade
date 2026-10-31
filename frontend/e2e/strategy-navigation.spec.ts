@@ -4,7 +4,7 @@ for(const width of [390,1440]) test(`strategy menu separates daily review from r
  await stubBackend(page);
  await page.setViewportSize({width,height:900});
  await page.goto('/terminal/dashboard');
- await page.locator(width<769?'.mobile-bottom-nav':'.compact-workspace-nav').getByRole('button',{name:'More',exact:true}).click();
+ if(width<769) await page.locator('.mobile-bottom-nav').getByRole('button',{name:'More',exact:true}).click();
  const nav=page.locator('.desktop-workspace-nav');
  await nav.getByRole('button',{name:'Strategies',exact:true}).click();
  for(const name of ['Alpha Edge','Live Signals','History','Strategy Library','Health']) await expect(nav.getByRole('button',{name,exact:true})).toBeVisible();

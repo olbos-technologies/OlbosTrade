@@ -1,8 +1,14 @@
 # Changelog
 
+<<<<<<< HEAD
 ## Unreleased — Markets chart panes (MA + volume + MACD)
 
 - Split the Markets candlestick into price, volume and MACD panes with live MA5/10/20, VWAP and MACD readouts above the canvas (reference-desk layout, navy terminal colors). Taller phone chart so the three panes remain readable. Presentation only; no risk, permission or order-path change.
+=======
+## Unreleased — Desktop full workspace nav
+
+- Desktop always opens the labeled workspace sidebar (Command Center, Markets, Trade Desk, …). Remove the compact More rail; header toggle still collapses to the icon rail. Phone bottom-nav More is unchanged. Presentation only; no risk, permission or order-path change.
+>>>>>>> b07a8e4 (fix(UX-1): always show full labeled desktop workspace nav)
 
 ## Unreleased — Strategies navigation focus
 

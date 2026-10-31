@@ -49,7 +49,12 @@ for(const width of [390,768,1440,1920])for(const [route,heading] of routes){
   }
   if(width>768){
    const nav=page.getByRole('navigation',{name:'Workspace navigation'});
-   expect(await nav.getByRole('button').evaluateAll(nodes=>nodes.slice(0,6).map(n=>n.getAttribute('aria-label')))).toEqual(['Home','Markets','Signals','Positions','Risk','More']);
+   await expect(nav).toHaveClass(/desktop-workspace-nav/);
+   // Top-level groups only — open sections insert child buttons into DOM order.
+   for(const name of ['Command Center','Markets','Trade Desk','Strategies']){
+    await expect(nav.getByRole('button',{name,exact:true})).toBeVisible();
+   }
+   await expect(nav.getByRole('button',{name:'More',exact:true})).toHaveCount(0);
    await page.keyboard.press('Control+k');
    await expect(page.getByRole('textbox',{name:'Find a workspace'})).toBeFocused();
    await page.keyboard.press('Escape');
