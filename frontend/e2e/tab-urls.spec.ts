@@ -43,7 +43,7 @@ const HUBS = [
     from: "/terminal/equity",
     tab: /strategy library/i,
     to: "/terminal/strat/cards",
-    label: "STRATEGIES \u00b7 STRATEGY CARDS",
+    label: "STRATEGIES \u00b7 STRATEGY LIBRARY",
   },
 ];
 
