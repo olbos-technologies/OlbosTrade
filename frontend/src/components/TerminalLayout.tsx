@@ -1148,15 +1148,6 @@ function Sidebar({ active, onNav, expanded, isMobile = false }: {
                 </button>
               );
             })}
-            {g.id === "account" && (
-              <div style={{
-                display: "flex", alignItems: "center",
-                margin: "4px 12px 8px 40px", paddingTop: 8,
-                borderTop: "1px solid var(--line-dim)",
-              }}>
-                <UserMenu />
-              </div>
-            )}
           </>
         )}
       </div>
@@ -1424,6 +1415,24 @@ function StatusBar({ page }: { page: string }) {
       <StatusLamp label="Rotation" on={rotationOn} />
       <div style={{ flex: 1 }} />
       <span id="broker-status-bar" className="status-dup">IBKR GATEWAY</span>
+      {/*
+        Sign out lives here, not in the sidebar's Account group.
+
+        UserMenu holds the only Sign out in the application, and it used to
+        render inside that group's children — so it existed only while the
+        group did. Collapsing Account behind the Advanced toggle removed the
+        ability to sign out of the product entirely, and nothing failed,
+        because no test asserted the affordance existed. Even with the group
+        visible it was hidden one expand deep in a nav, which is why it read
+        as "there is no logout".
+
+        The status bar is always rendered (once, at the shell root), so the
+        account chip is now reachable from every page in every nav state.
+        UserMenu's own comment already assumed this home: it shows the email's
+        local part because "the status bar is tight", and its portal opens
+        upward from the button's rect.
+      */}
+      <UserMenu />
       <span style={{ color: "var(--brand)", fontWeight: 700 }}>
         Olbos{import.meta.env.VITE_GIT_SHA ? ` ${String(import.meta.env.VITE_GIT_SHA).slice(0, 7)}` : " v5.0"}
       </span>
