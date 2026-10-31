@@ -52,7 +52,12 @@ for (const width of [390, 768, 1440, 1920]) {
       } else if (route === 'trade/overview') {
         await expect(page.getByText('Approval queue unavailable.', { exact: true })).toBeVisible();
       } else if (route === 'system/market') {
-        await expect(page.locator('.workspace-frame--system').getByText('UNAVAILABLE', { exact: true })).toHaveCount(2);
+        const statusCards = page.locator('.workspace-frame--system .instrument-card');
+        for (const label of ['Session', 'Hours policy']) {
+          const card = statusCards.filter({ hasText: label });
+          await expect(card).toHaveCount(1);
+          await expect(card).toContainText('UNAVAILABLE');
+        }
       } else {
         await expect(page.locator('.markets-page h1')).toBeVisible();
       }
