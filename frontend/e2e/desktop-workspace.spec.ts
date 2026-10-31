@@ -51,6 +51,9 @@ for(const width of [820,1280,1440,1920]) for(const surface of ['dashboard','mark
     await expect(nav.getByRole('button',{name:'Show advanced',exact:true})).toHaveCount(0);
     await expect(nav.getByRole('button',{name:'Chart',exact:true})).toHaveCount(0);
     await expect(nav.getByRole('button',{name:'Command Center',exact:true})).toBeVisible();
+    // Hover tip is portaled beside the rail (overflow would clip an in-tree tip).
+    await nav.getByRole('button',{name:'Command Center',exact:true}).hover();
+    await expect(page.getByRole('tooltip',{name:'Command Center',exact:true})).toBeVisible();
     await page.waitForTimeout(500);
     await expectNoHorizontalOverflow(page,width);
     await page.screenshot({path:`ui-audit-artifacts/desktop-workspace-${surface.replace(/\//g,'-')}-${width}.png`,fullPage:true});

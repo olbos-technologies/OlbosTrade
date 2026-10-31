@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased — Collapsed icon-rail hover labels
+
+- Portaled sidebar hover tooltips (and the System menu) so they render beside the collapsed 80px icon rail instead of being clipped by `overflow-x: hidden`. Presentation only; no risk, permission or order-path change.
+
 ## Unreleased — Desk-loop sidebar (Bloomberg focus)
 
 - Sidebar keeps the daily desk loop only: Command Center, Markets (Chart/Watchlists), Signals (Alpha Edge / Live / History), Trade Desk (four workspaces), Risk, Journal, Performance, Brokers. Research lab, strategy library/health, scanners and ops extras stay URL-reachable but off the sidebar. Presentation / IA only; no risk, permission or order-path change.
