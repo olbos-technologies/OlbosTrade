@@ -481,6 +481,10 @@ function EquitySignalsGrid() {
   const [error, setError] = useState<string | null>(null);
   const [minMovePct, setMinMovePct] = useState(0);
   const [query, setQuery] = useState("");
+  //: Which groups to show. The feed's own vocabulary, not a restatement of
+  //: it: `action` is BUY | SELL | HOLD, so the control says the same words
+  //: the rows do.
+  const [direction, setDirection] = useState<"ALL" | "BUY" | "SELL" | "HOLD">("ALL");
   const [loading, setLoading] = useState(true);
   const blockCtx = useDeskBlockContext();
   const { minConfidence } = blockCtx;
@@ -534,6 +538,12 @@ function EquitySignalsGrid() {
     .filter(s => s.action === "HOLD" || s.earnings_gated)
     .sort(sortRecentThenConfident);
   const actionableCount = buySignals.length + sellSignals.length;
+  const showBuy = direction === "ALL" || direction === "BUY";
+  const showSell = direction === "ALL" || direction === "SELL";
+  const showHold = direction === "ALL" || direction === "HOLD";
+  const shownCount = (showBuy ? buySignals.length : 0)
+    + (showSell ? sellSignals.length : 0)
+    + (showHold ? holdSignals.length : 0);
   // Split rather than merged: a mixed top-3 can get crowded out entirely by
   // one side (e.g. three high-confidence BUYs hiding a strong SELL), so BUY
   // and SELL each get their own top-3-by-confidence ranking.
@@ -542,12 +552,11 @@ function EquitySignalsGrid() {
 
   return (
     <div className="design-signal-feed" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div className="instrument-card page-header">
+      <div className="ws-card ws-heading" style={{ padding: 18, alignItems: "center" }}>
         <div>
-          <h1 className="page-header__title">Signals</h1>
-          <p className="page-header__sub">
-            Research ideas for your review · no orders submitted here
-          </p>
+          <span className="ws-eyebrow">Decision engine</span>
+          <h1>Signals</h1>
+          <p>Research ideas for your review · no orders submitted here</p>
         </div>
         <span style={{ flex: 1 }} />
         <label className="kicker" style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -572,6 +581,21 @@ function EquitySignalsGrid() {
       <div className="design-search-row">
         <input aria-label="Search signals" placeholder="Search symbol or explanation" value={query} onChange={e => setQuery(e.target.value)} />
         <button className="design-review" onClick={loadSignals}>Refresh signals</button>
+      </div>
+
+      <div className="ws-filter" role="group" aria-label="Filter signals by direction">
+        {(["ALL", "BUY", "SELL", "HOLD"] as const).map(d => (
+          <button key={d} aria-pressed={direction === d} onClick={() => setDirection(d)}>
+            {d === "ALL" ? "All" : d}
+          </button>
+        ))}
+        {/* A count of what the filter is showing, so the control states its
+            own effect rather than leaving the reader to scroll and infer. */}
+        <span className="ws-filter__count">
+          {error || loading
+            ? "—"
+            : `${shownCount} of ${filteredSignals.length} shown`}
+        </span>
       </div>
       <div className="instrument-stat-strip" style={{ gridTemplateColumns: "repeat(4, minmax(0, 1fr))" }}>
         <StatTile variant="divider" size="sm" label="Actionable" value={error || loading ? "—" : actionableCount} tone="var(--accent)" />
@@ -602,9 +626,9 @@ function EquitySignalsGrid() {
             <TopSignals top={topSellSignals} label="SELL" minConfidence={minConfidence} blockCtx={blockCtx} />
           </div>
           </details>
-          <SignalGroup action="BUY" signals={buySignals} minConfidence={minConfidence} blockCtx={blockCtx} />
-          <SignalGroup action="SELL" signals={sellSignals} minConfidence={minConfidence} blockCtx={blockCtx} />
-          <SignalGroup action="HOLD" signals={holdSignals} minConfidence={minConfidence} blockCtx={blockCtx} />
+          {showBuy && <SignalGroup action="BUY" signals={buySignals} minConfidence={minConfidence} blockCtx={blockCtx} />}
+          {showSell && <SignalGroup action="SELL" signals={sellSignals} minConfidence={minConfidence} blockCtx={blockCtx} />}
+          {showHold && <SignalGroup action="HOLD" signals={holdSignals} minConfidence={minConfidence} blockCtx={blockCtx} />}
         </div>
       )}
     </div>
