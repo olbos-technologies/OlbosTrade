@@ -10,6 +10,9 @@
 .app-shell .desktop-terminal-header,.app-shell .desktop-workspace-nav {background:#080c12 !important;}
 .app-shell .desktop-market-strip {background:#06090e !important;}
 .app-shell .desktop-workspace-nav button[aria-current="page"] {background:#f6b44010 !important;}
+/* Narrow rail: clip anything that is not the centered icon. */
+.app-shell .desktop-workspace-nav--icons {overflow-x:hidden !important;}
+.app-shell .desktop-workspace-nav--icons button {justify-content:center !important;}
 .app-shell .mobile-terminal-header,.app-shell .mobile-bottom-nav {background:#080c12 !important;}
 .app-shell .instrument-status {background:#080c12;border-top:1px solid #5b471f;}
 .app-shell .instrument-card,.app-shell .panel,.app-shell .mission-card,
