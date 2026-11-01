@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased — The ENV chip says why it is disconnected
+
+- `GET /api/market/broker` now returns `error` on the disconnected branch, not only on the exception branch, so the ENV chip's tooltip names the reason (host, port, clientId, and the last connection failure) instead of reading a bare DISCONNECTED whose cause was reachable only from container logs. The IBKR client records its last connection failure for this. Diagnostics only; no change to connection behaviour, risk gates or order paths.
+
 ## Unreleased — Guardrail state persistence made safe to wire up
 
 - `save_portfolio_snapshot` and its loader — documented as "what survives restarts" — have never been called from anywhere, so `portfolio_snapshots` has always been empty and guardrail counters reset on every restart. Narrowed the loader to counters only (it also returned `current_value` read off a stored snapshot — a stale number standing in for a live measurement), and made the writer refuse to persist a cycle whose account value was not readable, so a fabricated limit breach cannot outlive the outage that produced it. Neither is wired into the trade cycle yet; that is a policy decision. No behaviour change.
@@ -152,6 +156,7 @@
 
 - Read-only contract comparison returns unverified for malformed identity or quantities, including fractional quantities previously truncated to integers. Broker and database evidence use the same validation.
 - Valid signed aggregation and normalization remain supported. No order-routing, broker-operation, schema or configuration change.
+
 ## Unreleased — Trade attribution report
 
 - Added `backend/scripts/trade_attribution_report.py`: a read-only breakdown of closed trades by strategy, exit reason and regime, with date-clustered bootstrap intervals, a small-cell floor, an explicit refusal to rank strategies whose intervals overlap, cost-drag analysis and a trade-level AUC on `signal_score`. Analysis only; no writes, no orders, no broker calls.

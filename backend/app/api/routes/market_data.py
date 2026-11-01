@@ -320,13 +320,25 @@ async def get_broker_status():
             is_paper = settings.ibkr_trading_mode.lower() != "live" \
                        and settings.ibkr_port not in (4001, 7496)
 
-        return {
+        payload = {
             "broker":           settings.broker,
             "supports_options": broker.supports_options,
             "supports_equities": broker.supports_equities,
             "paper_mode":       is_paper,
             "status":           "connected" if connected else "disconnected",
         }
+        if not connected:
+            # Say WHY. The UI already renders this field as the ENV chip's
+            # tooltip, but only the exception branch below ever set it, so a
+            # dropped socket produced a bare "DISCONNECTED" and the reason was
+            # reachable only by reading container logs on the host. Config, not
+            # credentials: host, port and clientId. No account number, no token.
+            payload["error"] = (
+                getattr(broker, "_last_connect_error", None)
+                or f"No successful connection this process — is TWS/Gateway "
+                   f"reachable at {settings.ibkr_host}:{settings.ibkr_port}?"
+            )
+        return payload
     except Exception as exc:
         return {
             "broker": settings.broker,
