@@ -189,6 +189,16 @@ class Settings(BaseSettings):
     # first makes app auth the only thing between the internet and a trading
     # API on its first day in production.
     auth_enabled: bool = Field(default=False)
+    # Which personal organization owns the entries the background scanner
+    # initiates. Unset (the default) keeps the original rule: autopilot
+    # resolves an owner only when exactly one personal organization exists and
+    # otherwise refuses to enter. Set it when several exist (a deactivated
+    # account, a test sign-up) and one of them is the operator. It is NEVER
+    # used to guess: a value that is not a UUID, names no organization, or
+    # names one whose user is deactivated makes autopilot refuse rather than
+    # fall back to "the only one" — see trade_scope.autonomous_scope. A string
+    # rather than a UUID field so a typo cannot stop the app from starting.
+    operator_organization_id: str = Field(default="")
     # ge=1 is not pedantry: AUTH_SESSION_HOURS=0 made login return 200 while
     # storing an already-expired session and sending Max-Age=0, so the browser
     # dropped the cookie and every account was locked out with no error

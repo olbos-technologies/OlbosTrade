@@ -1648,7 +1648,8 @@ async def _execute_signal(
     try:
         from app.core.database import AsyncSessionLocal
         from app.services.trade_scope import (
-            AmbiguousOwner, autonomous_scope, claim_scope, owned_by, request_scope,
+            AmbiguousOwner, autonomous_scope, claim_scope, owned_by,
+            owned_by_for_entry_guards, request_scope,
         )
 
         async with AsyncSessionLocal() as _scope_db:
@@ -1680,7 +1681,7 @@ async def _execute_signal(
         async def _open_trade_for(db) -> object | None:
             rows = (await db.execute(
                 select(Trade).where(
-                    owned_by(_org),
+                    owned_by_for_entry_guards(_org),
                     Trade.underlying == ticker,
                     Trade.status.in_(["open", "pending"]),
                 )
@@ -1779,7 +1780,7 @@ async def _execute_signal(
                         # reason to refuse tenant B's first entry, and leaving
                         # this global would also tell B that somebody closed
                         # SPY recently.
-                        owned_by(_org),
+                        owned_by_for_entry_guards(_org),
                         Trade.underlying == ticker,
                         Trade.status == "closed",
                         Trade.exit_date.isnot(None),
