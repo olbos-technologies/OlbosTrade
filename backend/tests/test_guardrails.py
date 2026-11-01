@@ -388,3 +388,74 @@ def test_the_flag_survives_the_cooling_off_early_return(engine):
     assert status.trading_allowed is False
     assert "cooling_off_active" in status.flags
     assert CAPITAL_BASE_DIVERGENT_FLAG in status.flags
+
+
+# ── Unknown account value ───────────────────────────────────────────────────
+#
+# Production, 2026-10-31: the IBKR gateway was disconnected ("ENV
+# DISCONNECTED") and every signal card read "BLOCKED · MAX DRAWDOWN LIMIT HIT:
+# 81.82% FROM PEAK". There had been no such drawdown. The route's fallback
+# substituted settings.starting_capital for the net liquidation it could not
+# read, and that constant compared against the persisted all-time peak
+# produced the figure. The desk was blocked for a loss that never happened,
+# and the operator was sent to look for it.
+#
+# The substitution is not conservative in the other direction either: set
+# STARTING_CAPITAL high and a disconnected broker reports a healthy account,
+# so the drawdown gate passes while nobody knows what the book is worth.
+
+def _portfolio(**kw):
+    from decimal import Decimal
+    from app.services.guardrails import PortfolioState
+    base = dict(
+        current_value=100_000.0, starting_capital=100_000.0,
+        daily_pnl=Decimal("0"), weekly_pnl=Decimal("0"), monthly_pnl=Decimal("0"),
+        consecutive_losses=0, trades_today=0,
+    )
+    base.update(kw)
+    return PortfolioState(**base)
+
+
+def test_an_unknown_account_value_blocks_trading():
+    from app.services.guardrails import GuardrailEngine
+    status = GuardrailEngine().check_all(_portfolio(account_value_known=False))
+    assert status.trading_allowed is False
+
+
+def test_it_says_the_value_is_unknown_rather_than_naming_a_drawdown():
+    """The production symptom was a misleading reason, not just a block."""
+    from app.services.guardrails import GuardrailEngine, ACCOUNT_VALUE_UNKNOWN_FLAG
+    status = GuardrailEngine().check_all(
+        _portfolio(account_value_known=False, current_value=25_000.0, peak_value=137_500.0)
+    )
+    assert ACCOUNT_VALUE_UNKNOWN_FLAG in status.flags
+    assert "unavailable" in status.reason.lower()
+    assert "drawdown" not in status.reason.lower().split("this is not a")[0]
+    # The fabricated 81.82% must not be reported as though it were measured.
+    assert status.drawdown_pct == 0.0
+
+
+def test_a_known_account_value_is_unaffected():
+    from app.services.guardrails import GuardrailEngine, ACCOUNT_VALUE_UNKNOWN_FLAG
+    status = GuardrailEngine().check_all(_portfolio())
+    assert status.trading_allowed is True
+    assert ACCOUNT_VALUE_UNKNOWN_FLAG not in status.flags
+
+
+def test_the_check_runs_before_any_percentage_is_derived():
+    """
+    A portfolio that would trip the drawdown gate on fabricated numbers must
+    still report UNKNOWN, not the drawdown. Ordering is the whole fix: if this
+    ran after the drawdown check, the misleading reason would win.
+    """
+    from app.services.guardrails import GuardrailEngine, ACCOUNT_VALUE_UNKNOWN_FLAG
+    status = GuardrailEngine().check_all(
+        _portfolio(account_value_known=False, current_value=25_000.0,
+                   peak_value=137_500.0, starting_capital=25_000.0)
+    )
+    assert ACCOUNT_VALUE_UNKNOWN_FLAG in status.flags
+    assert "max drawdown" not in status.reason.lower()
+
+
+def test_defaults_to_known_so_every_existing_caller_is_unchanged():
+    assert _portfolio().account_value_known is True

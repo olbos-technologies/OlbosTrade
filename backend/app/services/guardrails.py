@@ -23,6 +23,7 @@ CAPITAL_BASE_DIVERGENCE_FACTOR = 2.0
 #: Flag raised on GuardrailStatus when that happens. Not a block: the limits
 #: are unchanged and trading_allowed is untouched.
 CAPITAL_BASE_DIVERGENT_FLAG = "capital_base_divergent"
+ACCOUNT_VALUE_UNKNOWN_FLAG = "account_value_unknown"
 
 
 def capital_base_is_divergent(
@@ -86,6 +87,10 @@ class PortfolioState:
     trades_today: int
     cooling_off_until: Optional[datetime] = None
     peak_value: float = 0.0  # 0.0 = untracked; treated as current_value (0% drawdown)
+    #: False when the broker read for net liquidation failed. Every percentage
+    #: below is derived from `current_value`, so a fabricated one does not
+    #: produce a cautious answer — it produces a confident wrong one.
+    account_value_known: bool = True
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
@@ -121,6 +126,54 @@ class GuardrailEngine:
         Returns GuardrailStatus — caller must check trading_allowed before placing any trade.
         """
         flags: list[str] = []
+
+        # ── 0. Is the account value even known? ────────────────────────────
+        #
+        # This comes first because every number below divides by
+        # `current_value` or compares against it, and the caller's fallback
+        # when the broker read fails is `current_value = starting_capital` —
+        # a configured constant presented as a measurement.
+        #
+        # That does not fail safe. Compared against the persisted all-time
+        # peak it manufactures an enormous drawdown and blocks the desk while
+        # reporting a loss that never happened ("MAX DRAWDOWN LIMIT HIT:
+        # 81.82%" on a disconnected gateway, observed in production
+        # 2026-10-31). Set the constant HIGH instead and the same substitution
+        # reports a healthy account, and the drawdown gate passes when nobody
+        # knows what the book is worth. Both are the repository's documented
+        # trap — a failed read wearing a safe value.
+        #
+        # An unknown account value is its own answer. Block, say so, and do
+        # not derive a percentage from a number nobody measured.
+        if not portfolio.account_value_known:
+            flags.append(ACCOUNT_VALUE_UNKNOWN_FLAG)
+            logger.warning(
+                "Account value unavailable — blocking entries. No drawdown or "
+                "capital percentage is computed, because the only input to them "
+                "would be the configured STARTING_CAPITAL standing in for a "
+                "measurement that did not happen."
+            )
+            return GuardrailStatus(
+                trading_allowed=False,
+                trading_mode="suspended",
+                reason=(
+                    "Account value is unavailable — the broker read failed. "
+                    "Entries are blocked until net liquidation can be read "
+                    "again. This is not a drawdown or a loss limit: the account "
+                    "value is unknown, not low."
+                ),
+                cooling_off_until=portfolio.cooling_off_until,
+                suspended_until=None,
+                daily_loss_pct=0.0,
+                weekly_loss_pct=0.0,
+                monthly_loss_pct=0.0,
+                drawdown_pct=0.0,
+                consecutive_losses=portfolio.consecutive_losses,
+                trades_today=portfolio.trades_today,
+                capital_pct_remaining=0.0,
+                flags=flags,
+            )
+
         base = Decimal(str(portfolio.starting_capital)) if portfolio.starting_capital > 0 else Decimal("1")
         capital_pct = float(portfolio.current_value) / float(base)
 
