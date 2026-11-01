@@ -115,7 +115,7 @@ Several live in the backend suite because they check frontend files the frontend
 - `docs/ui-ux-phase1-4/PLAN.md` — UI/UX product rules, with a status preamble recording which parts are already implemented
 - `docs/runbook.md`, `docs/credential_rotation_runbook.md` — operations
 - `ARCHITECTURE_AUDIT.md`, `AUDIT_2026-06.md` — known gaps and deferred work
-- `CHANGELOG.md` — update it under Unreleased for user-visible changes
+- `changelog.d/` — add a new `YYYYMMDD-slug.md` fragment for user-visible changes (see its README). **Do not edit `CHANGELOG.md`**: it is the frozen archive, and every branch editing the top of it collided with every other.
 
 ## Deployment
 
