@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased — Live Signals card trade plan
+
+- Equity Live Signals cards again show confidence % (or opportunity score) and ENTRY / STOP / TARGET / MOVE on the card face, instead of burying them under a closed “Technical evidence and trade plan” disclosure. Rationale and Review stay; deeper factors stay under Technical evidence. Presentation only; no scoring, risk or order-path change.
+
 ## Unreleased — Conflict markers cannot reach main again
 
 - Removed unresolved `<<<<<<<`/`=======`/`>>>>>>>` markers from `CHANGELOG.md` (third occurrence today), reattached the Desk-loop sidebar entry's body to its own heading, and dropped an entry describing a guard that is not on `main`. Added a test that fails if any tracked file carries a conflict marker. Documentation and test only; no behaviour change.

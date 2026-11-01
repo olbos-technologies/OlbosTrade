@@ -57,6 +57,14 @@ for (const width of [320,390,768,1440]) for (const state of ['populated','unavai
     }
     if(surface==='equity') {
       if(state==='populated') {
+        // Card face must show confidence and trade levels without opening details.
+        const card=page.locator('.design-signal-card').first();
+        await expect(card.locator('.mission-card__reward-value')).toHaveText('71%');
+        await expect(card.locator('.mission-card__reward-prefix')).toHaveText('CONF');
+        await expect(card.locator('.trade-plan-well')).toContainText('ENTRY');
+        await expect(card.locator('.trade-plan-well')).toContainText('STOP');
+        await expect(card.locator('.trade-plan-well')).toContainText('TARGET');
+        await expect(card.getByText('Technical evidence',{exact:true})).toBeVisible();
         await page.getByRole('button',{name:'Review idea'}).click();
         await expect(page.getByRole('dialog')).toBeVisible();
         await page.keyboard.press('Escape');

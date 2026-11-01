@@ -183,11 +183,20 @@ function SignalCard({
   const confPct = Math.round(sig.confidence * 100);
   const tone = confidenceTone(confPct);
   const directionClass = sig.action === "BUY" ? "mission-card--buy" : sig.action === "SELL" ? "mission-card--sell" : "";
+  // Card face always shows confidence % (or opportunity score when present).
+  // The navy redesign hid this inside a closed <details>; restore it so BUY/SELL
+  // cards read like a trade idea again, not only a factor list.
+  const reward = sig.opportunity_score != null
+    ? { prefix: "OPP", value: String(Math.round(sig.opportunity_score.score)), tone: confidenceTone(sig.opportunity_score.score) }
+    : sig.action !== "HOLD"
+      ? { prefix: "CONF", value: `${confPct}%`, tone }
+      : undefined;
 
   return (
     <>
     <MissionCard
       className={`design-signal-card ${directionClass}`}
+      reward={reward}
       title={(
         <span style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <TickerLogo ticker={sig.ticker} />
@@ -206,16 +215,40 @@ function SignalCard({
         </span>
       )}
       meta={{
-        label: sig.action === "HOLD" ? "WAITING" : "RESEARCH",
-        tone: "var(--ink-dim)",
+        label: sig.action === "HOLD" ? "WAITING" : confPct >= Math.round(minConfidence * 100) ? "LIVE" : "LOW",
+        tone: sig.action === "HOLD" ? "var(--ink-dim)" : confPct >= Math.round(minConfidence * 100) ? "var(--green)" : "var(--amber)",
         icon: "⏳",
       }}
-
+      progress={sig.action !== "HOLD" ? {
+        value: confPct,
+        tone,
+        label: `${sig.ticker} confidence`,
+      } : undefined}
     >
       <div className="signal-rationale"><span>Why it appeared</span><p>{equitySignalRationale(sig)}</p><small>Research only · Model scores are not probabilities of profit.</small></div>
+      {tp.entry_price != null && (
+        <div className="trade-plan-well" style={{ gridTemplateColumns: "repeat(4, 1fr)", marginTop: 10 }}>
+          <PriceCell label="ENTRY" value={tp.entry_price} color="var(--ink)" />
+          <PriceCell label="STOP"  value={tp.stop_price}  color="var(--red)" />
+          <PriceCell label="TARGET" value={tp.target_price} color="var(--green)" />
+          <PriceCell label="MOVE" value={tp.target_move_pct} color="var(--amber)" suffix="%" />
+          {tp.shares !== undefined && (
+            <div style={{ gridColumn: "1/-1", display: "flex", gap: 16,
+              fontFamily: "var(--mono)", fontSize: 10, color: "var(--ink-dim)", marginTop: 4 }}>
+              <span>SHARES: <b style={{color:"var(--ink)"}}>{tp.shares}</b></span>
+              {tp.risk_reward !== undefined && (
+                <span>R:R <b style={{color:"var(--cyan)"}}>{tp.risk_reward.toFixed(2)}x</b></span>
+              )}
+              {tp.risk_dollars !== undefined && (
+                <span>RISK <b style={{color:"var(--amber)"}}>${tp.risk_dollars.toFixed(0)}</b></span>
+              )}
+            </div>
+          )}
+        </div>
+      )}
       <time className="signal-generated" dateTime={sig.generated_at}>Generated {new Date(sig.generated_at).toLocaleString()}</time>
       <button className="design-review" onClick={() => setReviewing(true)}>Review idea <span aria-hidden="true">→</span></button>
-      <details className="signal-evidence"><summary>Technical evidence and trade plan</summary>
+      <details className="signal-evidence"><summary>Technical evidence</summary>
       <div className="mission-card__details">
         <SignalAttribution data={toAttribution(sig)} size="sm" />
         {sig.action !== "HOLD" && (
@@ -234,27 +267,6 @@ function SignalCard({
           <span style={{ flex: 1 }} />
           <AlphaEdgeInline ticker={sig.ticker} assetType="equity" />
         </div>
-
-        {tp.entry_price && (
-          <div className="trade-plan-well" style={{ gridTemplateColumns: "repeat(4, 1fr)" }}>
-            <PriceCell label="ENTRY" value={tp.entry_price} color="var(--ink)" />
-            <PriceCell label="STOP"  value={tp.stop_price}  color="var(--red)" />
-            <PriceCell label="TARGET" value={tp.target_price} color="var(--green)" />
-            <PriceCell label="MOVE" value={tp.target_move_pct} color="var(--amber)" suffix="%" />
-            {tp.shares !== undefined && (
-              <div style={{ gridColumn: "1/-1", display: "flex", gap: 16,
-                fontFamily: "var(--mono)", fontSize: 10, color: "var(--ink-dim)", marginTop: 4 }}>
-                <span>SHARES: <b style={{color:"var(--ink)"}}>{tp.shares}</b></span>
-                {tp.risk_reward !== undefined && (
-                  <span>R:R <b style={{color:"var(--cyan)"}}>{tp.risk_reward.toFixed(2)}x</b></span>
-                )}
-                {tp.risk_dollars !== undefined && (
-                  <span>RISK <b style={{color:"var(--amber)"}}>${tp.risk_dollars.toFixed(0)}</b></span>
-                )}
-              </div>
-            )}
-          </div>
-        )}
 
         <div style={{ display: "flex", justifyContent: "flex-end" }}>
           <BacktestButtons ticker={sig.ticker} assetType="equity" />
