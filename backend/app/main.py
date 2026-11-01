@@ -3308,6 +3308,7 @@ async def _maybe_log_guardrail_event(status: GuardrailStatus, portfolio: Portfol
     _SUSPEND_EVENT_TYPES = {
         "cooling_off_active", "daily_loss_limit", "weekly_loss_limit",
         "monthly_loss_limit", "max_drawdown_limit", "consecutive_loss_limit",
+        "account_value_unknown", "pnl_unknown",
     }
     try:
         async with AsyncSessionLocal() as session:
@@ -3356,7 +3357,16 @@ async def _maybe_log_guardrail_event(status: GuardrailStatus, portfolio: Portfol
                 trigger_value=Decimal(str(trigger)),
                 limit_value=Decimal(str(limit)) if limit is not None else None,
                 trading_suspended_until=status.suspended_until,
-                portfolio_value=Decimal(str(portfolio.current_value)),
+                # NULL when the account value was not measured. current_value is
+                # then STARTING_CAPITAL standing in for a reading that failed,
+                # and persisting it would record a configured constant as though
+                # it were the book — which is how guardrail_events came to hold
+                # 50000.0000 on every fabricated drawdown row. The column is
+                # nullable precisely so "unknown" can be stored as unknown.
+                portfolio_value=(
+                    Decimal(str(portfolio.current_value))
+                    if portfolio.account_value_known else None
+                ),
                 notes=status.reason or f"trading_mode → {status.trading_mode}",
             ))
             await session.commit()
@@ -3407,9 +3417,24 @@ async def guardrail_status():
             for p in recent:
                 if (p or 0) < 0: consecutive_losses += 1
                 else: break
-    except Exception:
+        pnl_known = True
+    except Exception as exc:
+        # The database read failed, so P&L and the counters are UNKNOWN. They
+        # are still given values below because the response needs numbers, but
+        # those zeros are placeholders, not measurements: left unmarked they
+        # read as "no losses, no trades today" and every limit that depends on
+        # them passed. pnl_known=False makes the engine block instead (check 0b).
+        # Cause logged for the same reason as the account read below: a bare
+        # swallow leaves nothing to diagnose. One line, no traceback — this route
+        # is polled many times a minute.
+        logger.warning(
+            "P&L read failed (%s: %s) — blocking entries as pnl_unknown rather "
+            "than treating P&L and the loss/trade counters as zero.",
+            type(exc).__name__, (str(exc) or "no message")[:200],
+        )
         daily_pnl = weekly_pnl = monthly_pnl = 0.0
         trades_today = consecutive_losses = 0
+        pnl_known = False
 
     # Get real broker account value. get_account_summary() has no timeout of
     # its own, so a slow or stuck IBKR connection would otherwise hang this
@@ -3467,6 +3492,7 @@ async def guardrail_status():
     portfolio = PortfolioState(
         current_value=current_value,
         account_value_known=account_value_known,
+        pnl_known=pnl_known,
         starting_capital=settings.starting_capital,
         daily_pnl=daily_pnl,
         weekly_pnl=weekly_pnl,

@@ -24,6 +24,7 @@ CAPITAL_BASE_DIVERGENCE_FACTOR = 2.0
 #: are unchanged and trading_allowed is untouched.
 CAPITAL_BASE_DIVERGENT_FLAG = "capital_base_divergent"
 ACCOUNT_VALUE_UNKNOWN_FLAG = "account_value_unknown"
+PNL_UNKNOWN_FLAG = "pnl_unknown"
 
 
 def capital_base_is_divergent(
@@ -91,6 +92,11 @@ class PortfolioState:
     #: below is derived from `current_value`, so a fabricated one does not
     #: produce a cautious answer — it produces a confident wrong one.
     account_value_known: bool = True
+    #: False when the database read for P&L and the loss/trade counters failed.
+    #: Those fields then hold ZERO, which is indistinguishable from "no losses
+    #: and no trades today" — so every limit that divides or compares against
+    #: them passes. A fallback to zero is not a neutral default, it is a claim.
+    pnl_known: bool = True
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
@@ -161,6 +167,48 @@ class GuardrailEngine:
                     "Entries are blocked until net liquidation can be read "
                     "again. This is not a drawdown or a loss limit: the account "
                     "value is unknown, not low."
+                ),
+                cooling_off_until=portfolio.cooling_off_until,
+                suspended_until=None,
+                daily_loss_pct=0.0,
+                weekly_loss_pct=0.0,
+                monthly_loss_pct=0.0,
+                drawdown_pct=0.0,
+                consecutive_losses=portfolio.consecutive_losses,
+                trades_today=portfolio.trades_today,
+                capital_pct_remaining=0.0,
+                flags=flags,
+            )
+
+        # ── 0b. Is the P&L history even known? ─────────────────────────────
+        #
+        # The mirror image of check 0. The status route reads daily, weekly and
+        # monthly P&L plus the consecutive-loss and trades-today counters from
+        # the database, and on ANY exception used to substitute zeros and carry
+        # on. Zero P&L and zero counters are exactly what a quiet, profitable
+        # day looks like, so the daily-loss, weekly-loss, monthly-loss,
+        # consecutive-loss and daily-trade-cap limits all PASSED on a database
+        # outage. check 0 stops a failed account read inventing a breach; this
+        # stops a failed P&L read inventing safety — the same defect pointing
+        # the other way, and the more dangerous direction because nobody
+        # investigates a limit that did not fire.
+        #
+        # Blocks, says so, and reports no percentage derived from the zeros.
+        if not portfolio.pnl_known:
+            flags.append(PNL_UNKNOWN_FLAG)
+            logger.warning(
+                "P&L history unavailable — blocking entries. The daily, weekly "
+                "and monthly loss limits and the loss and trade counters cannot "
+                "be evaluated, and treating them as zero would pass all five."
+            )
+            return GuardrailStatus(
+                trading_allowed=False,
+                trading_mode="suspended",
+                reason=(
+                    "P&L history is unavailable — the database read failed. "
+                    "Entries are blocked until daily, weekly and monthly P&L and "
+                    "the loss and trade counters can be read again. This is not a "
+                    "loss limit: the P&L is unknown, not zero."
                 ),
                 cooling_off_until=portfolio.cooling_off_until,
                 suspended_until=None,
