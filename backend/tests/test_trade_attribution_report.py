@@ -42,7 +42,7 @@ def _trade(day_offset=0, pnl=10.0, strategy="bull_put_spread", exit_reason="prof
         pnl=Decimal(str(pnl)), strategy=strategy, exit_reason=exit_reason,
         regime=regime, underlying="SPY", trading_mode_at_entry="paper",
         signal_score=None if score is None else Decimal(str(score)),
-        commission_paid=Decimal(str(commission)),
+        commission_paid=None if commission is None else Decimal(str(commission)),
         pnl_capture_pct=None if capture is None else Decimal(str(capture)),
         mfe_pnl=Decimal("20"), mae_pnl=Decimal("-5"),
     )
@@ -264,3 +264,43 @@ def test_the_report_never_claims_authority_to_change_live_trading(monkeypatch, c
     out = capsys.readouterr().out
     assert "Nothing here authorises a" in out and "live change" in out
     assert "validate on paper first" in out
+
+
+
+# ---------- "not recorded" is not "zero" ----------
+#
+# commission_paid is written only by the backtester, so on a live or paper book
+# it is NULL on every row. The report used to sum it through _f(), which turns
+# NULL into 0.0, and printed "commission paid : 0.00" beside a "gross P&L" equal
+# to the net figure. A missing measurement was reported as a clean one — the
+# precise failure this tool exists to refuse.
+
+def test_unrecorded_commissions_are_not_reported_as_zero(monkeypatch, capsys):
+    _run(monkeypatch, [_trade(d, commission=None) for d in range(40)])
+    out = capsys.readouterr().out
+    assert "commission recorded on : 0 of 40 trades" in out
+    assert "NOT the same as none being paid" in out
+    assert "commission paid        : 0.00" not in out, (
+        "a NULL commission was summed to 0.00 and presented as a measurement"
+    )
+    assert "commission as %" not in out, "no cost-drag share can be computed from nothing"
+
+
+def test_partial_coverage_is_stated_and_scoped_to_the_trades_that_carry_one(monkeypatch, capsys):
+    trades = (
+        [_trade(d, pnl=10.0, commission=2.0) for d in range(10)]
+        + [_trade(d + 10, pnl=10.0, commission=None) for d in range(30)]
+    )
+    _run(monkeypatch, trades)
+    out = capsys.readouterr().out
+    assert "commission recorded on : 10 of 40 trades" in out
+    assert "only the 10 trades that carry one" in out
+    assert "30 trades have no commission recorded" in out
+
+
+def test_full_coverage_reads_without_caveats(monkeypatch, capsys):
+    _run(monkeypatch, [_trade(d, pnl=100.0, commission=1.0) for d in range(40)])
+    out = capsys.readouterr().out
+    assert "commission recorded on : 40 of 40 trades" in out
+    assert "only the" not in out.split("7 COST DRAG")[1].split("8 SCORE")[0]
+    assert "have no commission recorded" not in out
