@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased — A failed account-value read says why
+
+- `/api/guardrails/status` now logs one warning naming the exception type, a truncated message and the timeout when the broker's net-liquidation read fails. The handler previously swallowed the exception silently, so a fabricated drawdown could be traced to "the read failed" and no further — a down gateway, a read that outran its timeout and a backed-up IBKR queue were indistinguishable. No traceback (the route is polled many times a minute). Diagnostics only; no change to any limit, threshold or order path.
+
 ## Unreleased — The ENV chip says why it is disconnected
 
 - `GET /api/market/broker` now returns `error` on the disconnected branch, not only on the exception branch, so the ENV chip's tooltip names the reason (host, port, clientId, and the last connection failure) instead of reading a bare DISCONNECTED whose cause was reachable only from container logs. The IBKR client records its last connection failure for this. Diagnostics only; no change to connection behaviour, risk gates or order paths.
