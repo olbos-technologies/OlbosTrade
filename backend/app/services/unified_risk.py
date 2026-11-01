@@ -51,9 +51,24 @@ class EmotionGuard:
 
     def __init__(self) -> None:
         self.state = EmotionState()
+        #: False only after a rehydrate that FAILED. While False this guard's
+        #: in-memory state is a guess, not a restored one, so nothing may write it
+        #: back over the saved row: a database that was down at startup would
+        #: otherwise get a fresh "no pause, zero losses" row on top of a real
+        #: pause. True by default so a guard nobody rehydrated behaves as before.
+        self.loaded = True
 
-    async def rehydrate_from_db(self) -> None:
-        """Load consecutive_losses and paused_until from the latest PortfolioSnapshot."""
+    async def rehydrate_from_db(self) -> bool:
+        """
+        Load consecutive_losses and paused_until from the latest PortfolioSnapshot.
+
+        Returns True when the database was read (a row, or confirmed none) and
+        False when the read failed. MERGES rather than overwrites, keeping the
+        more restrictive of memory and database: at startup memory is at its
+        defaults so the result is exactly the stored row, and on a later retry
+        — after an earlier failure — a pause triggered in the meantime is not
+        lost to a stale read.
+        """
         try:
             from app.core.database import AsyncSessionLocal
             from app.models.risk_state import PortfolioSnapshot
@@ -62,18 +77,34 @@ class EmotionGuard:
                 row = (await session.execute(
                     select(PortfolioSnapshot).order_by(PortfolioSnapshot.timestamp.desc()).limit(1)
                 )).scalar_one_or_none()
-            if row is not None:
-                self.state.consecutive_losses = row.consecutive_losses or 0
-                self.state.paused_until = row.cooling_off_until
-                logger.info(
-                    "EmotionGuard rehydrated: consecutive_losses=%d paused_until=%s",
-                    self.state.consecutive_losses, self.state.paused_until,
-                )
         except Exception as exc:
+            self.loaded = False
             logger.warning("EmotionGuard rehydrate failed (starting fresh): %s", exc)
+            return False
+        if row is not None:
+            self.state.consecutive_losses = max(
+                self.state.consecutive_losses, row.consecutive_losses or 0
+            )
+            stored = row.cooling_off_until
+            if stored is not None and (
+                self.state.paused_until is None or stored > self.state.paused_until
+            ):
+                self.state.paused_until = stored
+            logger.info(
+                "EmotionGuard rehydrated: consecutive_losses=%d paused_until=%s",
+                self.state.consecutive_losses, self.state.paused_until,
+            )
+        self.loaded = True
+        return True
 
     async def _persist_to_db(self) -> None:
         """Persist current consecutive_losses and paused_until after each trade."""
+        if not self.loaded:
+            logger.warning(
+                "EmotionGuard persist skipped — the saved state was never loaded "
+                "this process, so writing now would overwrite a real pause with a guess."
+            )
+            return
         try:
             from app.core.database import AsyncSessionLocal
             from app.models.risk_state import PortfolioSnapshot

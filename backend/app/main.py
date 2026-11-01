@@ -532,6 +532,7 @@ async def _background_scheduler() -> None:
     # date. A restart at 10:05 still catches the day; a once-daily timer
     # would not.
     snapshot_interval_s        = 10 * 60       # 10 minutes
+    guardrail_snapshot_interval_s = 10 * 60  # 10 minutes
 
     import time as _time
     _now = _time.monotonic()
@@ -560,6 +561,10 @@ async def _background_scheduler() -> None:
     # Fire on the first tick: if the process restarted inside the 10:00 ET
     # hour, the day's snapshot is still catchable.
     last_snapshot        = 0.0
+    # Fires on the first tick so a row exists as soon as the process is up, then
+    # every guardrail_snapshot_interval_s. EmotionGuard's own persist updates the
+    # latest row after each trade; this is what guarantees there is one to update.
+    last_guardrail_snapshot = 0.0
 
     import time
 
@@ -713,6 +718,13 @@ async def _background_scheduler() -> None:
             if now - last_snapshot >= snapshot_interval_s:
                 await _guarded(_capture_daily_snapshot(), "daily_snapshot", 60)
                 last_snapshot = now
+
+            # Keep a portfolio_snapshots row current. Without one EmotionGuard's
+            # pause and loss count cannot survive a restart, and restarting the
+            # backend is how this system is deployed.
+            if now - last_guardrail_snapshot >= guardrail_snapshot_interval_s:
+                await _guarded(_persist_guardrail_snapshot(), "guardrail_snapshot", 30)
+                last_guardrail_snapshot = now
 
             # Every 6 hours: resolve pending signal outcomes against fresh
             # daily bars (hit target, hit stop, or expire past the hold
@@ -2996,6 +3008,65 @@ async def _refresh_rotation_correlation_cache() -> None:
     triggers a live yfinance fetch."""
     from app.services.rotation_correlation_cache import refresh
     await refresh()
+
+
+async def _read_measured_account_value() -> Optional[float]:
+    """
+    Net liquidation, or None when it could not be MEASURED.
+
+    Deliberately not account_state.get_account_value(), which returns
+    STARTING_CAPITAL on any broker failure so that callers always get a number.
+    That is right for sizing and wrong here: a snapshot row is a record of what
+    the account was, and a configured constant in that column is how
+    guardrail_events came to hold 50000.0000 on every fabricated-drawdown row.
+    A non-positive value is treated as unmeasured too.
+    """
+    try:
+        import asyncio as _asyncio
+        from app.broker.broker_factory import get_broker
+        acct = await _asyncio.wait_for(
+            get_broker().get_account_summary(),
+            timeout=ACCOUNT_SUMMARY_ROUTE_TIMEOUT_SECONDS,
+        )
+        value = float(acct.net_liquidation)
+    except Exception as exc:
+        logger.warning(
+            "Guardrail snapshot: account value read failed (%s: %s)",
+            type(exc).__name__, (str(exc) or "no message")[:200],
+        )
+        return None
+    return value if value > 0 else None
+
+
+async def _persist_guardrail_snapshot() -> None:
+    """
+    Scheduler job: keep a portfolio_snapshots row current so EmotionGuard's
+    pause and loss count survive a restart. See services/guardrail_snapshot.py
+    for what it refuses to write and why.
+    """
+    from app.api.routes.trade_desk import _fetch_portfolio_state
+    from app.broker.broker_factory import get_broker
+    from app.services.guardrail_snapshot import SAVED, persist_guardrail_snapshot
+    from app.services.position_reconciler import PositionReconciler
+    from app.services.unified_risk import emotion_guard
+
+    async def _save(**fields) -> None:
+        # The snapshot is desk-wide — EmotionGuard and the entry gate it feeds are
+        # desk-wide, and portfolio_snapshots has no organization column — so the
+        # single-operator scope is chosen here explicitly. PositionReconciler has no
+        # default for exactly this reason; the scope only matters to its reads, and
+        # save_portfolio_snapshot uses neither.
+        await PositionReconciler(get_broker(), organization_id=None).save_portfolio_snapshot(**fields)
+
+    outcome = await persist_guardrail_snapshot(
+        emotion_guard=emotion_guard,
+        read_account_value=_read_measured_account_value,
+        read_state=_fetch_portfolio_state,
+        evaluate_mode=lambda state: _guardrail_engine.check_all(state).trading_mode,
+        save=_save,
+    )
+    if outcome != SAVED:
+        logger.info("Guardrail snapshot not written: %s", outcome)
 
 
 async def _capture_daily_snapshot() -> None:
