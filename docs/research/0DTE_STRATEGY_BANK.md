@@ -67,6 +67,58 @@ breakeven plus costs after +0.25%. Risk 0.4-0.7% of equity per trade, at most
 2-3 concurrent, shares only, no leverage beyond what the account's existing
 exposure cap allows.
 
+### Candidate D, as implemented for testing (QQQ primary, SPY secondary)
+
+Shares only, regular hours only, flat by 15:55 ET. Rules are in
+`backend/scripts/vwap_reversion_backtest.py`; its docstring lists every
+conservative assumption (entry on the next bar's open, stop wins a same-bar
+touch, gap-through fills at the open, a target must trade through by a tick).
+Choices the source plan left open, fixed here before any real data is seen:
+
+- z-score = (close - session VWAP) / rolling std of that deviation within the
+  day (window 48 bars, minimum 8). A stable std needs ~40 minutes of bars, so
+  the earliest signal is about 10:10 ET, not the 09:45 the plan names.
+- Windows (signal-bar end): 09:45-11:30 and 13:30-15:30; lunch skipped.
+- Trend filter: slope of the 20-period EMA of **completed** hourly closes, long
+  only if slope >= 0, short only if <= 0; "none" is in the grid as an ablation.
+- ATR(14) on 5-minute bars must be 0.7x-2.2x its 20-bar median; volume > 0.6x
+  its 20-bar mean. Breakeven-plus-fees stop after +0.22%.
+- Costs: $0.01/share/side slippage and $0.005/share/side commission, re-run at 2x.
+
+**Sizing decides whether the target is reachable at all.** A winning trade
+moves price about 0.4%, so it adds `0.4% x (notional / equity)` to the account:
+
+| Notional / equity | Gain from one 0.40% winner |
+|---|---|
+| 0.08x (equity sizer's per-position default) | 0.032% |
+| 0.30x (charter's exposure figure) | 0.12% |
+| 1.00x (fully invested cash) | 0.40% |
+| 2.00x (margin) | 0.80% |
+
+At the sizer's current 8% cap, 0.3% a day would need about nine winners a day;
+at the charter's 30% about three. Reaching it with one or two trades needs
+roughly 0.75x-1.0x or more, which is a charter and sizing decision, not a
+signal property. The backtest reports the same trades at all four caps so the
+cost of each choice is visible. (`equity_signal_engine.max_position_pct` is
+the sizer's default; I did not check every override on the live path.)
+
+**Running it** (read-only; neither script can place an order):
+
+```bash
+python scripts/intraday_bars_fetch.py bars.csv --client-id 17 --symbols QQQ SPY --start 2023-01-01
+python scripts/vwap_reversion_backtest.py bars.csv
+```
+
+The exporter uses a read-only IBKR session and its own client id, about an hour
+for three years of two symbols, resumable. Verified: the logic and tests, on
+synthetic bars. **Not verified:** the gateway's pacing limits and data
+permissions; run it once and check the row counts.
+
+The synthetic-data check is only a machinery check. On random-walk bars with
+no edge by construction, the best of 108 cells looked positive in the
+selection period and negative in the holdout, which is the over-fitting the
+split exists to catch. It says nothing about real prices.
+
 ### Parameter grid (every cell is run; the count of cells is reported)
 
 | Parameter | Values |
