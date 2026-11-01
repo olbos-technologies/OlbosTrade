@@ -3424,7 +3424,27 @@ async def guardrail_status():
         )
         current_value = float(acct.net_liquidation)
         account_value_known = True
-    except Exception:
+    except Exception as exc:
+        # Say WHICH failure. This block used to swallow the exception without a
+        # trace, so a fabricated "81.82% drawdown" could be traced to "the
+        # account read failed" and no further: a gateway that is down, a read
+        # that outran ACCOUNT_SUMMARY_ROUTE_TIMEOUT_SECONDS, and an IBKR
+        # request queue backed up behind other work all land here, and they
+        # have different remedies.
+        #
+        # The exception TYPE is logged, not just its text: asyncio.TimeoutError
+        # has an empty message, so str(exc) alone would log nothing for what is
+        # probably the commonest cause. One line and no traceback, because this
+        # route is polled many times a minute and a traceback per call would
+        # flood the log during precisely the outage being diagnosed. The text is
+        # truncated since an exception string is not guaranteed to be free of
+        # identifiers.
+        logger.warning(
+            "Account value read failed (%s: %s) — timeout=%ss; blocking entries "
+            "as account_value_unknown rather than substituting STARTING_CAPITAL.",
+            type(exc).__name__, (str(exc) or "no message")[:200],
+            ACCOUNT_SUMMARY_ROUTE_TIMEOUT_SECONDS,
+        )
         # The read failed. Substituting starting_capital here used to look
         # harmless — it is a plausible number in the right units — but every
         # guardrail percentage divides by current_value, so the substitution
