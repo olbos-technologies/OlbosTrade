@@ -4,6 +4,10 @@
 
 - `GET /api/market/broker` now returns `error` on the disconnected branch, not only on the exception branch, so the ENV chip's tooltip names the reason (host, port, clientId, and the last connection failure) instead of reading a bare DISCONNECTED whose cause was reachable only from container logs. The IBKR client records its last connection failure for this. Diagnostics only; no change to connection behaviour, risk gates or order paths.
 
+## Unreleased — An unknown account value blocks honestly
+
+- Fixed: when the broker read for net liquidation failed, the route substituted `STARTING_CAPITAL` for it. Compared against the persisted all-time peak that manufactured "MAX DRAWDOWN LIMIT HIT: 81.82% FROM PEAK" on a disconnected gateway, blocking every entry and naming a loss that never happened. An unknown account value is now its own blocking reason, checked before any percentage is derived, and a fabricated value can no longer ratchet the all-time peak. Fails closed; no limit or threshold changed.
+
 ## Unreleased — Live Signals card trade plan
 
 - Equity Live Signals cards again show confidence % (or opportunity score) and ENTRY / STOP / TARGET / MOVE on the card face, instead of burying them under a closed “Technical evidence and trade plan” disclosure. Rationale and Review stay; deeper factors stay under Technical evidence. Presentation only; no scoring, risk or order-path change.
