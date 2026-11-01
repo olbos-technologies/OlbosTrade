@@ -407,20 +407,41 @@ async def main(days: int, mode: str | None) -> None:
     print("  than at the stop/target multiples.")
 
     # ---------- 7 COST DRAG ----------
-    commission = sum(_f(t.commission_paid) for t in trades)
-    gross = sum(all_pnl) + commission
+    #
+    # "Not recorded" is not "zero". commission_paid is written only by the
+    # backtester; live and paper fills never populate it, so on production it is
+    # NULL on every row. Summing it through _f() turned those NULLs into 0.0 and
+    # printed "commission paid : 0.00" beside a "gross P&L" equal to the net
+    # figure — a missing measurement reported as a clean one, in a tool whose
+    # job is to refuse exactly that. Only trades that actually carry a value
+    # count, and the coverage is stated.
+    recorded = [x for x in trades if x.commission_paid is not None]
     print(f"\n7 COST DRAG")
-    print(f"  commission paid        : {commission:.2f}")
-    print(f"  gross P&L before costs : {gross:+.2f}")
-    if gross > 0:
-        print(f"  commission as % of gross: {commission / gross * 100:.1f}%")
-        if commission / gross > 0.3:
-            print("  !! Costs are eating more than 30% of gross. On defined-risk spreads this")
-            print("     is usually fixable with fewer, larger positions — a sizing change, not")
-            print("     a strategy change, and the cheapest edge in this report.")
-    elif commission > 0:
-        print("  Gross P&L is not positive, so costs are not the binding constraint;")
-        print("  they are making a losing book lose faster.")
+    print(f"  commission recorded on : {len(recorded)} of {len(trades)} trades")
+    if not recorded:
+        print("  Every P&L in this report is AS RECORDED and EXCLUDES costs. No")
+        print("  commission was captured, which is NOT the same as none being paid:")
+        print("  a round trip on a 4-leg options spread is the case where it matters")
+        print("  most. Nothing below can be said about cost drag until it is recorded.")
+    else:
+        commission = sum(_f(x.commission_paid) for x in recorded)
+        subset_pnl = [_f(x.pnl) for x in recorded]
+        gross = sum(subset_pnl) + commission
+        scope = "" if len(recorded) == len(trades) else f"  (only the {len(recorded)} trades that carry one)"
+        print(f"  commission paid        : {commission:.2f}{scope}")
+        print(f"  P&L before costs       : {gross:+.2f}{scope}")
+        if len(recorded) != len(trades):
+            print(f"  !! {len(trades) - len(recorded)} trades have no commission recorded, so the figures")
+            print( "     above understate total costs and say nothing about those trades.")
+        if gross > 0:
+            print(f"  commission as % of that: {commission / gross * 100:.1f}%")
+            if commission / gross > 0.3:
+                print("  !! Costs are eating more than 30% of gross. On defined-risk spreads this")
+                print("     is usually fixable with fewer, larger positions — a sizing change, not")
+                print("     a strategy change, and the cheapest edge in this report.")
+        elif commission > 0:
+            print("  Gross P&L is not positive, so costs are not the binding constraint;")
+            print("  they are making a losing book lose faster.")
 
     # ---------- 8 SCORE SKILL ----------
     scored = [t for t in trades if t.signal_score is not None]

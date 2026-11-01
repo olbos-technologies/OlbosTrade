@@ -1,0 +1,3 @@
+## Unreleased — The attribution report no longer reports unrecorded commissions as zero
+
+- `trade_attribution_report.py` summed `commission_paid` through a helper that turns NULL into 0.0, so a book with no commission captured printed `commission paid : 0.00` beside a "gross P&L" equal to the net figure. `commission_paid` is written only by the backtester, so on production it is NULL on every live and paper trade, and that line read as a measurement. Section 7 now states coverage ("recorded on N of M trades"), says plainly that nothing can be concluded about cost drag when none is recorded, and scopes any figure to the trades that actually carry one. Read-only script; no behaviour change. Capturing real commissions from the IBKR fill path is not done here — see the PR.
