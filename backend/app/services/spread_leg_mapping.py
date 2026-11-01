@@ -24,6 +24,12 @@ _KNOWN_TWO_LEG_KINDS = {
     "bear_call_spread": "call",
     "bull_call_debit_spread": "call",
     "bear_put_debit_spread": "put",
+    # The same strategy under the name every other module uses: the scanner,
+    # strategy_engine, trade_desk and the order path all say `bear_put_spread`.
+    # This table alone said `bear_put_debit_spread`, so a trade carrying the name
+    # the rest of the system writes would have mapped to "unsupported". The old
+    # key stays in case a stored row carries it.
+    "bear_put_spread": "put",
 }
 
 
