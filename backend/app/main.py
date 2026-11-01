@@ -3423,13 +3423,30 @@ async def guardrail_status():
             timeout=ACCOUNT_SUMMARY_ROUTE_TIMEOUT_SECONDS,
         )
         current_value = float(acct.net_liquidation)
+        account_value_known = True
     except Exception:
+        # The read failed. Substituting starting_capital here used to look
+        # harmless — it is a plausible number in the right units — but every
+        # guardrail percentage divides by current_value, so the substitution
+        # does not produce a cautious answer, it produces a confident wrong
+        # one. Against the persisted all-time peak it manufactured "MAX
+        # DRAWDOWN LIMIT HIT: 81.82%" on a disconnected gateway and blocked
+        # every entry while naming a loss that never happened.
         current_value = settings.starting_capital
+        account_value_known = False
 
-    peak_value = await _get_or_update_peak_value(current_value, settings.starting_capital)
+    # Only a real measurement may move the all-time peak. The peak ratchets up
+    # and never down, so one fabricated high would raise it permanently and
+    # brick the drawdown gate for good — a configuration typo that cannot be
+    # undone by reconnecting the broker.
+    if account_value_known:
+        peak_value = await _get_or_update_peak_value(current_value, settings.starting_capital)
+    else:
+        peak_value = _peak_value_cache or 0.0
 
     portfolio = PortfolioState(
         current_value=current_value,
+        account_value_known=account_value_known,
         starting_capital=settings.starting_capital,
         daily_pnl=daily_pnl,
         weekly_pnl=weekly_pnl,
