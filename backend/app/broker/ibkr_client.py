@@ -180,6 +180,10 @@ class IBKRClient(BrokerInterface):
     def __init__(self) -> None:
         self.ib = IB()
         self._connected = False
+        #: Why the last connection attempt failed, surfaced by
+        #: GET /api/market/broker. Without it the UI can only say
+        #: DISCONNECTED and the reason lives in container logs.
+        self._last_connect_error: Optional[str] = None
         # Tracks the one-shot account-updates subscription used by
         # get_account_summary() — see that method's docstring. Reset here
         # and on every fresh connect(): a new physical session invalidates
@@ -257,6 +261,7 @@ class IBKRClient(BrokerInterface):
                     clientId=settings.ibkr_client_id,
                 )
                 self._connected = True
+                self._last_connect_error = None
                 logger.info(
                     "IBKR connected — host=%s port=%s clientId=%s",
                     settings.ibkr_host,
@@ -276,6 +281,11 @@ class IBKRClient(BrokerInterface):
                 logger.info("IBKR market data type set to 4 (delayed-frozen, free)")
                 return
             except Exception as exc:
+                self._last_connect_error = (
+                    f"{type(exc).__name__}: {exc} "
+                    f"(host={settings.ibkr_host} port={settings.ibkr_port} "
+                    f"clientId={settings.ibkr_client_id}, attempt {attempt}/{MAX_RETRIES})"
+                )
                 logger.warning(
                     "IBKR connection attempt %d/%d failed: %s",
                     attempt, MAX_RETRIES, exc,
