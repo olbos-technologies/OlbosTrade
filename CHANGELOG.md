@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased — Guardrail state persistence made safe to wire up
+
+- `save_portfolio_snapshot` and its loader — documented as "what survives restarts" — have never been called from anywhere, so `portfolio_snapshots` has always been empty and guardrail counters reset on every restart. Narrowed the loader to counters only (it also returned `current_value` read off a stored snapshot — a stale number standing in for a live measurement), and made the writer refuse to persist a cycle whose account value was not readable, so a fabricated limit breach cannot outlive the outage that produced it. Neither is wired into the trade cycle yet; that is a policy decision. No behaviour change.
+
 ## Unreleased — An unknown account value blocks honestly
 
 - Fixed: when the broker read for net liquidation failed, the route substituted `STARTING_CAPITAL` for it. Compared against the persisted all-time peak that manufactured "MAX DRAWDOWN LIMIT HIT: 81.82% FROM PEAK" on a disconnected gateway, blocking every entry and naming a loss that never happened. An unknown account value is now its own blocking reason, checked before any percentage is derived, and a fabricated value can no longer ratchet the all-time peak. Fails closed; no limit or threshold changed.
