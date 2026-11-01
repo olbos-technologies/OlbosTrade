@@ -333,18 +333,31 @@ def _cells(grid: dict) -> list[Params]:
 EXPOSURE_CAPS = (0.08, 0.30, 1.0, 2.0)
 
 
+def get_engine(name: str):
+    """`python` is the reference. `cpp` is the accelerator, tested to match it exactly."""
+    if name == "python":
+        return simulate
+    if name == "cpp":
+        sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parent))
+        import vwap_reversion_cpp
+        return vwap_reversion_cpp.simulate
+    raise ValueError(f"unknown engine {name!r}; use 'python' or 'cpp'")
+
+
 def run_grid(feats: pd.DataFrame, grid: dict = GRID, split: float = 0.6,
-             min_trades: int = 30, caps: tuple = EXPOSURE_CAPS, **rules) -> dict:
+             min_trades: int = 30, caps: tuple = EXPOSURE_CAPS, engine: str = "python",
+             **rules) -> dict:
     """Pick the best cell on the EARLY days; judge it only on the LATE days."""
     dates = sorted(feats["date"].unique())
     if len(dates) < 10:
         return {"error": f"only {len(dates)} sessions; need at least 10"}
+    sim = get_engine(engine)
     cut = dates[int(len(dates) * split)]
     early, late = feats[feats["date"] < cut], feats[feats["date"] >= cut]
     cells = _cells(grid)
     scored = []
     for p in cells:
-        s = summarize_trades(simulate(early, p))
+        s = summarize_trades(sim(early, p))
         if s["n"] >= min_trades:
             scored.append((s["expectancy_r"], p, s))
     if not scored:
@@ -352,7 +365,7 @@ def run_grid(feats: pd.DataFrame, grid: dict = GRID, split: float = 0.6,
                 "cells_tried": len(cells)}
     scored.sort(key=lambda r: r[0], reverse=True)
     _, best, sel = scored[0]
-    late_trades = simulate(late, best)
+    late_trades = sim(late, best)
     hold = summarize_trades(late_trades)
     late_dates = late["date"].unique()
     by_cap = {
@@ -360,7 +373,7 @@ def run_grid(feats: pd.DataFrame, grid: dict = GRID, split: float = 0.6,
             apply_daily_rules(late_trades, best, max_notional_x=cap, **rules), late_dates))
         for cap in caps
     }
-    costs2 = summarize_trades(simulate(late, replace(best, cost_mult=2.0)))
+    costs2 = summarize_trades(sim(late, replace(best, cost_mult=2.0)))
     return {
         "cells_tried": len(cells), "selection_days": int((early["date"].nunique())),
         "holdout_days": int(len(late_dates)), "best": best, "selection": sel,
@@ -408,10 +421,12 @@ def main(argv: Optional[list[str]] = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("bars_csv")
     ap.add_argument("--symbols", nargs="*", default=["QQQ", "SPY"])
+    ap.add_argument("--engine", choices=["python", "cpp"], default="python",
+                    help="python is the reference; cpp is faster and must give identical trades")
     args = ap.parse_args(argv)
     df = pd.read_csv(args.bars_csv)
     df = df[df["symbol"].isin(args.symbols)]
-    print(format_report(run_grid(prepare(load_bars(df)))))
+    print(format_report(run_grid(prepare(load_bars(df)), engine=args.engine)))
     return 0
 
 

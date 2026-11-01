@@ -102,6 +102,14 @@ signal property. The backtest reports the same trades at all four caps so the
 cost of each choice is visible. (`equity_signal_engine.max_position_pct` is
 the sizer's default; I did not check every override on the live path.)
 
+**Engines.** `vwap_reversion_backtest.py --engine python` (default) is the
+reference. `--engine cpp` runs the same simulation in C++ (`scripts/cpp/vwap_sim.cpp`,
+compiled on first use). On three years of synthetic bars it gave identical
+trades in all 108 grid cells (313,838 trades compared, exact floating-point
+equality) and ran the full pipeline about 59x faster (160 s versus 2.7 s). Speed
+changes nothing about whether the strategy has an edge; it only makes larger
+searches practical. Python stays the oracle: change a rule there first.
+
 **Running it** (read-only; neither script can place an order):
 
 ```bash
