@@ -144,7 +144,14 @@ IV / IV rank / greeks / POP / expected move / EV / breakeven. *Status:* ✅
 ## Exit conditions
 Profit target (50 / 75 / 100%) · ATR trailing stop · time stop · technical stop ·
 max loss · early exit before major news. *Status:* profit targets, stop
-multiplier, DTE time-stop live; ATR-trailing and news-exit are roadmap.
+multiplier and DTE time-stop are implemented in `strategy_engine.check_exit` and
+exercised by the backtester and optimizer, but are **not evaluated against live
+options positions**: an open options spread is closed only manually, by position
+rotation, or by expiry/assignment. Audited 2026-11-01 — `check_exit` has no
+caller outside the backtester, combo orders carry no broker-side exit, and
+nothing reads a stored target to close a position. Backtested expectancy that
+assumes those exits therefore does not describe live behaviour. ATR-trailing and
+news-exit are roadmap. Equity exits were not assessed in this audit.
 
 ## AI confidence score & decision
 Confidence 0–100 from trend, momentum, volatility, flow, liquidity, regime,
