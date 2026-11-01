@@ -9,9 +9,27 @@
 # prose and keeping both is always correct — so automating it loses no
 # information and no judgement.
 #
-# union is a merge driver built into git itself, not a custom one needing
-# local config, so it applies to GitHub's server-side merges as well as to
-# `git merge` on a developer's machine. A custom driver would not.
+# WHAT THIS DOES AND DOES NOT COVER. Corrected after the first version of this
+# comment claimed more than was ever tested.
+#
+#   Works:   `git merge` / `git rebase` run on a machine, for a branch that
+#            ALREADY CONTAINS this file. union is built into git, so no local
+#            config is needed. Verified: #210's own sync with main resolved with
+#            no unmerged files.
+#   Does NOT: GitHub's own merge. Immediately after this file reached main, a
+#            PR whose entry sat at the top beside another merged entry still
+#            returned "405 Pull Request has merge conflicts" and reported
+#            mergeable_state "dirty". GitHub does not appear to apply merge
+#            attributes server-side, so the merge button still conflicts if main
+#            gained a CHANGELOG entry since you last synced.
+#   Does NOT: a branch cut BEFORE this file existed. git reads attributes from
+#            the side being merged into, so the file arrives with the merge and
+#            has no effect while it runs. Each such branch conflicts once.
+#
+# Consequence: sync with main locally before opening a PR and again whenever
+# main moves. A PR GitHub reports as conflicted gets NO CI AT ALL — the workflow
+# never starts — so a PR with no check runs should be read as a conflict first,
+# not as a slow runner.
 #
 # Deliberately scoped to this one file. Union merge is WRONG for code: it would
 # silently concatenate both sides of a conflicting function and produce
