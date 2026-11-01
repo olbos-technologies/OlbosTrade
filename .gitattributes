@@ -1,0 +1,20 @@
+# CHANGELOG.md is append-at-the-top and every branch adds an entry, so any two
+# concurrent branches conflict there by construction. On 2026-10-31 that
+# happened five times in one evening across three agents working in parallel
+# (Claude, Cursor, Codex), twice leaving unresolved <<<<<<< markers committed
+# to main, and repeatedly re-blocking pull requests that were otherwise green.
+#
+# `merge=union` takes BOTH sides instead of stopping. That is exactly the
+# resolution a human performs every time here — the entries are independent
+# prose and keeping both is always correct — so automating it loses no
+# information and no judgement.
+#
+# union is a merge driver built into git itself, not a custom one needing
+# local config, so it applies to GitHub's server-side merges as well as to
+# `git merge` on a developer's machine. A custom driver would not.
+#
+# Deliberately scoped to this one file. Union merge is WRONG for code: it would
+# silently concatenate both sides of a conflicting function and produce
+# something that compiles and misbehaves. It is right only where the content is
+# an unordered list of independent additions.
+CHANGELOG.md merge=union
