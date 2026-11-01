@@ -119,6 +119,41 @@ no edge by construction, the best of 108 cells looked positive in the
 selection period and negative in the holdout, which is the over-fitting the
 split exists to catch. It says nothing about real prices.
 
+### Candidate E — intraday momentum model (QQQ/SPY shares)
+
+The first quantitative-model candidate: a regression-style predictor rather
+than a pattern. Published research (Gao, Han, Li & Zhou, *Market Intraday
+Momentum*, J. Financial Economics 2018, S&P 500 ETF data to 2013) reports that
+the first half-hour return, measured from the previous close, and the
+15:00-15:30 return predict the last half-hour's return. The effect is small:
+a predictive R-squared of about 1.6%, and a rule that traded it earned roughly
+6% a year **gross** on SPY, i.e. about 0.03% a day. A third-party QuantConnect
+replication reports a lower Sharpe than the benchmark in its window. These are
+secondary summaries; the full paper was not read. **E is not a route to
+0.3-0.5% a day; it is a low-exposure component to test.**
+
+Rules, fixed before any real data is seen (`backend/scripts/intraday_momentum_backtest.py`):
+
+- One trade a day per symbol. Entry at the **open of the 15:30 bar** (the bar
+  after the signal bar completes) plus slippage; exit at the 15:55 close minus
+  slippage; commission on both sides. Optional stop checked first, a gap fills
+  at the open.
+- Signals use only data completed by 15:30: `r1` (sign of the first half hour
+  vs the previous close), `r12` (sign of 15:00-15:30), `both` (trade only when
+  they agree), `ols` (rolling OLS of the last-25-minute return on r1 and r12,
+  fitted on **prior sessions only**, minimum 60).
+- **Baselines are part of the test**: always-long and always-short over the same
+  25 minutes. A signal that does not beat simply holding has found drift, not a
+  predictor, and the report says so.
+- Grid (30 cells): signal x threshold {0, 5, 10 bp} x stop {none, 0.5%} x OLS
+  window {120, 250}. 60/40 chronological split; chosen on the early days,
+  judged on the late days; t-statistic, bootstrap interval, 2x costs, and daily
+  equity result at the four exposure caps.
+- The tests include a **power check**: a planted momentum effect in synthetic
+  bars must be detected and beat the baselines, and pure random walks must not
+  be called a discovery. A null result is only informative if the machinery
+  could have found something.
+
 ### Parameter grid (every cell is run; the count of cells is reported)
 
 | Parameter | Values |
