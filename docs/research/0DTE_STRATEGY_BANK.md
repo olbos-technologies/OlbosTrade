@@ -51,10 +51,21 @@ interval.
 | A | Iron condor or one-sided credit spread, shorts 8–12 delta | 10:00–11:30 ET | VIX 13–28, overnight gap < 0.7%, IV/RV > 1.0, range day |
 | B | SPY/QQQ shares, opening-range breakout then pullback retest | 09:45–11:00 ET | SPY and QQQ agree vs VWAP, breakout-bar volume > 1.2x 20-day median |
 | C | B's direction call picks the structure: range → A; trend → debit vertical | per A / B | classify at 10:00 ET |
+| D | SPY/QQQ shares, short-horizon mean reversion: enter when the 5/15-min z-score vs VWAP or EMA(20) is ≤ -1.8..-2.2 (long) or ≥ +1.8..+2.2 (short) | 10:00–15:00 ET | ATR(14) between 0.8x and 2.5x its 20-period median; 1H trend not strongly against; volume > 0.7x 20-period average |
 
 Range day: opening range (09:30–10:00) < 0.35% of price, price near VWAP,
 flat VWAP slope. Trend day: break of the range on above-average volume,
 holding the correct side of VWAP. Neither: no trade.
+
+Candidate D is the transferable core of a fourth plan written for crypto
+perpetuals and forex (3-5x leverage on Binance/Bybit/Hyperliquid). **Those
+venues, instruments and leverage are outside the charter and the IBKR broker
+scope and are not proposed here**; only the signal logic is ported to
+charter-supported ETFs. Exits for D: target 0.35-0.55% of price (or 1.2-1.5R),
+stop 0.25-0.40% (or 0.8-1.0x ATR), time stop at 45-90 minutes, move the stop to
+breakeven plus costs after +0.25%. Risk 0.4-0.7% of equity per trade, at most
+2-3 concurrent, shares only, no leverage beyond what the account's existing
+exposure cap allows.
 
 ### Parameter grid (every cell is run; the count of cells is reported)
 
@@ -80,11 +91,20 @@ trigger, so real break-even is higher.
 | Credit, TP 70% / stop 3x credit | 0.70 c | 2.00 c | 74.1% |
 | Credit, TP 50% / stop 1x credit | 0.50 c | 1.00 c | 66.7% |
 | Debit vertical, 1 : 1.5 | 1.5 R | 1 R | 40.0% |
+| Shares D (win 0.45% / loss 0.325% of price, 0.05% round-trip cost) | 0.40 % | 0.375 % | 48.4% (51.5% with 0.05% more stop slippage) |
 
 (`c` = credit received.) The source plans quote green-day rates of 60–65% for
 the 50%/1x design, which is **below** its 66.7% break-even. Tighter stops are
 hit more often by intraday noise, so the win rate and the payoff trade off
 against each other. That trade-off is the empirical question the grid answers.
+
+Candidate D has the most forgiving payoff of the four (break-even near 48%
+versus 67-74% for the credit designs), so a 55-65% win rate would give about
++0.08% to +0.20% of equity per trade, or roughly 0.2-0.5% a day over 2-3
+trades. The whole case rests on a **55-65% win rate together with winners
+larger than losers**, which mean-reversion systems rarely deliver at once
+(they usually trade a high win rate for small winners). That is the number the
+out-of-sample test must show, with its confidence interval.
 
 ### Costs are the first thing to kill it
 
