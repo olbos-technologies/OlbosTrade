@@ -119,6 +119,42 @@ no edge by construction, the best of 108 cells looked positive in the
 selection period and negative in the holdout, which is the over-fitting the
 split exists to catch. It says nothing about real prices.
 
+### Candidate D+ — signal-quality filter on D (from a fifth, "hybrid" plan)
+
+A plan proposed layering quantitative components on D: a signal-quality score,
+regime detection, dynamic sizing, a QQQ/SPY portfolio book, and execution
+models. Only the first is built, because it is the one the plan itself ranks
+first and the only one testable on the data we can export.
+`backend/scripts/vwap_quality_score.py`:
+
+- Takes the trades D takes and asks whether a model trained **only on earlier
+  trades** can pick the better ones better than keeping the same number at
+  random.
+- Plain logistic regression (numpy, ridge), 8 features oriented by trade
+  direction: |z|, ATR ratio, relative volume, hourly-trend slope, overnight gap,
+  3-bar return, time of day (sin/cos). Label: net positive after costs.
+- **Fixed before any data is seen:** L2 = 1, keep the top 50%, at least 300
+  training trades. One configuration, so there is no multiple testing to hide in.
+- Walk-forward by calendar month; the keep threshold is a percentile of the
+  *training* scores. Reported with out-of-sample AUC, a 5,000-draw permutation
+  p-value against random subsets of the same size, standardised coefficients,
+  and the daily result at the four exposure caps (all trades vs kept only).
+- Not gradient boosting: a few years of one ETF give far too few labelled trades
+  to train trees without over-fitting.
+- Tests: leakage guards (a month's scores cannot depend on that month or later),
+  a power check (planted skill is found, no skill is not called a discovery),
+  and a threshold-leak guard. Deliberately letting the model train on the month
+  it scores made all four no-skill datasets report a "discovery".
+
+**Not built, and why:**
+
+| Layer | Status |
+|---|---|
+| Regime detection (HMM / clustering) | Needs its own pre-registration; adding it on top of an unvalidated D multiplies the ways to over-fit. Next in the plan's order. |
+| Dynamic sizing / Kelly / volatility targeting | Depends on the sizing and exposure-cap decision above; sizing is the binding constraint, not the signal. |
+| QQQ+SPY correlation-aware book, relative-value overlay | Needs both legs' results first; the two are highly correlated. |
+| Predictive slippage, order-book imbalance, smart routing / iceberg | The exporter provides trade bars only: no order book, and live commissions and fills are not recorded. Iceberg orders are irrelevant at these sizes. |
+
 ### Parameter grid (every cell is run; the count of cells is reported)
 
 | Parameter | Values |
