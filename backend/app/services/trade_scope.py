@@ -28,7 +28,7 @@ from __future__ import annotations
 import uuid
 from typing import Optional
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 
 from app.models.trade import Trade
 from app.utils.logger import get_logger
@@ -88,6 +88,12 @@ async def autonomous_scope(db) -> Optional[uuid.UUID]:
                           "unambiguous or nothing" test migration 0041 applies
                           to its backfill: one organization means one person
                           could own this.
+    * OPERATOR_ORGANIZATION_ID set -> that organization, if it is a personal
+                          organization whose user is active. This is the
+                          operator saying who they are, not the code guessing,
+                          so it resolves the "several" case below. A bad value
+                          raises AmbiguousOwner; it never falls back to
+                          counting organizations.
     * zero or several   -> AmbiguousOwner. Autopilot refuses to enter rather
                           than filing the position under a tenant that may not
                           own it.
@@ -109,6 +115,9 @@ async def autonomous_scope(db) -> Optional[uuid.UUID]:
     if not settings.auth_enabled:
         return None
 
+    if (settings.operator_organization_id or "").strip():
+        return await _designated_operator_scope(db)
+
     rows = (await db.execute(
         select(Organization.id).where(Organization.personal_for_user_id.isnot(None))
     )).scalars().all()
@@ -120,6 +129,81 @@ async def autonomous_scope(db) -> Optional[uuid.UUID]:
         f"{len(rows)} personal organizations exist, so an autonomous entry "
         f"cannot establish an owner without guessing"
     )
+
+
+def designated_operator_id() -> Optional[uuid.UUID]:
+    """The configured operator organization, or None if unset or malformed.
+
+    Malformed is None here on purpose: this is the *read* side, used to decide
+    whether to widen a guard. An unusable value must widen nothing.
+    `_designated_operator_scope` is where an unusable value is refused.
+    """
+    from app.core.config import settings
+
+    raw = (settings.operator_organization_id or "").strip()
+    if not raw:
+        return None
+    try:
+        return uuid.UUID(raw)
+    except ValueError:
+        return None
+
+
+async def _designated_operator_scope(db) -> uuid.UUID:
+    """Validate OPERATOR_ORGANIZATION_ID against the database, or refuse.
+
+    Three ways to be wrong, all of which refuse rather than fall back to
+    counting organizations — falling back would turn a typo into a guess.
+    """
+    from app.core.config import settings
+    from app.models.organization import Organization
+    from app.models.user import User
+
+    raw = (settings.operator_organization_id or "").strip()
+    org_id = designated_operator_id()
+    if org_id is None:
+        raise AmbiguousOwner("OPERATOR_ORGANIZATION_ID is set but is not a UUID")
+
+    found = (await db.execute(
+        select(Organization.id, User.is_active)
+        .join(User, User.id == Organization.personal_for_user_id)
+        .where(Organization.id == org_id)
+    )).first()
+
+    if found is None:
+        raise AmbiguousOwner(
+            f"OPERATOR_ORGANIZATION_ID {raw} is not a personal organization"
+        )
+    if not found.is_active:
+        raise AmbiguousOwner(
+            f"OPERATOR_ORGANIZATION_ID {raw} belongs to a deactivated user"
+        )
+    return found.id
+
+
+def owned_by_for_entry_guards(org_id: Optional[uuid.UUID]):
+    """`owned_by`, widened for the designated operator only.
+
+    The duplicate guard and the re-entry cooldown ask "does *this owner*
+    already hold, or just close, this name?". Migration 0041 declined to guess
+    an owner for the trades that predate tenancy, so for an operator whose
+    history is all unattributed, `owned_by(operator)` returns nothing — and
+    the desk would buy a name it already holds and skip the cooldown after a
+    stop-out. Duplicate-order protection quietly off.
+
+    So the organization the operator has *explicitly designated* also owns the
+    unattributed rows for these two checks. Every other organization keeps the
+    strict rule — `test_an_unattributed_position_does_not_block_an_organization`
+    — because for a tenant those rows are somebody else's, not theirs.
+
+    Deliberately not used for reads that return trades to a caller: a screen
+    is a different question from a safety check, and widening what a user can
+    see is a separate decision.
+    """
+    designated = designated_operator_id()
+    if org_id is not None and designated is not None and org_id == designated:
+        return or_(Trade.organization_id == org_id, Trade.organization_id.is_(None))
+    return owned_by(org_id)
 
 
 async def count_unattributed_open_trades(db) -> int:
