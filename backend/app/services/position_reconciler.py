@@ -368,12 +368,25 @@ class PositionReconciler:
         except Exception as exc:
             logger.error("Could not persist reconciliation snapshot: %s", exc)
 
-    async def load_guardrail_state_from_db(self) -> dict:
+    async def load_guardrail_counters_from_db(self) -> dict:
         """
-        FIX #12: Load persisted guardrail state from most recent portfolio snapshot.
-        Prevents consecutive_losses and trades_today from resetting to 0 on restart.
+        Load the guardrail COUNTERS from the most recent portfolio snapshot,
+        so consecutive_losses, trades_today and an active cooling-off period do
+        not reset to zero when the process restarts.
 
-        Returns dict compatible with PortfolioState constructor.
+        COUNTERS ONLY, and that restriction is the point. This previously also
+        returned `current_value` read off the snapshot — a stored number
+        standing in for a live measurement. That is the exact shape of the
+        failure that took the desk down on 2026-10-31: the account-summary
+        route substituted STARTING_CAPITAL for a broker read it could not make,
+        the guardrail engine compared the constant against the all-time peak,
+        and a fabricated "81.82% drawdown" suspended trading for 30 days. A
+        stale snapshot value would do the same thing with a different number.
+
+        Portfolio value, P&L and anything derived from them must be measured
+        every time. What legitimately survives a restart is bookkeeping: how
+        many losses in a row, how many trades today, and whether a cooling-off
+        the engine already imposed is still running.
         """
         from app.core.config import settings
         from app.models.risk_state import PortfolioSnapshot
@@ -388,13 +401,8 @@ class PositionReconciler:
 
         from decimal import Decimal
         if snap is None:
-            logger.info("No portfolio snapshot found — using default guardrail state")
+            logger.info("No portfolio snapshot found — guardrail counters start at zero")
             return {
-                "current_value": settings.starting_capital,
-                "starting_capital": settings.starting_capital,
-                "daily_pnl":   Decimal("0"),
-                "weekly_pnl":  Decimal("0"),
-                "monthly_pnl": Decimal("0"),
                 "consecutive_losses": 0,
                 "trades_today": 0,
                 "cooling_off_until": None,
@@ -407,13 +415,7 @@ class PositionReconciler:
             snap.trading_mode, snap.cooling_off_until,
         )
 
-        from decimal import Decimal
         return {
-            "current_value": float(snap.total_value),
-            "starting_capital": settings.starting_capital,
-            "daily_pnl":   Decimal(str(snap.daily_pnl   or 0)),
-            "weekly_pnl":  Decimal(str(snap.weekly_pnl  or 0)),
-            "monthly_pnl": Decimal(str(snap.monthly_pnl or 0)),
             "consecutive_losses": snap.consecutive_losses,
             "trades_today": snap.trades_today,
             "cooling_off_until": snap.cooling_off_until,
@@ -429,11 +431,34 @@ class PositionReconciler:
         trades_today: int,
         trading_mode: str,
         cooling_off_until=None,
+        account_value_known: bool = True,
     ) -> None:
         """
-        FIX #12: Persist current guardrail state to DB after every trade cycle.
-        This is what survives restarts.
+        Persist the guardrail counters after a trade cycle, so they survive a
+        restart.
+
+        Refuses to write when `account_value_known` is False, and that refusal
+        is load-bearing. On 2026-10-31 a disconnected IBKR gateway made the
+        account-summary route substitute STARTING_CAPITAL for a reading it
+        could not take; compared against the all-time peak that produced a
+        fabricated 81.82% drawdown and a 30-DAY TRADING SUSPENSION. The only
+        reason that did not outlive the disconnect is that nothing was writing
+        this table. Wiring it up without this guard would have made the
+        phantom suspension permanent — a worse bug than the one it fixes.
+
+        A cycle whose inputs were not measured has nothing worth remembering.
+        Skipping the write leaves the previous good snapshot in place, which is
+        the conservative outcome: counters continue from the last cycle that
+        actually knew what the book was worth.
         """
+        if not account_value_known:
+            logger.warning(
+                "Skipping portfolio snapshot — account value was not readable this "
+                "cycle. Persisting guardrail state derived from a substituted "
+                "value would make a fabricated limit breach outlive the outage "
+                "that caused it."
+            )
+            return
         from app.models.risk_state import PortfolioSnapshot
         from app.core.config import settings
 
