@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased — CHANGELOG conflicts resolved by git, not by hand
+
+- Added `.gitattributes` with `CHANGELOG.md merge=union`. Every branch appends its entry at the top of that one file, so any two concurrent branches conflict there by construction — five times on 2026-10-31 alone across three agents, twice leaving unresolved markers committed to `main`. Union merge keeps both sides, which is the resolution a human performs here every time. Scoped to this single file; a guard test asserts it is never applied to code or via a wildcard. Tooling only; no behaviour change.
+
 ## Unreleased — Guardrail state persistence made safe to wire up
 
 - `save_portfolio_snapshot` and its loader — documented as "what survives restarts" — have never been called from anywhere, so `portfolio_snapshots` has always been empty and guardrail counters reset on every restart. Narrowed the loader to counters only (it also returned `current_value` read off a stored snapshot — a stale number standing in for a live measurement), and made the writer refuse to persist a cycle whose account value was not readable, so a fabricated limit breach cannot outlive the outage that produced it. Neither is wired into the trade cycle yet; that is a policy decision. No behaviour change.
