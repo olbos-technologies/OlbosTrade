@@ -34,6 +34,42 @@ import pandas as pd
 from app.services.iv_surface import IVSurfaceSnapshot
 from app.utils.logger import get_logger
 
+#: The regime job has no options chain, so it builds "IV rank" from VIX itself:
+#: where today's VIX sits within its own recent range. The range must be long
+#: enough to mean anything. `IVSurfaceSnapshot.iv_rank` is documented as a 1-year
+#: rank, but the job fed this a 60-session window. Over a calm 60 sessions an
+#: ordinary VIX of 19 is the TOP of the range (rank ~90), and the classifier's
+#: CRISIS trigger is `iv_rank >= 85` on its own — so a VIX of 19.4, against an
+#: absolute CRISIS trigger of 40, shut every equity and options entry (observed
+#: 2026-11-02: "IV_rank=90.1 >= 85.0", VIX=19.4).
+VIX_RANK_WINDOW_BARS = 252     # ~1 trading year
+VIX_RANK_MIN_BARS = 126        # below ~6 months a "rank" is just noise
+NEUTRAL_IV_RANK = 30.0         # what the job already assumed when VIX is unavailable
+
+
+def vix_iv_rank(closes) -> Optional[float]:
+    """0-100 rank of the latest VIX close within the last VIX_RANK_WINDOW_BARS closes.
+
+    Returns None — not a number — when there is not enough history for the rank to
+    mean anything, so the caller must choose a neutral value on purpose instead of
+    quietly ranking against a short, calm window (the bug this replaces).
+    Non-finite and non-positive closes are ignored.
+    """
+    import math
+    vals = []
+    for c in closes:
+        try:
+            x = float(c)
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(x) and x > 0:
+            vals.append(x)
+    vals = vals[-VIX_RANK_WINDOW_BARS:]
+    if len(vals) < VIX_RANK_MIN_BARS:
+        return None
+    lo, hi = min(vals), max(vals)
+    return float((vals[-1] - lo) / max(hi - lo, 0.01) * 100)
+
 logger = get_logger(__name__)
 
 

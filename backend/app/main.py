@@ -754,7 +754,12 @@ async def _reclassify_regime() -> None:
 
         # Use yfinance — free, no broker subscription needed
         spy_bars = await _yf_bars("SPY", limit=60)
-        vix_bars = await _yf_bars("VIX", limit=60)
+        from app.services.regime_classifier import (
+            NEUTRAL_IV_RANK, VIX_RANK_MIN_BARS, VIX_RANK_WINDOW_BARS, vix_iv_rank,
+        )
+        # A real 1-year window for the rank (see vix_iv_rank). SPY keeps its 60 bars
+        # above: RSI/ADX/returns are short-horizon measures and are unchanged.
+        vix_bars = await _yf_bars("VIX", limit=VIX_RANK_WINDOW_BARS)
 
         if len(spy_bars) < 15:
             logger.warning("Regime: insufficient SPY bars (%d) — keeping current", len(spy_bars))
@@ -789,16 +794,25 @@ async def _reclassify_regime() -> None:
 
         # VIX proxy for IV rank
         if len(vix_bars) >= 5:
-            vix_series = pd.Series([float(b.close) for b in vix_bars])
-            vix_now    = float(vix_series.iloc[-1])
-            vix_high   = float(vix_series.max())
-            vix_low    = float(vix_series.min())
-            iv_rank    = (vix_now - vix_low) / max(vix_high - vix_low, 0.01) * 100
+            vix_closes = [float(b.close) for b in vix_bars]
+            vix_now    = vix_closes[-1]
+            ranked     = vix_iv_rank(vix_closes)
+            if ranked is None:
+                # Too little VIX history for a rank that means anything. Say so, and use
+                # the neutral value rather than ranking against a short, calm window.
+                logger.warning(
+                    "Regime: only %d VIX bars; need %d for a 1-year IV rank — "
+                    "using the neutral rank %.0f",
+                    len(vix_closes), VIX_RANK_MIN_BARS, NEUTRAL_IV_RANK,
+                )
+                iv_rank = NEUTRAL_IV_RANK
+            else:
+                iv_rank = ranked
         else:
             # VIX unavailable — use realized vol as proxy
             rv = float(returns.iloc[-20:].std() * np.sqrt(252)) if len(returns) >= 20 else 0.15
             vix_now = rv * 100
-            iv_rank = 30.0  # neutral assumption
+            iv_rank = NEUTRAL_IV_RANK  # neutral assumption
 
         realized_vol = float(returns.iloc[-20:].std() * np.sqrt(252)) if len(returns) >= 20 else 0.15
 
