@@ -227,13 +227,13 @@ function SignalCard({
     >
       <div className="signal-rationale"><span>Why it appeared</span><p>{equitySignalRationale(sig)}</p><small>Research only · Model scores are not probabilities of profit.</small></div>
       {tp.entry_price != null && (
-        <div className="trade-plan-well" style={{ gridTemplateColumns: "repeat(4, 1fr)", marginTop: 10 }}>
+        <div className="trade-plan-well signal-trade-plan" style={{ marginTop: 10 }}>
           <PriceCell label="ENTRY" value={tp.entry_price} color="var(--ink)" />
           <PriceCell label="STOP"  value={tp.stop_price}  color="var(--red)" />
           <PriceCell label="TARGET" value={tp.target_price} color="var(--green)" />
           <PriceCell label="MOVE" value={tp.target_move_pct} color="var(--amber)" suffix="%" />
           {tp.shares !== undefined && (
-            <div style={{ gridColumn: "1/-1", display: "flex", gap: 16,
+            <div className="signal-sizing" style={{ gridColumn: "1/-1", display: "flex", gap: 16,
               fontFamily: "var(--mono)", fontSize: 10, color: "var(--ink-dim)", marginTop: 4 }}>
               <span>SHARES: <b style={{color:"var(--ink)"}}>{tp.shares}</b></span>
               {tp.risk_reward !== undefined && (
@@ -315,11 +315,11 @@ function StatPill({ label, value }: { label: string; value: string }) {
 
 function PriceCell({ label, value, color, suffix }: { label: string; value?: number; color: string; suffix?: "%" }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+    <div className="signal-price-cell" style={{ display: "flex", flexDirection: "column", gap: 2 }}>
       <span style={{ color: "var(--ink-dim)", fontFamily: "var(--mono)", fontSize: 9, letterSpacing: "0.08em" }}>
         {label}
       </span>
-      <span style={{ color, fontFamily: "var(--mono)", fontSize: 13, fontWeight: 600 }}>
+      <span className="financial-value" style={{ color, fontFamily: "var(--mono)", fontSize: 13, fontWeight: 600 }}>
         {value === undefined ? "—" : suffix === "%" ? `${value.toFixed(1)}%` : `$${value.toFixed(2)}`}
       </span>
     </div>
@@ -572,7 +572,7 @@ function EquitySignalsGrid() {
             Research ideas for your review · no orders submitted here
           </p>
         </div>
-        <span style={{ flex: 1 }} />
+        <div className="signal-scan-controls">
         <label className="kicker" style={{ display: "flex", alignItems: "center", gap: 6 }}>
           Min move %
           <input
@@ -590,6 +590,7 @@ function EquitySignalsGrid() {
         <button onClick={runScan} disabled={scanning} className="btn-primary">
           {scanning ? "SCANNING…" : "RUN SCAN"}
         </button>
+        </div>
       </div>
 
       <div className="design-search-row">

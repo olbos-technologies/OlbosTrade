@@ -157,6 +157,19 @@ export default function MobileHome() {
         <button className="mh-icon-button" onClick={refresh} aria-label="Refresh home">↻</button>
       </header>
 
+      <section className={`mh-card mh-account${!summary.loading && !summary.value ? " mh-account-unavailable" : ""}`} aria-label="Account overview">
+        <div className="mh-eyebrow">{broker.value?.paper_mode === true ? "Paper account value"
+          : broker.value?.paper_mode === false ? "Live account value" : "Broker account value"}</div>
+        <div className="mh-balance">{summary.loading ? "Loading…" : money(summary.value?.total_equity)}</div>
+        {!summary.value && !summary.loading && <p className="mh-warning">Account data unavailable. Refresh to retry.</p>}
+        {summary.value?.total_equity == null && summary.value && <p className="mh-warning">Broker account value unavailable.</p>}
+        <div className="mh-pnl-grid">
+          <div><span className="mh-muted">Olbos day P&amp;L</span><strong className={typeof summary.value?.day_pnl === "number" ? summary.value.day_pnl < 0 ? "mh-negative" : "mh-positive" : ""}>{money(summary.value?.day_pnl, true)}</strong></div>
+          <div><span className="mh-muted">Olbos total P&amp;L</span><strong>{money(summary.value?.total_pnl, true)}</strong></div>
+        </div>
+        <p className="mh-muted">Trade P&amp;L and broker balance may cover different holdings.</p>
+      </section>
+
       <section className="mh-session-intro" aria-label="Session overview">
         <span className="mh-eyebrow">COMMAND CENTER</span>
         <h2>Control the session. <span>Protect the capital.</span></h2>
@@ -198,19 +211,6 @@ export default function MobileHome() {
           <p className="mh-muted">Mode last checked: {mode.at ? `${Math.max(0, Math.floor((now - mode.at) / 1000))}s ago${mode.fresh ? "" : " · unavailable or stale"}` : "unavailable"}. Account and protection data refresh independently.</p>
           <button className="mh-link" onClick={() => nav("system:broker")}>View connection details <span aria-hidden="true">↗</span></button>
         </details>
-      </section>
-
-      <section className={`mh-card mh-account${!summary.loading && !summary.value ? " mh-account-unavailable" : ""}`} aria-label="Account overview">
-        <div className="mh-eyebrow">{broker.value?.paper_mode === true ? "Paper account value"
-          : broker.value?.paper_mode === false ? "Live account value" : "Broker account value"}</div>
-        <div className="mh-balance">{summary.loading ? "Loading…" : money(summary.value?.total_equity)}</div>
-        {!summary.value && !summary.loading && <p className="mh-warning">Account data unavailable. Refresh to retry.</p>}
-        {summary.value?.total_equity == null && summary.value && <p className="mh-warning">Broker account value unavailable.</p>}
-        <div className="mh-pnl-grid">
-          <div><span className="mh-muted">Olbos day P&amp;L</span><strong className={typeof summary.value?.day_pnl === "number" ? summary.value.day_pnl < 0 ? "mh-negative" : "mh-positive" : ""}>{money(summary.value?.day_pnl, true)}</strong></div>
-          <div><span className="mh-muted">Olbos total P&amp;L</span><strong>{money(summary.value?.total_pnl, true)}</strong></div>
-        </div>
-        <p className="mh-muted">Trade P&amp;L and broker balance may cover different holdings.</p>
       </section>
 
       <section className="mh-card mh-protection" aria-label="Stop coverage">

@@ -1,0 +1,41 @@
+/* Content-driven reflow: preserve terminal colors/fonts; never scale the page. */
+.app-shell .financial-value { white-space: nowrap; overflow-wrap: normal; font-variant-numeric: tabular-nums; }
+.app-shell .design-signal-card { container: signal-card / inline-size; min-width: 0; }
+.app-shell .signal-trade-plan { grid-template-columns: repeat(auto-fit,minmax(min(100%,8rem),1fr)); }
+.app-shell .signal-price-cell { min-width: 0; }
+.app-shell .signal-price-cell .financial-value { font-size: clamp(13px,4cqi,18px) !important; }
+.app-shell .signal-sizing { flex-wrap: wrap; row-gap: 8px !important; }
+.app-shell .signal-sizing > span { white-space: nowrap; }
+.app-shell .signal-scan-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-left: auto; }
+.app-shell .mh-account { container: account-card / inline-size; }
+.app-shell .home-workspace .mh-balance { white-space: nowrap; overflow-wrap: normal; font-size: clamp(18px,7cqi,28px) !important; font-variant-numeric: tabular-nums; }
+.app-shell .home-workspace .mh-pnl-grid { grid-template-columns: repeat(auto-fit,minmax(min(100%,12rem),1fr)); }
+.app-shell .home-workspace .mh-pnl-grid strong { white-space: nowrap; overflow-wrap: normal; font-size: clamp(14px,5.5cqi,18px); font-variant-numeric: tabular-nums; }
+@container account-card (max-width: 400px) {
+  .app-shell .home-workspace .mh-pnl-grid > div + div { border-left: 0; padding-left: 0; border-top: 1px solid var(--line-dim); padding-top: 10px; }
+}
+@media (max-width: 768px) {
+  .app-shell .design-signal-feed { gap: 12px !important; }
+  .app-shell .design-signal-feed .page-header { display: grid; grid-template-columns: minmax(0,1fr); gap: 10px; }
+  .app-shell .signal-scan-controls { margin-left: 0; justify-content: space-between; }
+  .app-shell .signal-scan-controls button { min-height: 44px; }
+  .app-shell .signal-scan-controls input { min-height: 44px; font-size: 16px; }
+  .app-shell .design-search-row { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px; margin-bottom: 0; }
+  .app-shell .design-search-row input { width: 100%; min-height: 44px; font-size: 16px; }
+  .app-shell .design-search-row .design-review { min-height: 44px; padding-inline: 10px; }
+  .app-shell .design-signal-card .mission-card__row { display: grid; grid-template-columns: auto minmax(0,1fr); align-items: center; gap: 8px 12px; }
+  .app-shell .design-signal-card .mission-card__reward { min-width: 48px; padding: 6px; }
+  .app-shell .design-signal-card .mission-card__meta { grid-column: 2; justify-self: start; }
+  .app-shell .design-signal-card .signal-rationale { margin-top: 12px; }
+  .app-shell .design-signal-card .signal-rationale p { font-size: 13px; line-height: 1.5; }
+  .app-shell .signal-generated { overflow-wrap: anywhere; }
+  .app-shell .home-workspace .mh-session-intro { padding: 14px; }
+  .app-shell .home-workspace .mh-session-intro h2 { font-size: 18px; margin-block: 8px 12px; }
+  .app-shell .chart-quote { gap: 8px; }
+  .app-shell .chart-quote strong { white-space: nowrap; font-size: clamp(22px,7vw,32px); }
+  .app-shell .chart-quote p { overflow-wrap: anywhere; }
+  .app-shell .workstation-chart-panel > .panel-head > .panel-title { display: none; }
+}
+@media (max-width: 360px) {
+  .app-shell .design-search-row { grid-template-columns: minmax(0,1fr); }
+}
