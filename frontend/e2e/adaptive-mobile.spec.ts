@@ -6,7 +6,7 @@ async function fixtures(page:Page) {
  await page.route('**/api/**',r=>r.fulfill(r.request().url().includes('/api/auth/status')?reply({auth_enabled:false,authenticated:false,user:null}):{status:503,json:{}}));
  await page.route('**/api/dashboard/summary',r=>r.fulfill(reply({total_equity:12345678.90,day_pnl:-1234567.89,total_pnl:9876543.21})));
  await page.route('**/api/market/broker',r=>r.fulfill(reply({broker:'ibkr',paper_mode:true,status:'connected'})));
- await page.route('**/api/equity/signals?**',r=>r.fulfill(reply({signals:[{id:'synthetic-payx',ticker:'PAYX',action:'BUY',confidence:.78,generated_at:'2026-11-02T21:09:02Z',reasons:['MACD above signal','Price above VWAP'],opportunity_score:{score:78,components:{}},trade_plan:{entry_price:115.49,stop_price:109.15,target_price:128.16,target_move_pct:11,shares:170,risk_reward:2,risk_dollars:1077}}]})));
+ await page.route('**/api/equity/signals?**',r=>r.fulfill(reply({signals:[{id:'synthetic-payx',ticker:'PAYX',action:'BUY',confidence:.78,orderflow_score:.2,iv_overlay_boost:0,earnings_gated:false,generated_at:'2026-11-02T21:09:02Z',reasons:['MACD above signal','Price above VWAP'],opportunity_score:{score:78,components:{}},trade_plan:{entry_price:115.49,stop_price:109.15,target_price:128.16,target_move_pct:11,shares:170,risk_reward:2,risk_dollars:1077}}]})));
  await page.route('**/api/market/snapshot/**',r=>r.fulfill(reply({last_close:339.11,change_pct:-1.6})));
  const bars=Array.from({length:40},(_,i)=>({timestamp:new Date(Date.UTC(2026,10,2,14,i*5)).toISOString(),open:339+i/20,high:341+i/20,low:338+i/20,close:340+i/20,volume:1000+i}));
  await page.route('**/api/equity/chart/**',r=>r.fulfill(reply({bars})));

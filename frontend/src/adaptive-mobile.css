@@ -15,6 +15,7 @@
   .app-shell .home-workspace .mh-pnl-grid > div + div { border-left: 0; padding-left: 0; border-top: 1px solid var(--line-dim); padding-top: 10px; }
 }
 @media (max-width: 768px) {
+  .app-shell .home-workspace .mobile-home > * { order: 0; }
   .app-shell .design-signal-feed { gap: 12px !important; }
   .app-shell .design-signal-feed .page-header { display: grid; grid-template-columns: minmax(0,1fr); gap: 10px; }
   .app-shell .signal-scan-controls { margin-left: 0; justify-content: space-between; }
