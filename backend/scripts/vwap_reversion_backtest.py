@@ -386,12 +386,21 @@ def format_report(res: dict) -> str:
     if "error" in res:
         return f"NOT ENOUGH DATA: {res['error']}"
     b, s, h, h2 = res["best"], res["selection"], res["holdout"], res["holdout_2x_costs"]
-    verdict = (
-        "Holdout expectancy is NOT positive. Do not proceed."
-        if h.get("n", 0) == 0 or h["expectancy_r"] <= 0 else
-        "Holdout expectancy is positive at 1x costs; check the 2x-cost line and the "
-        "confidence interval before reading anything into it."
-    )
+    if h.get("n", 0) == 0 or h["expectancy_r"] <= 0:
+        verdict = "Holdout expectancy is NOT positive. Do not proceed."
+    elif s.get("expectancy_r", 0.0) <= 0:
+        # The cell was picked as the BEST of N on the selection period. If even the best
+        # cell lost money there, no cell worked, and a small holdout gain is noise.
+        verdict = (f"No cell was profitable even on the selection period (the best of "
+                   f"{res['cells_tried']} lost {s['expectancy_r']:+.3f}R per trade). A small "
+                   f"positive holdout is noise, not an edge. Do not proceed.")
+    elif h2.get("n", 0) == 0 or h2["expectancy_r"] <= 0:
+        verdict = ("Holdout is positive at 1x costs but not at 2x: too fragile to trust. "
+                   "Do not proceed.")
+    else:
+        verdict = ("Holdout expectancy is positive at 1x and 2x costs and the best cell was positive "
+                   "on the selection period. Check the daily confidence intervals and the sample "
+                   "size before reading anything into it; one holdout is not proof.")
     return "\n".join([
         "Candidate D — VWAP mean reversion, QQQ/SPY shares",
         f"cells tried: {res['cells_tried']}   (the best of N cells looks better than it is)",

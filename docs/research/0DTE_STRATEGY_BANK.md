@@ -202,6 +202,31 @@ first and the only one testable on the data we can export.
 | QQQ+SPY correlation-aware book, relative-value overlay | Needs both legs' results first; the two are highly correlated. |
 | Predictive slippage, order-book imbalance, smart routing / iceberg | The exporter provides trade bars only: no order book, and live commissions and fills are not recorded. Iceberg orders are irrelevant at these sizes. |
 
+## Results — first full run on real data (2026-11-02)
+
+Data: QQQ and SPY 5-minute regular-hours TRADES bars from the paper gateway,
+74,982 rows each, 2022-12-27 to 2026-10-30, no duplicates. Rules and grids were
+the ones pre-registered above; nothing was changed after seeing results. 60/40
+chronological split (about 580 selection days, 386 holdout days). Costs: $0.01
+per share per side slippage and $0.005 per share per side commission.
+
+| Candidate | Selection | Holdout | Verdict |
+|---|---|---|---|
+| **D** VWAP reversion (best of 108 cells: z >= 1.7, stop 0.22%, target 0.3%, 90 min, hourly trend filter) | n = 1,411, win 41.2%, **-0.021R** | n = 789, win 43.0%, +0.009R, PF 1.02; **-0.007R at 2x costs** | **Rejected.** Even the best of 108 cells lost money on the selection period, so the small holdout gain is noise. Daily result is zero at every exposure cap (1x: mean -0.000%, 95% interval -0.034 to +0.034); 32% green days; max drawdown -7.5% at 1x and -11.9% at 2x. |
+| **E** intraday momentum (r1, 10 bp threshold) | n = 971, mean -0.0045%, t = -0.63 | n = 654, mean +0.0005%, **t = +0.07**; -0.0041% at 2x costs | **Rejected.** Indistinguishable from zero, and below the always-long baseline (+0.0067%, t = +1.02) that has the same drift. 34 half-day sessions were skipped for missing anchors. |
+| **D+** quality filter on D's default settings | n/a (walk-forward) | AUC 0.559; kept trades win 45.3% vs 36.2% dropped; lift +0.005% per trade, permutation p = 0.20; **kept trades still lose** (-0.0024% per trade, PF 0.97) | **Rejected as an edge.** The model ranks winners slightly better than chance, but the improvement is too small to turn a losing rule into a profitable one. Run on D's default settings, not the grid's chosen cell. |
+
+**What this does and does not show.** Under these rules, this data and these
+cost assumptions, there is no tradable edge in intraday VWAP reversion or
+early-session momentum on QQQ/SPY shares, and nothing here supports 0.3-0.5% a
+day. It does not prove no edge exists anywhere: it tests specific rules on one
+~4-year, mostly bull-market window with fills better than a real open will
+give, and no borrow cost for shorts. The valid conclusion is that these
+candidates do not clear the pre-registered gates and should not be traded.
+
+**Not yet tested:** the options candidates (A, C) need options history; B (the
+opening-range breakout) is not implemented.
+
 ### Parameter grid (every cell is run; the count of cells is reported)
 
 | Parameter | Values |

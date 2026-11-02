@@ -279,3 +279,23 @@ def test_the_default_grid_is_the_one_in_the_preregistration():
            / "0DTE_STRATEGY_BANK.md").read_text()
     assert "Candidate D" in doc
     assert len(bt._cells(bt.GRID)) == 108
+
+
+def _grid_res(sel_r, hold_r, hold2_r):
+    stat = lambda r: {"n": 500, "win_rate": 0.45, "expectancy_r": r, "profit_factor": 1.0}
+    cap = {"mean_daily_pct": 0.0, "mean_ci95": (-0.1, 0.1), "mean_without_best5_pct": 0.0,
+           "days_ge_0.3": 0.0, "days_ge_0.5": 0.0, "green_days": 0.4, "worst_day_pct": -1.0,
+           "max_drawdown_pct": -5.0}
+    return {"cells_tried": 108, "selection_days": 500, "holdout_days": 300,
+            "best": bt.Params(), "selection": stat(sel_r), "holdout": stat(hold_r),
+            "holdout_2x_costs": stat(hold2_r),
+            "holdout_daily_by_cap": {c: cap for c in bt.EXPOSURE_CAPS}}
+
+
+def test_d_verdict_does_not_call_noise_an_edge():
+    r = lambda *a: bt.format_report(_grid_res(*a))
+    assert "NOT positive" in r(0.05, -0.01, -0.02)
+    # the real 2026 result: best-of-108 LOST in selection, holdout +0.009R -> noise
+    assert "No cell was profitable even on the selection period" in r(-0.021, 0.009, -0.007)
+    assert "not at 2x" in r(0.05, 0.02, -0.01)
+    assert "positive at 1x and 2x costs" in r(0.05, 0.02, 0.01)
