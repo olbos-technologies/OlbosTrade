@@ -84,9 +84,9 @@ class PositionReconciler:
     @property
     def _owned(self):
         """This reconciler's ownership filter, so the three reads cannot drift."""
-        from app.services.trade_scope import owned_by
+        from app.services.trade_scope import owned_by_operator_aware
 
-        return owned_by(self.organization_id)
+        return owned_by_operator_aware(self.organization_id)
 
     @property
     def scope_label(self) -> str:

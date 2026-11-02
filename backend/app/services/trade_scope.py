@@ -181,7 +181,7 @@ async def _designated_operator_scope(db) -> uuid.UUID:
     return found.id
 
 
-def owned_by_for_entry_guards(org_id: Optional[uuid.UUID]):
+def owned_by_operator_aware(org_id: Optional[uuid.UUID]):
     """`owned_by`, widened for the designated operator only.
 
     The duplicate guard and the re-entry cooldown ask "does *this owner*
@@ -196,6 +196,12 @@ def owned_by_for_entry_guards(org_id: Optional[uuid.UUID]):
     strict rule — `test_an_unattributed_position_does_not_block_an_organization`
     — because for a tenant those rows are somebody else's, not theirs.
 
+    The same widening applies to the background workers (fill polling,
+    reconciliation, adoption) for the same reason: they decide what the system
+    believes it holds, and an operator whose history is unattributed would
+    otherwise have a ledger split across two scopes that share ONE broker —
+    each scope reporting the other's positions as untracked or phantom.
+
     Deliberately not used for reads that return trades to a caller: a screen
     is a different question from a safety check, and widening what a user can
     see is a separate decision.
@@ -204,6 +210,10 @@ def owned_by_for_entry_guards(org_id: Optional[uuid.UUID]):
     if org_id is not None and designated is not None and org_id == designated:
         return or_(Trade.organization_id == org_id, Trade.organization_id.is_(None))
     return owned_by(org_id)
+
+
+#: The original name, kept: the duplicate guard and cooldown in trade_desk use it.
+owned_by_for_entry_guards = owned_by_operator_aware
 
 
 async def count_unattributed_open_trades(db) -> int:

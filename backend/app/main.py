@@ -2246,7 +2246,7 @@ async def _poll_fills_for_scope(scoped) -> None:
         from app.core.database import AsyncSessionLocal
         from app.models.trade import Trade
         from app.services.trade_recorder import trade_recorder
-        from app.services.trade_scope import owned_by
+        from app.services.trade_scope import owned_by_operator_aware
         from sqlalchemy import select
 
         broker = scoped.broker
@@ -2306,7 +2306,7 @@ async def _poll_fills_for_scope(scoped) -> None:
         async with AsyncSessionLocal() as session:
             result = await session.execute(
                 select(Trade).where(
-                    owned_by(scoped.organization_id),
+                    owned_by_operator_aware(scoped.organization_id),
                     Trade.status.in_(["open", "pending"]),
                 )
             )
@@ -2849,7 +2849,7 @@ async def _correct_quantity_mismatches(mismatched: list[str], *, scoped) -> None
     from app.core.database import AsyncSessionLocal
     from app.models.trade import Trade
     from app.services.observability import observability
-    from app.services.trade_scope import owned_by
+    from app.services.trade_scope import owned_by_operator_aware
 
     # `scoped` carries the broker that reported the mismatch AND the owner it
     # belongs to. Re-reading get_broker() here would correct one owner's row
@@ -2873,7 +2873,7 @@ async def _correct_quantity_mismatches(mismatched: list[str], *, scoped) -> None
 
                 rows = (await session.execute(
                     select(Trade).where(
-                        owned_by(scoped.organization_id),
+                        owned_by_operator_aware(scoped.organization_id),
                         Trade.underlying == symbol,
                         Trade.status == "open",
                     )
@@ -2934,7 +2934,7 @@ async def _adopt_untracked_positions(untracked: list[str], *, scoped) -> None:
     from app.core.database import AsyncSessionLocal
     from app.models.trade import Trade
     from app.services.observability import observability
-    from app.services.trade_scope import owned_by
+    from app.services.trade_scope import owned_by_operator_aware
 
     try:
         positions = await scoped.broker.get_equity_positions()
@@ -2952,7 +2952,7 @@ async def _adopt_untracked_positions(untracked: list[str], *, scoped) -> None:
             # a reason to skip adopting this one's untracked position.
             open_trades = (
                 await session.execute(select(Trade).where(
-                    owned_by(scoped.organization_id), Trade.status == "open"))
+                    owned_by_operator_aware(scoped.organization_id), Trade.status == "open"))
             ).scalars().all()
             already_tracked = {str(t.underlying).upper() for t in open_trades}
 
