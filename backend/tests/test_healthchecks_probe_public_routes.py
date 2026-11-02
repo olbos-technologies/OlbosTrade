@@ -46,7 +46,14 @@ PROBE_SOURCES = (
     ROOT / "deploy/hetzner/up.sh",
     ROOT / "deploy/hetzner/update.sh",
     ROOT / "deploy/hetzner/README.md",
+    # The gateway watchdog probes the backend too, through Python's urlopen
+    # rather than curl. It read /api/health/detail, which AUTH_ENABLED made
+    # return 401, and every 401 was treated as "gateway dead": ~800 needless
+    # restarts of a healthy gateway. A probe that is not scanned is a probe that
+    # drifts back to a route that needs a session.
+    ROOT / "deploy/hetzner/ibkr_watchdog.sh",
 )
+WATCHDOG = ROOT / "deploy/hetzner/ibkr_watchdog.sh"
 
 
 def _registered_paths() -> set:
@@ -86,6 +93,10 @@ def _backend_probe_paths() -> list:
             stripped = line.strip()
             if stripped.startswith("#"):
                 continue
+            if path == WATCHDOG:
+                # urlopen / a URL variable, not curl: take any in-container URL.
+                found += re.findall(r"127\.0\.0\.1:8000(/[^\s\"'|>}]*)", line)
+                continue
             found += re.findall(
                 r"curl[^\"']*?(?:http://127\.0\.0\.1:8000|https://[^/\s]+)"
                 r"(/[^\s\"'|>]*)",
@@ -104,6 +115,8 @@ def test_backend_probes_are_actually_found():
     stopping existing.
     """
     paths = _backend_probe_paths()
+    assert any(p in ("/health", "/api/health") for p in paths) and \
+        WATCHDOG.exists(), "the watchdog's probe is no longer seen by the scan"
     assert len(paths) >= 2, (
         f"only found {paths} — the scan no longer matches the shape of the "
         "deployment probes in PROBE_SOURCES")

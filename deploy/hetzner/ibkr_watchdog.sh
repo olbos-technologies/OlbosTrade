@@ -6,7 +6,7 @@
 # stops serving its API port (the classic IBKR daily-restart hang). When that
 # happens the backend logs endless "TimeoutError / Failed to connect to IBKR".
 #
-# This script checks liveness by reading the backend's own /api/health/detail
+# This script checks liveness by reading the backend's own public /health
 # (already-running FastAPI process, no new socket to the gateway) and restarts
 # the gateway container only when that snapshot looks dead — with a cooldown so
 # it doesn't restart again during the ~90s it takes the gateway to log back in.
@@ -46,7 +46,9 @@
 # Intended to run from cron every few minutes (see install_ibkr_watchdog.sh).
 # ═══════════════════════════════════════════════════════════════════════════════
 set -uo pipefail
-export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${PATH:-}"
+# Appended, not prepended: cron starts with a minimal PATH, which this fills in, but
+# anything already on PATH keeps precedence (and a test can put a stub docker first).
+export PATH="${PATH:+$PATH:}/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 VERBOSE=0
 [ "${1:-}" = "--verbose" ] && VERBOSE=1
@@ -54,7 +56,9 @@ VERBOSE=0
 GATEWAY="ibkr-gateway"
 BACKEND="olbostrade-backend"
 COOLDOWN=900                    # seconds; don't restart again within 15 min
-STAMP="/tmp/ibkr-watchdog-last-restart"
+STATE_DIR="${WATCHDOG_STATE_DIR:-/tmp}"   # overridable so tests never touch the real files
+HEALTH_URL="${WATCHDOG_HEALTH_URL:-http://127.0.0.1:8000/health}"
+STAMP="$STATE_DIR/ibkr-watchdog-last-restart"
 # Circuit breaker: if this many restarts inside the window have all failed to
 # bring the probe back to OK, restarting plainly isn't the remedy — stop and
 # escalate to a human instead of hammering the gateway forever. See the
@@ -63,7 +67,7 @@ STAMP="/tmp/ibkr-watchdog-last-restart"
 # restarts, never on a series of genuine hangs that each recovered.
 MAX_RESTARTS=4
 BREAKER_WINDOW=21600            # seconds (6h)
-HISTORY="/tmp/ibkr-watchdog-restart-history"
+HISTORY="$STATE_DIR/ibkr-watchdog-restart-history"
 
 ts() { date -u +%FT%TZ; }
 vsay() { [ "$VERBOSE" = 1 ] && echo "$(ts) $*"; return 0; }
@@ -107,61 +111,85 @@ if ! _running "$GATEWAY"; then
   exit 0
 fi
 
-# 2. Need the backend running to read its own /api/health/detail; if it's
-#    down, skip (a dead backend isn't this watchdog's problem to fix).
+# 2. Need the backend running to ask it; if it's down, skip (a dead backend
+#    isn't this watchdog's problem to fix).
 if ! _running "$BACKEND"; then
   echo "$(ts) watchdog: $BACKEND not running — skipping probe"
   exit 0
 fi
 
-# 3. Liveness check via the backend's own already-open connection — reads
-#    /api/health/detail from inside the backend container (no new socket to
-#    the gateway, so this can never itself disturb the app's live session).
-#    "DEAD" means only one thing: the app's socket to the gateway reports
-#    disconnected. That is the sole condition a *gateway* restart can
-#    actually remedy.
+# 3. Liveness check via the backend's own already-open connection. It reads the
+#    PUBLIC /health route from inside the backend container (no new socket to
+#    the gateway, so this can never itself disturb the app's live session) and
+#    takes its `broker_connected` field, which is a local read with no I/O.
 #
-#    The P0 queue depth is reported alongside for the log line but is
-#    deliberately NOT part of the verdict — see the 2026-08-27 bug note in
-#    the header. Queue depth is app-side backlog; restarting the gateway
-#    makes it strictly worse (drops the connection, strands in-flight
-#    requests, scanners keep enqueueing), so using it as a restart trigger
-#    is self-reinforcing and can never clear itself.
-probe=$(docker exec -i "$BACKEND" python3 - <<'PY' 2>/dev/null
-import json, urllib.request
-depth = "?"
+#    Three outcomes, and the third is the one that matters:
+#      OK       broker_connected is true  -> healthy, forget restart history
+#      DEAD     broker_connected is false -> the only condition a *gateway*
+#                                            restart can remedy
+#      UNKNOWN  anything else             -> the probe failed, say nothing
+#                                            about the gateway; do NOTHING
+#
+#    This used to read /api/health/detail and treat every exception as DEAD.
+#    Once AUTH_ENABLED made that route return 401, every probe "failed" and the
+#    watchdog restarted a healthy gateway about 800 times. An error from the
+#    probe is not evidence about the thing being probed.
+#
+#    The P0 queue depth is no longer read (it lives on the authenticated detail
+#    route) and was never part of the verdict — see the 2026-08-27 bug note in
+#    the header: queue depth is app-side backlog, and restarting the gateway
+#    makes it strictly worse.
+probe=$(docker exec -i -e HEALTH_URL="$HEALTH_URL" "$BACKEND" python3 - <<'PY' 2>/dev/null
+import json, os, urllib.request
+state = "UNKNOWN"
 try:
-    with urllib.request.urlopen("http://127.0.0.1:8000/api/health/detail", timeout=8) as r:
-        data = json.load(r)
-    ibkr = data.get("ibkr", {}) or {}
-    ok = bool(ibkr.get("connected"))
-    depth = (ibkr.get("coordinator", {}) or {}).get("queue_depth", {}).get("P0", "?")
+    with urllib.request.urlopen(os.environ["HEALTH_URL"], timeout=8) as r:
+        flag = json.load(r).get("broker_connected")
+    if flag is True:
+        state = "OK"
+    elif flag is False:
+        state = "DEAD"
+    # anything else (null, missing field from an older backend) stays UNKNOWN
 except Exception:
-    ok = False
-print(("OK" if ok else "DEAD") + " " + str(depth))
+    # A 401, a 5xx, a timeout, unparseable JSON, a refused connection: none of
+    # these says the gateway is down. They say the PROBE failed.
+    state = "UNKNOWN"
+print(state)
 PY
 )
-depth=$(printf '%s' "$probe" | awk '{print $2}')
-probe=$(printf '%s' "$probe" | awk '{print $1}' | tr -d '[:space:]')
+probe=$(printf '%s' "$probe" | tr -d '[:space:]')
 
-if [ "$probe" = "OK" ]; then
-  clear_history
-  vsay "watchdog: gateway healthy (IBKR API probe=OK, p0_queue=${depth:-?})"
-  exit 0   # healthy — nothing to do
-fi
+case "$probe" in
+  OK)
+    clear_history
+    vsay "watchdog: gateway healthy (backend reports broker_connected=true)"
+    exit 0   # healthy — nothing to do
+    ;;
+  DEAD)
+    ;;       # the backend positively reports its broker socket is down: act below
+  *)
+    # UNKNOWN, or no output at all. Never restart on this, and never clear the
+    # restart history: we learned nothing. 2026-11-02: a probe that read an
+    # authenticated route turned every 401 into "DEAD" and restarted a healthy
+    # gateway ~800 times, repeatedly dropping the broker connection during
+    # market hours. Only a clear "disconnected" report may trigger a restart.
+    echo "$(ts) watchdog: backend health probe was inconclusive (${probe:-empty}) — NOT restarting; only broker_connected=false triggers a restart"
+    exit 0
+    ;;
+esac
 
 # 4. Probe failed → restart the gateway, respecting cooldown + breaker.
 if in_cooldown; then
-  echo "$(ts) watchdog: probe=${probe:-empty} but within cooldown — gateway likely still logging in"
+  echo "$(ts) watchdog: backend reports the broker disconnected but within cooldown — gateway likely still logging in"
   exit 0
 fi
 
 recent=$(restarts_in_window)
 if [ "${recent:-0}" -ge "$MAX_RESTARTS" ]; then
-  echo "$(ts) watchdog: CIRCUIT BREAKER OPEN — ${recent} restarts in the last $((BREAKER_WINDOW/3600))h did not restore the connection (p0_queue=${depth:-?}). NOT restarting again; this needs manual investigation."
+  echo "$(ts) watchdog: CIRCUIT BREAKER OPEN — ${recent} restarts in the last $((BREAKER_WINDOW/3600))h did not restore the connection. NOT restarting again; this needs manual investigation."
   exit 0
 fi
 
-echo "$(ts) watchdog: IBKR API probe=${probe:-empty} p0_queue=${depth:-?} — restarting $GATEWAY (${recent}/${MAX_RESTARTS} in window)"
+echo "$(ts) watchdog: backend reports the broker disconnected — restarting $GATEWAY (${recent}/${MAX_RESTARTS} in window)"
 docker restart "$GATEWAY" >/dev/null 2>&1 || true
 mark_restart
