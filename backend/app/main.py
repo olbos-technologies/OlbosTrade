@@ -3163,11 +3163,41 @@ async def _backfill_equity_stops() -> None:
 #
 # Both are in PUBLIC_EXACT: a health probe cannot hold a session, and a
 # healthcheck that 401s marks a working container unhealthy.
+def _broker_connected() -> Optional[bool]:
+    """Is this process's broker session up? True / False, or None if it cannot tell.
+
+    A local read of state the broker adapter already holds: no network round
+    trip, no coordinator, nothing that can time out. It must stay that way,
+    because /health is the container healthcheck: a probe that can hang would
+    mark a working backend unhealthy.
+
+    None is deliberately not False. The gateway watchdog restarts the gateway
+    on False and does nothing on None, so "I could not find out" must never be
+    reported as "disconnected" — the same mistake already cost this deployment
+    hundreds of needless gateway restarts (see ibkr_watchdog.sh).
+    """
+    try:
+        from app.broker.broker_factory import get_broker
+        broker = get_broker()
+        connected = bool(getattr(broker, "_connected", False))
+        if hasattr(broker, "ib"):
+            connected = connected and bool(broker.ib.isConnected())
+        return connected
+    except Exception:
+        return None
+
+
 @app.get("/health", tags=["System"])
 @app.get("/api/health", tags=["System"])
-async def health_check() -> dict[str, str]:
-    """Returns 200 OK when the service is up."""
-    return {"status": "ok", "broker": settings.broker}
+async def health_check() -> dict:
+    """Returns 200 OK when the service is up.
+
+    `broker_connected` is true, false, or null (unknown). It is public on
+    purpose and carries one bit: the gateway watchdog cannot hold a session,
+    and the detail route that used to carry this needs one. Nothing about the
+    account is exposed here.
+    """
+    return {"status": "ok", "broker": settings.broker, "broker_connected": _broker_connected()}
 
 
 @app.get("/api/health/detail", tags=["System"])

@@ -477,7 +477,7 @@ docker run -d --name ibkr-gateway --restart unless-stopped \
   -e TWOFA_TIMEOUT_ACTION=restart \
   -e EXISTING_SESSION_DETECTED_ACTION=primaryoverride \
   -e TRUSTED_IPS=127.0.0.1,172.18.0.0/16 \
-  -p 4002:4004 \
+  -p 127.0.0.1:4002:4004 \
   -v ibkr-gateway_ibkr_settings:/home/ibgateway/Jts \
   ghcr.io/gnzsnz/ib-gateway:stable
 ```
@@ -488,7 +488,7 @@ Important:
 |---------|-------|-----|
 | `IBKR_HOST` | `ibkr-gateway` | Docker DNS on `docker_default` network |
 | `IBKR_PORT` | `4004` | gnzsnz **socat** publishes paper API on container port **4004** (not 4002) |
-| Host port map | `4002:4004` | Host clients use 4002; in-network clients use 4004 |
+| Host port map | `127.0.0.1:4002:4004` | Loopback only. In-network clients (the backend) use 4004 over the Docker network; a laptop reaches 4002 through an SSH tunnel. **Never** publish it as bare `4002:4004`: that binds every interface, Docker's published ports bypass `ufw`, and `READ_ONLY_API=no` means anyone who reaches it can place and cancel orders. |
 | Workers | `1` | IBKR allows only one connection per `IBKR_CLIENT_ID` |
 
 After gateway restart, approve **2FA** on the IBKR mobile app if prompted. Check logs:
