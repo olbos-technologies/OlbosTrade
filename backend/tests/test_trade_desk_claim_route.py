@@ -346,6 +346,8 @@ async def test_a_broken_duplicate_read_is_not_reported_as_a_missing_guard(claims
     Both outcomes are `blocked`, and that is correct — but they must be
     distinguishable, or neither test can prove which defect it caught. Here the
     claims table is present and working and the duplicate READ is what fails.
+    Keep the separate Stage 2b portfolio gate permissive so its own trades
+    query does not intercept this deliberately broken Stage 3 read.
     """
     broker = _broker()
     async with claims_table() as s, s.begin():
