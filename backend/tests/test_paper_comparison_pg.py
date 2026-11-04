@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 import pytest
 from sqlalchemy import select, text
+from app.models import organization, user  # Resolve FK metadata in isolated invocation.
 from app.models.broker_oauth import BrokerOAuthGrant
 from app.models.paper_comparison import PaperComparison
 from app.services import paper_comparison as svc, broker_oauth_service as oauth, broker_connection_health as health
