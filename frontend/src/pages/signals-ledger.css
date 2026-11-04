@@ -1,0 +1,42 @@
+/* UX-1 / UX-3 / UX-5: compact research ledger; execution controls unchanged. */
+.app-shell .signals-ledger-page { gap: 12px !important; }
+.app-shell .signals-ledger-page .page-header { order: -3; border: 0; background: none; padding: 0; box-shadow: none; }
+.app-shell .signal-filter-panel > summary { cursor: pointer; padding: 12px 0; color: var(--amber); min-height: 44px; }
+.app-shell .signal-filter-panel[open] .signal-scan-controls { padding: 12px; border: 1px solid var(--line-dim); }
+.app-shell .signals-ledger-page .signal-ledger-stats { order: -2; background: var(--bg-2); box-shadow: none; border-radius: 0; }
+.app-shell .signals-ledger-page .signal-ledger-stats > div { min-width: 0; }
+.app-shell .signal-ledger-columns { display: grid; grid-template-columns: minmax(0,1fr) 72px 100px; padding: 10px 12px; color: var(--ink-dim); font: 11px var(--mono); text-transform: uppercase; border-bottom: 1px solid var(--line-dim); }
+.app-shell .design-signal-feed .signal-ledger { display: flex; flex-direction: column; gap: 0 !important; }
+.app-shell .design-signal-card.signal-ledger-row { padding: 0 !important; border: 0; border-bottom: 1px solid var(--line-dim); border-radius: 0 !important; background: none; box-shadow: none; }
+.app-shell .signal-ledger-summary { display: grid; grid-template-columns: minmax(0,1fr) 72px 74px 18px; align-items: center; gap: 6px; padding: 12px; min-height: 58px; cursor: pointer; list-style: none; }
+.app-shell .signal-ledger-summary::-webkit-details-marker { display: none; }
+.app-shell .signal-ledger-symbol { display: flex; align-items: center; gap: 8px; min-width: 0; font: 600 14px var(--mono); }
+.app-shell .signal-ledger-score { display: flex; flex-direction: column; font: 600 14px var(--mono); }
+.app-shell .signal-ledger-score small { font-size: 9px; color: var(--ink-dim); }
+.app-shell .signal-ledger-chevron { color: var(--ink-dim); }
+.app-shell .signal-ledger-row[open] { background: var(--bg-2); border-left: 2px solid var(--amber); }
+.app-shell .signal-ledger-row[open] .signal-ledger-chevron { transform: rotate(180deg); }
+.app-shell .signal-ledger-content { padding: 0 12px 14px; }
+.app-shell .signal-ledger-content > .design-review { width: 100%; min-height: 44px; justify-content: space-between; margin-block: 12px; }
+.app-shell .signal-ledger-warnings { display: flex; flex-wrap: wrap; gap: 8px; color: var(--amber); font: 10px var(--mono); }
+.app-shell .signal-ledger-row .signal-rationale { margin-top: 8px; padding: 8px 0; }
+.app-shell .signal-ledger-row .signal-trade-plan { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; padding: 12px; border: 1px solid var(--line-dim); border-radius: 0; background: none; }
+.app-shell .signal-ledger-row .signal-generated { display: block; margin-top: 8px; font: 11px/1.5 var(--sans); color: var(--ink-dim); }
+.app-shell .signals-score-note { color: var(--ink-dim); font: 12px/1.5 var(--sans); margin-top: 18px; }
+.app-shell .signal-ledger-summary:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; }
+@media(max-width:768px) {
+ .app-shell .signals-workspace { padding: 16px !important; }
+ .app-shell .signals-ledger-page .page-header__title { font-size: 22px; }
+ .app-shell .signals-ledger-page .page-header__sub { font-size: 12px; }
+ .app-shell .signals-ledger-page .instrument-stat-strip { grid-template-columns: repeat(4,minmax(0,1fr)) !important; }
+ .app-shell .signals-ledger-page .signal-ledger-stats > div { padding: 10px 6px; }
+ .app-shell .signals-ledger-page .signal-ledger-stats .data-val { font-size: 16px; white-space: nowrap; }
+ .app-shell .signals-ledger-page .design-search-row { grid-template-columns: minmax(0,1fr) auto; }
+ .app-shell .signals-ledger-page .design-search-row button { font-size: 10px; }
+ .app-shell .signal-ledger-summary { grid-template-columns: minmax(0,1fr) 52px 60px 12px; padding-inline: 6px; gap: 4px; }
+ .app-shell .signal-ledger-columns { grid-template-columns: minmax(0,1fr) 52px 80px; padding-inline: 6px; }
+ .app-shell .signal-ledger-symbol { font-size: 13px; gap: 6px; }
+ .app-shell .signal-ledger-content { padding-inline: 8px; }
+}
+
+.app-shell .signal-ledger-stats .kicker { font-size: 10px; letter-spacing: 0; }

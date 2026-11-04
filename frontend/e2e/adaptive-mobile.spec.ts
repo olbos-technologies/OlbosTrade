@@ -27,7 +27,7 @@ for(const width of [320,375,390,430]) {
  });
  test(`populated signal trade plan fits ${width}px`,async({page})=>{
   await fixtures(page);await page.setViewportSize({width,height:844});await page.goto('/terminal/equity');
-  const card=page.locator('.design-signal-card').first();await expect(card).toContainText('PAYX');
+  const card=page.locator('.design-signal-card').first();await expect(card).toContainText('PAYX');await card.locator(':scope > summary').click();
   await intact(card.locator('.financial-value'));
   const well=card.locator('.signal-trade-plan');expect(await well.evaluate(el=>el.scrollWidth<=el.clientWidth+1)).toBe(true);
   const review=card.getByRole('button',{name:/Review idea/});await expect(review).toBeVisible();
@@ -50,6 +50,22 @@ test('financial cards reflow inside a narrow container with larger values',async
  const account=page.getByRole('region',{name:'Account overview',exact:true});await expect(account).toContainText('$12,345,678.90');
  await account.evaluate(el=>{(el as HTMLElement).style.width='240px';el.querySelectorAll('.mh-pnl-grid strong').forEach(v=>(v as HTMLElement).style.setProperty('font-size','22px','important'));});
  await intact(account.locator('.mh-pnl-grid strong'));await expectNoHorizontalOverflow(page,430);
- await page.goto('/terminal/equity');const card=page.locator('.design-signal-card').first();await expect(card).toContainText('PAYX');
+ await page.goto('/terminal/equity');const card=page.locator('.design-signal-card').first();await expect(card).toContainText('PAYX');await card.locator(':scope > summary').click();
  await card.evaluate(el=>{(el as HTMLElement).style.width='240px';});await intact(card.locator('.financial-value'));await expectNoHorizontalOverflow(page,430);
 });
+
+for (const width of [320,390,430]) {
+ test(`signal ledger expands by keyboard at ${width}px`,async({page})=>{
+  await fixtures(page);await page.setViewportSize({width,height:844});await page.goto('/terminal/equity');
+  const row=page.locator('.signal-ledger-row').first(), summary=row.locator(':scope > summary');
+  await expect(summary).toBeVisible();await expect(row).not.toHaveAttribute('open','');
+  expect((await summary.boundingBox())!.height).toBeLessThan(85);
+  await summary.focus();await page.keyboard.press('Enter');await expect(row).toHaveAttribute('open','');
+  await expect(row.getByRole('button',{name:/Review idea/})).toBeVisible();
+  await expectNoHorizontalOverflow(page,width);
+  await page.screenshot({path:`ui-audit-artifacts/signals-ledger-expanded-${width}.png`,fullPage:true,animations:'disabled'});
+  await summary.focus();await page.keyboard.press('Enter');await expect(row).not.toHaveAttribute('open','');
+  await expect(row.locator('.signal-trade-plan')).not.toBeVisible();
+  await page.screenshot({path:`ui-audit-artifacts/signals-ledger-collapsed-${width}.png`,fullPage:true,animations:'disabled'});
+ });
+}
