@@ -70,3 +70,13 @@ When reporting results, prefer a command and its output over an adjective:
 boundary integrated" cannot.
 
 If instructions disagree, prefer the stricter safety boundary and record the discrepancy for review.
+
+## Cursor Cloud specific instructions
+
+The Cloud Agent image is not the macOS daily-startup path in `README.md` and `start.sh`. `start.sh` exits unless IB Gateway is already listening, and this environment does not run a gateway.
+
+- `python`, `python3`, `pip`, `pytest`, `uvicorn`, and `alembic` on `PATH` are wrappers to the Python 3.11 venv at `/opt/olbos-venv` (the CI pin). `/usr/bin/python3` is Ubuntu 3.12 and cannot import the backend. Node is the image's Node 22; CI installs Node 20. `npm ci` from `frontend/` is what the lockfile expects.
+- PostgreSQL 16 is local, on `localhost:5432`, not the Compose service. App database: `options_user` / `options_pass` / `options_db`. Tests need `OLBOS_TEST_DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/olbos_test` (login shells export it from `/etc/profile.d/olbos-dev.sh`). Without it, PostgreSQL-backed tests skip.
+- Do not copy `.env.example` onto `backend/.env`. That example's `DATABASE_URL` host is the Compose name `postgres`. Boot creates `backend/.env` when it is missing: paper mode, auth off, `AUTH_COOKIE_SECURE=false`, database on localhost. No broker credentials. `GET /health` then reports `broker_connected: false`, and Command Center shows the account as unavailable. That is the expected disconnected state, not a failed boot.
+- API: `http://127.0.0.1:8000` (`/health`, `/api/health`). UI: `http://127.0.0.1:3000` (Vite proxies `/api`). tmux sessions `olbos-backend` and `olbos-frontend`. Logs: `/tmp/olbos-backend.log`, `/tmp/olbos-frontend.log`.
+- `npx playwright test` in `frontend/` is the browser suite. It builds and serves the production bundle on port 4173. Chromium for the pinned Playwright version is already installed; do not run `playwright install` again unless that pin moves.
