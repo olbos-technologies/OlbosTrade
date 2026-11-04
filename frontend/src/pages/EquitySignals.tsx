@@ -554,7 +554,14 @@ function EquitySignalsGrid({ onTabChange }: { onTabChange: (tab: AssetTab) => vo
             Research ideas for your review · no orders submitted here
           </p>
         </div>
-        <details className="signal-filter-panel"><summary>Filters & scan</summary><div className="signal-scan-controls">
+
+      </div>
+
+      <AssetToggle tab="equities" onChange={onTabChange} />
+      <div className="design-search-row">
+        <input aria-label="Search signals" placeholder="Search symbol or explanation" value={query} onChange={e => setQuery(e.target.value)} />
+        <button className="design-review signal-refresh" aria-label="Refresh signals" title="Refresh signals" onClick={loadSignals}>↻</button>
+        <details className="signal-filter-panel"><summary>Filter</summary><div className="signal-scan-controls">
         <label className="kicker" style={{ display: "flex", alignItems: "center", gap: 6 }}>
           Min move %
           <input
@@ -573,12 +580,6 @@ function EquitySignalsGrid({ onTabChange }: { onTabChange: (tab: AssetTab) => vo
           {scanning ? "SCANNING…" : "RUN SCAN"}
         </button>
         </div></details>
-      </div>
-
-      <AssetToggle tab="equities" onChange={onTabChange} />
-      <div className="design-search-row">
-        <input aria-label="Search signals" placeholder="Search symbol or explanation" value={query} onChange={e => setQuery(e.target.value)} />
-        <button className="design-review" onClick={loadSignals}>Refresh signals</button>
       </div>
       <div className="instrument-stat-strip signal-ledger-stats" style={{ gridTemplateColumns: "repeat(4, minmax(0, 1fr))" }}>
         <StatTile variant="divider" size="sm" label="Candidates" value={error || loading ? "—" : actionableCount} tone="var(--accent)" />
@@ -605,14 +606,15 @@ function EquitySignalsGrid({ onTabChange }: { onTabChange: (tab: AssetTab) => vo
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+
+          <SignalGroup action="BUY" signals={buySignals} minConfidence={minConfidence} blockCtx={blockCtx} />
+          <SignalGroup action="SELL" signals={sellSignals} minConfidence={minConfidence} blockCtx={blockCtx} />
+          <SignalGroup action="HOLD" signals={holdSignals} minConfidence={minConfidence} blockCtx={blockCtx} />
           <details className="signal-ranking"><summary>Ranked scanner summary</summary><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 12 }}>
             <TopSignals top={topBuySignals} label="BUY" minConfidence={minConfidence} blockCtx={blockCtx} />
             <TopSignals top={topSellSignals} label="SELL" minConfidence={minConfidence} blockCtx={blockCtx} />
           </div>
           </details>
-          <SignalGroup action="BUY" signals={buySignals} minConfidence={minConfidence} blockCtx={blockCtx} />
-          <SignalGroup action="SELL" signals={sellSignals} minConfidence={minConfidence} blockCtx={blockCtx} />
-          <SignalGroup action="HOLD" signals={holdSignals} minConfidence={minConfidence} blockCtx={blockCtx} />
         </div>
       )}
     </div>

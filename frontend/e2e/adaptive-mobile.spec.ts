@@ -1,5 +1,6 @@
 import { test, expect, type Page, type Locator } from '@playwright/test';
 import { stubBackend, expectNoHorizontalOverflow } from './helpers';
+test.use({deviceScaleFactor:2});
 const reply=(body:unknown)=>({status:200,contentType:'application/json',body:JSON.stringify(body)});
 async function fixtures(page:Page) {
  await stubBackend(page);
@@ -65,9 +66,13 @@ for (const width of [320,390,430]) {
   await summary.focus();await page.keyboard.press('Enter');await expect(row).toHaveAttribute('open','');
   await expect(row.getByRole('button',{name:/Review idea/})).toBeVisible();
   await expectNoHorizontalOverflow(page,width);
+  await summary.blur();
   await page.screenshot({path:`ui-audit-artifacts/signals-ledger-expanded-${width}.png`,fullPage:true,animations:'disabled'});
+  await page.locator('.signals-workspace').screenshot({path:`ui-audit-artifacts/signals-ledger-details-${width}.png`,animations:'disabled'});
   await summary.focus();await page.keyboard.press('Enter');await expect(row).not.toHaveAttribute('open','');
   await expect(row.locator('.signal-trade-plan')).not.toBeVisible();
+  await summary.blur();
+  await page.locator('main').first().evaluate(el=>el.scrollTop=0);
   await page.screenshot({path:`ui-audit-artifacts/signals-ledger-collapsed-${width}.png`,fullPage:true,animations:'disabled'});
  });
 }
