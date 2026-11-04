@@ -1,6 +1,6 @@
-# UX-1 / UX-3 / UX-5 — Compact Signals ledger
+## Unreleased — Compact Signals ledger
 
-Signals now use keyboard-accessible expandable rows with symbol, score type,
+- Signals now use keyboard-accessible expandable rows with symbol, score type,
 score and direction visible before expansion. Trade plans, block warnings,
 rationale, timestamps, technical evidence and the research review drawer remain
 available. Summary metrics and search remain compact on phones; scan settings

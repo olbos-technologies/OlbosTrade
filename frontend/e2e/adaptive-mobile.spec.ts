@@ -68,7 +68,8 @@ for (const width of [320,390,430]) {
   await expectNoHorizontalOverflow(page,width);
   await summary.blur();
   await page.screenshot({path:`ui-audit-artifacts/signals-ledger-expanded-${width}.png`,fullPage:true,animations:'disabled'});
-  await page.locator('.signals-workspace').screenshot({path:`ui-audit-artifacts/signals-ledger-details-${width}.png`,animations:'disabled'});
+  await row.scrollIntoViewIfNeeded();
+  await page.screenshot({path:`ui-audit-artifacts/signals-ledger-details-${width}.png`,animations:'disabled'});
   await summary.focus();await page.keyboard.press('Enter');await expect(row).not.toHaveAttribute('open','');
   await expect(row.locator('.signal-trade-plan')).not.toBeVisible();
   await summary.blur();
