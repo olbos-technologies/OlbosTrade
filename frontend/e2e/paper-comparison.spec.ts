@@ -1,5 +1,4 @@
 import { test, expect } from "@playwright/test";
-import { mkdirSync } from "node:fs";
 import { stubBackend, SIGNED_IN, expectNoHorizontalOverflow } from "./helpers";
 const pair={revision:"v1",system_grant_id:"a",hybrid_grant_id:"b",updated_at:"2026-11-04T15:00:00Z"};
 const connections=["a","b"].map((id,i)=>({id,broker:"alpaca",environment:"paper",account_last4:i?"2222":"1111",permission:"read_only",connected_at:pair.updated_at,status:"active",execution_enabled:false}));
@@ -43,7 +42,7 @@ for(const width of [320,390,430,1440]) {
     else await expect(panel.getByText("$249,000.34",{exact:true})).toBeVisible();
     await expectNoHorizontalOverflow(page,width);
     for(const box of await panel.locator("button, select").evaluateAll(els=>els.map(el=>el.getBoundingClientRect().height))) expect(box).toBeGreaterThanOrEqual(44);
-    mkdirSync("ui-audit-artifacts",{recursive:true});await panel.screenshot({path:`ui-audit-artifacts/alpaca-paper-comparison-${width}.png`});
+    await panel.screenshot({path:`ui-audit-artifacts/alpaca-paper-comparison-${width}.png`});
     await page.route("**/api/brokers/oauth/paper-comparison/snapshot",r=>r.fulfill({status:503,json:{detail:"Unavailable"}}));
     await panel.getByRole("button",{name:"Refresh comparison data"}).click();await expect(panel.getByRole("alert")).toContainText("Previous values cleared");
     await expect(panel.getByText("$250,000.12",{exact:true})).toHaveCount(0);
