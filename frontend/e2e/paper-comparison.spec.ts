@@ -42,7 +42,13 @@ for(const width of [320,390,430,1440]) {
     else await expect(panel.getByText("$249,000.34",{exact:true})).toBeVisible();
     await expectNoHorizontalOverflow(page,width);
     for(const box of await panel.locator("button, select").evaluateAll(els=>els.map(el=>el.getBoundingClientRect().height))) expect(box).toBeGreaterThanOrEqual(44);
-    await panel.screenshot({path:`ui-audit-artifacts/alpaca-paper-comparison-${width}.png`});
+    // Tall locator screenshots capture fixed chrome over the panel and can
+    // clip the rest inside the app's scrolling main area. Capture actual
+    // viewports at setup and data instead of claiming a stitched full panel.
+    await panel.locator(".paper-comparison-grid").first().evaluate(el=>el.scrollIntoView({block:"center"}));
+    await page.screenshot({path:`ui-audit-artifacts/alpaca-paper-comparison-setup-${width}.png`});
+    await panel.locator(".paper-comparison-account").first().evaluate(el=>el.scrollIntoView({block:"center"}));
+    await page.screenshot({path:`ui-audit-artifacts/alpaca-paper-comparison-data-${width}.png`});
     await page.route("**/api/brokers/oauth/paper-comparison/snapshot",r=>r.fulfill({status:503,json:{detail:"Unavailable"}}));
     await panel.getByRole("button",{name:"Refresh comparison data"}).click();await expect(panel.getByRole("alert")).toContainText("Previous values cleared");
     await expect(panel.getByText("$250,000.12",{exact:true})).toHaveCount(0);
