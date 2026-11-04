@@ -56,7 +56,9 @@ test('financial cards reflow inside a narrow container with larger values',async
 
 for (const width of [320,390,430]) {
  test(`signal ledger expands by keyboard at ${width}px`,async({page})=>{
-  await fixtures(page);await page.setViewportSize({width,height:844});await page.goto('/terminal/equity');
+  await fixtures(page);
+  await page.route('**/api/equity/signals?**',r=>r.fulfill(reply({signals:['PAYX','MSFT','AAPL','QQQ','NVDA','SPY'].map((ticker,i)=>({id:`sample-${i}`,ticker,action:i===2||i===4?'SELL':'BUY',confidence:.78-i*.01,opportunity_score:{score:78-i,components:{}},orderflow_score:.2,iv_overlay_boost:0,earnings_gated:false,generated_at:'2026-11-02T21:09:02Z',reasons:['Momentum aligned','Price above VWAP'],trade_plan:{entry_price:115.49,stop_price:109.15,target_price:128.16,target_move_pct:11,shares:170,risk_reward:2,risk_dollars:1077}}))})));
+  await page.setViewportSize({width,height:844});await page.goto('/terminal/equity');
   const row=page.locator('.signal-ledger-row').first(), summary=row.locator(':scope > summary');
   await expect(summary).toBeVisible();await expect(row).not.toHaveAttribute('open','');
   expect((await summary.boundingBox())!.height).toBeLessThan(85);

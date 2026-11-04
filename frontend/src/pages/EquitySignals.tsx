@@ -480,7 +480,7 @@ function TopSignals({
   );
 }
 
-function EquitySignalsGrid() {
+function EquitySignalsGrid({ onTabChange }: { onTabChange: (tab: AssetTab) => void }) {
   const [signals, setSignals] = useState<Signal[]>([]);
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -575,6 +575,7 @@ function EquitySignalsGrid() {
         </div></details>
       </div>
 
+      <AssetToggle tab="equities" onChange={onTabChange} />
       <div className="design-search-row">
         <input aria-label="Search signals" placeholder="Search symbol or explanation" value={query} onChange={e => setQuery(e.target.value)} />
         <button className="design-review" onClick={loadSignals}>Refresh signals</button>
@@ -583,7 +584,7 @@ function EquitySignalsGrid() {
         <StatTile variant="divider" size="sm" label="Candidates" value={error || loading ? "—" : actionableCount} tone="var(--accent)" />
         <StatTile variant="divider" size="sm" label="Buy" value={error || loading ? "—" : buySignals.length} tone="var(--green)" />
         <StatTile variant="divider" size="sm" label="Sell" value={error || loading ? "—" : sellSignals.length} tone="var(--red)" />
-        <StatTile variant="divider" size="sm" label="Updated" value={error || loading || !signals.length ? "—" : new Date(Math.max(...signals.map(s => new Date(s.generated_at).getTime()))).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"})} />
+        <StatTile variant="divider" size="sm" label="Latest" hint={<span title="Latest signal generation time, in your local timezone">Latest</span>} value={error || loading || !signals.length ? "—" : new Date(Math.max(...signals.map(s => new Date(s.generated_at).getTime()))).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit", hour12: false})} sub={signals.length && !error ? new Date(Math.max(...signals.map(s => new Date(s.generated_at).getTime()))).toLocaleDateString([], {month: "short", day: "numeric"}) : undefined} />
       </div>
 
       {error && (
@@ -624,12 +625,12 @@ export default function EquitySignals() {
   return (
     <div className="page-shell signals-workspace" style={{ maxWidth: 1200 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-        <AssetToggle tab={tab} onChange={setTab} />
+        {tab === "options" && <AssetToggle tab={tab} onChange={setTab} />}
         <div className="signal-feed-context" style={{ flex: 1, minWidth: 220 }}><BrokerStatus /></div>
         <div className="signal-feed-context" style={{ flex: 1, minWidth: 220 }}><PortfolioGreeks /></div>
       </div>
 
-      {tab === "equities" ? <EquitySignalsGrid /> : <OptionsSignals />}
+      {tab === "equities" ? <EquitySignalsGrid onTabChange={setTab} /> : <OptionsSignals />}
       <p className="signals-score-note">Scores are not probabilities of profit.</p>
     </div>
   );

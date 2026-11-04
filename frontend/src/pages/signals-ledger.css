@@ -29,7 +29,7 @@
  .app-shell .signals-ledger-page .page-header__title { font-size: 22px; }
  .app-shell .signals-ledger-page .page-header__sub { font-size: 12px; }
  .app-shell .signals-ledger-page .instrument-stat-strip { grid-template-columns: repeat(4,minmax(0,1fr)) !important; }
- .app-shell .signals-ledger-page .signal-ledger-stats > div { padding: 10px 6px; }
+ .app-shell .signals-ledger-page .signal-ledger-stats > div { padding: 10px 6px !important; }
  .app-shell .signals-ledger-page .signal-ledger-stats .data-val { font-size: 16px; white-space: nowrap; }
  .app-shell .signals-ledger-page .design-search-row { grid-template-columns: minmax(0,1fr) auto; }
  .app-shell .signals-ledger-page .design-search-row button { font-size: 10px; }
@@ -40,3 +40,11 @@
 }
 
 .app-shell .signal-ledger-stats .kicker { font-size: 10px; letter-spacing: 0; }
+
+.app-shell .signals-ledger-page > .asset-toggle { order: -1; display: flex; border: 0; border-bottom: 1px solid var(--line-dim); border-radius: 0; background: none; padding: 0; box-shadow: none; }
+.app-shell .signals-ledger-page > .asset-toggle .asset-toggle__btn { min-height: 44px; border: 0; border-radius: 0; background: none; box-shadow: none; color: var(--ink-dim); padding: 10px 20px; }
+.app-shell .signals-ledger-page > .asset-toggle .asset-toggle__btn--active { color: var(--amber); border-bottom: 2px solid var(--amber); }
+@media(max-width:768px) {
+ .app-shell .signals-workspace .signals-ledger-page { padding: 0 !important; }
+ .app-shell .signals-ledger-page .signal-ledger-stats > div > div:last-child { font-size: 9px; }
+}
