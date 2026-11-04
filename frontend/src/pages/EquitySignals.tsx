@@ -13,7 +13,7 @@ import SignalDirectionBadge from "../components/SignalDirectionBadge";
 import ConfidenceFloorLabel from "../components/ConfidenceFloorLabel";
 import WhyBlockedChip from "../components/WhyBlockedChip";
 import AlphaEdgeInline, { OpportunityScorePill } from "../components/AlphaEdgeInline";
-import MissionCard from "../components/MissionCard";
+
 import BacktestButtons from "../components/BacktestButtons";
 import { StatTile } from "../components/ui";
 import type { SignalAttributionData } from "../types/signal";
@@ -181,59 +181,45 @@ function SignalCard({
   const ind = sig.indicators || {};
   const block = deriveSignalBlockReason(sig, blockCtx);
   const confPct = Math.round(sig.confidence * 100);
-  const tone = confidenceTone(confPct);
   const directionClass = sig.action === "BUY" ? "mission-card--buy" : sig.action === "SELL" ? "mission-card--sell" : "";
-  // Card face always shows confidence % (or opportunity score when present).
-  // The navy redesign hid this inside a closed <details>; restore it so BUY/SELL
-  // cards read like a trade idea again, not only a factor list.
-  const reward = sig.opportunity_score != null
-    ? { prefix: "OPP", value: String(Math.round(sig.opportunity_score.score)), tone: confidenceTone(sig.opportunity_score.score) }
-    : sig.action !== "HOLD"
-      ? { prefix: "CONF", value: `${confPct}%`, tone }
-      : undefined;
+  const opportunityScore = sig.opportunity_score?.score;
+  const hasSignalScore = typeof opportunityScore === "number" && Number.isFinite(opportunityScore) && opportunityScore >= 0 && opportunityScore <= 100;
+  const hasConfidence = sig.action !== "HOLD" && Number.isFinite(sig.confidence) && sig.confidence >= 0 && sig.confidence <= 1;
+  // These are distinct producer metrics. Missing opportunity scores must not
+  // silently turn confidence into a composite signal score.
+  const reward = hasSignalScore
+    ? { label: "Signal score", value: `${Math.round(opportunityScore)}/100` }
+    : hasConfidence
+      ? { label: "Confidence", value: `${confPct}%` }
+      : { label: "Unavailable", value: "—" };
+  const factorLabels: Record<string, string> = {
+    confidence: "Confidence factor", ev: "Expected-value factor",
+    reward_risk: "Reward / risk", liquidity: "Liquidity", regime: "Regime alignment",
+  };
 
   return (
     <>
-    <MissionCard
-      className={`design-signal-card ${directionClass}`}
-      reward={reward}
-      title={(
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <TickerLogo ticker={sig.ticker} />
-          <span className="mono" style={{ fontWeight: 700, fontSize: 15 }}>{sig.ticker}</span>
-          <SignalDirectionBadge action={sig.action} size="sm" />
-
-          <WhyBlockedChip reason={block} />
-          {sig.earnings_gated && (
-            <span style={{
-              color: "var(--amber)", border: "1px solid var(--amber)",
-              borderRadius: 3, padding: "2px 6px", fontSize: 9, letterSpacing: "0.1em",
-            }}>
-              EARNINGS GATE
-            </span>
-          )}
+    <details className={`design-signal-card signal-ledger-row ${directionClass}`}>
+      <summary className="signal-ledger-summary">
+        <span className="signal-ledger-symbol"><TickerLogo ticker={sig.ticker} size={24} /><strong>{sig.ticker}</strong></span>
+        <span className="signal-ledger-score" title={reward.label}>
+          <small className="mission-card__reward-prefix">{reward.label}</small>
+          <strong className="mission-card__reward-value">{reward.value}</strong>
         </span>
-      )}
-      meta={{
-        label: sig.action === "HOLD" ? "WAITING" : confPct >= Math.round(minConfidence * 100) ? "LIVE" : "LOW",
-        tone: sig.action === "HOLD" ? "var(--ink-dim)" : confPct >= Math.round(minConfidence * 100) ? "var(--green)" : "var(--amber)",
-        icon: "⏳",
-      }}
-      progress={sig.action !== "HOLD" ? {
-        value: confPct,
-        tone,
-        label: `${sig.ticker} confidence`,
-      } : undefined}
-    >
+        <SignalDirectionBadge action={sig.action} size="sm" />
+        <span className="signal-ledger-chevron" aria-hidden="true">⌄</span>
+      </summary>
+      <div className="signal-ledger-content">
+      <div className="signal-ledger-warnings"><WhyBlockedChip reason={block} />{sig.earnings_gated && <span>EARNINGS GATE</span>}</div>
       <div className="signal-rationale"><span>Why it appeared</span><p>{equitySignalRationale(sig)}</p><small>Research only · Model scores are not probabilities of profit.</small></div>
       {tp.entry_price != null && (
-        <div className="trade-plan-well" style={{ gridTemplateColumns: "repeat(4, 1fr)", marginTop: 10 }}>
+        <div className="trade-plan-well signal-trade-plan" style={{ marginTop: 10 }}>
           <PriceCell label="ENTRY" value={tp.entry_price} color="var(--ink)" />
           <PriceCell label="STOP"  value={tp.stop_price}  color="var(--red)" />
           <PriceCell label="TARGET" value={tp.target_price} color="var(--green)" />
           <PriceCell label="MOVE" value={tp.target_move_pct} color="var(--amber)" suffix="%" />
           {tp.shares !== undefined && (
-            <div style={{ gridColumn: "1/-1", display: "flex", gap: 16,
+            <div className="signal-sizing" style={{ gridColumn: "1/-1", display: "flex", gap: 16,
               fontFamily: "var(--mono)", fontSize: 10, color: "var(--ink-dim)", marginTop: 4 }}>
               <span>SHARES: <b style={{color:"var(--ink)"}}>{tp.shares}</b></span>
               {tp.risk_reward !== undefined && (
@@ -248,6 +234,25 @@ function SignalCard({
       )}
       <time className="signal-generated" dateTime={sig.generated_at}>Generated {new Date(sig.generated_at).toLocaleString()}</time>
       <button className="design-review" onClick={() => setReviewing(true)}>Review idea <span aria-hidden="true">→</span></button>
+      <details className="signal-score-explainer"><summary>About this score</summary>
+        <p><strong>{reward.label}: {reward.value}</strong></p>
+        <p>{hasSignalScore
+          ? "Composite scanner ranking from the available signal factors. It helps compare research ideas; it does not authorize a trade."
+          : hasConfidence
+            ? "A separate scanner confidence measure. A composite signal score is not available for this idea."
+            : "No valid signal score or scanner confidence is available for this idea."}</p>
+        <p>Not a probability of profit.</p>
+        {hasSignalScore && <>
+          <p className="kicker">Factor scores · normalized inputs</p>
+          {Object.keys(sig.opportunity_score?.components ?? {}).length ? <dl className="signal-score-factors">
+            {Object.entries(sig.opportunity_score?.components ?? {}).map(([key, value]) => <div key={key}>
+              <dt>{factorLabels[key] ?? key.replace(/_/g, " ")}</dt>
+              <dd>{Number.isFinite(value) && value >= 0 && value <= 1 ? `${Math.round(value * 100)}/100` : "Unavailable"}</dd>
+            </div>)}
+          </dl> : <p>Factor breakdown unavailable.</p>}
+          <p>Factor scores are inputs, not percentage contributions to the final score.</p>
+        </>}
+      </details>
       <details className="signal-evidence"><summary>Technical evidence</summary>
       <div className="mission-card__details">
         <SignalAttribution data={toAttribution(sig)} size="sm" />
@@ -273,7 +278,8 @@ function SignalCard({
         </div>
       </div>
       </details>
-    </MissionCard>
+      </div>
+    </details>
     <SignalDetailDrawer
       open={reviewing}
       onClose={() => setReviewing(false)}
@@ -315,11 +321,11 @@ function StatPill({ label, value }: { label: string; value: string }) {
 
 function PriceCell({ label, value, color, suffix }: { label: string; value?: number; color: string; suffix?: "%" }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+    <div className="signal-price-cell" style={{ display: "flex", flexDirection: "column", gap: 2 }}>
       <span style={{ color: "var(--ink-dim)", fontFamily: "var(--mono)", fontSize: 9, letterSpacing: "0.08em" }}>
         {label}
       </span>
-      <span style={{ color, fontFamily: "var(--mono)", fontSize: 13, fontWeight: 600 }}>
+      <span className="financial-value" style={{ color, fontFamily: "var(--mono)", fontSize: 13, fontWeight: 600 }}>
         {value === undefined ? "—" : suffix === "%" ? `${value.toFixed(1)}%` : `$${value.toFixed(2)}`}
       </span>
     </div>
@@ -376,7 +382,7 @@ function SignalGroup({
         </span>
         <div style={{ flex: 1, height: 1, background: "var(--line-dim)" }} />
       </div>
-      <div className="mission-list">
+      <div className="mission-list signal-ledger">
         {signals.map(sig => (
           <SignalCard
             key={sig.id}
@@ -498,7 +504,7 @@ function TopSignals({
   );
 }
 
-function EquitySignalsGrid() {
+function EquitySignalsGrid({ onTabChange }: { onTabChange: (tab: AssetTab) => void }) {
   const [signals, setSignals] = useState<Signal[]>([]);
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -564,7 +570,7 @@ function EquitySignalsGrid() {
   const topSellSignals = sellSignals.slice(0, 3);
 
   return (
-    <div className="design-signal-feed" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+    <div className="design-signal-feed signals-ledger-page" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div className="instrument-card page-header">
         <div>
           <h1 className="page-header__title">Signals</h1>
@@ -572,7 +578,14 @@ function EquitySignalsGrid() {
             Research ideas for your review · no orders submitted here
           </p>
         </div>
-        <span style={{ flex: 1 }} />
+
+      </div>
+
+      <AssetToggle tab="equities" onChange={onTabChange} />
+      <div className="design-search-row">
+        <input aria-label="Search signals" placeholder="Search symbol or explanation" value={query} onChange={e => setQuery(e.target.value)} />
+        <button className="design-review signal-refresh" aria-label="Refresh signals" title="Refresh signals" onClick={loadSignals}>↻</button>
+        <details className="signal-filter-panel"><summary>Filter</summary><div className="signal-scan-controls">
         <label className="kicker" style={{ display: "flex", alignItems: "center", gap: 6 }}>
           Min move %
           <input
@@ -590,17 +603,13 @@ function EquitySignalsGrid() {
         <button onClick={runScan} disabled={scanning} className="btn-primary">
           {scanning ? "SCANNING…" : "RUN SCAN"}
         </button>
+        </div></details>
       </div>
-
-      <div className="design-search-row">
-        <input aria-label="Search signals" placeholder="Search symbol or explanation" value={query} onChange={e => setQuery(e.target.value)} />
-        <button className="design-review" onClick={loadSignals}>Refresh signals</button>
-      </div>
-      <div className="instrument-stat-strip" style={{ gridTemplateColumns: "repeat(4, minmax(0, 1fr))" }}>
-        <StatTile variant="divider" size="sm" label="Actionable" value={error || loading ? "—" : actionableCount} tone="var(--accent)" />
+      <div className="instrument-stat-strip signal-ledger-stats" style={{ gridTemplateColumns: "repeat(4, minmax(0, 1fr))" }}>
+        <StatTile variant="divider" size="sm" label="Candidates" value={error || loading ? "—" : actionableCount} tone="var(--accent)" />
         <StatTile variant="divider" size="sm" label="Buy" value={error || loading ? "—" : buySignals.length} tone="var(--green)" />
         <StatTile variant="divider" size="sm" label="Sell" value={error || loading ? "—" : sellSignals.length} tone="var(--red)" />
-        <StatTile variant="divider" size="sm" label="Total" value={error || loading ? "—" : signals.length} />
+        <StatTile variant="divider" size="sm" label="Latest" hint={<span title="Latest signal generation time, in your local timezone">Latest</span>} value={error || loading || !signals.length ? "—" : new Date(Math.max(...signals.map(s => new Date(s.generated_at).getTime()))).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit", hour12: false})} sub={signals.length && !error ? new Date(Math.max(...signals.map(s => new Date(s.generated_at).getTime()))).toLocaleDateString([], {month: "short", day: "numeric"}) : undefined} />
       </div>
 
       {error && (
@@ -613,6 +622,7 @@ function EquitySignalsGrid() {
         </div>
       )}
 
+      <div className="signal-ledger-columns" aria-hidden="true"><span>Symbol</span><span>Score</span><span>Direction</span></div>
       {loading ? <p role="status">Loading signals…</p> : error ? null : filteredSignals.length === 0 ? (
         <div className="instrument-card instrument-card--flat empty-chassis">
           <p className="empty-chassis__title">{query ? "No signals match your search" : "No equity signals yet"}</p>
@@ -620,14 +630,15 @@ function EquitySignalsGrid() {
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+
+          <SignalGroup action="BUY" signals={buySignals} minConfidence={minConfidence} blockCtx={blockCtx} />
+          <SignalGroup action="SELL" signals={sellSignals} minConfidence={minConfidence} blockCtx={blockCtx} />
+          <SignalGroup action="HOLD" signals={holdSignals} minConfidence={minConfidence} blockCtx={blockCtx} />
           <details className="signal-ranking"><summary>Ranked scanner summary</summary><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 12 }}>
             <TopSignals top={topBuySignals} label="BUY" minConfidence={minConfidence} blockCtx={blockCtx} />
             <TopSignals top={topSellSignals} label="SELL" minConfidence={minConfidence} blockCtx={blockCtx} />
           </div>
           </details>
-          <SignalGroup action="BUY" signals={buySignals} minConfidence={minConfidence} blockCtx={blockCtx} />
-          <SignalGroup action="SELL" signals={sellSignals} minConfidence={minConfidence} blockCtx={blockCtx} />
-          <SignalGroup action="HOLD" signals={holdSignals} minConfidence={minConfidence} blockCtx={blockCtx} />
         </div>
       )}
     </div>
@@ -638,14 +649,15 @@ export default function EquitySignals() {
   const [tab, setTab] = useState<AssetTab>("equities");
 
   return (
-    <div className="page-shell" style={{ maxWidth: 1200 }}>
+    <div className="page-shell signals-workspace" style={{ maxWidth: 1200 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-        <AssetToggle tab={tab} onChange={setTab} />
+        {tab === "options" && <AssetToggle tab={tab} onChange={setTab} />}
         <div className="signal-feed-context" style={{ flex: 1, minWidth: 220 }}><BrokerStatus /></div>
         <div className="signal-feed-context" style={{ flex: 1, minWidth: 220 }}><PortfolioGreeks /></div>
       </div>
 
-      {tab === "equities" ? <EquitySignalsGrid /> : <OptionsSignals />}
+      {tab === "equities" ? <EquitySignalsGrid onTabChange={setTab} /> : <OptionsSignals />}
+      <p className="signals-score-note">Scores are not probabilities of profit.</p>
     </div>
   );
 }
