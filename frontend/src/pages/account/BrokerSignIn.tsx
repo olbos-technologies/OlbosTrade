@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { api, type BrokerOAuthConnection, type BrokerProvider } from "../../api/client";
+import PaperComparisonPanel from "./PaperComparisonPanel";
 import PaperAccountSnapshot from "./PaperAccountSnapshot";
 import { Button } from "../../components/ui";
 
@@ -18,6 +19,7 @@ export default function BrokerSignIn() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState("");
+  const [comparisonOpen, setComparisonOpen] = useState(false);
   const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
   const result = new URLSearchParams(window.location.search).get("broker_oauth");
   const load = useCallback(async () => {
@@ -116,6 +118,10 @@ export default function BrokerSignIn() {
       onHealth={result => setConnections(rows => rows.map(c => c.id === result.connection_id ?
         {...c, health:result.health, last_checked_at:result.last_checked_at, status:result.status} : c))}/>}
     <p style={{ fontSize: 12, color: "var(--ink-dim)" }}>Account checks are point-in-time only. They do not verify positions, protective orders, or permission for automated execution.</p>
+    <Button style={{ minHeight: 44 }} aria-expanded={comparisonOpen} onClick={() => setComparisonOpen(v => !v)}>
+      {comparisonOpen ? "Close paper comparison" : "Compare two paper accounts"}
+    </Button>
+    {comparisonOpen && !loading && !error && <PaperComparisonPanel connections={connections} />}
     <p style={{ fontSize: 12, color: "var(--ink-dim)" }}>Disconnecting deletes the saved token from OlbosTrade. You can also revoke this application in Alpaca’s settings.</p>
   </section>;
 }

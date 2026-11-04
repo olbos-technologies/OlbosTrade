@@ -48,6 +48,10 @@ async def sessions(monkeypatch):
                 health_migration = importlib.util.module_from_spec(spec)
                 spec.loader.exec_module(health_migration)
                 health_migration.upgrade()
+                spec = importlib.util.spec_from_file_location("comparison_migration", "alembic/versions/0045_paper_comparison.py")
+                comparison_migration = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(comparison_migration)
+                comparison_migration.upgrade()
         await conn.run_sync(migrate)
     yield async_sessionmaker(engine,expire_on_commit=False)
     async with engine.begin() as conn:
