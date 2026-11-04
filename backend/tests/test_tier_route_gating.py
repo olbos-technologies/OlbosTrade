@@ -61,6 +61,8 @@ def _routes_with(dependency):
 #: user filing credentials for a connection they may not use would be an
 #: invitation to a support ticket, not a feature.
 EXPECTED_ELITE_ONLY = {
+    "/api/brokers/oauth/paper-comparison",
+    "/api/brokers/oauth/paper-comparison/snapshot",
     "/api/brokers/oauth/providers",
     "/api/brokers/oauth/connections",
     "/api/brokers/oauth/connections/{grant_id}",
