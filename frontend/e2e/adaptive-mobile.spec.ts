@@ -58,13 +58,22 @@ test('financial cards reflow inside a narrow container with larger values',async
 for (const width of [320,390,430]) {
  test(`signal ledger expands by keyboard at ${width}px`,async({page})=>{
   await fixtures(page);
-  await page.route('**/api/equity/signals?**',r=>r.fulfill(reply({signals:['PAYX','MSFT','AAPL','QQQ','NVDA','SPY'].map((ticker,i)=>({id:`sample-${i}`,ticker,action:i===2||i===4?'SELL':'BUY',confidence:.78-i*.01,opportunity_score:{score:78-i,components:{}},orderflow_score:.2,iv_overlay_boost:0,earnings_gated:false,generated_at:'2026-11-02T21:09:02Z',reasons:['Momentum aligned','Price above VWAP'],trade_plan:{entry_price:115.49,stop_price:109.15,target_price:128.16,target_move_pct:11,shares:170,risk_reward:2,risk_dollars:1077}}))})));
+  await page.route('**/api/equity/signals?**',r=>r.fulfill(reply({signals:['PAYX','MSFT','AAPL','QQQ','NVDA','SPY'].map((ticker,i)=>({id:`sample-${i}`,ticker,action:i===2||i===4?'SELL':'BUY',confidence:.78-i*.01,opportunity_score:{score:78-i,components:{confidence:.78,liquidity:.7}},orderflow_score:.2,iv_overlay_boost:0,earnings_gated:false,generated_at:'2026-11-02T21:09:02Z',reasons:['Momentum aligned','Price above VWAP'],trade_plan:{entry_price:115.49,stop_price:109.15,target_price:128.16,target_move_pct:11,shares:170,risk_reward:2,risk_dollars:1077}}))})));
   await page.setViewportSize({width,height:844});await page.goto('/terminal/equity');
   const row=page.locator('.signal-ledger-row').first(), summary=row.locator(':scope > summary');
   await expect(summary).toBeVisible();await expect(row).not.toHaveAttribute('open','');
+  await expect(row.locator('.mission-card__reward-prefix')).toHaveText('Signal score');
+  await expect(row.locator('.mission-card__reward-value')).toHaveText('78/100');
+  expect(await row.locator('.mission-card__reward-value').evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);
   expect((await summary.boundingBox())!.height).toBeLessThan(85);
   await summary.focus();await page.keyboard.press('Enter');await expect(row).toHaveAttribute('open','');
   await expect(row.getByRole('button',{name:/Review idea/})).toBeVisible();
+  await row.locator('.signal-score-explainer > summary').click();
+  await expect(row.locator('.signal-score-factors')).toContainText('Confidence factor');
+  await expect(row.locator('.signal-score-factors')).toContainText('78/100');
+  await expect(row.locator('.signal-score-explainer')).toContainText('Not a probability of profit.');
+  await expectNoHorizontalOverflow(page,width);
+  await row.locator('.signal-score-explainer > summary').click();
   await expectNoHorizontalOverflow(page,width);
   await summary.blur();
   await page.screenshot({path:`ui-audit-artifacts/signals-ledger-expanded-${width}.png`,fullPage:true,animations:'disabled'});

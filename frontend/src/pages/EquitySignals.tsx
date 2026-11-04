@@ -181,25 +181,30 @@ function SignalCard({
   const ind = sig.indicators || {};
   const block = deriveSignalBlockReason(sig, blockCtx);
   const confPct = Math.round(sig.confidence * 100);
-  const tone = confidenceTone(confPct);
   const directionClass = sig.action === "BUY" ? "mission-card--buy" : sig.action === "SELL" ? "mission-card--sell" : "";
-  // Card face always shows confidence % (or opportunity score when present).
-  // The navy redesign hid this inside a closed <details>; restore it so BUY/SELL
-  // cards read like a trade idea again, not only a factor list.
-  const reward = sig.opportunity_score != null
-    ? { prefix: "OPP", value: String(Math.round(sig.opportunity_score.score)), tone: confidenceTone(sig.opportunity_score.score) }
-    : sig.action !== "HOLD"
-      ? { prefix: "CONF", value: `${confPct}%`, tone }
-      : undefined;
+  const opportunityScore = sig.opportunity_score?.score;
+  const hasSignalScore = typeof opportunityScore === "number" && Number.isFinite(opportunityScore) && opportunityScore >= 0 && opportunityScore <= 100;
+  const hasConfidence = sig.action !== "HOLD" && Number.isFinite(sig.confidence) && sig.confidence >= 0 && sig.confidence <= 1;
+  // These are distinct producer metrics. Missing opportunity scores must not
+  // silently turn confidence into a composite signal score.
+  const reward = hasSignalScore
+    ? { label: "Signal score", value: `${Math.round(opportunityScore)}/100` }
+    : hasConfidence
+      ? { label: "Confidence", value: `${confPct}%` }
+      : { label: "Unavailable", value: "—" };
+  const factorLabels: Record<string, string> = {
+    confidence: "Confidence factor", ev: "Expected-value factor",
+    reward_risk: "Reward / risk", liquidity: "Liquidity", regime: "Regime alignment",
+  };
 
   return (
     <>
     <details className={`design-signal-card signal-ledger-row ${directionClass}`}>
       <summary className="signal-ledger-summary">
         <span className="signal-ledger-symbol"><TickerLogo ticker={sig.ticker} size={24} /><strong>{sig.ticker}</strong></span>
-        <span className="signal-ledger-score" title={sig.opportunity_score ? "Opportunity score" : "Confidence score"}>
-          <small className="mission-card__reward-prefix">{reward?.prefix ?? "—"}</small>
-          <strong className="mission-card__reward-value">{reward?.value ?? "—"}</strong>
+        <span className="signal-ledger-score" title={reward.label}>
+          <small className="mission-card__reward-prefix">{reward.label}</small>
+          <strong className="mission-card__reward-value">{reward.value}</strong>
         </span>
         <SignalDirectionBadge action={sig.action} size="sm" />
         <span className="signal-ledger-chevron" aria-hidden="true">⌄</span>
@@ -229,6 +234,25 @@ function SignalCard({
       )}
       <time className="signal-generated" dateTime={sig.generated_at}>Generated {new Date(sig.generated_at).toLocaleString()}</time>
       <button className="design-review" onClick={() => setReviewing(true)}>Review idea <span aria-hidden="true">→</span></button>
+      <details className="signal-score-explainer"><summary>About this score</summary>
+        <p><strong>{reward.label}: {reward.value}</strong></p>
+        <p>{hasSignalScore
+          ? "Composite scanner ranking from the available signal factors. It helps compare research ideas; it does not authorize a trade."
+          : hasConfidence
+            ? "A separate scanner confidence measure. A composite signal score is not available for this idea."
+            : "No valid signal score or scanner confidence is available for this idea."}</p>
+        <p>Not a probability of profit.</p>
+        {hasSignalScore && <>
+          <p className="kicker">Factor scores · normalized inputs</p>
+          {Object.keys(sig.opportunity_score?.components ?? {}).length ? <dl className="signal-score-factors">
+            {Object.entries(sig.opportunity_score?.components ?? {}).map(([key, value]) => <div key={key}>
+              <dt>{factorLabels[key] ?? key.replace(/_/g, " ")}</dt>
+              <dd>{Number.isFinite(value) && value >= 0 && value <= 1 ? `${Math.round(value * 100)}/100` : "Unavailable"}</dd>
+            </div>)}
+          </dl> : <p>Factor breakdown unavailable.</p>}
+          <p>Factor scores are inputs, not percentage contributions to the final score.</p>
+        </>}
+      </details>
       <details className="signal-evidence"><summary>Technical evidence</summary>
       <div className="mission-card__details">
         <SignalAttribution data={toAttribution(sig)} size="sm" />

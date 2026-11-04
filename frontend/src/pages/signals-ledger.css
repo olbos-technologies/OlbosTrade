@@ -5,10 +5,10 @@
 .app-shell .signal-filter-panel[open] .signal-scan-controls { padding: 12px; border: 1px solid var(--line-dim); }
 .app-shell .signals-ledger-page .signal-ledger-stats { order: -2; background: var(--bg-2); box-shadow: none; border-radius: 0; }
 .app-shell .signals-ledger-page .signal-ledger-stats > div { min-width: 0; }
-.app-shell .signal-ledger-columns { display: grid; grid-template-columns: minmax(0,1fr) 72px 100px; padding: 10px 12px; color: var(--ink-dim); font: 11px var(--mono); text-transform: uppercase; border-bottom: 1px solid var(--line-dim); }
+.app-shell .signal-ledger-columns { display: grid; grid-template-columns: minmax(0,1fr) 96px 100px; padding: 10px 12px; color: var(--ink-dim); font: 11px var(--mono); text-transform: uppercase; border-bottom: 1px solid var(--line-dim); }
 .app-shell .design-signal-feed .signal-ledger { display: flex; flex-direction: column; gap: 0 !important; }
 .app-shell .design-signal-card.signal-ledger-row { padding: 0 !important; border: 0; border-bottom: 1px solid var(--line-dim); border-radius: 0 !important; background: none; box-shadow: none; }
-.app-shell .signal-ledger-summary { display: grid; grid-template-columns: minmax(0,1fr) 72px 74px 18px; align-items: center; gap: 6px; padding: 12px; min-height: 58px; cursor: pointer; list-style: none; }
+.app-shell .signal-ledger-summary { display: grid; grid-template-columns: minmax(0,1fr) 96px 74px 18px; align-items: center; gap: 6px; padding: 12px; min-height: 58px; cursor: pointer; list-style: none; }
 .app-shell .signal-ledger-summary::-webkit-details-marker { display: none; }
 .app-shell .signal-ledger-symbol { display: flex; align-items: center; gap: 8px; min-width: 0; font: 600 14px var(--mono); }
 .app-shell .signal-ledger-score { display: flex; flex-direction: column; font: 600 14px var(--mono); }
@@ -33,8 +33,8 @@
  .app-shell .signals-ledger-page .signal-ledger-stats .data-val { font-size: 16px; white-space: nowrap; }
  .app-shell .signals-ledger-page .design-search-row { grid-template-columns: minmax(0,1fr) auto; }
  .app-shell .signals-ledger-page .design-search-row button { font-size: 10px; }
- .app-shell .signal-ledger-summary { grid-template-columns: minmax(0,1fr) 52px 60px 12px; padding-inline: 6px; gap: 4px; }
- .app-shell .signal-ledger-columns { grid-template-columns: minmax(0,1fr) 52px 80px; padding-inline: 6px; }
+ .app-shell .signal-ledger-summary { grid-template-columns: minmax(0,1fr) 76px 60px 12px; padding-inline: 6px; gap: 4px; }
+ .app-shell .signal-ledger-columns { grid-template-columns: minmax(0,1fr) 76px 80px; padding-inline: 6px; }
  .app-shell .signal-ledger-symbol { font-size: 13px; gap: 6px; }
  .app-shell .signal-ledger-content { padding-inline: 8px; }
 }
@@ -57,3 +57,10 @@
 .app-shell .signal-filter-panel { position: relative; }
 .app-shell .signal-filter-panel > summary { padding: 12px; border: 1px solid var(--line-dim); border-radius: 3px; min-height: 44px; font: 12px/18px var(--sans); }
 .app-shell .signal-filter-panel[open] .signal-scan-controls { position: absolute; top: 48px; right: 0; z-index: 5; width: min(320px,calc(100vw - 32px)); box-sizing: border-box; background: var(--bg-2); box-shadow: 0 8px 24px #0008; }
+
+.app-shell .signal-ledger-score .mission-card__reward-value { white-space: nowrap; }
+.app-shell .signal-score-explainer { border-top: 1px solid var(--line-dim); margin-block: 8px; font: 12px/1.5 var(--sans); color: var(--ink-dim); }
+.app-shell .signal-score-explainer > summary { min-height: 44px; padding: 12px 0; cursor: pointer; color: var(--ink); }
+.app-shell .signal-score-factors { margin: 8px 0; }
+.app-shell .signal-score-factors > div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line-dim); }
+.app-shell .signal-score-factors dd { margin: 0; color: var(--ink); font-family: var(--mono); white-space: nowrap; }
