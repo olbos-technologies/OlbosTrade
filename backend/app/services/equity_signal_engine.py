@@ -351,7 +351,7 @@ def compute_equity_trade_plan(
     ind: dict,
     action: str,
     portfolio_value: float,
-    max_position_pct: float = 0.08,
+    max_position_pct: float | None = None,
     sentiment_score: float = 0.0,
     params: Optional[EquitySignalParams] = None,
 ) -> dict:
@@ -406,7 +406,9 @@ def compute_equity_trade_plan(
     # Allow 0 — caller / OMS skips zero-size instead of forcing a 1-share trade.
     shares = max(0, shares)
 
-    # Cap at max_position_pct of portfolio
+    # Cap at max_position_pct of portfolio (EQUITY_MAX_POSITION_PCT unless a caller passes one)
+    if max_position_pct is None:
+        max_position_pct = settings.equity_max_position_pct
     max_shares = int((portfolio_value * max_position_pct) / max(entry, 0.01))
     if shares > 0:
         shares = min(shares, max_shares)
