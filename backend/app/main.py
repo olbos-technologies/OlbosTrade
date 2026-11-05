@@ -3356,6 +3356,19 @@ _last_guardrail_signature: tuple | None = None
 _peak_value_cache: float | None = None
 
 
+def _clamp_peak_to_capital_base(peak: float) -> float:
+    """A peak recorded before TRADING_CAPITAL_BASE was set cannot exceed the base.
+
+    The stored peak only ratchets up. Capping the capital the desk trades with
+    while an old, larger peak stays on file would read as a drawdown that never
+    happened (a 25k base against a stored 276k peak is a 91% "decline") and halt
+    every entry. The stored row is left alone; only what the guardrail sees is
+    bounded, so removing the setting restores the original behaviour.
+    """
+    base = float(settings.trading_capital_base or 0.0)
+    return min(peak, base) if base > 0 and peak > 0 else peak
+
+
 async def _get_or_update_peak_value(current_value: float, starting_capital: float) -> float:
     """
     Returns the persisted all-time portfolio peak (risk_peak_state, row
@@ -3385,7 +3398,7 @@ async def _get_or_update_peak_value(current_value: float, starting_capital: floa
                 row.peak_value = Decimal(str(current_value))
                 await session.commit()
                 _peak_value_cache = current_value
-        return _peak_value_cache
+        return _clamp_peak_to_capital_base(_peak_value_cache)
     except Exception as exc:
         logger.error("Failed to update peak value: %s", exc)
         # Do NOT cache a fallback here — that would permanently stop this
@@ -3393,7 +3406,9 @@ async def _get_or_update_peak_value(current_value: float, starting_capital: floa
         # e.g. mid-deploy before the migration lands, would silently poison
         # every guardrail check for the rest of the process's life). Return
         # an uncached value for just this one response instead.
-        return _peak_value_cache if _peak_value_cache is not None else max(current_value, starting_capital)
+        return _clamp_peak_to_capital_base(
+            _peak_value_cache if _peak_value_cache is not None else max(current_value, starting_capital)
+        )
 
 
 async def _maybe_log_guardrail_event(status: GuardrailStatus, portfolio: PortfolioState) -> None:
@@ -3562,7 +3577,10 @@ async def guardrail_status():
             get_broker().get_account_summary(),
             timeout=ACCOUNT_SUMMARY_ROUTE_TIMEOUT_SECONDS,
         )
-        current_value = float(acct.net_liquidation)
+        from app.services.account_state import capped_capital
+        # Against the desk's capital, not the whole account: every percentage the
+        # guardrails produce is a share of this figure (TRADING_CAPITAL_BASE).
+        current_value = capped_capital(float(acct.net_liquidation))
         account_value_known = True
     except Exception as exc:
         # Say WHICH failure. This block used to swallow the exception without a

@@ -50,6 +50,17 @@ class Settings(BaseSettings):
 
     # ── Trading Rules ─────────────────────────────────────────────────────
     starting_capital: float = Field(default=25000.0)
+    # The capital the DESK trades with, when that is less than the broker account.
+    # 0 (default) = off: sizing and the guardrails use the live account, as before.
+    # >0: sizing, the loss/drawdown percentages and the drawdown peak are all taken
+    # against min(live account, this), so a paper account holding far more than the
+    # desk is meant to risk does not inflate position sizes. Keep it equal to
+    # STARTING_CAPITAL — a base that differs from it recreates the divergence the
+    # `capital_base_divergent` guardrail flag exists to report.
+    trading_capital_base: float = Field(default=0.0, ge=0.0)
+    # Largest single equity position, as a fraction of trading capital (notional).
+    # Default is the figure that was hardcoded in compute_equity_trade_plan.
+    equity_max_position_pct: float = Field(default=0.08, gt=0.0, le=0.5)
     max_daily_loss_pct: float = Field(default=0.02)
     max_weekly_loss_pct: float = Field(default=0.05)
     max_monthly_loss_pct: float = Field(default=0.10)
