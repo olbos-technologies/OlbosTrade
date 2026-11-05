@@ -79,10 +79,13 @@ async def get_portfolio_state(conn: HTTPConnection):
             Priority.P0, broker.get_account_summary, key="account_summary", req_type="ACCOUNT_SUMMARY",
             timeout=ACCOUNT_SUMMARY_TIMEOUT_SECONDS,
         )
-        acct_value    = float(acct.net_liquidation)
+        live_value    = float(acct.net_liquidation)
+        from app.services.account_state import capped_capital
+        acct_value    = capped_capital(live_value)
         buying_power  = float(acct.buying_power)
         cash          = float(acct.cash_balance)
     except Exception as exc:
+        live_value   = None
         acct_value   = settings.starting_capital
         buying_power = settings.starting_capital
         cash         = settings.starting_capital
@@ -139,6 +142,11 @@ async def get_portfolio_state(conn: HTTPConnection):
                 "cash":                cash,
                 "buying_power":        buying_power,
                 "starting_capital":    settings.starting_capital,
+                # The desk's capital vs the whole account: when TRADING_CAPITAL_BASE
+                # is set, account_value above is the capped figure and the P&L and
+                # return derived from it are the desk's, not the account's.
+                "account_value_live":  live_value,
+                "trading_capital_base": settings.trading_capital_base or None,
                 "total_pnl":           round(total_pnl, 2),
                 "return_pct":          round(total_pnl / settings.starting_capital * 100, 2),
                 "daily_pnl":           round(daily_pnl, 2),

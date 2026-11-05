@@ -27,6 +27,18 @@ logger = get_logger(__name__)
 ACCOUNT_VALUE_TIMEOUT_SECONDS = 5.0
 
 
+def capped_capital(live_value: float) -> float:
+    """The capital the desk trades with: the live account, bounded by TRADING_CAPITAL_BASE.
+
+    Unset (0) is the old behaviour exactly. A non-positive live value is returned
+    untouched — a failed read must stay recognisable as one, never become the base.
+    """
+    base = float(settings.trading_capital_base or 0.0)
+    if base > 0 and live_value > base:
+        return base
+    return live_value
+
+
 async def get_account_value() -> float:
     """
     Live net liquidation value from the broker, falling back to
@@ -41,7 +53,7 @@ async def get_account_value() -> float:
         acct = await asyncio.wait_for(
             get_broker().get_account_summary(), timeout=ACCOUNT_VALUE_TIMEOUT_SECONDS,
         )
-        return float(acct.net_liquidation or settings.starting_capital)
+        return capped_capital(float(acct.net_liquidation or settings.starting_capital))
     except Exception as exc:
         logger.debug("get_account_value: broker unreachable, using starting_capital: %s", exc)
-        return settings.starting_capital
+        return capped_capital(settings.starting_capital)

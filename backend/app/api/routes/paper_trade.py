@@ -131,6 +131,12 @@ async def get_portfolio(conn: HTTPConnection):
         # No synthetic substitute: when the broker read fails, return_pct is
         # unknown rather than computed off starting capital + DB P&L.
         acct_value   = broker_data.get("account_value")
+        # return_pct is the desk's return on ITS capital: against the capped
+        # figure when TRADING_CAPITAL_BASE is set, so a large paper account does
+        # not read as a gain over a smaller configured starting capital.
+        if acct_value is not None:
+            from app.services.account_state import capped_capital
+            acct_value = capped_capital(acct_value)
 
         return {"portfolio": {
             **broker_data,
@@ -140,6 +146,7 @@ async def get_portfolio(conn: HTTPConnection):
             "open_positions":   open_count,
             "trades_today":     trades_today,
             "starting_capital": settings.starting_capital,
+            "trading_capital_base": settings.trading_capital_base or None,
             # Positions the reconciler inherited from the broker rather than
             # the desk choosing them. Counted in the figures above — real
             # capital, realised P&L — and reported here because no strategy
