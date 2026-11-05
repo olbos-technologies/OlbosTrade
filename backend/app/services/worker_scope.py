@@ -75,6 +75,11 @@ class ScopedWork:
     def is_single_operator(self) -> bool:
         return self.organization_id is None
 
+    @property
+    def uses_process_broker(self) -> bool:
+        """True for the unattributed scope and for the designated operator."""
+        return self.broker_source.startswith("process")
+
 
 async def scopes_with_open_trades(db) -> list[Optional[uuid.UUID]]:
     """Every owner that currently has an open or pending trade.
@@ -90,15 +95,31 @@ async def scopes_with_open_trades(db) -> list[Optional[uuid.UUID]]:
     included only when such rows actually exist, so a fully-attributed
     deployment does not sweep an empty scope every cycle.
     """
+    from app.services.trade_scope import designated_operator_id
+
     rows = (await db.execute(
         select(Trade.organization_id)
         .where(Trade.status.in_(["open", "pending"]))
         .distinct()
     )).scalars().all()
+    has_unattributed = any(r is None for r in rows)
+
+    # When the operator has designated an organization (OPERATOR_ORGANIZATION_ID),
+    # the unattributed rows ARE that operator's history, and the process broker is
+    # the operator's broker. Visiting "unattributed" and "the operator" as two
+    # scopes would hand the same broker two partial ledgers: each would report
+    # the other's positions as untracked at the broker or phantom in the database.
+    # So they are ONE scope, the operator's, visited once.
+    operator = designated_operator_id()
+    if operator is not None:
+        others = sorted({r for r in rows if r is not None and r != operator}, key=str)
+        has_operator = has_unattributed or any(r == operator for r in rows)
+        return ([operator] if has_operator else []) + others
+
     # `None` sorts badly against UUIDs, so order the attributed ones and put
     # the single-operator scope first — it is the one that exists today.
     attributed = sorted((r for r in rows if r is not None), key=str)
-    return ([SINGLE_OPERATOR] if any(r is None for r in rows) else []) + attributed
+    return ([SINGLE_OPERATOR] if has_unattributed else []) + attributed
 
 
 async def broker_for_scope(db, organization_id: Optional[uuid.UUID],
@@ -128,6 +149,19 @@ async def broker_for_scope(db, organization_id: Optional[uuid.UUID],
 
         return ScopedWork(organization_id=None, broker=get_broker(),
                           broker_source="process")
+
+    # The designated operator organization IS the process broker's owner: it is
+    # the one organization the operator has explicitly said holds the positions at
+    # the gateway they run. Nothing else gets this — any other organization still
+    # needs its own connection, so a customer can never be read against the
+    # operator's account.
+    from app.services.trade_scope import designated_operator_id
+
+    if organization_id == designated_operator_id():
+        from app.broker.broker_factory import get_broker
+
+        return ScopedWork(organization_id=organization_id, broker=get_broker(),
+                          broker_source="process:operator")
 
     from app.broker.connection_scoped import (
         ConnectionNotExecutable, scoped_alpaca_for,
