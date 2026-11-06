@@ -387,6 +387,7 @@ class IBKRClient(BrokerInterface):
                 volume=_safe_int(ticker.volume),
                 open_interest=_safe_int(ticker.callOpenInterest) or _safe_int(ticker.putOpenInterest),
                 greeks=greeks,
+                quote_feed="realtime" if getattr(ticker, "marketDataType", None) == 1 else "unverified",
             )
             (calls if option_type == "call" else puts).append(contract)
 

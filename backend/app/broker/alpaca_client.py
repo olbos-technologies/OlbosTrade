@@ -478,20 +478,13 @@ class AlpacaClient(BrokerInterface):
     async def get_options_chain(self, symbol: str, expiry: str) -> OptionsChain:
         """See the module docstring re: options endpoints being unverified
         against a live Alpaca account."""
-        contracts_data = await self._get(
-            self._trading_base, "/v2/options/contracts",
-            params={"underlying_symbols": symbol.upper(), "expiration_date": expiry, "limit": 500},
+        from app.broker.alpaca_options_data import collect_options
+        contracts, snap_map = await collect_options(
+            self._get, self._trading_base, self._data_base, symbol.upper(), expiry,
+            feed=settings.alpaca_options_feed,
         )
-        contracts = contracts_data.get("option_contracts", []) if isinstance(contracts_data, dict) else []
         if not contracts:
             raise ValueError(f"No option contracts found for {symbol} {expiry}")
-
-        occ_symbols = [c["symbol"] for c in contracts]
-        snapshots = await self._get(
-            self._data_base, "/v1beta1/options/snapshots",
-            params={"symbols": ",".join(occ_symbols)},
-        )
-        snap_map = snapshots.get("snapshots", {}) if isinstance(snapshots, dict) else {}
 
         try:
             uq = await self.get_latest_quote(symbol)
@@ -519,6 +512,8 @@ class AlpacaClient(BrokerInterface):
                 last=Decimal(str(trade.get("p", 0) or 0)),
                 volume=int((snap.get("dailyBar") or {}).get("v", 0) or 0),
                 open_interest=int(c.get("open_interest", 0) or 0),
+                quote_timestamp=_parse_ts(quote.get("t")),
+                quote_feed=settings.alpaca_options_feed,
                 greeks=Greeks(
                     delta=float(greeks_data.get("delta", 0)),
                     gamma=float(greeks_data.get("gamma", 0)),

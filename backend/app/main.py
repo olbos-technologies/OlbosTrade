@@ -1304,7 +1304,11 @@ async def _live_spread_quote(
 
     short_delta = abs(float(short_c.greeks.delta)) if short_c.greeks and short_c.greeks.delta else None
     short_gamma = float(short_c.greeks.gamma) if short_c.greeks and short_c.greeks.gamma is not None else None
+    from app.services.options_contract_quality import score_spread_quality
+    contract_quality = score_spread_quality(short_c, long_c,
+        "bull_put_spread" if opt_type == "put" else "bear_call_spread")
     return {
+        "contract_quality": contract_quality,
         "net_credit":   round(net_credit_ps * 100, 2),
         "short_delta":  short_delta,
         "short_strike": float(short_c.strike),
@@ -1498,10 +1502,9 @@ async def _run_options_scan(symbol: str = "SPY", execute: bool = True) -> Option
     Routes through execution handler (manual/copilot/autopilot), same as before.
     """
     if _current_regime is None or not getattr(_current_regime, "options_allowed", False):
-        # Not recorded per-symbol here (unlike every rejection below) — this
-        # is a single market-wide gate, so recording it for all 59 watchlist
-        # symbols every cycle would just be 59 duplicate entries. The regime's
-        # own options_allowed state is already visible via /api/market/regime.
+        # Persist the previously silent gate. Daily rejection aggregation
+        # counts repeated attempts instead of hiding a whole blocked scan.
+        await _record_options_rejection(symbol, f"regime_gate: {_regime_name()}")
         return None
     try:
         import uuid
@@ -1583,6 +1586,7 @@ async def _run_options_scan(symbol: str = "SPY", execute: bool = True) -> Option
             portfolio_state = await _fetch_portfolio_state()
         except RiskGateError as exc:
             logger.warning("Options scan: risk gate unavailable — skipping cycle: %s", exc)
+            await _record_options_rejection(symbol, "portfolio_state_unavailable")
             return None
 
         # Target expiry ~dte_target days out, on a Friday
@@ -2000,6 +2004,11 @@ async def _run_options_scan(symbol: str = "SPY", execute: bool = True) -> Option
             "evidence": {
                 "top_positive_factors": evidence["top_positive_factors"],
                 "top_negative_factors": evidence["top_negative_factors"],
+                "contract_quality": liquidity_data.get("contract_quality") if liquidity_data else {
+                    "version":"spread-quality-v1", "experimental":True,
+                    "execution_authorized":False, "state":"unavailable", "score":None,
+                    "reason":"no_verified_two_leg_quote",
+                },
             },
             "spread": {
                 "option_type":   opt_type,
@@ -2121,10 +2130,16 @@ async def _run_options_scan_watchlist() -> None:
                 )
             except Exception as exc:
                 logger.warning("Options scan failed for %s: %s", symbol, exc)
+                await _record_options_rejection(symbol,
+                    "scan_timeout" if isinstance(exc, TimeoutError) else "scan_worker_error")
                 return None
 
     results = await asyncio.gather(*[_scan_one(s) for s in watchlist])
     candidates: list[dict] = [sig for sig in results if sig is not None]
+    from app.services.observability import observability
+    observability.incr("options.scan_cycles")
+    observability.gauge("options.last_scan_candidates", len(candidates))
+    observability.event("options_scan_cycle", scanned=len(watchlist), candidates=len(candidates))
 
     if not candidates:
         return

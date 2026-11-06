@@ -180,6 +180,11 @@ jobs:
           --cov=app.api.routes.broker_oauth
           --cov=app.api.broker_oauth_redaction
           --cov-report=term-missing --cov-fail-under=95
+      - name: Options chain quality — hard 95% gate
+        run: >
+          python -m pytest tests/test_alpaca_options_data.py tests/test_options_contract_quality.py tests/test_options_scan_diagnostics.py
+          --cov=app.broker.alpaca_options_data --cov=app.services.options_contract_quality
+          --cov-report=term-missing --cov-fail-under=95
       - name: Read-only Flex intake — hard 95% gate
         run: >
           python -m pytest tests/test_ibkr_flex_intake.py

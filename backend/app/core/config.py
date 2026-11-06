@@ -3,6 +3,8 @@ Application configuration loaded from environment variables.
 All runtime settings must come through this module — no hardcoded values.
 """
 
+from typing import Literal, Optional
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
 
@@ -36,6 +38,9 @@ class Settings(BaseSettings):
         default="https://paper-api.alpaca.markets",
         description="https://paper-api.alpaca.markets (paper) or https://api.alpaca.markets (live)",
     )
+
+    # None preserves provider-default behavior but is NOT proof of OPRA.
+    alpaca_options_feed: Optional[Literal["opra", "indicative"]] = None
 
     # Alpaca Connect: credentials belong to the Olbos application, not users.
     # Off until the registered application and exact HTTPS callback are configured.
