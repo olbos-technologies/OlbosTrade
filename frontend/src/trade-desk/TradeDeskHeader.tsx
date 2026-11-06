@@ -6,6 +6,7 @@
 import React, { useEffect, useState } from "react";
 import { api } from "../api/client";
 import KillSwitchButton from "../components/KillSwitchButton";
+import { gainSign } from "../utils/pnlTone";
 
 type Snap = {
   label: string;
@@ -90,8 +91,8 @@ export default function TradeDeskHeader() {
           if (typeof s.daily_pnl === "number") {
             // Format as +$120 / -$1615 so the sign is never hidden behind `$`.
             const n = s.daily_pnl;
-            setDayPnl(`${n >= 0 ? "+" : "-"}$${Math.abs(n).toFixed(0)}`);
-            setDayPnlTone(n >= 0 ? "ok" : "crit");
+            setDayPnl(`${n < 0 ? "-" : gainSign(n, 0)}$${Math.abs(n).toFixed(0)}`);
+            setDayPnlTone(gainSign(n, 0) === "+" ? "ok" : n < 0 ? "crit" : "muted");
           } else if (typeof s.daily_loss_pct === "number") {
             // daily_loss_pct is a signed P&L ratio — don't hardcode "loss"
             // on what could be a gain.

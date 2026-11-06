@@ -1,4 +1,5 @@
 import { summarizeKillSwitchReport } from "../utils/killSwitchReport";
+import { pnlColor, gainSign } from "../utils/pnlTone";
 import React, { useEffect, useState } from "react";
 import { useRisk } from "../hooks/useRisk";
 import { api, getOperatorApiKey, setOperatorApiKey } from "../api/client";
@@ -378,8 +379,8 @@ export default function RiskMonitor() {
       <div className="instrument-stat-strip workspace-stat-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", marginBottom: 16 }}>
         <Stat label="Portfolio Value" value={pvDisplay} color="var(--cyan)" />
         <Stat label="Daily P&L"
-          value={finite(daily_pnl) ? `${daily_pnl >= 0 ? "+" : "−"}$${Math.abs(daily_pnl).toFixed(0)}` : "Unavailable"}
-          color={!finite(daily_pnl) ? "var(--amber)" : daily_pnl >= 0 ? "var(--green)" : "var(--red)"} />
+          value={finite(daily_pnl) ? `${daily_pnl < 0 ? "−" : gainSign(daily_pnl, 0)}$${Math.abs(daily_pnl).toFixed(0)}` : "Unavailable"}
+          color={!finite(daily_pnl) ? "var(--amber)" : pnlColor(daily_pnl)} />
         <Stat label="Open Positions" value={finite(riskState?.state?.open_positions) ? riskState.state.open_positions : "Unavailable"} />
         <Stat label="Status"
           value={typeof guardrailStatus?.trading_allowed !== "boolean" ? "UNKNOWN" : guardrailStatus.trading_allowed ? "ACTIVE" : "SUSPENDED"}
@@ -791,7 +792,7 @@ export default function RiskMonitor() {
                   <span style={{
                     color: e.unrealized_pnl_at_decision == null
                       ? "var(--ink-faint)"
-                      : e.unrealized_pnl_at_decision >= 0 ? "var(--green)" : "var(--red)",
+                      : pnlColor(e.unrealized_pnl_at_decision),
                   }}>
                     {e.unrealized_pnl_at_decision != null
                       ? `${e.unrealized_pnl_at_decision >= 0 ? "+" : ""}$${Math.abs(e.unrealized_pnl_at_decision).toFixed(0)}`
@@ -831,10 +832,10 @@ export default function RiskMonitor() {
               <div style={{ display: "flex", gap: 20, flexWrap: "wrap", marginBottom: 14 }}>
                 <StatTile label="TOTAL P&L"
                   value={`${rotoPerf.total_pnl >= 0 ? "+" : ""}$${Math.abs(rotoPerf.total_pnl).toFixed(0)}`}
-                  tone={rotoPerf.total_pnl >= 0 ? "var(--green)" : "var(--red)"} />
+                  tone={pnlColor(rotoPerf.total_pnl)} />
                 <StatTile label="AVG P&L"
                   value={rotoPerf.avg_pnl != null ? `${rotoPerf.avg_pnl >= 0 ? "+" : ""}$${Math.abs(rotoPerf.avg_pnl).toFixed(0)}` : "—"}
-                  tone={rotoPerf.avg_pnl != null ? (rotoPerf.avg_pnl >= 0 ? "var(--green)" : "var(--red)") : "var(--ink-faint)"} />
+                  tone={rotoPerf.avg_pnl != null ? (pnlColor(rotoPerf.avg_pnl)) : "var(--ink-faint)"} />
                 <StatTile label="WIN RATE"
                   value={rotoPerf.win_rate != null ? `${(rotoPerf.win_rate * 100).toFixed(0)}%` : "—"}
                   tone="var(--ink)" />
@@ -852,7 +853,7 @@ export default function RiskMonitor() {
                       <span style={{ color: "var(--ink)" }}>{r.ticker}</span>
                       <span style={{ color: "var(--ink-faint)" }}>{r.regime ?? "—"}</span>
                       <span style={{ color: "var(--ink-faint)" }}>{r.exit_date ?? "—"}</span>
-                      <span style={{ color: r.pnl >= 0 ? "var(--green)" : "var(--red)" }}>
+                      <span style={{ color: pnlColor(r.pnl) }}>
                         {r.pnl >= 0 ? "+" : ""}${Math.abs(r.pnl).toFixed(0)}
                       </span>
                     </div>

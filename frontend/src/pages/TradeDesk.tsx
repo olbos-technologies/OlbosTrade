@@ -4,6 +4,7 @@
  * Execution modes: MANUAL (signals only) · COPILOT (you approve) · AUTOPILOT (auto-execute)
  */
 import React, { useState, useEffect, useCallback } from "react";
+import { pnlColor, gainSign } from "../utils/pnlTone";
 import { useIsMobile } from "../hooks/useIsMobile";
 import { usePaperTrade } from "../hooks/usePaperTrade";
 import TradingModeSelector from "../components/TradingModeSelector";
@@ -48,7 +49,7 @@ const Badge = ({ text, color }: { text: string; color: string }) => (
 );
 
 const fmtDollars = (value: number | null | undefined, digits = 0) =>
-  value == null ? "—" : `${value >= 0 ? "+" : "-"}$${Math.abs(value).toFixed(digits)}`;
+  value == null ? "—" : `${value < 0 ? "-" : gainSign(value, digits)}$${Math.abs(value).toFixed(digits)}`;
 
 const fmtCapture = (value: number | null | undefined) =>
   value == null ? "—" : `${(value * 100).toFixed(0)}%`;
@@ -254,7 +255,7 @@ function ApprovalsQueue() {
                     <span style={{ color: "var(--ink-dim)" }}>
                       <MetricHint id="EV" />{" "}
                       <b style={{
-                      color: (s.intelligence.expected_value ?? 0) >= 0 ? "var(--green)" : "var(--red)" }}>
+                      color: pnlColor(s.intelligence.expected_value) }}>
                       ${(s.intelligence.expected_value ?? 0).toFixed(0)}</b></span>
                     <span style={{ color: "var(--ink-dim)" }}>
                       <MetricHint id="Kelly" />{" "}
@@ -381,7 +382,7 @@ function PnLBreakdown() {
       </div>
 
       <div className="instrument-stat-strip" style={{ display: "flex", gap: 0, marginBottom: 16 }}>
-        <StatBox label="Net P&L"         value={`${totalPnl >= 0 ? "+" : ""}$${totalPnl.toFixed(2)}`}  color={totalPnl >= 0 ? "var(--green)" : "var(--red)"} />
+        <StatBox label="Net P&L"         value={`${gainSign(totalPnl)}$${totalPnl.toFixed(2)}`}  color={pnlColor(totalPnl)} />
         <StatBox label="Gross P&L"       value={`$${grossPnl.toFixed(2)}`}    color="var(--ink)" />
         <StatBox label="Commission Drag" value={`-$${totalComm.toFixed(2)}`}  color="var(--amber)" />
         <StatBox label="Est. Slippage"   value={`-$${totalSlip.toFixed(2)}`}  color="var(--amber)" />
@@ -434,8 +435,8 @@ function PnLBreakdown() {
                   <td className="mono" style={{ color: "var(--ink-dim)", fontSize: 10 }}>{t.exit_date?.slice(0,10) || "—"}</td>
                   <td className="mono">{t.hold_days != null ? `${t.hold_days}d` : "—"}</td>
                   <td className="mono">${(t.credit_received || 0).toFixed(2)}</td>
-                  <td className="mono" style={{ color: pnl >= 0 ? "var(--green)" : "var(--red)", fontWeight: 600 }}>
-                    {pnl >= 0 ? "+" : ""}${pnl.toFixed(2)}
+                  <td className="mono" style={{ color: pnlColor(pnl), fontWeight: 600 }}>
+                    {gainSign(pnl)}${pnl.toFixed(2)}
                   </td>
                   <td className="mono" style={{ color: "var(--green)" }}>{fmtDollars(t.mfe_pnl, 2)}</td>
                   <td className="mono" style={{ color: "var(--red)" }}>{fmtDollars(t.mae_pnl, 2)}</td>
@@ -724,7 +725,7 @@ export default function TradeDesk({
                       <td><Badge text={t.status?.toUpperCase() || "OPEN"}
                         color={t.status === "closed" ? "var(--green)" : "var(--cyan)"} /></td>
                       <td className="mono">${(t.credit_received || t.short_strike || 0).toFixed(2)}</td>
-                      <td className="mono" style={{ color: t.status === "open" ? "var(--ink-dim)" : pnl >= 0 ? "var(--green)" : "var(--red)", fontWeight: pnl !== 0 ? 600 : 400 }}>
+                      <td className="mono" style={{ color: t.status === "open" ? "var(--ink-dim)" : pnlColor(pnl), fontWeight: pnl !== 0 ? 600 : 400 }}>
                         {t.status === "open" ? "—" : pnl !== 0 ? `${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}` : "$0.00"}
                       </td>
                       <td className="mono" style={{ color: "var(--green)" }}>{fmtDollars(t.mfe_pnl, t.status === "open" ? 0 : 2)}</td>
@@ -757,7 +758,7 @@ export default function TradeDesk({
                 <strong style={{
                   color: !allPositionPnlKnown
                     ? "var(--ink-faint)"
-                    : knownPositionPnl >= 0 ? "var(--green)" : "var(--red)",
+                    : pnlColor(knownPositionPnl),
                 }} title={allPositionPnlKnown ? undefined : "Total unavailable because one or more broker marks are missing"}>
                   {allPositionPnlKnown ? fmtDollars(knownPositionPnl) : "—"}
                 </strong>
@@ -862,7 +863,7 @@ export default function TradeDesk({
                       {typeof entryValue === "number" && Number.isFinite(entryValue)
                         ? `$${entryValue.toFixed(2)}` : "—"}
                     </td>
-                    <td data-col="pnl" className="mono" style={{ color: pnl == null ? "var(--ink-faint)" : pnl >= 0 ? "var(--green)" : "var(--red)" }}>
+                    <td data-col="pnl" className="mono" style={{ color: pnl == null ? "var(--ink-faint)" : pnlColor(pnl) }}>
                       {fmtDollars(pnl)}
                     </td>
                     <td

@@ -3,6 +3,7 @@
  */
 
 import React, { useEffect, useState } from "react";
+import { pnlColor } from "../../utils/pnlTone";
 import { api } from "../../api/client";
 import SignalDirectionBadge from "../../components/SignalDirectionBadge";
 import MissionCard from "../../components/MissionCard";
@@ -116,7 +117,7 @@ export default function OptionsDiscoveryRail({
             const s = snaps[t];
             const on = t === symbol;
             const pct = s?.change_pct;
-            const pctTone = (pct ?? 0) >= 0 ? "var(--green)" : "var(--red)";
+            const pctTone = pnlColor(pct);
             return (
               <MissionCard
                 key={t}

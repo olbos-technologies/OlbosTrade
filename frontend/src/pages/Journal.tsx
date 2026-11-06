@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { pnlColor, gainSign } from "../utils/pnlTone";
 import { adoptedLabel } from "../utils/positionLabels";
 import { api } from "../api/client";
 import { Panel, StatTile, Badge, Button } from "../components/ui";
@@ -53,7 +54,7 @@ interface MonthlyReviewData {
 }
 
 const fmt = (n: number | null | undefined) =>
-  n == null ? "—" : (n >= 0 ? "+" : "") + "$" + Math.abs(n).toLocaleString("en-US", { maximumFractionDigits: 0 });
+  n == null ? "—" : (n < 0 ? "" : gainSign(n, 0)) + "$" + Math.abs(n).toLocaleString("en-US", { maximumFractionDigits: 0 });
 
 const pct = (n: number | null | undefined) => (n == null ? "—" : `${(n * 100).toFixed(0)}%`);
 
@@ -78,7 +79,7 @@ function EmptyState({ title, sub }: { title: string; sub: string }) {
 function EntryCard({ e, onClick }: { e: Entry; onClick: () => void }) {
   const days  = holdDays(e.entry_date, e.exit_date);
   const isOpen = e.pnl == null;
-  const pnlColor = isOpen ? "var(--ink-dim)" : (e.pnl ?? 0) >= 0 ? "var(--green)" : "var(--red)";
+  const cardPnlColor = isOpen ? "var(--ink-dim)" : pnlColor(e.pnl);
 
   return (
     <div
@@ -89,7 +90,7 @@ function EntryCard({ e, onClick }: { e: Entry; onClick: () => void }) {
       aria-label={`Review journal entry ${e.underlying || e.id}`}
       onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onClick(); } }}
       style={{
-        borderLeft: `3px solid ${isOpen ? "var(--cyan)" : (e.pnl ?? 0) >= 0 ? "var(--green)" : "var(--red)"}`,
+        borderLeft: `3px solid ${isOpen ? "var(--cyan)" : pnlColor(e.pnl)}`,
         padding: "14px 16px",
         cursor: "pointer",
         transition: "background 0.1s",
@@ -120,7 +121,7 @@ function EntryCard({ e, onClick }: { e: Entry; onClick: () => void }) {
           )}
         </div>
         <div style={{ textAlign: "right" }}>
-          <span style={{ fontFamily: "var(--mono)", fontSize: 16, fontWeight: 700, color: pnlColor }}>
+          <span style={{ fontFamily: "var(--mono)", fontSize: 16, fontWeight: 700, color: cardPnlColor }}>
             {isOpen ? "OPEN" : fmt(e.pnl)}
           </span>
         </div>
@@ -349,7 +350,7 @@ export default function Journal() {
               {/* Overview strip */}
               {entries.length > 0 && (
                 <div className="instrument-stat-strip workspace-stat-grid" style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)" }}>
-                  <StatTile variant="divider" size="default" label="Total P&L"       value={fmt(totalPnl)}                         tone={totalPnl >= 0 ? "var(--green)" : "var(--red)"} />
+                  <StatTile variant="divider" size="default" label="Total P&L"       value={fmt(totalPnl)}                         tone={pnlColor(totalPnl)} />
                   <StatTile variant="divider" size="default" label="Win Rate"        value={closed > 0 ? `${winRate}%` : "—"}       tone={winRate >= 50 ? "var(--green)" : "var(--amber)"} />
                   <StatTile variant="divider" size="default" label="Closed / Open"   value={`${closed} / ${open}`} />
                   <StatTile variant="divider" size="default" label="Rules Followed"  value={rulesPct != null ? `${rulesPct}%` : "—"} tone={rulesPct != null && rulesPct >= 80 ? "var(--green)" : "var(--amber)"} />
@@ -419,8 +420,8 @@ export default function Journal() {
                       <span style={{ color: "var(--cyan)" }}>{tp.tag}</span>
                       <span style={{ color: "var(--ink-dim)" }}>{tp.trade_count}</span>
                       <span style={{ color: tp.win_rate >= 0.5 ? "var(--green)" : "var(--amber)" }}>{pct(tp.win_rate)}</span>
-                      <span style={{ color: tp.avg_pnl >= 0 ? "var(--green)" : "var(--red)" }}>{fmt(tp.avg_pnl)}</span>
-                      <span style={{ color: tp.total_pnl >= 0 ? "var(--green)" : "var(--red)" }}>{fmt(tp.total_pnl)}</span>
+                      <span style={{ color: pnlColor(tp.avg_pnl) }}>{fmt(tp.avg_pnl)}</span>
+                      <span style={{ color: pnlColor(tp.total_pnl) }}>{fmt(tp.total_pnl)}</span>
                     </div>
                   ))}
                 </div>
@@ -475,7 +476,7 @@ export default function Journal() {
                   <div className="workspace-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)" }}>
                     <StatTile variant="divider" size="default" label="Total Trades"     value={String(review.total_trades)} />
                     <StatTile variant="divider" size="default" label="Win Rate"         value={pct(review.win_rate)}                           tone={review.win_rate >= 0.5 ? "var(--green)" : "var(--amber)"} />
-                    <StatTile variant="divider" size="default" label="Total P&L"        value={fmt(review.total_pnl)}                          tone={review.total_pnl >= 0 ? "var(--green)" : "var(--red)"} />
+                    <StatTile variant="divider" size="default" label="Total P&L"        value={fmt(review.total_pnl)}                          tone={pnlColor(review.total_pnl)} />
                     <StatTile variant="divider" size="default" label="Rules Followed"   value={`${review.rules_followed_pct.toFixed(0)}%`}     tone={review.rules_followed_pct >= 80 ? "var(--green)" : "var(--amber)"} />
                   </div>
 

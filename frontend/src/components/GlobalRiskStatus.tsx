@@ -20,6 +20,7 @@
  * missing, the budget renders as unavailable rather than a guess.
  */
 import React, { useEffect, useState } from "react";
+import { KILL_CLEAR, KILL_ENGAGED } from "../utils/killSwitchWords";
 
 import { api } from "../api/client";
 import { useIsMobile } from "../hooks/useIsMobile";
@@ -214,8 +215,8 @@ export default function GlobalRiskStatus() {
   } else {
     const engaged = killAvail.value.engaged;
     killChip = engaged
-      ? makeChip({ label: "KILL", value: "HALTED", tone: "var(--red)", order: 3, title: "Kill switch engaged — new orders halted" })
-      : makeChip({ label: "KILL", value: "NOT ARMED", tone: "var(--ink-dim)", order: 3 });
+      ? makeChip({ label: "KILL", value: KILL_ENGAGED, tone: "var(--red)", order: 3, title: "Kill switch engaged — new orders halted" })
+      : makeChip({ label: "KILL", value: KILL_CLEAR, tone: "var(--ink-dim)", order: 3, title: "Kill switch not engaged — trading may proceed" });
   }
 
   // ── 4. Drawdown / 5. Risk budget ─────────────────────────────────────

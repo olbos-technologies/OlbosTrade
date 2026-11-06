@@ -74,7 +74,7 @@ describe("GlobalRiskStatus — mobile collapse", () => {
     const toggle = await screen.findByRole("button", { name: /show \d+ nominal/i });
     expect(toggle).toHaveTextContent(/\+\d+ OK/);
     expect(toggle).toHaveAttribute("aria-expanded", "false");
-    expect(screen.queryByText("NOT ARMED")).not.toBeInTheDocument();
+    expect(screen.queryByText("CLEAR")).not.toBeInTheDocument();
   });
 
   it("opens the folded chips on tap", async () => {
@@ -82,17 +82,17 @@ describe("GlobalRiskStatus — mobile collapse", () => {
     render(<GlobalRiskStatus />);
 
     fireEvent.click(await screen.findByRole("button", { name: /show \d+ nominal/i }));
-    await waitFor(() => expect(screen.getByText("NOT ARMED")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("CLEAR")).toBeInTheDocument());
     expect(screen.getByRole("button", { name: /hide nominal/i })).toBeInTheDocument();
   });
 
-  it("never folds away an armed kill switch", async () => {
+  it("never folds away an engaged kill switch", async () => {
     mockAllNominal();
     mockedApi.getTradeDeskKillSwitch.mockResolvedValue({ engaged: true });
     render(<GlobalRiskStatus />);
 
-    expect(await screen.findByText("HALTED")).toBeInTheDocument();
-    expect(screen.queryByText("NOT ARMED")).not.toBeInTheDocument();
+    expect(await screen.findByText("ENGAGED")).toBeInTheDocument();
+    expect(screen.queryByText("CLEAR")).not.toBeInTheDocument();
   });
 
   it("never folds away a disconnected broker", async () => {

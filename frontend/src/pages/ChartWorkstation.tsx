@@ -1,4 +1,5 @@
 import { useIsMobile } from "../hooks/useIsMobile";
+import { pnlColor, gainSign } from "../utils/pnlTone";
 import React, { useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
 import MarketBiasPanel from "../components/MarketBiasPanel";
@@ -114,7 +115,7 @@ function fmtMoney(value: number | null | undefined, digits = 2) {
 
 function fmtSigned(value: number | null | undefined, digits = 2) {
   if (value == null || Number.isNaN(value)) return "—";
-  return `${value >= 0 ? "+" : "-"}$${Math.abs(value).toFixed(digits)}`;
+  return `${value < 0 ? "-" : gainSign(value, digits)}$${Math.abs(value).toFixed(digits)}`;
 }
 
 function fmtPct(value: number | null | undefined, digits = 1) {
@@ -393,7 +394,7 @@ export default function ChartWorkstation({
       }} className="workstation-top-strip">
         {[
           { label: execDisplay.label, value: execDisplay.value, tone: execDisplay.tone },
-          { label: "Day P&L", value: typeof dayPnl === "number" ? fmtSigned(dayPnl) : "—", tone: dayPnl >= 0 ? "var(--green)" : "var(--red)" },
+          { label: "Day P&L", value: typeof dayPnl === "number" ? fmtSigned(dayPnl) : "—", tone: pnlColor(dayPnl) },
           { label: "Portfolio", value: typeof netLiq === "number" ? fmtMoney(netLiq, 2) : "—", tone: "var(--cyan)" },
           { label: "Reconciliation", value: !reconciliation ? "UNAVAILABLE" : reconciliation.clean ? "CLEAN" : "REVIEW", tone: reconciliation?.clean ? "var(--green)" : "var(--amber)" },
         ].map((item) => (
@@ -439,7 +440,7 @@ export default function ChartWorkstation({
                           <span style={{
                             fontFamily: "var(--mono)",
                             fontSize: 10,
-                            color: (snap?.change_pct ?? 0) >= 0 ? "var(--green)" : "var(--red)",
+                            color: pnlColor(snap?.change_pct),
                           }}>
                             {fmtPct(snap?.change_pct, 2)}
                           </span>
@@ -485,7 +486,7 @@ export default function ChartWorkstation({
                     <span style={{
                       fontFamily: "var(--mono)",
                       fontSize: 12,
-                      color: (position.unrealized_pnl ?? 0) >= 0 ? "var(--green)" : "var(--red)",
+                      color: pnlColor(position.unrealized_pnl),
                     }}>
                       {fmtSigned(position.unrealized_pnl)}
                     </span>
@@ -505,7 +506,7 @@ export default function ChartWorkstation({
         <div className="workstation-center">
           <div className="chart-quote" aria-label="Selected instrument quote">
             <div><span className="design-eyebrow">{symbol} · MARKET SNAPSHOT</span><strong>{fmtMoney(selectedSnapshot?.last_close)}</strong></div>
-            <span style={{ color: selectedSnapshot?.change_pct == null ? "var(--ink-dim)" : selectedSnapshot.change_pct >= 0 ? "var(--green)" : "var(--red)" }}>{fmtPct(selectedSnapshot?.change_pct)}</span>
+            <span style={{ color: selectedSnapshot?.change_pct == null ? "var(--ink-dim)" : pnlColor(selectedSnapshot.change_pct) }}>{fmtPct(selectedSnapshot?.change_pct)}</span>
             <p>Last close snapshot · {latestBar ? `Chart bar: ${new Date(latestBar.timestamp).toLocaleString()}` : "Chart data unavailable"}</p>
           </div>
           <Panel

@@ -5,6 +5,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { pnlColor } from "../../utils/pnlTone";
 import { api } from "../../api/client";
 import { Badge } from "../../components/ui";
 
@@ -229,7 +230,7 @@ export default function TradeReplay() {
                       <td
                         className="mono"
                         style={{
-                          color: t.status === "open" ? "var(--ink-dim)" : pnl >= 0 ? "var(--green)" : "var(--red)",
+                          color: t.status === "open" ? "var(--ink-dim)" : pnlColor(pnl),
                           fontWeight: 600,
                         }}
                       >
