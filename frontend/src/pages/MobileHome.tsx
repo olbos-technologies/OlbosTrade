@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
+import { adoptedLabel } from "../utils/positionLabels";
 import { api } from "../api/client";
 import { useTerminalNav } from "../components/TerminalNavContext";
 import { riskWarnings } from "../components/CommandAttention";
@@ -244,7 +245,7 @@ export default function MobileHome() {
         {!positions.value ? <p className="mh-warning">{positions.loading ? "Loading positions…" : "Positions unavailable."}</p>
           : positions.value.length === 0 ? <p className="mh-muted">No open positions reported.</p>
           : positions.value.slice(0, 3).map((p, i) => <div className="mh-position" key={`${p.symbol}-${i}`}>
-              <div><strong>{p.symbol || "Unknown symbol"}</strong><span>{p.tracked === false ? "Untracked broker holding" : p.strategy || p.option_type || "Position"}{p.quantity != null ? ` · ${p.quantity}` : ""}</span></div>
+              <div><strong>{p.symbol || "Unknown symbol"}</strong><span>{p.tracked === false ? "Untracked broker holding" : adoptedLabel(p.strategy) ?? (p.strategy || p.option_type || "Position")}{p.quantity != null ? ` · ${p.quantity}` : ""}</span></div>
               <strong className={typeof p.unrealized_pnl === "number" ? p.unrealized_pnl < 0 ? "mh-negative" : "mh-positive" : ""}>{money(p.unrealized_pnl, true)}</strong>
             </div>)}
         <button className="mh-link" onClick={() => nav("trade:positions")}>All positions <span aria-hidden="true">↗</span></button>

@@ -34,6 +34,14 @@ describe("Mobile Home truth and controls", () => {
     expect(screen.getByText("IBKR · PAPER")).toBeInTheDocument();
     expect(screen.getByText("Olbos day P&L")).toBeInTheDocument();
   });
+  it("names an adopted position in words, not by its internal marker", async () => {
+    vi.mocked(api.getPositions).mockResolvedValue({ positions: [
+      { symbol: "FER", strategy: "adopted_untracked", quantity: -337, unrealized_pnl: -153, tracked: true },
+    ] });
+    render(<MobileHome />);
+    expect(await screen.findByText(/Adopted from broker · -337/)).toBeInTheDocument();
+    expect(screen.queryByText(/adopted_untracked/)).not.toBeInTheDocument();
+  });
   it("never turns failed reads into an empty queue or zero balance", async () => {
     vi.mocked(api.getPendingApprovals).mockRejectedValue(new Error("offline"));
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));

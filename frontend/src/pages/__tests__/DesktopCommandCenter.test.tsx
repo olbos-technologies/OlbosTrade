@@ -44,4 +44,17 @@ describe('Desktop performance truth',()=>{
   expect(await screen.findByText('Trade performance unavailable. Refresh to retry.')).toBeInTheDocument();
   expect(screen.queryByText('$0.00')).not.toBeInTheDocument();
  });
+ it('does not print the internal adopted_untracked marker, nor call an adopted position "Olbos tracked"',async()=>{
+  vi.mocked(api.getPositions).mockResolvedValue({positions:[
+   {symbol:'CSX',strategy:'equity',quantity:381,avg_cost:51.61,unrealized_pnl:-624.84,tracked:true},
+   {symbol:'FER',strategy:'adopted_untracked',quantity:-337,avg_cost:58.57,unrealized_pnl:-153.74,tracked:true},
+  ]});
+  render(<DesktopCommandCenter/>);
+  expect(await screen.findByText('FER')).toBeInTheDocument();
+  expect(screen.queryByText('adopted_untracked')).not.toBeInTheDocument();
+  expect(screen.getByText('Adopted from broker')).toBeInTheDocument();
+  expect(screen.getByText(/Adopted from broker · history may be incomplete/)).toBeInTheDocument();
+  expect(screen.getAllByText('Olbos tracked')).toHaveLength(1);   // CSX only, not FER
+  expect(screen.getByText('equity')).toBeInTheDocument();         // ordinary rows are untouched
+ });
 });
