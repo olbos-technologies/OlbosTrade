@@ -3,6 +3,8 @@
  * All fetch calls go through this module — never fetch directly in components.
  */
 
+import type { PositionClaimsResponse } from "../types/positionClaims";
+
 // When running via Vite dev server (Docker or local), use "" so fetch calls
 // go to /api/... — Vite's proxy forwards them to the backend container.
 // Set VITE_API_URL only if you need to bypass the proxy (e.g. direct calls from a static build).
@@ -197,6 +199,15 @@ export const api = {
   // ── Guardrails ────────────────────────────────────────────────────────────
   getGuardrailStatus: () => request("/api/guardrails/status"),
   getGuardrailHistory: () => request("/api/guardrails/history"),
+  // Unresolved position claims, and the audited, per-claim release. The release
+  // needs a reason (3-200 chars) and an authenticated operator; the server
+  // refuses both a blank reason and an anonymous caller.
+  getPositionClaims: () => request<PositionClaimsResponse>("/api/admin/position-claims"),
+  releasePositionClaim: (claimToken: string, reason: string) =>
+    request<{ released: boolean; claim_token: string; operator: string }>(
+      `/api/admin/position-claims/${encodeURIComponent(claimToken)}/release`,
+      { method: "POST", body: JSON.stringify({ reason }) },
+    ),
   getTradingMode: () => request("/api/guardrails/trading-mode"),
 
   // ── Strategy & Signals ────────────────────────────────────────────────────

@@ -73,6 +73,7 @@ export const NAV_MODEL_LEGACY: NavGroup[] = [
     { key: "system:broker",  label: "Broker Connections" },
     { key: "system:market",  label: "Market Data", sidebar: false },
     { key: "system:quality", label: "Data Quality", sidebar: false },
+    { key: "system:claims",  label: "Blocked Entries" },
   ]},
   { id: "account", label: "Account", icon: "account", requiresAuth: true, children: [
     { key: "account:profile",  label: "Profile" },
@@ -148,6 +149,7 @@ export const NAV_MODEL_V2: NavGroup[] = [
     { key: "system:broker",  label: "Broker Connections" },
     { key: "system:market",  label: "Market Data", sidebar: false },
     { key: "system:quality", label: "Data Quality", sidebar: false },
+    { key: "system:claims",  label: "Blocked Entries" },
   ]},
   { id: "account", label: "Account", icon: "account", requiresAuth: true, children: [
     { key: "account:profile",  label: "Profile" },
