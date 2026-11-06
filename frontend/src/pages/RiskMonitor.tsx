@@ -5,6 +5,7 @@ import { api, getOperatorApiKey, setOperatorApiKey } from "../api/client";
 import HoldToConfirmButton from "../components/HoldToConfirmButton";
 import RotationReviewPanel, { RotationReviewEntry } from "../components/RotationReviewPanel";
 import { Panel, Button, StatTile } from "../components/ui";
+import { guardrailCap } from "../utils/guardrailCap";
 
 interface MarginInfo {
   available: boolean;
@@ -328,7 +329,9 @@ export default function RiskMonitor() {
   );
 
   const Meter = ({ label, val, max, unit = "", warn = 0.6, crit = 0.85 }: any) => {
-    const known = typeof val === "number" && Number.isFinite(val) && typeof max === "number" && max > 0;
+    const valKnown = typeof val === "number" && Number.isFinite(val);
+    const maxKnown = typeof max === "number" && max > 0;
+    const known = valKnown && maxKnown;
     const ratio = known ? Math.max(0, Math.min(val / max, 1)) : null;
     const color = ratio === null ? "var(--amber)" : ratio < warn ? "var(--green)" : ratio < crit ? "var(--amber)" : "var(--red)";
     return (
@@ -336,8 +339,8 @@ export default function RiskMonitor() {
         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
           <span className="kicker">{label}</span>
           <span style={{ fontFamily: "var(--mono)", fontSize: 12, color }}>
-            {known ? `${val.toFixed(val < 10 ? 2 : 0)}${unit}` : "Unavailable"}
-            <span style={{ color: "var(--ink-faint)" }}> / {max}{unit}</span>
+            {valKnown ? `${val.toFixed(val < 10 ? 2 : 0)}${unit}` : "Unavailable"}
+            <span style={{ color: "var(--ink-faint)" }}> / {maxKnown ? max : "—"}{unit}</span>
           </span>
         </div>
         {ratio !== null && <div className="bar-track" style={{ height: 4 }}>
@@ -392,7 +395,7 @@ export default function RiskMonitor() {
             <Meter label="Drawdown" val={finite(guardrailStatus?.drawdown_pct) ? Math.max(0, guardrailStatus.drawdown_pct) * 100 : null} max={15} unit="%" />
           </Section>
           <Section title="Position Limits">
-            <Meter label="Trades Today" val={guardrailStatus?.trades_today} max={3} unit="" warn={0.5} crit={0.85} />
+            <Meter label="Trades Today" val={guardrailStatus?.trades_today} max={guardrailCap(guardrailStatus?.max_trades_per_day)} unit="" warn={0.5} crit={0.85} />
             <Meter label="Consecutive Losses" val={guardrailStatus?.consecutive_losses} max={3} unit="" warn={0.4} crit={0.7} />
             <Meter label="Open Positions" val={riskState?.state?.open_positions} max={5} unit="" />
           </Section>
