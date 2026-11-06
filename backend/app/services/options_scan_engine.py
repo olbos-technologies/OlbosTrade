@@ -56,6 +56,7 @@ class OptionsScanCandidate:
     entry_ladder: Optional[list[EntryTranche]] = None
     iv_rank: Optional[float] = None
     skew_adjustment: float = 0.0  # vol smile premium/discount
+    contract_quality: Optional[dict] = None  # research ranking only
 
     def as_dict(self) -> dict:
         return {
@@ -75,6 +76,7 @@ class OptionsScanCandidate:
             "short_delta": round(self.short_delta, 4),
             "reward_risk": round(self.reward_risk, 4),
             "pricing_source": self.pricing_source,
+            "contract_quality": self.contract_quality,
             "iv_rank": round(self.iv_rank, 2) if self.iv_rank else None,
             "skew_adjustment": round(self.skew_adjustment, 4),
             "entry_ladder": [
@@ -171,7 +173,11 @@ async def _live_spread_quote(
         return None
 
     short_delta = abs(float(short_c.greeks.delta)) if short_c.greeks and short_c.greeks.delta else None
+    from app.services.options_contract_quality import score_spread_quality
+    contract_quality = score_spread_quality(short_c, long_c,
+        "bull_put_spread" if opt_type == "put" else "bear_call_spread")
     return {
+        "contract_quality": contract_quality,
         "net_credit": round(net_credit_ps * 100, 2),
         "short_delta": short_delta,
         "short_strike": float(short_c.strike),
@@ -510,6 +516,7 @@ async def scan_options(
 
                         net_credit_ps = short_px - long_px
                         pricing_source = "black_scholes"
+                        contract_quality = None
 
                         # Try live IBKR chain if broker available
                         if broker is not None:
@@ -525,6 +532,7 @@ async def scan_options(
                                     if live["short_delta"] is not None:
                                         delta = live["short_delta"]
                                     pricing_source = "live_chain"
+                                    contract_quality = live.get("contract_quality")
                             except Exception:
                                 pass  # Fall through to yfinance
 
@@ -586,6 +594,7 @@ async def scan_options(
                             entry_ladder=entry_ladder,
                             iv_rank=iv_rank,
                             skew_adjustment=skew_adj,
+                            contract_quality=contract_quality,
                         )
                         candidates.append(candidate)
 
@@ -598,7 +607,10 @@ async def scan_options(
                 continue
 
         # Sort by EV descending (highest first)
-        candidates.sort(key=lambda c: c.expected_value, reverse=True)
+        # Research-only tie-break. Existing EV remains primary; this endpoint
+        # returns candidates and does not dispatch orders. Unavailable != zero.
+        candidates.sort(key=lambda c: (c.expected_value,
+            c.contract_quality["score"] if c.contract_quality and c.contract_quality.get("state") == "scored" else -1), reverse=True)
 
         return OptionsScanResult(
             candidates=candidates[:limit],

@@ -20,10 +20,9 @@ What to look for, and what each answer implies:
   * Rejections concentrated in one regime -> the regime->strategy map is the
     constraint. LOW_VOL_TRENDING allows only bull_call_debit_spread, so a long
     stretch in that regime with few debit setups produces exactly this.
-  * Few rejections AND no trades -> candidates are qualifying and dying later,
-    in the frequency controller or the portfolio gate. Look at the shared
-    daily cap: equity scans every 15 min against options' 30, so equity may be
-    consuming it first.
+  * Few rejections AND no trades is inconclusive: old builds did not record
+    regime and risk-state early returns. Verify deployed build and scheduler
+    activity before inferring a downstream block or daily-cap contention.
 
 Usage:
     python scripts/options_rejection_report.py [--days 7]
@@ -66,10 +65,8 @@ async def main(days: int) -> None:
 
     if not rows:
         print("\nNo rejection rows in this window.")
-        print("\nEither the table predates the scans you care about (it only starts")
-        print("collecting once 0029 is deployed), or the scanner recorded nothing —")
-        print("which would itself mean candidates are dying AFTER the scan, in the")
-        print("frequency controller or portfolio gate, not in the scan's own gates.")
+        print("\nInconclusive: check the deployed version, scheduler and regime gate.")
+        print("Older builds omitted some early exits. No rows does not establish that any candidate qualified.")
         return
 
     total_events = sum(r.occurrences for r in rows)
@@ -123,10 +120,10 @@ async def main(days: int) -> None:
     print("\n" + "-" * 72)
     print("CAVEAT")
     print("-" * 72)
-    print("This shows only candidates rejected INSIDE the scan. A candidate that")
-    print("qualified and then lost the daily cap, the portfolio gate, or the")
-    print("frequency controller never reaches this table — so a short list here")
-    print("alongside zero trades points downstream, not at these gates.")
+    print("This reports scan-stage rejections, not a complete execution funnel.")
+    print("New builds include regime/risk-state early returns and worker timeouts.")
+    print("A short list alone does not identify the blocker. Check execution mode,")
+    print("execution logs, capacity, broker responses, and deployed version separately.")
 
 
 if __name__ == "__main__":

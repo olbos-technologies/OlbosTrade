@@ -40,6 +40,10 @@ class OptionContract(BaseModel):
     volume: int
     open_interest: int
     greeks: Optional[Greeks] = None
+    # Source quote time/feed, not when this chain was downloaded. Unknown
+    # provenance stays None; research scoring must not infer a fresh NBBO.
+    quote_timestamp: Optional[datetime] = None
+    quote_feed: Optional[str] = None
 
 
 class OptionsChain(BaseModel):
