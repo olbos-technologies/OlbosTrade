@@ -142,6 +142,57 @@ async def get_options_signal_history(
     return {"signals": [_history_row_to_dict(r) for r in rows], "total": total}
 
 
+def _funnel_context() -> tuple[str, Optional[dict], Optional[dict]]:
+    """The live facts the funnel reads alongside the database: execution mode, the regime the
+    scan is gated on, and the frequency controller's floors for the active trading mode.
+    Each is best-effort: a missing one is reported as null, never invented."""
+    mode = "unknown"
+    regime: Optional[dict] = None
+    rule: Optional[dict] = None
+    try:
+        from app.services.execution_mode import execution_mode_manager
+        mode = execution_mode_manager.mode.value
+    except Exception:
+        pass
+    try:
+        from app.main import _current_regime
+        if _current_regime is not None:
+            regime = {
+                "name": _current_regime.regime.value,
+                "options_allowed": bool(_current_regime.options_allowed),
+                "strategies_allowed": list(_current_regime.strategies_allowed or []),
+                "signal_threshold": _current_regime.signal_threshold,
+            }
+    except Exception:
+        pass
+    try:
+        from app.services.trade_frequency_controller import STRATEGY_MIN_POP, rule_for
+        from app.services.trading_mode import trading_mode_manager
+        active = trading_mode_manager.current.active_mode
+        r = rule_for(active)
+        rule = {"trading_mode": active.value, "min_confidence": r.min_confidence, "min_pop": r.min_pop,
+                "max_risk_score": r.max_risk_score, "hard_max_per_day": r.hard_max_per_day,
+                "credit_spread_min_pop": STRATEGY_MIN_POP.get("bull_put_spread")}
+    except Exception:
+        pass
+    return mode, regime, rule
+
+
+@router.get("/funnel")
+async def options_funnel(days: int = Query(7, ge=1, le=90)):
+    """Where do options candidates die?  Scan rejections, qualified signals, copilot queue and
+    execution outcomes for the last `days`, with one-sentence verdict. Read-only.
+
+    A database failure is a 500, not a page of zeros: "nothing was rejected" and "we could not
+    look" must never read the same."""
+    from app.core.database import AsyncSessionLocal
+    from app.services.options_funnel import build_funnel
+
+    mode, regime, rule = _funnel_context()
+    async with AsyncSessionLocal() as session:
+        return await build_funnel(session, days=days, mode=mode, regime=regime, frequency_rule=rule)
+
+
 @router.post("/analyze")
 async def analyze(req: SpreadAnalyzeRequest):
     """Return POP / prob-touch / expected move / Greeks / EV / Kelly for a spread."""

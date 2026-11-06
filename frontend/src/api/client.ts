@@ -224,6 +224,8 @@ export const api = {
   getEquitySignals: (limit?: number) => request(`/api/equity/signals${limit ? `?limit=${limit}` : ""}`),
   getOptionsSignals: (limit?: number) => request(`/api/options/signals${limit ? `?limit=${limit}` : ""}`),
   scanOptionsSignals: () => request("/api/options/signals/scan", { method: "POST" }),
+  // Where options candidates die: scan rejections, qualified signals, copilot queue and execution outcomes.
+  getOptionsFunnel: (days = 7) => request(`/api/options/funnel?days=${days}`),
   getOptionsSignalHistory: (params?: { limit?: number; strategy?: string; ticker?: string }) => {
     const q = params
       ? "?" + new URLSearchParams(
