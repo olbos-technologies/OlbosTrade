@@ -9,6 +9,7 @@ import SignalAttribution from "../components/SignalAttribution";
 import SignalDirectionBadge from "../components/SignalDirectionBadge";
 import AlphaEdgeInline, { OpportunityScorePill } from "../components/AlphaEdgeInline";
 import MissionCard from "../components/MissionCard";
+import OptionsFunnelCard from "../components/OptionsFunnelCard";
 import BacktestButtons from "../components/BacktestButtons";
 import { StatTile } from "../components/ui";
 import type { SignalAttributionData } from "../types/signal";
@@ -357,6 +358,8 @@ export default function OptionsSignals() {
           {scanning ? "SCANNING…" : "RUN SCAN"}
         </button>
       </div>
+
+      <OptionsFunnelCard />
 
       <div className="instrument-stat-strip workspace-stat-grid" style={{ gridTemplateColumns: "repeat(5, minmax(0, 1fr))" }}>
         <StatTile variant="divider" size="sm" label="Actionable" value={actionable.length} tone="var(--accent)" />
