@@ -126,6 +126,7 @@ export const BASE_PAGES: Record<string, React.ComponentType> = {
   "account:brokers":  () => <AccountCenter initialTab="brokers" />,
   "system:market":  () => <SystemCenter initialTab="market" />,
   "system:quality": () => <SystemCenter initialTab="quality" />,
+  "system:claims":  () => <SystemCenter initialTab="claims" />,
 };
 
 export default function App() {
