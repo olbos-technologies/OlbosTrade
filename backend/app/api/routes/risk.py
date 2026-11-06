@@ -146,7 +146,7 @@ async def get_portfolio_state(conn: HTTPConnection):
                 # is set, account_value above is the capped figure and the P&L and
                 # return derived from it are the desk's, not the account's.
                 "account_value_live":  live_value,
-                "trading_capital_base": settings.trading_capital_base or None,
+                "trading_capital_base": settings.effective_trading_capital_base or None,
                 "total_pnl":           round(total_pnl, 2),
                 "return_pct":          round(total_pnl / settings.starting_capital * 100, 2),
                 "daily_pnl":           round(daily_pnl, 2),

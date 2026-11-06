@@ -4,7 +4,7 @@ All runtime settings must come through this module — no hardcoded values.
 """
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field
+from pydantic import Field, model_validator
 
 
 class Settings(BaseSettings):
@@ -58,6 +58,14 @@ class Settings(BaseSettings):
     # STARTING_CAPITAL — a base that differs from it recreates the divergence the
     # `capital_base_divergent` guardrail flag exists to report.
     trading_capital_base: float = Field(default=0.0, ge=0.0)
+    # Per-asset-class pools inside that one desk. Set BOTH to size equity and options
+    # off different capital (e.g. 100000 and 25000); the desk's base is then their
+    # sum and TRADING_CAPITAL_BASE is ignored. Loss limits, drawdown and capital
+    # preservation stay on the combined desk, so keep STARTING_CAPITAL equal to the
+    # sum. Setting only one is refused at startup: a half-configured pair would
+    # quietly size one asset class off nothing.
+    trading_capital_base_equity: float = Field(default=0.0, ge=0.0)
+    trading_capital_base_options: float = Field(default=0.0, ge=0.0)
     # The paper account's net liquidation on the day the desk started trading its
     # TRADING_CAPITAL_BASE. With both set, the desk's capital is
     # base + (account now - anchor): it moves with the desk's own gains and losses,
@@ -512,6 +520,37 @@ class Settings(BaseSettings):
         if self.broker == "alpaca":
             return "paper" in self.alpaca_base_url.lower()
         return self.ibkr_trading_mode.lower() == "paper"
+
+    @model_validator(mode="after")
+    def _capital_pools_come_as_a_pair(self):
+        eq, op = self.trading_capital_base_equity, self.trading_capital_base_options
+        if (eq > 0) != (op > 0):
+            raise ValueError(
+                "TRADING_CAPITAL_BASE_EQUITY and TRADING_CAPITAL_BASE_OPTIONS must be set "
+                "together (or both left unset): one without the other would size the other "
+                "asset class off no capital."
+            )
+        return self
+
+    @property
+    def capital_pools_active(self) -> bool:
+        return self.trading_capital_base_equity > 0 and self.trading_capital_base_options > 0
+
+    @property
+    def effective_trading_capital_base(self) -> float:
+        """The desk's base: the two pools' sum when both are set, else TRADING_CAPITAL_BASE."""
+        if self.capital_pools_active:
+            return self.trading_capital_base_equity + self.trading_capital_base_options
+        return self.trading_capital_base
+
+    def capital_pool_share(self, asset_class: str | None) -> float:
+        """That asset class's share of the desk's capital (1.0 when pools are off or the
+        class has no pool of its own, e.g. crypto, which gets the whole desk)."""
+        if not self.capital_pools_active or asset_class is None:
+            return 1.0
+        pool = {"equity": self.trading_capital_base_equity,
+                "options": self.trading_capital_base_options}.get(asset_class.lower())
+        return pool / self.effective_trading_capital_base if pool else 1.0
 
     @property
     def paper_visibility_active(self) -> bool:

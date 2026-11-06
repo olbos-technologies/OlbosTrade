@@ -1084,8 +1084,9 @@ async def _run_equity_scan() -> None:
         from app.api.routes.equity import _recent_signals   # shared in-memory store
 
         watchlist = settings.get_equity_watchlist()
-        # One live account fetch per scan cycle, not per-ticker.
-        account_value = await get_account_value()
+        # One live account fetch per scan cycle, not per-ticker. The equity pool's
+        # share when per-asset-class pools are configured; the whole desk otherwise.
+        account_value = await get_account_value("equity")
 
         # Window size 0 (default) scans the full watchlist every tick — every
         # symbol gets a fresh evaluation each cycle instead of waiting several
@@ -1844,7 +1845,12 @@ async def _run_options_scan(symbol: str = "SPY", execute: bool = True) -> Option
         # same machinery the equity path uses.
         from app.services.risk_manager import RiskManager
         from app.services.account_state import get_account_value
+        # The whole desk's capital: what the concentration and exposure checks below
+        # divide by, because those count every open position, equity included.
         portfolio_value = await get_account_value()
+        # What this trade is SIZED off: the options pool's share of it when
+        # per-asset-class pools are configured, the whole desk otherwise.
+        sizing_capital = portfolio_value * settings.capital_pool_share("options")
         risk_pct    = trading_mode_manager.config.risk_per_trade_pct
         regime_mult = float(getattr(_current_regime, "options_size_multiplier", 1.0))
         # Volatility-based sizing: scale the regime budget inversely with vol so
@@ -1855,7 +1861,7 @@ async def _run_options_scan(symbol: str = "SPY", execute: bool = True) -> Option
                     _vol_desc(iv_rank, vix_pct)["stance"],
                     regime_mult, size_mult / max(regime_mult, 1e-9), size_mult)
         quantity = RiskManager().calculate_position_size(
-            portfolio_value=portfolio_value,
+            portfolio_value=sizing_capital,
             max_loss_per_spread=max_loss_dollars,
             risk_pct=risk_pct,
             size_multiplier=size_mult,
@@ -1863,8 +1869,8 @@ async def _run_options_scan(symbol: str = "SPY", execute: bool = True) -> Option
         if quantity <= 0:
             logger.info(
                 "Options signal skipped — sized to 0 contracts "
-                "(portfolio=$%.0f max_loss=$%.0f risk_pct=%.3f mult=%.2f)",
-                portfolio_value, max_loss_dollars, risk_pct, size_mult,
+                "(sizing capital=$%.0f max_loss=$%.0f risk_pct=%.3f mult=%.2f)",
+                sizing_capital, max_loss_dollars, risk_pct, size_mult,
             )
             await _record_options_rejection(
                 symbol, f"sized to 0 contracts (max loss ${max_loss_dollars:.0f})", strategy_name,
@@ -3387,7 +3393,7 @@ _peak_value_cache: float | None = None
 
 def _desk_peak_series() -> bool:
     """True when the desk's capital is its own series (base and anchor both set)."""
-    return float(settings.trading_capital_base or 0.0) > 0 and float(settings.trading_capital_anchor or 0.0) > 0
+    return float(settings.effective_trading_capital_base or 0.0) > 0 and float(settings.trading_capital_anchor or 0.0) > 0
 
 
 #: risk_peak_state row for the account-level peak (the original) and for the
@@ -3406,7 +3412,7 @@ def _clamp_peak_to_capital_base(peak: float) -> float:
     bounded, so removing the setting restores the original behaviour. With an
     anchor the desk has its own peak row and needs no clamp.
     """
-    base = float(settings.trading_capital_base or 0.0)
+    base = float(settings.effective_trading_capital_base or 0.0)
     if _desk_peak_series():
         return peak
     return min(peak, base) if base > 0 and peak > 0 else peak
@@ -3428,7 +3434,7 @@ async def _get_or_update_peak_value(current_value: float, starting_capital: floa
     from app.models.risk_state import RiskPeakState
 
     row_id = _DESK_PEAK_ROW if _desk_peak_series() else _ACCOUNT_PEAK_ROW
-    seed_floor = float(settings.trading_capital_base) if row_id == _DESK_PEAK_ROW else starting_capital
+    seed_floor = float(settings.effective_trading_capital_base) if row_id == _DESK_PEAK_ROW else starting_capital
     try:
         async with AsyncSessionLocal() as session:
             row = None

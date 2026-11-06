@@ -146,7 +146,7 @@ async def get_portfolio(conn: HTTPConnection):
             "open_positions":   open_count,
             "trades_today":     trades_today,
             "starting_capital": settings.starting_capital,
-            "trading_capital_base": settings.trading_capital_base or None,
+            "trading_capital_base": settings.effective_trading_capital_base or None,
             # Positions the reconciler inherited from the broker rather than
             # the desk choosing them. Counted in the figures above — real
             # capital, realised P&L — and reported here because no strategy
