@@ -17,6 +17,7 @@ import ExecutiveSummary  from "../components/ExecutiveSummary";
 import MobileHome from "./MobileHome";
 import DesktopCommandCenter from "./DesktopCommandCenter";
 import CommandAttention, { riskWarnings } from "../components/CommandAttention";
+import GuardrailBudgetMeters from "../components/GuardrailBudgetMeters";
 import ErrorBoundary     from "../components/ErrorBoundary";
 import WelcomeBanner, { WELCOME_DISMISS_KEY } from "../components/WelcomeBanner";
 import CommandCenterWorkspace from "../components/CommandCenterWorkspace";
@@ -498,33 +499,7 @@ function DesktopDashboard() {
               <span className={`dot ${guardrailStatus?.trading_allowed === true && riskWarnings(guardrailStatus, portfolioState?.state).length === 0 ? "live" : "dead"}`} title="Entry checks, independent of execution mode" />
             </div>
             <div style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
-              {[
-                // daily/weekly_loss_pct are signed P&L ratios (positive on a
-                // gain day) — clamp to the negative portion only, so a gain
-                // shows 0% of the loss budget used instead of its magnitude.
-                { label: "Daily Loss",    val: Math.max(0, -(guardrailStatus?.daily_loss_pct  || 0)) * 100, max: 2,  unit: "%" },
-                { label: "Weekly Loss",   val: Math.max(0, -(guardrailStatus?.weekly_loss_pct || 0)) * 100, max: 5, unit: "%" },
-                { label: "Trades Today",  val: guardrailStatus?.trades_today || 0, max: 3, unit: "" },
-                { label: "Consecutive losses", val: guardrailStatus?.consecutive_losses || 0, max: 3, unit: "" },
-              ].map(g => {
-                const pct = Math.min((g.val / g.max) * 100, 100);
-                const color = pct < 60 ? "var(--green)" : pct < 85 ? "var(--amber)" : "var(--red)";
-                return (
-                  <div key={g.label}>
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                      <span style={{ fontFamily: "var(--mono)", fontSize: 10, color: "var(--ink-dim)" }}>
-                        {hintFor(g.label)}
-                      </span>
-                      <span style={{ fontFamily: "var(--mono)", fontSize: 10, color }}>
-                        {g.val.toFixed(1)}{g.unit} / {g.max}{g.unit}
-                      </span>
-                    </div>
-                    <div className="bar-track">
-                      <div className="bar-fill" style={{ width: `${pct}%`, background: color }} />
-                    </div>
-                  </div>
-                );
-              })}
+              <GuardrailBudgetMeters guard={guardrailStatus} hintFor={hintFor} />
             </div>
           </div>
 
