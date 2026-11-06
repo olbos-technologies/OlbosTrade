@@ -10,6 +10,7 @@
  * (polled every 15s).
  */
 import React, { useEffect, useState } from "react";
+import { pnlColor, gainSign } from "../utils/pnlTone";
 import { useIsMobile } from "../hooks/useIsMobile";
 import MetricHint, { resolveMetricHint } from "./MetricHint";
 
@@ -88,7 +89,7 @@ interface HealthDetail {
 
 // ── Formatters ──────────────────────────────────────────────────────────────
 const money = (n: number) =>
-  (n >= 0 ? "+" : "-") + "$" + Math.abs(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  (n < 0 ? "-" : gainSign(n)) + "$" + Math.abs(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const plain = (n: number) =>
   "$" + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -197,7 +198,7 @@ function StratRow({ h }: { h: StratHealth }) {
       <span className="mono" style={{ fontSize: 11, color: "var(--ink-dim)", display: "flex", gap: 14, flexWrap: "wrap" }}>
         <span>n={h.sample_size}</span>
         <span>win {(h.win_rate * 100).toFixed(0)}%</span>
-        <span style={{ color: h.expectancy >= 0 ? "var(--green)" : "var(--red)" }}>
+        <span style={{ color: pnlColor(h.expectancy) }}>
           exp {h.expectancy >= 0 ? "+" : ""}{h.expectancy.toFixed(0)}
         </span>
         <span>{ratio}</span>
@@ -257,7 +258,6 @@ export default function ExecutiveSummary() {
 
   const pnlAvailable = !!s && typeof s.total_pnl === "number" && typeof s.day_pnl === "number" && !s.health?.some(h => h.name === "PostgreSQL" && h.status !== "ok");
   const hasSample = !!perf && perf.total_trades > 0;
-  const pnlColor = (n: number) => (n >= 0 ? "var(--green)" : "var(--red)");
   const pct = (n: number) => `${n >= 0 ? "+" : ""}${n}%`;
 
   return (

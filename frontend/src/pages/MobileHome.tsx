@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
+import { gainSign, pnlColor, PNL_NEGATIVE, PNL_POSITIVE } from "../utils/pnlTone";
 import { adoptedLabel } from "../utils/positionLabels";
 import { api } from "../api/client";
 import { useTerminalNav } from "../components/TerminalNavContext";
@@ -98,9 +99,14 @@ export function splitPending(rows: Pending[], now: number) {
     return out;
   }, { recent: 0, older: 0, unknown: 0 });
 }
+/** CSS class for a P&L figure: flat (rounds to $0.00) and unknown get none, so neither reads as a gain. */
+const pnlClass = (n: unknown): string => {
+  const c = pnlColor(n);
+  return c === PNL_POSITIVE ? "mh-positive" : c === PNL_NEGATIVE ? "mh-negative" : "";
+};
 export const money = (n: unknown, signed = false) =>
   typeof n === "number" && Number.isFinite(n)
-    ? (signed ? (n < 0 ? "−" : "+") : n < 0 ? "−" : "") +
+    ? (signed ? (n < 0 ? "−" : gainSign(n)) : n < 0 ? "−" : "") +
       Math.abs(n).toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2 })
     : "—";
 
@@ -170,7 +176,7 @@ export default function MobileHome() {
         {!summary.value && !summary.loading && <p className="mh-warning">Account data unavailable. Refresh to retry.</p>}
         {summary.value?.total_equity == null && summary.value && <p className="mh-warning">Broker account value unavailable.</p>}
         <div className="mh-pnl-grid">
-          <div><span className="mh-muted">Olbos day P&amp;L</span><strong className={typeof summary.value?.day_pnl === "number" ? summary.value.day_pnl < 0 ? "mh-negative" : "mh-positive" : ""}>{money(summary.value?.day_pnl, true)}</strong></div>
+          <div><span className="mh-muted">Olbos day P&amp;L</span><strong className={pnlClass(summary.value?.day_pnl)}>{money(summary.value?.day_pnl, true)}</strong></div>
           <div><span className="mh-muted">Olbos total P&amp;L</span><strong>{money(summary.value?.total_pnl, true)}</strong></div>
         </div>
         <p className="mh-muted">Trade P&amp;L and broker balance may cover different holdings.</p>
@@ -246,7 +252,7 @@ export default function MobileHome() {
           : positions.value.length === 0 ? <p className="mh-muted">No open positions reported.</p>
           : positions.value.slice(0, 3).map((p, i) => <div className="mh-position" key={`${p.symbol}-${i}`}>
               <div><strong>{p.symbol || "Unknown symbol"}</strong><span>{p.tracked === false ? "Untracked broker holding" : adoptedLabel(p.strategy) ?? (p.strategy || p.option_type || "Position")}{p.quantity != null ? ` · ${p.quantity}` : ""}</span></div>
-              <strong className={typeof p.unrealized_pnl === "number" ? p.unrealized_pnl < 0 ? "mh-negative" : "mh-positive" : ""}>{money(p.unrealized_pnl, true)}</strong>
+              <strong className={pnlClass(p.unrealized_pnl)}>{money(p.unrealized_pnl, true)}</strong>
             </div>)}
         <button className="mh-link" onClick={() => nav("trade:positions")}>All positions <span aria-hidden="true">↗</span></button>
       </section>

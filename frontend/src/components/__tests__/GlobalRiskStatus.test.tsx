@@ -94,17 +94,17 @@ describe("GlobalRiskStatus", () => {
     await waitFor(() => expect(screen.getByText("AUTOPILOT OFF")).toBeInTheDocument());
   });
 
-  it("shows KILL HALTED when the kill switch is engaged", async () => {
+  it("shows KILL ENGAGED when the kill switch is engaged", async () => {
     mockBroker({ broker: "ibkr", paper_mode: true, status: "connected" });
     mockedApi.getExecutionMode.mockResolvedValue({ mode: "manual" });
     mockedApi.getTradeDeskKillSwitch.mockResolvedValue({ engaged: true });
     mockedApi.getPortfolioState.mockResolvedValue({ state: {} });
 
     render(<GlobalRiskStatus />);
-    await waitFor(() => expect(screen.getByText("HALTED")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("ENGAGED")).toBeInTheDocument());
   });
 
-  it("shows KILL UNKNOWN rather than defaulting to not-armed when both kill-switch reads fail", async () => {
+  it("shows KILL UNKNOWN rather than defaulting to clear when both kill-switch reads fail", async () => {
     mockBroker({ broker: "ibkr", paper_mode: true, status: "connected" });
     mockedApi.getExecutionMode.mockResolvedValue({ mode: "manual" });
     mockedApi.getTradeDeskKillSwitch.mockRejectedValue(new Error("network error"));
@@ -113,8 +113,8 @@ describe("GlobalRiskStatus", () => {
 
     render(<GlobalRiskStatus />);
     await waitFor(() => expect(screen.getByText("UNKNOWN")).toBeInTheDocument());
-    // Must never render "NOT ARMED" (a safe-looking default) when the read failed.
-    expect(screen.queryByText("NOT ARMED")).not.toBeInTheDocument();
+    // Must never render "CLEAR" (a safe-looking default) when the read failed.
+    expect(screen.queryByText("CLEAR")).not.toBeInTheDocument();
   });
 
   it("shows ENV DISCONNECTED when the broker reports not connected", async () => {

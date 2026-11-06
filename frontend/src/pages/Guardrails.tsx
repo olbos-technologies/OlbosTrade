@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from "react";
+import { pnlColor } from "../utils/pnlTone";
+import { killSwitchWord } from "../utils/killSwitchWords";
 import { useRisk } from "../hooks/useRisk";
 import { api } from "../api/client";
 import { Panel, Button } from "../components/ui";
@@ -10,7 +12,7 @@ import { tint } from "../utils/tint";
 function pnlPct(value: number | null | undefined): { text: string; color: string } {
   const v = (value || 0) * 100;
   const sign = v >= 0 ? "+" : "";
-  return { text: `${sign}${v.toFixed(2)}%`, color: v >= 0 ? "var(--green)" : "var(--red)" };
+  return { text: `${sign}${v.toFixed(2)}%`, color: pnlColor(v) };
 }
 
 interface GuardrailEvent {
@@ -54,6 +56,10 @@ export default function Guardrails() {
   const { guardrailStatus, reconciliation, refresh } = useRisk();
   const [tab, setTab] = useState<"status"|"history">("status");
   const [activeMode, setActiveMode] = useState<any>(null);
+  // The kill switch's real state. /api/guardrails/status does not carry it, so the rules
+  // row below used to be hard-wired "OFF / OK" whatever the state. null = not read yet or
+  // the read failed; it is never shown as clear.
+  const [killEngaged, setKillEngaged] = useState<boolean | null>(null);
   const [reconRunning, setReconRunning] = useState(false);
   const [reconMessage, setReconMessage] = useState<string | null>(null);
   const [history, setHistory] = useState<GuardrailEvent[] | null>(null);
@@ -72,6 +78,16 @@ export default function Guardrails() {
       (api.getCurrentMode() as any)
         .then((d: any) => setActiveMode(d))
         .catch(() => {});
+    load();
+    const id = setInterval(load, 5000);
+    return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    const load = () =>
+      (api.getTradeDeskKillSwitch() as Promise<{ engaged?: unknown }>)
+        .then(d => setKillEngaged(typeof d?.engaged === "boolean" ? d.engaged : null))
+        .catch(() => setKillEngaged(null));
     load();
     const id = setInterval(load, 5000);
     return () => clearInterval(id);
@@ -164,7 +180,7 @@ export default function Guardrails() {
       val: `${(activeLimits.capitalThreshold * 100).toFixed(0)}%`,
       status: (guardrailStatus?.capital_pct_remaining ?? 1) > activeLimits.capitalThreshold,
     },
-    { label: "Kill Switch",         val: "OFF",   status: !guardrailStatus?.kill_switch_engaged },
+    { label: "Kill Switch", val: killSwitchWord(killEngaged) ?? "UNVERIFIED", status: killEngaged === false, unverified: killEngaged === null },
   ];
 
   return (
@@ -243,9 +259,9 @@ export default function Guardrails() {
                       <span className="tnum" style={{ fontSize: 11, color: "var(--ink-dim)" }}>{r.val}</span>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 7, flexShrink: 0 }}>
-                      <span className={`dot ${r.status ? "live" : "dead"}`} />
-                      <span style={{ fontSize: 11, color: r.status ? "var(--green)" : "var(--red)" }}>
-                        {r.status ? "OK" : "Breach"}
+                      <span className={`dot ${(r as { unverified?: boolean }).unverified ? "" : r.status ? "live" : "dead"}`} />
+                      <span style={{ fontSize: 11, color: (r as { unverified?: boolean }).unverified ? "var(--amber)" : r.status ? "var(--green)" : "var(--red)" }}>
+                        {(r as { unverified?: boolean }).unverified ? "Unverified" : r.status ? "OK" : "Breach"}
                       </span>
                     </div>
                   </div>

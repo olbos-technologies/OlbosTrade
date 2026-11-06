@@ -1,5 +1,6 @@
 /** Read-only professional insight cards sourced exclusively from the positions hook. */
 import React, { useEffect, useState } from "react";
+import { pnlColor } from "../utils/pnlTone";
 import { api } from "../api/client";
 
 export type PositionInsight = {
@@ -121,10 +122,10 @@ export default function ProPortfolioInsights({
                 <div key={`${p.symbol}-${index}`} style={{ marginBottom: 10 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11, color: "var(--ink)" }}>
                     <span>{p.symbol}{!p.tracked ? " · Untracked" : ""}</span>
-                    <span style={{ color: p.pnl >= 0 ? "var(--green)" : "var(--red)", fontVariantNumeric: "tabular-nums" }}>{usd(p.pnl)}</span>
+                    <span style={{ color: pnlColor(p.pnl), fontVariantNumeric: "tabular-nums" }}>{usd(p.pnl)}</span>
                   </div>
                   <div aria-hidden="true" style={{ background: "var(--bg-3)", height: 6, marginTop: 5, borderRadius: 4 }}>
-                    <div style={{ width: `${Math.abs(p.pnl) / max * 100}%`, height: "100%", background: p.pnl >= 0 ? "var(--green)" : "var(--red)", borderRadius: 4 }} />
+                    <div style={{ width: `${Math.abs(p.pnl) / max * 100}%`, height: "100%", background: pnlColor(p.pnl), borderRadius: 4 }} />
                   </div>
                 </div>
               ))}

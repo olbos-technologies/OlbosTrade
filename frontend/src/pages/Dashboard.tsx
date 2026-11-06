@@ -10,6 +10,7 @@
  */
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
+import { pnlColor, gainSign } from "../utils/pnlTone";
 import { api }           from "../api/client";
 import { usePaperTrade } from "../hooks/usePaperTrade";
 import { useRisk }       from "../hooks/useRisk";
@@ -163,8 +164,8 @@ function PositionRow({ pos }: { pos: any }) {
       <td className="mono">{pos.strike || pos.avg_cost?.toFixed(2) || "—"}</td>
       <td className="mono">{pos.expiration || pos.entry_date || "—"}</td>
       <td className="mono">{pos.quantity ?? 1}</td>
-      <td className="mono" style={{ color: !pnlKnown ? "var(--ink-faint)" : pnl >= 0 ? "var(--green)" : "var(--red)" }}>
-        {pnlKnown ? `${pnl >= 0 ? "+" : ""}$${Math.abs(pnl).toLocaleString("en-US", { maximumFractionDigits: 0 })}` : "—"}
+      <td className="mono" style={{ color: !pnlKnown ? "var(--ink-faint)" : pnlColor(pnl) }}>
+        {pnlKnown ? `${pnl < 0 ? "-" : gainSign(pnl, 0)}$${Math.abs(pnl).toLocaleString("en-US", { maximumFractionDigits: 0 })}` : "—"}
       </td>
       <td>
         <Badge
@@ -393,14 +394,14 @@ function DesktopDashboard() {
         <StatTile
           variant="divider" size="default"
           label="Desk week P&L" hint={hintFor("Week P&L")}
-          value={typeof weekly === "number" ? `${weekly >= 0 ? "+" : "−"}$${Math.abs(weekly).toLocaleString("en-US", { maximumFractionDigits: 0 })}` : "—"}
-          tone={weekly >= 0 ? "var(--green)" : "var(--red)"}
+          value={typeof weekly === "number" ? `${weekly < 0 ? "−" : gainSign(weekly, 0)}$${Math.abs(weekly).toLocaleString("en-US", { maximumFractionDigits: 0 })}` : "—"}
+          tone={pnlColor(weekly)}
         />
         <StatTile
           variant="divider" size="default"
           label="Desk month P&L" hint={hintFor("Month P&L")}
-          value={typeof monthly === "number" ? `${monthly >= 0 ? "+" : "−"}$${Math.abs(monthly).toLocaleString("en-US", { maximumFractionDigits: 0 })}` : "—"}
-          tone={monthly >= 0 ? "var(--green)" : "var(--red)"}
+          value={typeof monthly === "number" ? `${monthly < 0 ? "−" : gainSign(monthly, 0)}$${Math.abs(monthly).toLocaleString("en-US", { maximumFractionDigits: 0 })}` : "—"}
+          tone={pnlColor(monthly)}
         />
         <StatTile variant="divider" size="default" label="Buying Power" hint={hintFor("Buying Power")}
           value={portfolio?.buying_power != null ? `$${(portfolio.buying_power / 1000).toFixed(1)}k` : "—"} />
@@ -430,7 +431,7 @@ function DesktopDashboard() {
                 {curveSource === "backtest" && <Badge kind="tag" tone="var(--amber)">BACKTEST</Badge>}
                 {curveSource === "trades" && <Badge kind="tag" tone="var(--green)">LIVE</Badge>}
                 {visiblePoints.length >= 2 && (
-                  <span style={{ fontFamily: "var(--mono)", fontSize: 11, color: rangePnl >= 0 ? "var(--green)" : "var(--red)", marginLeft: 8 }}>
+                  <span style={{ fontFamily: "var(--mono)", fontSize: 11, color: pnlColor(rangePnl), marginLeft: 8 }}>
                     {rangePnl >= 0 ? "+" : ""}${rangePnl.toFixed(0)}
                   </span>
                 )}
