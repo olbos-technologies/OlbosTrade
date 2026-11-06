@@ -82,6 +82,10 @@ def options_max_loss_per_contract(spread: dict[str, Any]) -> Optional[float]:
     refuse legitimate manual signals, while treating them as zero risk (what this
     used to do) is the bug. A derived figure that is not positive means the inputs
     contradict each other, which is unknown, not zero.
+
+    The derivation is the credit-vertical formula. For a debit spread (negative
+    net_credit) it OVERSTATES the loss (width plus the debit instead of the debit),
+    which errs toward refusing, and the scanner always supplies `max_loss`.
     """
     if _finite_positive(spread.get("max_loss")):
         return float(spread["max_loss"])
