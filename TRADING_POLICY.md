@@ -66,16 +66,33 @@ the current active roadmap — additive, IBKR stays the default.
 | Limit | Charter | Enforced default | Config key |
 |---|---|---|---|
 | Max account risk / trade | 2% | 1–2% (mode-based) | `risk_per_trade_pct` |
-| Max daily loss | 3% | **2%** (tighter) | `max_daily_loss_pct` |
-| Max weekly loss | 8% | **5%** (tighter) | `max_weekly_loss_pct` |
-| Max monthly drawdown | 10% | 10% | `max_monthly_loss_pct` |
+| Max daily loss | **5%** | **2%** (tighter) | `max_daily_loss_pct` |
+| Max weekly loss | **10%** | **5%** (tighter) | `max_weekly_loss_pct` |
+| Max monthly drawdown | **20%** | 10% (tighter) | `max_monthly_loss_pct` |
 | Max concurrent positions | 5 | 5 | `max_concurrent_positions` |
 | Max trades / day | 3 | **6** (looser) | `max_trades_per_day` |
 | Max exposure | 30% | (via sizing/heat) | — |
 
-> Current daily/weekly caps are **tighter** than the charter (more
+> Current daily/weekly/monthly caps are **tighter** than the charter (more
 > conservative). They are configurable to the charter values; we keep the
 > tighter defaults unless deliberately changed.
+
+> **Policy change, 2026-11-06 (owner decision).** The charter's loss limits are
+> now **5% daily, 10% weekly, 20% monthly** (previously 3% / 8% / 10%), the
+> values under which paper validation runs. The code defaults above are
+> unchanged. The paper-before-live gate below is unchanged.
+>
+> **Which settings apply.** The limits in force come from the environment, not
+> from this table. While `PAPER_TRADE_VISIBILITY_MODE=true` on a paper account,
+> the plain `MAX_DAILY_LOSS_PCT`, `MAX_WEEKLY_LOSS_PCT`, `MAX_MONTHLY_LOSS_PCT`,
+> `MAX_DRAWDOWN_PCT`, `MAX_CONSECUTIVE_LOSSES` and `MAX_TRADES_PER_DAY` are
+> **ignored** and the `PAPER_VISIBILITY_MAX_*` settings apply instead (code
+> defaults: 8% daily, 15% weekly, 25% monthly, 30% drawdown, 8 consecutive
+> losses, 20 trades/day). To make the charter values bite in that mode set
+> `PAPER_VISIBILITY_MAX_DAILY_LOSS_PCT=0.05`,
+> `PAPER_VISIBILITY_MAX_WEEKLY_LOSS_PCT=0.10` and
+> `PAPER_VISIBILITY_MAX_MONTHLY_LOSS_PCT=0.20`. The Dashboard and Risk page show
+> the limits actually in force (`/api/guardrails/status`).
 
 > **Trades/day is the one limit that is looser than the charter**, which
 > called it a hard cap of 3 "no exceptions." The enforcement mechanism is

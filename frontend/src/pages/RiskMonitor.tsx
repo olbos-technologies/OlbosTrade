@@ -5,7 +5,7 @@ import { api, getOperatorApiKey, setOperatorApiKey } from "../api/client";
 import HoldToConfirmButton from "../components/HoldToConfirmButton";
 import RotationReviewPanel, { RotationReviewEntry } from "../components/RotationReviewPanel";
 import { Panel, Button, StatTile } from "../components/ui";
-import { guardrailCap } from "../utils/guardrailCap";
+import { guardrailCap, guardrailCapPct } from "../utils/guardrailCap";
 
 interface MarginInfo {
   available: boolean;
@@ -340,7 +340,7 @@ export default function RiskMonitor() {
           <span className="kicker">{label}</span>
           <span style={{ fontFamily: "var(--mono)", fontSize: 12, color }}>
             {valKnown ? `${val.toFixed(val < 10 ? 2 : 0)}${unit}` : "Unavailable"}
-            <span style={{ color: "var(--ink-faint)" }}> / {maxKnown ? max : "—"}{unit}</span>
+            <span style={{ color: "var(--ink-faint)" }}> / {maxKnown ? `${max}${unit}` : "—"}</span>
           </span>
         </div>
         {ratio !== null && <div className="bar-track" style={{ height: 4 }}>
@@ -389,15 +389,15 @@ export default function RiskMonitor() {
       <div className="workspace-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
         <div>
           <Section title="Loss Limits">
-            <Meter label="Daily Loss" val={daily_loss} max={2} unit="%" />
-            <Meter label="Weekly Loss" val={weekly_loss} max={5} unit="%" />
-            <Meter label="Monthly Loss" val={monthly_loss} max={10} unit="%" />
-            <Meter label="Drawdown" val={finite(guardrailStatus?.drawdown_pct) ? Math.max(0, guardrailStatus.drawdown_pct) * 100 : null} max={15} unit="%" />
+            <Meter label="Daily Loss" val={daily_loss} max={guardrailCapPct(guardrailStatus?.max_daily_loss_pct)} unit="%" />
+            <Meter label="Weekly Loss" val={weekly_loss} max={guardrailCapPct(guardrailStatus?.max_weekly_loss_pct)} unit="%" />
+            <Meter label="Monthly Loss" val={monthly_loss} max={guardrailCapPct(guardrailStatus?.max_monthly_loss_pct)} unit="%" />
+            <Meter label="Drawdown" val={finite(guardrailStatus?.drawdown_pct) ? Math.max(0, guardrailStatus.drawdown_pct) * 100 : null} max={guardrailCapPct(guardrailStatus?.max_drawdown_pct)} unit="%" />
           </Section>
           <Section title="Position Limits">
             <Meter label="Trades Today" val={guardrailStatus?.trades_today} max={guardrailCap(guardrailStatus?.max_trades_per_day)} unit="" warn={0.5} crit={0.85} />
-            <Meter label="Consecutive Losses" val={guardrailStatus?.consecutive_losses} max={3} unit="" warn={0.4} crit={0.7} />
-            <Meter label="Open Positions" val={riskState?.state?.open_positions} max={5} unit="" />
+            <Meter label="Consecutive Losses" val={guardrailStatus?.consecutive_losses} max={guardrailCap(guardrailStatus?.max_consecutive_losses)} unit="" warn={0.4} crit={0.7} />
+            <Meter label="Open Positions" val={riskState?.state?.open_positions} max={guardrailCap(guardrailStatus?.max_concurrent_positions)} unit="" />
           </Section>
           <Section title="Margin & Buying Power">
             {margin?.available ? (

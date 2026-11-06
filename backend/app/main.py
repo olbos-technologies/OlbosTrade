@@ -3522,6 +3522,7 @@ ACCOUNT_SUMMARY_ROUTE_TIMEOUT_SECONDS = 5.0
 @app.get("/api/guardrails/status", tags=["Guardrails"])
 async def guardrail_status():
     from app.core.database import AsyncSessionLocal
+    from app.services.trading_mode import trading_mode_manager
     from app.models.trade import Trade
     from sqlalchemy import select, func, and_
     from datetime import date, timedelta
@@ -3671,6 +3672,11 @@ async def guardrail_status():
         "max_drawdown_pct":      _guardrail_engine.max_drawdown_pct,
         "max_trades_per_day":    _guardrail_engine.max_trades_per_day,
         "max_consecutive_losses": _guardrail_engine.max_consecutive_losses,
+        # The cap the execution gate applies before any regime tightening: the lower
+        # of the global setting and the active trading mode's own cap.
+        "max_concurrent_positions": min(
+            settings.max_concurrent_positions, trading_mode_manager.config.max_concurrent,
+        ),
         "capital_preservation_threshold": _guardrail_engine.preservation_threshold,
         "signal_threshold":      _guardrail_engine.get_signal_threshold(status),
     }
