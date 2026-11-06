@@ -3385,25 +3385,41 @@ _last_guardrail_signature: tuple | None = None
 _peak_value_cache: float | None = None
 
 
+def _desk_peak_series() -> bool:
+    """True when the desk's capital is its own series (base and anchor both set)."""
+    return float(settings.trading_capital_base or 0.0) > 0 and float(settings.trading_capital_anchor or 0.0) > 0
+
+
+#: risk_peak_state row for the account-level peak (the original) and for the
+#: desk-level one. Separate rows because they are different series: a desk
+#: that starts at 25k can never be compared with a stored 276k account peak, and
+#: removing the base must put the account series back exactly as it was.
+_ACCOUNT_PEAK_ROW = 1
+_DESK_PEAK_ROW = 2
+
+
 def _clamp_peak_to_capital_base(peak: float) -> float:
     """A peak recorded before TRADING_CAPITAL_BASE was set cannot exceed the base.
 
-    The stored peak only ratchets up. Capping the capital the desk trades with
-    while an old, larger peak stays on file would read as a drawdown that never
-    happened (a 25k base against a stored 276k peak is a 91% "decline") and halt
-    every entry. The stored row is left alone; only what the guardrail sees is
-    bounded, so removing the setting restores the original behaviour.
+    Only for the base-without-anchor case, where the desk's capital is pinned at
+    the base. The stored row is left alone; only what the guardrail sees is
+    bounded, so removing the setting restores the original behaviour. With an
+    anchor the desk has its own peak row and needs no clamp.
     """
     base = float(settings.trading_capital_base or 0.0)
+    if _desk_peak_series():
+        return peak
     return min(peak, base) if base > 0 and peak > 0 else peak
 
 
 async def _get_or_update_peak_value(current_value: float, starting_capital: float) -> float:
     """
-    Returns the persisted all-time portfolio peak (risk_peak_state, row
-    id=1) for the Drawdown Control guardrail, updating it in place if
-    current_value is a new high. Seeds once per process from DB — first
-    ever call initializes the row to max(current_value, starting_capital).
+    Returns the persisted all-time portfolio peak (risk_peak_state) for the
+    Drawdown Control guardrail, updating it in place if current_value is a new
+    high. Row 1 is the account's peak; row 2 is the desk's, used when
+    TRADING_CAPITAL_BASE and TRADING_CAPITAL_ANCHOR are both set. Seeds once per
+    process from DB — first ever call initializes the row to
+    max(current_value, starting_capital) (the base, for the desk row).
     Never raises: a persistence hiccup must not break the status response
     trading decisions depend on (same contract as _maybe_log_guardrail_event).
     """
@@ -3411,19 +3427,21 @@ async def _get_or_update_peak_value(current_value: float, starting_capital: floa
     from app.core.database import AsyncSessionLocal
     from app.models.risk_state import RiskPeakState
 
+    row_id = _DESK_PEAK_ROW if _desk_peak_series() else _ACCOUNT_PEAK_ROW
+    seed_floor = float(settings.trading_capital_base) if row_id == _DESK_PEAK_ROW else starting_capital
     try:
         async with AsyncSessionLocal() as session:
             row = None
             if _peak_value_cache is None:
-                row = await session.get(RiskPeakState, 1)
+                row = await session.get(RiskPeakState, row_id)
                 if row is None:
-                    row = RiskPeakState(id=1, peak_value=Decimal(str(max(current_value, starting_capital))))
+                    row = RiskPeakState(id=row_id, peak_value=Decimal(str(max(current_value, seed_floor))))
                     session.add(row)
                     await session.commit()
                 _peak_value_cache = float(row.peak_value)
             if current_value > _peak_value_cache:
                 if row is None:
-                    row = await session.get(RiskPeakState, 1)
+                    row = await session.get(RiskPeakState, row_id)
                 row.peak_value = Decimal(str(current_value))
                 await session.commit()
                 _peak_value_cache = current_value
@@ -3436,7 +3454,7 @@ async def _get_or_update_peak_value(current_value: float, starting_capital: floa
         # every guardrail check for the rest of the process's life). Return
         # an uncached value for just this one response instead.
         return _clamp_peak_to_capital_base(
-            _peak_value_cache if _peak_value_cache is not None else max(current_value, starting_capital)
+            _peak_value_cache if _peak_value_cache is not None else max(current_value, seed_floor)
         )
 
 
