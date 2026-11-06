@@ -46,3 +46,33 @@ test("an unconfirmed mode warning is not clipped out of the desktop header", asy
   expect(warningBox!.y).toBeGreaterThanOrEqual(headerBox!.y);
   expect(warningBox!.y + warningBox!.height).toBeLessThanOrEqual(headerBox!.y + headerBox!.height);
 });
+
+for (const width of [820, 1280, 1971]) {
+  test(`the account chip sits at the top right of the header at ${width}px`, async ({ page }) => {
+    await openHeader(page, width);
+    const header = page.locator(".desktop-terminal-header");
+    const chip = page.getByRole("button", { name: /^Account:/ });
+    await expect(chip, "account control never mounted — auth stub not applied").toBeVisible();
+    // Exactly one: the status bar must not carry a second copy.
+    await expect(chip).toHaveCount(1);
+
+    const h = (await header.boundingBox())!;
+    const c = (await chip.boundingBox())!;
+    // Inside the header's top row, at its right-hand end.
+    expect(c.y).toBeGreaterThanOrEqual(h.y);
+    expect(c.y + c.height).toBeLessThanOrEqual(h.y + 64);
+    expect(c.x + c.width).toBeLessThanOrEqual(h.x + h.width);
+    expect(c.x + c.width).toBeGreaterThan(h.x + h.width - 160);
+
+    // It must not overlap the execution-mode control.
+    const g = (await header.getByRole("group", { name: "Execution mode" }).boundingBox())!;
+    expect(c.x).toBeGreaterThanOrEqual(g.x + g.width);
+
+    // The menu opens downward from the chip, and Sign out is reachable.
+    await chip.click();
+    const out = page.getByRole("menuitem", { name: /sign out/i });
+    const o = (await out.boundingBox())!;
+    expect(o.y).toBeGreaterThan(c.y + c.height);
+    expect(o.y + o.height).toBeLessThanOrEqual(844);
+  });
+}
