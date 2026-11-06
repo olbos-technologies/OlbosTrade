@@ -1502,7 +1502,7 @@ function StatusBar({ page, isMobile }: { page: string; isMobile: boolean }) {
       */}
       {!isMobile && <UserMenu />}
       <span style={{ color: "var(--brand)", fontWeight: 700 }}>
-        Olbos{import.meta.env.VITE_GIT_SHA ? ` ${String(import.meta.env.VITE_GIT_SHA).slice(0, 7)}` : " v5.0"}
+        Olbos{import.meta.env.VITE_GIT_SHA ? ` ${String(import.meta.env.VITE_GIT_SHA).slice(0, 7)}` : " · build unknown"}
       </span>
     </div>
   );

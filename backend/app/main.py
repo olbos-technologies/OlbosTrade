@@ -339,6 +339,8 @@ async def _on_startup() -> None:
     global _current_regime, _greeks_tracker
 
     _log_auth_posture()
+    from app.core.build_info import log_build_stamp
+    log_build_stamp(logger)
 
     # 1. Initialize broker and connect
     try:
@@ -3312,9 +3314,14 @@ async def health_detail() -> dict:
     except Exception as _ms_exc:
         _model_status = {"error": f"{type(_ms_exc).__name__}: {_ms_exc}"}
 
+    from app.core.build_info import build_info
+
     return {
         "status": "ok",
         "broker": settings.broker,
+        # Which commit this backend was built from (deploy/hetzner/update.sh bakes it
+        # in). Deliberately NOT on the public /health, which carries one bit.
+        "build": build_info(),
         "scanner": {
             "alive": scanner_ok,
             "last_tick_age_seconds": round(age, 1) if age is not None else None,

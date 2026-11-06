@@ -32,6 +32,11 @@ COPY --from=builder /install /usr/local
 # Copy application code
 COPY --chown=olbostrade:olbostrade . .
 
+# The commit this image is built from (update.sh passes it). Reported on
+# /api/health/detail and in the startup log; unset reads as "unknown".
+ARG GIT_SHA=""
+ENV GIT_SHA=$GIT_SHA
+
 # Create directories the app writes to
 RUN mkdir -p /app/ml/model_registry /app/logs \
     && chown -R olbostrade:olbostrade /app/ml /app/logs

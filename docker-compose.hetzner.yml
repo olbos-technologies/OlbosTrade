@@ -38,6 +38,8 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      args:
+        GIT_SHA: ${GIT_SHA:-}
     container_name: olbostrade-backend
     restart: unless-stopped
     # NO --proxy-headers here, deliberately, and that is the fix rather than
@@ -176,6 +178,7 @@ services:
       args:
         VITE_API_URL: ""
         VITE_WS_URL: ""
+        VITE_GIT_SHA: ${GIT_SHA:-}
     container_name: olbostrade-frontend
     restart: unless-stopped
     environment:

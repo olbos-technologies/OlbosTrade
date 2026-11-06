@@ -57,6 +57,10 @@ _DOCKER_STUB = r"""#!/usr/bin/env bash
 # Recording stub. Logs the invocation, then either forwards the migration to a
 # real alembic or just succeeds.
 echo "docker $*" >> "$DEPLOY_TEST_LOG"
+# What the image build would see: the commit stamp update.sh must export.
+case "$*" in
+  *"build --no-cache"*) echo "build-env GIT_SHA=${GIT_SHA-<unset>}" >> "$DEPLOY_TEST_LOG" ;;
+esac
 
 is_migration=0
 for arg in "$@"; do
@@ -370,3 +374,22 @@ async def test_a_current_checkout_proceeds(tmp_path, disposable_db):
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert _has(lines, "git fetch"), "it never checked whether it was current"
     assert _has(lines, "up -d")
+
+
+@pytest.mark.asyncio
+async def test_the_build_is_stamped_with_the_commit_being_deployed(tmp_path, disposable_db):
+    """The stamp reaches the build step, is the 7-character commit, and matches the
+    SHA the script just verified against origin/main (the git stub's 'aaaa...')."""
+    proc, lines = _run(tmp_path, disposable_db, fail_migration=False)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    stamp = [l for l in lines if l.startswith("build-env GIT_SHA=")]
+    assert stamp == ["build-env GIT_SHA=aaaaaaa"], stamp
+    assert _index_of(lines, "build-env GIT_SHA=") > _index_of(lines, "build --no-cache"), \
+        "the stamp is recorded by the build invocation itself"
+
+
+@pytest.mark.asyncio
+async def test_a_refused_deploy_builds_nothing_so_stamps_nothing(tmp_path, disposable_db):
+    proc, lines = _run(tmp_path, disposable_db, fail_migration=False, stale=True)
+    assert proc.returncode != 0
+    assert not any(l.startswith("build-env") for l in lines)
