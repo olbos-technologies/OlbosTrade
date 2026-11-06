@@ -2952,16 +2952,38 @@ async def _adopt_untracked_positions(untracked: list[str], *, scoped) -> None:
             # Scoped: the race this guards against is a concurrent entry in
             # THIS owner's book. Another owner holding the same ticker is not
             # a reason to skip adopting this one's untracked position.
+            #
+            # PENDING counts as tracked as well as open. A pending trade is an entry this
+            # desk placed whose fill has not been recorded yet; the broker already shows the
+            # position, so the reconciler sees it as "untracked". The fill poller promotes it
+            # to open (or cancels it) on its next pass. Adopting it here would write a SECOND
+            # row for the same position — double-counted P&L and risk, two sets of exit logic.
+            # The scheduler runs the poller before the reconciler in each tick, but the poller
+            # has a 20 s timeout, so a slow cycle can hand the reconciler a pending trade the
+            # poller had no time to resolve.
             open_trades = (
                 await session.execute(select(Trade).where(
                     owned_by_operator_aware(scoped.organization_id), Trade.status == "open"))
             ).scalars().all()
             already_tracked = {str(t.underlying).upper() for t in open_trades}
+            pending_trades = (
+                await session.execute(select(Trade).where(
+                    owned_by_operator_aware(scoped.organization_id), Trade.status == "pending"))
+            ).scalars().all()
+            pending_fill = {str(t.underlying).upper() for t in pending_trades}
 
             for ticker in untracked:
                 symbol = ticker.upper()
                 if symbol in already_tracked:
                     continue  # closed by a legitimate concurrent entry since the check ran
+                if symbol in pending_fill:
+                    logger.info(
+                        "adopt-untracked: %s has a PENDING trade — leaving it to the fill poller "
+                        "to promote or cancel; not adopting a second row for the same position",
+                        symbol,
+                    )
+                    observability.incr("reconciliation.adopt_skipped_pending")
+                    continue
 
                 pos = by_symbol.get(symbol)
                 if pos is None:
