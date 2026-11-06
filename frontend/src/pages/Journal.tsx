@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { adoptedLabel } from "../utils/positionLabels";
 import { api } from "../api/client";
 import { Panel, StatTile, Badge, Button } from "../components/ui";
 
@@ -106,7 +107,7 @@ function EntryCard({ e, onClick }: { e: Entry; onClick: () => void }) {
             {isOpen ? "OPEN" : "CLOSED"}
           </Badge>
           <span style={{ fontFamily: "var(--mono)", fontSize: 10, color: "var(--ink-dim)" }}>
-            {e.strategy?.replace(/_/g, " ").toUpperCase() || "—"}
+            {adoptedLabel(e.strategy)?.toUpperCase() ?? (e.strategy?.replace(/_/g, " ").toUpperCase() || "—")}
           </span>
           {e.market_context && e.market_context.toLowerCase() !== "unknown" && (
             <span style={{
