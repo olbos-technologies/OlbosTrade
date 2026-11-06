@@ -58,6 +58,12 @@ class Settings(BaseSettings):
     # STARTING_CAPITAL — a base that differs from it recreates the divergence the
     # `capital_base_divergent` guardrail flag exists to report.
     trading_capital_base: float = Field(default=0.0, ge=0.0)
+    # The paper account's net liquidation on the day the desk started trading its
+    # TRADING_CAPITAL_BASE. With both set, the desk's capital is
+    # base + (account now - anchor): it moves with the desk's own gains and losses,
+    # unrealized included. Without it the base is a hard ceiling that hides every
+    # desk loss from the drawdown and capital-preservation checks.
+    trading_capital_anchor: float = Field(default=0.0, ge=0.0)
     # Largest single equity position, as a fraction of trading capital (notional).
     # Default is the figure that was hardcoded in compute_equity_trade_plan.
     equity_max_position_pct: float = Field(default=0.08, gt=0.0, le=0.5)
