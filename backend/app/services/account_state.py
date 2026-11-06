@@ -51,7 +51,7 @@ def capped_capital(live_value: float) -> float:
     recognisable as one, never become the base.
     """
     global _warned_no_anchor
-    base = float(settings.trading_capital_base or 0.0)
+    base = float(settings.effective_trading_capital_base or 0.0)
     if base <= 0 or live_value <= 0:
         return live_value
     anchor = float(settings.trading_capital_anchor or 0.0)
@@ -68,25 +68,32 @@ def capped_capital(live_value: float) -> float:
     return min(live_value, base)
 
 
-async def get_account_value() -> float:
+async def get_account_value(asset_class: str | None = None) -> float:
     """
     Live net liquidation value from the broker, falling back to
     settings.starting_capital if the broker is unreachable.
+
+    With per-asset-class pools configured (TRADING_CAPITAL_BASE_EQUITY and
+    TRADING_CAPITAL_BASE_OPTIONS), pass ``asset_class`` to get that class's share of
+    the desk's capital: the desk's capital times pool / combined base, so both pools
+    grow and shrink together with the desk's P&L. Without an asset class, or with
+    pools off, the figure is the whole desk's, exactly as before.
 
     Never raises — callers that need fail-closed behavior on top of this
     (e.g. the guardrail gate) already layer their own DB-driven checks; this
     function's job is just "best available capital figure," never zero.
     """
+    share = settings.capital_pool_share(asset_class)
     try:
         from app.broker.broker_factory import get_broker
         acct = await asyncio.wait_for(
             get_broker().get_account_summary(), timeout=ACCOUNT_VALUE_TIMEOUT_SECONDS,
         )
-        return capped_capital(float(acct.net_liquidation or settings.starting_capital))
+        return capped_capital(float(acct.net_liquidation or settings.starting_capital)) * share
     except Exception as exc:
         logger.debug("get_account_value: broker unreachable, using starting_capital: %s", exc)
         # A stand-in, not an account reading: it must not go through the anchor
         # arithmetic (base + (starting_capital - anchor) is nonsense for a figure
         # that is not the account's net liquidation). Bounded by the base only.
-        base = float(settings.trading_capital_base or 0.0)
-        return min(settings.starting_capital, base) if base > 0 else settings.starting_capital
+        base = float(settings.effective_trading_capital_base or 0.0)
+        return (min(settings.starting_capital, base) if base > 0 else settings.starting_capital) * share

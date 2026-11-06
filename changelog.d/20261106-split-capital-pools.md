@@ -1,0 +1,7 @@
+## Unreleased — Equity and options can be sized off separate capital pools (one shared desk)
+
+- New optional `TRADING_CAPITAL_BASE_EQUITY` and `TRADING_CAPITAL_BASE_OPTIONS` (e.g. 100000 and 25000). Set both or neither: setting only one is refused at startup, because it would size the other asset class off no capital. When both are set the desk's base is their sum and `TRADING_CAPITAL_BASE` is ignored.
+- It stays ONE desk: the loss limits, drawdown and capital-preservation checks are measured on the combined base, and the desk's own peak row is seeded at the combined base. Each pool is a fixed share of the desk's capital, so both grow and shrink together with the desk's P&L (`TRADING_CAPITAL_ANCHOR` still defines the starting point).
+- Sizing: the equity scan sizes off the equity pool's share (AMZN at ~$262 with the 8% cap: 30 shares on $100k, was 7 on a $25k desk); options sizing uses the options pool's share. Options concentration and exposure checks still divide by the whole desk, because they count every open position, equity included. Crypto, which only produces signals, uses the whole desk.
+- Keep `STARTING_CAPITAL` equal to the combined base (125000 for 100k + 25k): the guardrail percentages divide by it. With the pools unset everything is exactly as before.
+- No migration. Needs a backend restart and the new variables in `backend/.env.prod`; no change to order paths, the kill switch or the loss-limit settings themselves.
