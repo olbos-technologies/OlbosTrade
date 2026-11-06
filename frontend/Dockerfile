@@ -7,6 +7,10 @@ COPY package.json ./
 RUN npm install --legacy-peer-deps
 
 COPY . .
+# The commit this image is built from, shown in the status bar so a deploy can be
+# verified in the browser. update.sh passes it; an unstamped build says "build unknown".
+ARG VITE_GIT_SHA=""
+ENV VITE_GIT_SHA=$VITE_GIT_SHA
 RUN npm run build
 
 # ── Runtime stage ──────────────────────────────────────────────────────────────

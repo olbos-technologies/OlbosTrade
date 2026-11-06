@@ -52,6 +52,12 @@ if [ "$LOCAL_SHA" != "$REMOTE_SHA" ]; then
 fi
 echo "      ✅ Deploying $LOCAL_SHA"
 
+# Stamp both images with the commit being deployed (docker-compose.hetzner.yml
+# passes it as a build arg), so the footer and /api/health/detail can show what is
+# actually running. Derived from LOCAL_SHA, which was just checked against
+# origin/main, so the stamp cannot disagree with the line above.
+export GIT_SHA="${LOCAL_SHA:0:7}"
+
 echo "[2/6] Rebuilding containers..."
 docker compose -f docker-compose.hetzner.yml build --no-cache backend frontend
 echo "      ✅ Images rebuilt"
