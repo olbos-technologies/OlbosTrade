@@ -321,6 +321,10 @@
   .app-shell .positions-workspace .t-table--cards td { display: table-cell; padding: 8px; font: 12px var(--mono) !important; border-bottom: 1px solid var(--line-dim); vertical-align: middle; white-space: nowrap; }
   .app-shell .positions-workspace .t-table--cards td::before { display: none; }
   .app-shell .positions-workspace .t-table--cards td[data-col="strategy"] { max-width: 190px; white-space: normal; }
+  /* The adopted-from-broker warning is an inline span with white-space:nowrap,
+     and an inline element ignores overflow:hidden, so in a table cell it ran
+     straight across the Entry column. Let it wrap inside the cell instead. */
+  .app-shell .positions-workspace .t-table--cards td[data-col="strategy"] .position-tracking-warning { display: block; white-space: normal; overflow-wrap: anywhere; }
   .app-shell .positions-workspace .t-table--cards td[data-col="symbol"] { font-weight: 650 !important; }
   .app-shell .positions-workspace .t-table--cards td[data-col="symbol"] small { display: block; margin-top: 3px; }
   .app-shell .positions-workspace .t-table--cards td[data-col="action"] { padding: 8px !important; border-top: 0 !important; }

@@ -76,3 +76,29 @@ for (const width of [820, 1280, 1971]) {
     expect(o.y + o.height).toBeLessThanOrEqual(844);
   });
 }
+
+test("the adopted-from-broker warning stays inside its Strategy cell on desktop", async ({ page }) => {
+  await stubBackend(page, SIGNED_IN);
+  await page.route("**/api/paper-trade/positions", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ positions: [{
+        id: "trade-fer", symbol: "FER", asset_type: "equity", spread_type: "equity_long",
+        strategy: "adopted_untracked", tracked: true, quantity: -337, avg_cost: 58.57,
+        unrealized_pnl: -221, mfe_pnl: -221, mae_pnl: -221, hold_days: 0, trading_mode: "balanced",
+      }] }),
+    }));
+  await page.setViewportSize({ width: 1971, height: 1100 });
+  await page.goto("/terminal/trade/positions");
+
+  const warning = page.getByText(/Adopted from broker/);
+  await expect(warning, "the adopted row never rendered").toBeVisible();
+  const cell = page.locator('td[data-col="strategy"]').first();
+  const credit = page.locator('td[data-col="credit"]').first();
+  const w = (await warning.boundingBox())!;
+  const s = (await cell.boundingBox())!;
+  const c = (await credit.boundingBox())!;
+  expect(w.x + w.width, "warning spills out of its cell").toBeLessThanOrEqual(s.x + s.width + 1);
+  expect(w.x + w.width, "warning runs into the Entry column").toBeLessThanOrEqual(c.x + 1);
+});
