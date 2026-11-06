@@ -69,9 +69,14 @@ cd ~/Projects/olbostrade
 The script will:
 1. Verify IB Gateway is reachable on port 4002
 2. Kill any stale backend/frontend processes
-3. Start the backend on port 8000
-4. Start the frontend on port 3000
-5. Run a health check and print system status
+3. Trim regenerable caches (`scripts/clean_caches.sh --apply`: Python bytecode and
+   test caches, Vite's cache, `frontend/dist` and test output). It never touches
+   trained models in `backend/ml/model_registry/`, `.env` files, `node_modules` or
+   virtualenvs. Run `scripts/clean_caches.sh` on its own for a dry run that lists
+   what would go. A failure here does not stop startup.
+4. Start the backend on port 8000
+5. Start the frontend on port 3000
+6. Run a health check and print system status
 
 ### Step 3 — Verify
 ```bash

@@ -16,7 +16,7 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 # Read port from .env (default 4002 for IB Gateway paper; use 7497 for TWS paper)
 IBKR_PORT=$(grep -E "^IBKR_PORT=" "$PROJECT/backend/.env" 2>/dev/null | cut -d= -f2 | tr -d ' ')
 IBKR_PORT="${IBKR_PORT:-4002}"
-echo -n "[1/5] IB Gateway / TWS (port $IBKR_PORT)... "
+echo -n "[1/6] IB Gateway / TWS (port $IBKR_PORT)... "
 if python3 -c "import socket; s=socket.socket(); s.settimeout(2); r=s.connect_ex(('127.0.0.1',$IBKR_PORT)); s.close(); exit(r)" 2>/dev/null; then
   echo "✅ CONNECTED"
 else
@@ -28,7 +28,7 @@ else
 fi
 
 # ── 2. Kill any stale processes ───────────────────────────────────────────────
-echo -n "[2/5] Clearing stale processes... "
+echo -n "[2/6] Clearing stale processes... "
 pkill -f "uvicorn app.main" 2>/dev/null || true
 pkill -f "vite" 2>/dev/null || true
 lsof -ti :8000 | xargs kill -9 2>/dev/null || true
@@ -36,8 +36,20 @@ lsof -ti :3000 | xargs kill -9 2>/dev/null || true
 sleep 1
 echo "✅ DONE"
 
-# ── 3. Start backend ──────────────────────────────────────────────────────────
-echo -n "[3/5] Starting backend (port 8000)... "
+# ── 3. Trim regenerable caches ────────────────────────────────────────────────
+# Frees disk (a full disk has stopped the desk before). Runs only after the old
+# processes are stopped, touches an allowlist of caches that regenerate, and never
+# models, .env files or node_modules — see scripts/clean_caches.sh. A failure here
+# must not stop the desk from starting, so it is advisory.
+echo -n "[3/6] Trimming caches... "
+if CLEAN_OUT="$("$PROJECT/scripts/clean_caches.sh" --apply 2>&1)"; then
+  echo "✅ $(echo "$CLEAN_OUT" | tail -1)"
+else
+  echo "⚠️  skipped (startup continues)"
+fi
+
+# ── 4. Start backend ──────────────────────────────────────────────────────────
+echo -n "[4/6] Starting backend (port 8000)... "
 cd "$PROJECT/backend"
 nohup python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8000 \
   > "$LOG_DIR/backend.log" 2>&1 &
@@ -57,16 +69,16 @@ for i in $(seq 1 30); do
   sleep 1
 done
 
-# ── 4. Start frontend ─────────────────────────────────────────────────────────
-echo -n "[4/5] Starting frontend (port 3000)... "
+# ── 5. Start frontend ─────────────────────────────────────────────────────────
+echo -n "[5/6] Starting frontend (port 3000)... "
 cd "$PROJECT/frontend"
 nohup npm run dev > "$LOG_DIR/frontend.log" 2>&1 &
 FRONTEND_PID=$!
 sleep 3
 echo "✅ RUNNING (PID $FRONTEND_PID)"
 
-# ── 5. Health check ───────────────────────────────────────────────────────────
-echo -n "[5/5] System health check... "
+# ── 6. Health check ───────────────────────────────────────────────────────────
+echo -n "[6/6] System health check... "
 # Query backend directly (port 8000) — not the Vite proxy — for reliability
 BROKER=$(curl -s http://localhost:8000/api/market/broker 2>/dev/null)
 SPY=$(curl -s http://localhost:8000/api/market/snapshot/SPY 2>/dev/null)
