@@ -144,6 +144,12 @@ def _signal(ticker="SPY"):
         "expiration": "2030-01-18",
         "option_type": "put",
         "credit": 1.0,
+        # A realistic spread. These signals used to carry the strikes at the top level
+        # only, so `spread` was empty and the gate priced the entry at $0 of risk; a
+        # signal whose risk cannot be determined is now refused before the claim and
+        # ownership stages these tests are about.
+        "spread": {"short_strike": 450.0, "long_strike": 445.0, "expiration": "2030-01-18",
+                   "option_type": "put", "net_credit": 100.0, "max_loss": 400.0},
         # The frequency controller (stage 1c) reads `confidence` and blocks a
         # non-manual entry below the mode's floor — before the ownership stage
         # this file is about.

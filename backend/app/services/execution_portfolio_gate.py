@@ -64,16 +64,55 @@ class PortfolioGateResult:
     proposed_risk_dollars: float = 0.0
 
 
+def _finite_positive(value: Any) -> bool:
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return False
+    return math.isfinite(v) and v > 0
+
+
+def options_max_loss_per_contract(spread: dict[str, Any]) -> Optional[float]:
+    """Per-contract dollar max loss of the spread, or None when it cannot be established.
+
+    Uses `max_loss` when it is a positive number. Otherwise derives it for the
+    two-leg vertical the order path actually builds (one leg sold, one bought):
+    width x 100 minus the net credit, both per contract in dollars. The signal
+    validation accepts `net_credit` without `max_loss`, so refusing those would
+    refuse legitimate manual signals, while treating them as zero risk (what this
+    used to do) is the bug. A derived figure that is not positive means the inputs
+    contradict each other, which is unknown, not zero.
+
+    The derivation is the credit-vertical formula. For a debit spread (negative
+    net_credit) it OVERSTATES the loss (width plus the debit instead of the debit),
+    which errs toward refusing, and the scanner always supplies `max_loss`.
+    """
+    if _finite_positive(spread.get("max_loss")):
+        return float(spread["max_loss"])
+    try:
+        width = abs(float(spread["short_strike"]) - float(spread["long_strike"])) * 100.0
+        credit = float(spread["net_credit"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    if not (math.isfinite(width) and math.isfinite(credit)):
+        return None
+    derived = width - credit
+    return derived if derived > 0 else None
+
+
 def estimate_proposed_risk_dollars(signal: dict[str, Any]) -> float:
     """
     Dollar risk at stake for the proposed order.
     Options: spread.max_loss is per-contract dollars (scanner convention) × qty.
     Equity: |entry−stop|×shares when stop set; else entry×shares (worst-case proxy).
+
+    A missing input still yields 0 here; callers must first ask
+    `proposed_risk_unknown_reason` (the gate does), because 0 passes every check.
     """
     asset = (signal.get("asset_type") or "equity").lower()
     if asset == "options":
         spread = signal.get("spread") or {}
-        max_loss = float(spread.get("max_loss") or 0)
+        max_loss = options_max_loss_per_contract(spread) or 0.0
         qty = int(signal.get("quantity") or 1)
         return max(max_loss, 0.0) * max(qty, 0)
 
@@ -84,6 +123,45 @@ def estimate_proposed_risk_dollars(signal: dict[str, Any]) -> float:
     if stop is not None and entry:
         return abs(entry - float(stop)) * max(shares, 0)
     return abs(entry) * max(shares, 0)
+
+
+def proposed_risk_unknown_reason(signal: dict[str, Any]) -> Optional[str]:
+    """Why the proposed risk cannot be determined, or None when it can.
+
+    `estimate_proposed_risk_dollars` turns every missing input into a zero, and a zero
+    passes every check below it: concentration, sector and heat all add the proposed
+    risk to what is already open, so a trade with unknown risk looked like a trade
+    with none. A missing options `max_loss` and a missing equity entry price both
+    reached the broker that way. An input that is absent, non-numeric, non-finite or
+    not positive is UNKNOWN, and an unknown must block, not read as safe.
+
+    The execution path orders `trade_plan.shares` (defaulting to 1 when absent) and
+    `signal.quantity` (defaulting to 1), so those are not unknowns of their own: a
+    missing quantity is 1 here as it is there. A missing or non-positive `shares`
+    is, because the estimator would otherwise price it at zero while the order
+    path buys one share.
+    """
+    asset = (signal.get("asset_type") or "equity").lower()
+    if asset == "options":
+        spread = signal.get("spread") or {}
+        if options_max_loss_per_contract(spread) is None:
+            return ("options spread has no usable max_loss, and it cannot be derived "
+                    "from the strikes and net_credit")
+        return None
+
+    plan = signal.get("trade_plan") or {}
+    if not _finite_positive(plan.get("entry_price")):
+        return "equity entry price is missing or not a positive number"
+    if not _finite_positive(plan.get("shares")):
+        return "equity share count is missing or not a positive number"
+    stop = plan.get("stop_price")
+    if stop is not None:
+        try:
+            if not math.isfinite(float(stop)):
+                return "equity stop price is not a finite number"
+        except (TypeError, ValueError):
+            return "equity stop price is not a number"
+    return None
 
 
 def evaluate_portfolio_gates(
@@ -104,6 +182,17 @@ def evaluate_portfolio_gates(
         "equity" if (signal.get("asset_type") or "equity") == "equity" else "options"
     )
     qty = int(signal.get("quantity") or (signal.get("trade_plan") or {}).get("shares") or 1)
+    unknown = proposed_risk_unknown_reason(signal)
+    if unknown is not None:
+        # Before any check that adds the proposed risk to the open book: a risk that
+        # cannot be determined must refuse the entry, never count as zero.
+        logger.warning("Portfolio gate refused %s: proposed risk unknown (%s)", ticker or "?", unknown)
+        return PortfolioGateResult(
+            allowed=False,
+            reason=f"Proposed risk could not be determined ({unknown}) — entry refused",
+            flags=["risk_unknown"],
+            proposed_risk_dollars=0.0,
+        )
     risk_dollars = estimate_proposed_risk_dollars(signal)
     sector = sector_for(ticker)
 

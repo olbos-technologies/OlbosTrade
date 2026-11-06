@@ -1,0 +1,6 @@
+## Unreleased — An entry whose risk cannot be determined is refused instead of counted as zero
+
+- The execution portfolio gate priced every missing input as $0 of proposed risk, and its concentration, sector and heat checks all add that figure to the open book, so an unknown looked like a trade with no risk. A missing options `max_loss` or a missing equity entry price passed straight through to the broker.
+- Now an options signal with no usable `max_loss`, or an equity signal with a missing, non-numeric, non-finite or non-positive entry price or share count (or a non-finite stop), is refused before any other check with flag `risk_unknown` and the reason "Proposed risk could not be determined (…) — entry refused". It is reported first, so another limit cannot mask it.
+- Not refused: an options signal with `net_credit` and strikes but no `max_loss`, which the signal validation accepts. Its risk is derived for the two-leg vertical the order path builds (width × 100 − net credit) and now feeds the concentration checks, where it used to count as zero. An equity signal with a known entry and size but no stop keeps its worst-case proxy (entry × shares).
+- Valid signals behave exactly as before. No change to limits, order submission or the kill switch. Backend restart, no migration, no new variables.
