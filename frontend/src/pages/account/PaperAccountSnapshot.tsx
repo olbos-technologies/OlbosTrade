@@ -8,7 +8,7 @@ const card: React.CSSProperties = { padding: 12, border: "1px solid var(--line-d
 const numeric = (v: unknown): v is string => typeof v === "string" && v.trim() !== "" && Number.isFinite(Number(v));
 const optionalNumber = (v: unknown) => v === null || numeric(v);
 
-function valid(value: BrokerPaperSnapshot, id: string): boolean {
+export function validPaperSnapshot(value: BrokerPaperSnapshot, id: string): boolean {
   if (!value || value.connection_id !== id || value.broker !== "alpaca" || value.environment !== "paper"
       || value.execution_enabled !== false || value.positions_reconciled !== false || value.snapshot_atomic !== false
       || typeof value.account_last4 !== "string" || !/^[a-f0-9]{4}$/i.test(value.account_last4)
@@ -67,7 +67,7 @@ export default function PaperAccountSnapshot({connectionId, onClose, onHealth}: 
     try {
       const result = await api.getBrokerPaperSnapshot(connectionId);
       if (generation.current !== request) return;
-      if (!valid(result, connectionId)) throw new Error();
+      if (!validPaperSnapshot(result, connectionId)) throw new Error();
       setData(result); setClock(Date.now()); healthCallback.current(result);
     } catch {
       if (generation.current === request) setError("Account data unavailable. Refresh your connections and retry. Previous values have been cleared.");
