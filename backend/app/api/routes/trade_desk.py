@@ -1300,6 +1300,34 @@ async def get_execution_log(limit: int = 50):
 
 # ── Internal execution helper ──────────────────────────────────────────────────
 
+def _report_unrecorded_entry(*, ticker: str, asset_type: str, stage: str,
+                             claim, order_id=None, error: str | None = None) -> None:
+    """Say loudly that an entry may be live at the broker with no trade row.
+
+    Three cases end here, and until now only one of them said so: the broker
+    call raised after the order may have been accepted (the outer handler
+    recorded a counter and nothing else), the fill was seen but the row could not
+    be written, and the timeout fallback could not write its pending row. In each
+    the claim stays `submitted`/`unknown`, the position is blocked for new entries,
+    and the reconciler later adopts it as `adopted_untracked` — which is how a
+    desk's own entry ends up labelled "Adopted from broker" with no explanation.
+
+    One greppable marker (ENTRY_UNRECORDED), one counter, one event. It changes no
+    order behaviour; it exists so the cause is visible when it happens.
+    """
+    logger.critical(
+        "ENTRY_UNRECORDED %s %s stage=%s order_id=%s claim=%s error=%s — the order may be "
+        "live at the broker with no trade row. New entries on this position stay blocked "
+        "until the claim is released, and the reconciler may adopt it as adopted_untracked. "
+        "Check the broker's orders and positions for %s.",
+        ticker, asset_type, stage, order_id or "-",
+        getattr(claim, "idempotency_key", "-"), (error or "-")[:200], ticker,
+    )
+    observability.incr("execute.unrecorded_entry")
+    observability.event("unrecorded_entry", ticker=ticker, asset_type=asset_type,
+                        stage=stage, order_id=order_id)
+
+
 async def _execute_signal(
     signal: dict,
     approved_by: str = "autopilot",
@@ -1326,6 +1354,9 @@ async def _execute_signal(
     await asyncio.sleep(0)
 
     observability.incr("execute.attempt")
+    # Set once an entry has been submitted and not yet recorded or released; read by
+    # the outer handler so an exception in that window is reported, not swallowed.
+    _unresolved_claim = None
     ticker      = signal.get("ticker", "")
     asset_type  = signal.get("asset_type", "equity")
     executed_at = datetime.now(timezone.utc).isoformat()
@@ -1917,6 +1948,7 @@ async def _execute_signal(
             # claim must not free itself on a timer.
             if not await position_claim.mark_submitted(_claim):
                 return _skipped("claim_lost")
+            _unresolved_claim = _claim
             try:
                 result = await ibkr_coordinator.submit(
                     Priority.P0,
@@ -1973,12 +2005,15 @@ async def _execute_signal(
                         "AND the fallback pending-row write failed — position may be "
                         "untracked. Immediate review required.", ticker,
                     )
+                    _report_unrecorded_entry(ticker=ticker, asset_type="equity",
+                                             stage="timeout_pending_write_failed", claim=_claim)
                 else:
                     # The position is tracked now, so the trade read blocks any
                     # re-entry and the claim has done its job. Leaving it would
                     # over-block: if the reconciler later cancels this pending
                     # row, a fresh entry should be allowed.
                     await position_claim.resolve(_claim)
+                    _unresolved_claim = None
                 observability.incr("execute.timeout")
                 observability.event("timeout", ticker=ticker, asset_type="equity")
                 return {
@@ -2001,6 +2036,7 @@ async def _execute_signal(
                 # Definite outcome: the broker said no. Release the position
                 # so a corrected entry is not blocked for the lease duration.
                 await position_claim.resolve(_claim)
+                _unresolved_claim = None
                 return _blocked(f"order_{result.status}")
 
             # Record as a live position only on a confirmed fill; otherwise record
@@ -2037,6 +2073,9 @@ async def _execute_signal(
                     "position is untracked. Immediate review required.",
                     ticker,
                 )
+                _report_unrecorded_entry(ticker=ticker, asset_type="equity",
+                                         stage="fill_record_failed", claim=_claim,
+                                         order_id=result.order_id)
 
             else:
                 # The position is tracked now, so the trade read blocks any
@@ -2044,6 +2083,7 @@ async def _execute_signal(
                 # over-block: if the reconciler later cancels this pending
                 # row, a fresh entry should be allowed.
                 await position_claim.resolve(_claim)
+                _unresolved_claim = None
             observability.incr("execute.submitted")
             observability.event("submitted", ticker=ticker, asset_type="equity",
                                 order_id=result.order_id)
@@ -2110,6 +2150,7 @@ async def _execute_signal(
             order.client_order_id = _claim.idempotency_key
             if not await position_claim.mark_submitted(_claim):
                 return _skipped("claim_lost")
+            _unresolved_claim = _claim
             try:
                 result = await ibkr_coordinator.submit(
                     Priority.P0, lambda: broker.place_order(order),
@@ -2144,12 +2185,15 @@ async def _execute_signal(
                         "broker AND the fallback pending-row write failed — position "
                         "may be untracked. Immediate review required.", strategy, ticker,
                     )
+                    _report_unrecorded_entry(ticker=ticker, asset_type="options",
+                                             stage="timeout_pending_write_failed", claim=_claim)
                 else:
                     # The position is tracked now, so the trade read blocks any
                     # re-entry and the claim has done its job. Leaving it would
                     # over-block: if the reconciler later cancels this pending
                     # row, a fresh entry should be allowed.
                     await position_claim.resolve(_claim)
+                    _unresolved_claim = None
                 observability.incr("execute.timeout")
                 observability.event("timeout", ticker=ticker, asset_type="options", strategy=strategy)
                 return {
@@ -2173,6 +2217,7 @@ async def _execute_signal(
                                 # Definite outcome: the broker said no. Release the position
                 # so a corrected entry is not blocked for the lease duration.
                 await position_claim.resolve(_claim)
+                _unresolved_claim = None
                 return _blocked(f"order_{result.status}")
 
             # "filled"/"partial" → a real position exists now → open.
@@ -2207,6 +2252,9 @@ async def _execute_signal(
                     "position is untracked. Immediate review required.",
                     strategy, ticker,
                 )
+                _report_unrecorded_entry(ticker=ticker, asset_type="options",
+                                         stage="fill_record_failed", claim=_claim,
+                                         order_id=result.order_id)
 
             else:
                 # The position is tracked now, so the trade read blocks any
@@ -2214,6 +2262,7 @@ async def _execute_signal(
                 # over-block: if the reconciler later cancels this pending
                 # row, a fresh entry should be allowed.
                 await position_claim.resolve(_claim)
+                _unresolved_claim = None
             observability.incr("execute.submitted")
             observability.event("submitted", ticker=ticker, asset_type="options",
                                 strategy=strategy, order_id=result.order_id)
@@ -2240,6 +2289,14 @@ async def _execute_signal(
     except Exception as exc:
         observability.incr("execute.error")
         observability.event("error", ticker=ticker, asset_type=asset_type, error=str(exc))
+        # This handler used to record a counter and nothing else, so an exception
+        # raised after an order was submitted left no line in the log at all.
+        logger.error("Execution error for %s %s: %s: %s", ticker, asset_type,
+                     type(exc).__name__, (str(exc) or "no message")[:200])
+        if _unresolved_claim is not None:
+            _report_unrecorded_entry(ticker=ticker, asset_type=asset_type,
+                                     stage="exception_after_submit", claim=_unresolved_claim,
+                                     error=f"{type(exc).__name__}: {exc}")
         return {
             "signal_id":  signal.get("id"),
             "ticker":     ticker,
