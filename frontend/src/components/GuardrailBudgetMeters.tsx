@@ -1,14 +1,15 @@
 import React from "react";
-import { guardrailCap } from "../utils/guardrailCap";
+import { guardrailCap, guardrailCapPct } from "../utils/guardrailCap";
 
 type Meter = { label: string; val: number; max: number | null; unit: string };
 
 /**
  * The Dashboard's four guardrail budget bars.
  *
- * "Trades Today" takes its cap from the server (`max_trades_per_day`); the
- * other three keep the fixed budgets they always had. When a cap is unknown the
- * bar is omitted and the figure reads "n / —" in amber, so a missing limit is
+ * Every cap comes from the server (`max_*` fields of /api/guardrails/status), so the
+ * bars match the limits actually in force — including ones changed in the environment.
+ * They used to be fixed numbers (2% / 5% / 3) that drifted from the real limits. When a
+ * cap is unknown the bar is omitted and the figure reads "n / —" in amber, so a missing limit is
  * visible as missing rather than shown as a number that looks safe or alarming.
  */
 export default function GuardrailBudgetMeters({
@@ -18,10 +19,10 @@ export default function GuardrailBudgetMeters({
     // daily/weekly_loss_pct are signed P&L ratios (positive on a gain day) —
     // clamp to the negative portion only, so a gain shows 0% of the loss budget
     // used instead of its magnitude.
-    { label: "Daily Loss",    val: Math.max(0, -(guard?.daily_loss_pct  || 0)) * 100, max: 2,  unit: "%" },
-    { label: "Weekly Loss",   val: Math.max(0, -(guard?.weekly_loss_pct || 0)) * 100, max: 5, unit: "%" },
+    { label: "Daily Loss",    val: Math.max(0, -(guard?.daily_loss_pct  || 0)) * 100, max: guardrailCapPct(guard?.max_daily_loss_pct), unit: "%" },
+    { label: "Weekly Loss",   val: Math.max(0, -(guard?.weekly_loss_pct || 0)) * 100, max: guardrailCapPct(guard?.max_weekly_loss_pct), unit: "%" },
     { label: "Trades Today",  val: guard?.trades_today || 0, max: guardrailCap(guard?.max_trades_per_day), unit: "" },
-    { label: "Consecutive losses", val: guard?.consecutive_losses || 0, max: 3, unit: "" },
+    { label: "Consecutive losses", val: guard?.consecutive_losses || 0, max: guardrailCap(guard?.max_consecutive_losses), unit: "" },
   ];
   return (
     <>
@@ -36,7 +37,7 @@ export default function GuardrailBudgetMeters({
                 {hintFor(g.label)}
               </span>
               <span style={{ fontFamily: "var(--mono)", fontSize: 10, color }}>
-                {g.val.toFixed(1)}{g.unit} / {known ? g.max : "—"}{g.unit}
+                {g.val.toFixed(1)}{g.unit} / {known ? `${g.max}${g.unit}` : "—"}
               </span>
             </div>
             {pct !== null && (

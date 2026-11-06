@@ -47,10 +47,31 @@ describe("Dashboard Trades Today meter", () => {
     expect(within(meter("Trades Today")).getByText(/0\.0 \/ —/)).toBeInTheDocument();
   });
 
-  it("leaves the other three meters' budgets as they were", () => {
-    render(<GuardrailBudgetMeters guard={{ daily_loss_pct: -0.01, weekly_loss_pct: 0, consecutive_losses: 1, max_trades_per_day: 30 }} hintFor={hint} />);
-    expect(within(meter("Daily Loss")).getByText(/1\.0% \/ 2%/)).toBeInTheDocument();
-    expect(within(meter("Weekly Loss")).getByText(/0\.0% \/ 5%/)).toBeInTheDocument();
-    expect(within(meter("Consecutive losses")).getByText(/1\.0 \/ 3/)).toBeInTheDocument();
+  it("takes the loss and streak budgets from the server too, so changed limits show", () => {
+    render(<GuardrailBudgetMeters hintFor={hint} guard={{
+      daily_loss_pct: -0.01, weekly_loss_pct: -0.02, consecutive_losses: 1,
+      max_daily_loss_pct: 0.05, max_weekly_loss_pct: 0.10, max_consecutive_losses: 4, max_trades_per_day: 30,
+    }} />);
+    expect(within(meter("Daily Loss")).getByText(/1\.0% \/ 5%/)).toBeInTheDocument();
+    expect(within(meter("Weekly Loss")).getByText(/2\.0% \/ 10%/)).toBeInTheDocument();
+    expect(within(meter("Consecutive losses")).getByText(/1\.0 \/ 4/)).toBeInTheDocument();
+    // 1% of a 5% budget is 20%: green and short
+    const fill = meter("Daily Loss").querySelector(".bar-fill") as HTMLElement;
+    expect(fill.style.width).toBe("20%");
+    expect(fill.style.background).toBe("var(--green)");
   });
+
+  it("reads 0.07 as 7%, not 7.000000000000001%", () => {
+    render(<GuardrailBudgetMeters hintFor={hint} guard={{ daily_loss_pct: 0, max_daily_loss_pct: 0.07 }} />);
+    expect(within(meter("Daily Loss")).getByText(/0\.0% \/ 7%/)).toBeInTheDocument();
+  });
+
+  it.each(["Daily Loss", "Weekly Loss", "Consecutive losses"])(
+    "%s stays unknown (no bar, em dash) when its limit is not reported, never a stale 2 / 5 / 3", (label) => {
+      render(<GuardrailBudgetMeters hintFor={hint} guard={{ daily_loss_pct: -0.01, weekly_loss_pct: -0.01, consecutive_losses: 2 }} />);
+      const m = meter(label);
+      expect(m.querySelector(".bar-fill")).toBeNull();
+      expect(m.textContent).toContain("/ —");
+      expect(m.textContent).not.toContain("—%");     // no unit hanging off a missing limit
+    });
 });
