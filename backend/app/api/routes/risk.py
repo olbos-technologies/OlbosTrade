@@ -158,8 +158,13 @@ async def get_portfolio_state(conn: HTTPConnection):
                 "open_positions":      open_count,
                 "trades_today":        trades_today,
                 "consecutive_losses":  consecutive_losses,
-                "max_daily_loss_pct":  settings.max_daily_loss_pct,
-                "max_weekly_loss_pct": settings.max_weekly_loss_pct,
+                # The limits the guardrail engine ENFORCES, not the plain MAX_* settings:
+                # in paper-visibility mode those are ignored and PAPER_VISIBILITY_*
+                # apply. This route used to report the plain ones, so the header strip
+                # showed a 5% daily limit while the engine (and the Risk page's rules
+                # list, which reads /api/guardrails/status) enforced 2%.
+                "max_daily_loss_pct":  settings.effective_max_daily_loss_pct,
+                "max_weekly_loss_pct": settings.effective_max_weekly_loss_pct,
                 "capital_pct_remaining": round(acct_value / settings.starting_capital, 4),
                 **({"broker_error": broker_error} if broker_error else {}),
             }
