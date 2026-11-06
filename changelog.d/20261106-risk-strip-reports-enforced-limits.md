@@ -1,0 +1,4 @@
+## Unreleased — The header risk strip now shows the loss limit that is actually enforced
+
+- The strip read "DAILY DD 0.0% / 5.0%" while the Risk page's rule list and the guardrail engine enforced 2.0%. `/api/risk/portfolio-state` reported the plain `MAX_*_LOSS_PCT` settings, which paper-visibility mode ignores, while the engine uses the `PAPER_VISIBILITY_*` values. It now reports the same effective daily and weekly limits as the engine (and `/api/guardrails/status`) in both modes, so "RISK BUDGET LEFT" is measured against the real limit.
+- Display only: no limit, guardrail decision, order path or setting changed. Backend restart, no migration, no new variables. If the strip now shows a stricter limit than you intended, change the `PAPER_VISIBILITY_*` settings (the plain ones do nothing while visibility mode is on).
