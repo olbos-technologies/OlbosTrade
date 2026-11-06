@@ -138,6 +138,15 @@ def test_the_reason_helper_says_why():
 from test_unrecorded_entry_marker import _run, _broker, _options_signal  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def _market_open():
+    """Pin the market open: `_execute_signal` blocks with `market_closed` before the portfolio
+    gate, so without this the pipeline tests below pass during the US session and fail after
+    16:00 ET, testing the clock instead of the gate."""
+    with patch("app.utils.market_hours.is_market_open", return_value=True):
+        yield
+
+
 @pytest.mark.asyncio
 async def test_the_pipeline_refuses_an_options_entry_without_risk_and_never_reaches_the_broker(stub_position_claim):
     sig = _options_signal()

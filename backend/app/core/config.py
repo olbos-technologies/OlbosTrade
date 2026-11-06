@@ -81,6 +81,11 @@ class Settings(BaseSettings):
     max_drawdown_pct: float = Field(default=0.15)
     max_concurrent_positions: int = Field(default=5)
     max_trades_per_day: int = Field(default=6)
+    # How long a queued (Copilot) approval stays actionable. Signals carry a scan-time
+    # price and spread, and the desk scans every 15-30 minutes, so an approval older
+    # than a few hours is describing a market that no longer exists. Older pending
+    # approvals are marked "expired" (kept for the audit trail, never executed).
+    approval_ttl_minutes: int = Field(default=180, ge=1)
     max_consecutive_losses: int = Field(default=3)
 
     # ── Regime hysteresis ─────────────────────────────────────────────────

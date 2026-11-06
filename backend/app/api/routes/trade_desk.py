@@ -157,8 +157,92 @@ async def _strategy_health_for(strategy: str):
 # of what autopilot actually did — survives restarts. Mirrors the kill switch's
 # own DB-persistence pattern (GuardrailEvent, kill_switch.py).
 
+async def _expire_stale_approvals() -> int:
+    """Mark pending approvals older than APPROVAL_TTL_MINUTES as `expired`.
+
+    The queue only ever grew. Every scan that qualified a signal while the desk was in
+    Copilot appended a row, nothing retired one, and the Command Center eventually
+    announced 5,480 approvals awaiting review: the same ~60 tickers, re-queued every
+    15-30 minutes for days, each describing a price and spread that no longer
+    existed. Expired rows are kept (they are the audit trail) and are never executed.
+
+    Compared on the DATABASE clock, which is what stamps `created_at`.
+    Returns how many rows were expired.
+    """
+    from app.core.config import settings
+    from app.core.database import AsyncSessionLocal
+    from app.models.execution_event import ExecutionEvent
+    from sqlalchemy import cast, update
+    from sqlalchemy.dialects.postgresql import JSONB
+    from sqlalchemy.sql import func
+
+    decision = {"resolution": "expired",
+                "resolved_at": datetime.now(timezone.utc).isoformat(),
+                "reason": f"older than {settings.approval_ttl_minutes} minutes"}
+    async with AsyncSessionLocal() as session:
+        async with session.begin():
+            result = await session.execute(
+                update(ExecutionEvent)
+                .where(
+                    ExecutionEvent.kind == "pending_approval",
+                    ExecutionEvent.status == "pending",
+                    ExecutionEvent.created_at < func.now() - timedelta(minutes=settings.approval_ttl_minutes),
+                )
+                .values(status="expired",
+                        payload=ExecutionEvent.payload.op("||")(cast({"approval": decision}, JSONB)))
+                .execution_options(synchronize_session=False)
+            )
+    return int(result.rowcount or 0)
+
+
+async def _supersede_pending_approvals(signal: dict) -> int:
+    """Retire older pending approvals for the same decision as `signal`.
+
+    The same decision is the same ticker, asset class, action and strategy. A newer scan
+    of it replaces the older one: the operator is shown the current signal, not a pile
+    of earlier versions of it. Older rows become `superseded` (kept for the audit trail)
+    and name the signal that replaced them. A different action on the same ticker (BUY
+    vs SELL), or a different strategy, is a different decision and is left alone.
+    """
+    from app.core.database import AsyncSessionLocal
+    from app.models.execution_event import ExecutionEvent
+    from sqlalchemy import cast, update
+    from sqlalchemy.dialects.postgresql import JSONB
+    from sqlalchemy.sql import func
+
+    ticker = signal.get("ticker")
+    if not ticker:
+        return 0
+    decision = {"resolution": "superseded",
+                "resolved_at": datetime.now(timezone.utc).isoformat(),
+                "superseded_by": signal.get("id")}
+    async with AsyncSessionLocal() as session:
+        async with session.begin():
+            result = await session.execute(
+                update(ExecutionEvent)
+                .where(
+                    ExecutionEvent.kind == "pending_approval",
+                    ExecutionEvent.status == "pending",
+                    ExecutionEvent.ticker == ticker,
+                    func.coalesce(ExecutionEvent.asset_type, "") == (signal.get("asset_type") or ""),
+                    func.coalesce(ExecutionEvent.payload["action"].astext, "") == (signal.get("action") or ""),
+                    func.coalesce(ExecutionEvent.payload["strategy"].astext, "") == (signal.get("strategy") or ""),
+                    ExecutionEvent.signal_id != signal.get("id"),
+                )
+                .values(status="superseded",
+                        payload=ExecutionEvent.payload.op("||")(cast({"approval": decision}, JSONB)))
+                .execution_options(synchronize_session=False)
+            )
+    return int(result.rowcount or 0)
+
+
 async def _queue_pending_approval(signal: dict) -> None:
-    """Queue a signal for Copilot/manual approval."""
+    """Queue a signal for Copilot/manual approval.
+
+    Tidies first: expired approvals are retired and older pending ones for the same
+    decision are superseded, so the queue holds at most one live approval per decision.
+    Tidying is best-effort and never prevents the signal from being queued.
+    """
     from app.core.database import AsyncSessionLocal
     from app.models.execution_event import ExecutionEvent
 
@@ -166,6 +250,13 @@ async def _queue_pending_approval(signal: dict) -> None:
     signal["id"] = signal_id
     signal["queued_at"] = datetime.now(timezone.utc).isoformat()
     signal["status"] = "pending_approval"
+
+    try:
+        await _expire_stale_approvals()
+        await _supersede_pending_approvals(signal)
+    except Exception as exc:
+        logger.warning("Approval queue tidy failed for %s (queuing anyway): %s",
+                       signal.get("ticker"), exc)
 
     async with AsyncSessionLocal() as session:
         async with session.begin():
@@ -296,14 +387,22 @@ async def _queue_rotation_review(entry: dict) -> str:
 
 
 async def _get_pending_approvals() -> list[dict]:
+    from app.core.config import settings
     from app.core.database import AsyncSessionLocal
     from app.models.execution_event import ExecutionEvent
     from sqlalchemy import select
+    from sqlalchemy.sql import func
 
     async with AsyncSessionLocal() as session:
         rows = (await session.execute(
             select(ExecutionEvent)
-            .where(ExecutionEvent.kind == "pending_approval", ExecutionEvent.status == "pending")
+            .where(
+                ExecutionEvent.kind == "pending_approval",
+                ExecutionEvent.status == "pending",
+                # Even if retiring the expired rows failed, they are never offered: an
+                # approval older than the TTL describes a market that no longer exists.
+                ExecutionEvent.created_at >= func.now() - timedelta(minutes=settings.approval_ttl_minutes),
+            )
             .order_by(ExecutionEvent.created_at.desc())
         )).scalars().all()
     return [r.payload for r in rows]
@@ -545,6 +644,12 @@ async def set_execution_mode(body: SetExecutionModeRequest):
 @router.get("/pending")
 async def get_pending():
     """List signals awaiting user approval in Copilot mode."""
+    try:
+        expired = await _expire_stale_approvals()
+        if expired:
+            logger.info("Expired %d stale pending approval(s)", expired)
+    except Exception as exc:
+        logger.warning("Could not expire stale approvals (they are still hidden): %s", exc)
     items = sorted(await _get_pending_approvals(),
                    key=lambda x: x.get("queued_at", ""), reverse=True)
     return {
