@@ -16,7 +16,7 @@ import { tint } from "../utils/tint";
  *  why this is a literal rather than a var() reference. */
 const AMBER = "#f59e0b";
 
-export default function UserMenu() {
+export default function UserMenu({ opens = "up" }: { opens?: "up" | "down" } = {}) {
   // Optional on purpose: this is chrome inside TerminalLayout, and a missing
   // provider must mean "nothing to show", not a crash that takes the shell
   // down. See useAuthOptional.
@@ -25,7 +25,7 @@ export default function UserMenu() {
   const [busy, setBusy] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
-  const [anchor, setAnchor] = useState<{ bottom: number; right: number } | null>(null);
+  const [anchor, setAnchor] = useState<{ top?: number; bottom?: number; right: number } | null>(null);
 
   /**
    * The menu is portalled to <body> and positioned from the button's rect,
@@ -38,8 +38,12 @@ export default function UserMenu() {
   const place = useCallback(() => {
     const r = wrapRef.current?.getBoundingClientRect();
     if (!r) return;
-    setAnchor({ bottom: window.innerHeight - r.top + 6, right: window.innerWidth - r.right });
-  }, []);
+    // "down" is for the top bar: the menu hangs below the chip. "up" is for the
+    // bottom of the screen, where it opens above the chip.
+    setAnchor(opens === "down"
+      ? { top: r.bottom + 6, right: window.innerWidth - r.right }
+      : { bottom: window.innerHeight - r.top + 6, right: window.innerWidth - r.right });
+  }, [opens]);
 
   useLayoutEffect(() => {
     if (open) place();
@@ -108,7 +112,7 @@ export default function UserMenu() {
           role="menu"
           style={{
             // Fixed, positioned from the button's rect — see place().
-            position: "fixed", bottom: anchor.bottom, right: anchor.right,
+            position: "fixed", top: anchor.top, bottom: anchor.bottom, right: anchor.right,
             minWidth: 220, maxWidth: "min(300px, calc(100vw - 32px))",
             background: "var(--bg-2)", border: "1px solid var(--line-dim)",
             borderRadius: "var(--radius-control)", boxShadow: "var(--raised-bezel)",

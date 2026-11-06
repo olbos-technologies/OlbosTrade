@@ -341,7 +341,9 @@
 .positions-table-scroll { min-width: 0; width: 100%; overflow-x: auto; }
 
 @media(min-width:769px) {
- .app-shell .desktop-terminal-header { grid-template-columns:232px minmax(0,1fr) auto auto; }
+ .app-shell .desktop-terminal-header { grid-template-columns:232px minmax(0,1fr) auto auto auto; }
+ .desktop-account {grid-column:5;grid-row:1;min-height:44px;}
+ .desktop-account:empty {display:none;}
  .desktop-execution-control {grid-column:3;}
  .desktop-market-clock {grid-column:4;}
  .workspace-command-search {grid-column:2;grid-row:1;position:relative;min-width:0;margin:8px 16px;}

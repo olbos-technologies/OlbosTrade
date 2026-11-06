@@ -990,6 +990,16 @@ function TickerStrip({ onToggle, sidebarExpanded, isMobile }: {
           </div>
         </div>
       </div>
+
+      {/* Account + sign out — top right, where an operator looks for it. It
+          renders nothing when auth is off or nobody is signed in, so the
+          divider is only drawn when there is a chip next to it. */}
+      <div className="desktop-account" style={{
+        display: "flex", alignItems: "center", flexShrink: 0,
+        padding: "0 12px", borderLeft: "1px solid var(--line-dim)",
+      }}>
+        <UserMenu opens="down" />
+      </div>
     </div>
     </div>
   );
@@ -1486,21 +1496,8 @@ function StatusBar({ page, isMobile }: { page: string; isMobile: boolean }) {
       <StatusLamp label="Rotation" on={rotationOn} />
       <div style={{ flex: 1 }} />
       <span id="broker-status-bar" className="status-dup">IBKR GATEWAY</span>
-      {/*
-        Sign out lives here, not in the sidebar's Account group.
-
-        UserMenu holds the only sign-out control in the application and used to
-        render inside that group's children, so it existed only while the group
-        did — and was one expand deep into a nav even then, which is why it
-        reads as "there is no logout". A sign-out is not a destination; it
-        should not be reached by navigating.
-
-        The status bar renders once at the shell root and is present on every
-        page in every nav state. UserMenu already assumed this home: it shows
-        the email's local part because "the status bar is tight", and its
-        portal opens upward from the button's rect.
-      */}
-      {!isMobile && <UserMenu />}
+      {/* The account chip and Sign out live in the top bar (see "desktop-account"),
+          not here: the top-right corner is where an operator looks for them. */}
       <span style={{ color: "var(--brand)", fontWeight: 700 }}>
         Olbos{import.meta.env.VITE_GIT_SHA ? ` ${String(import.meta.env.VITE_GIT_SHA).slice(0, 7)}` : " · build unknown"}
       </span>
