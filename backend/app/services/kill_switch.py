@@ -48,6 +48,7 @@ class KillSwitch:
 
     def __init__(self) -> None:
         self._engaged = False
+        self._entry_epoch = 0
         self._engaged_at: Optional[datetime] = None
         self._reason: Optional[str] = None
         # True when engaged only because startup could not read the real state.
@@ -66,6 +67,10 @@ class KillSwitch:
     @property
     def is_engaged(self) -> bool:
         return self._engaged
+
+    @property
+    def entry_epoch(self) -> int:
+        return self._entry_epoch
 
     @property
     def status(self) -> dict:
@@ -112,6 +117,7 @@ class KillSwitch:
                 return recheck
 
             self._engaged = True
+            self._entry_epoch += 1
             self._engaged_at = datetime.now(timezone.utc)
             self._reason = reason
 
@@ -350,7 +356,9 @@ class KillSwitch:
     ) -> None:
         """Attempt to flatten a single options position, logging success/failure."""
         try:
-            result = await self._broker.place_order(order)
+            from app.services.execution_interlock import submission_scope
+            with submission_scope(None):
+                result = await self._broker.place_order(order)
             status = getattr(result, "status", None)
             if status == "rejected":
                 msg = getattr(result, "message", "") or ""
@@ -370,12 +378,14 @@ class KillSwitch:
         """Flatten a single equity/ETF position via a plain market order."""
         symbol = pos.symbol
         try:
-            result = await self._broker.place_equity_order(
-                ticker=symbol,
-                qty=abs(pos.quantity),
-                side=close_action,
-                order_type="market",
-            )
+            from app.services.execution_interlock import submission_scope
+            with submission_scope(None):
+                result = await self._broker.place_equity_order(
+                    ticker=symbol,
+                    qty=abs(pos.quantity),
+                    side=close_action,
+                    order_type="market",
+                )
             status = getattr(result, "status", None)
             if status == "rejected":
                 msg = getattr(result, "message", "") or ""
@@ -477,6 +487,7 @@ class KillSwitch:
             if row is not None and row.event_type == "kill_switch":
                 async with self._lock:
                     self._engaged = True
+                    self._entry_epoch += 1
                     self._engaged_at = row.timestamp
                     self._reason = "restored as engaged after restart"
                 logger.critical(
@@ -503,6 +514,7 @@ class KillSwitch:
             # would otherwise have worked.
             async with self._lock:
                 self._engaged = True
+                self._entry_epoch += 1
                 self._engaged_at = datetime.now(timezone.utc)
                 self._reason = "engaged state could not be read at startup — failing closed"
                 self._rehydrate_unverified = True

@@ -286,6 +286,23 @@ class BrokerInterface(ABC):
         """
         return OrderLookup.UNDETERMINED
 
+    async def confirm_symbol_flat(self, symbol: str) -> Optional[bool]:
+        """Ask the broker, over the network and just now, whether it has
+        NEITHER a position NOR a working order in `symbol`.
+
+        True  — both were read successfully and both are empty. This is the
+                only answer that is evidence of absence.
+        False — the broker shows a position or a working order.
+        None  — it could not be established (a read failed, timed out, or the
+                broker has no way to answer). Never read None as "flat".
+
+        Deliberately NOT abstract, and the default is None: a local position
+        cache is empty both when nothing is held and when nobody has asked yet
+        (right after a reconnect), so a broker must opt in by overriding this
+        with a real round trip. Read-only — it places and cancels nothing.
+        """
+        return None
+
     @abstractmethod
     async def cancel_all_open_orders(self) -> "CancelSweep":
         """Cancel every working order on the account, across all symbols.

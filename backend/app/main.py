@@ -2238,6 +2238,57 @@ async def _poll_fills() -> None:
         )
 
 
+_CLAIM_EVIDENCE_BUDGET_SECONDS = 6.0
+
+
+async def _release_claims_on_broker_evidence(
+    scoped, broker, live_positions, open_trades, pending_trades,
+) -> None:
+    """Let the broker's own state release unresolved position claims.
+
+    Never raises: a failure here must not abort position reconciliation, and
+    the failure mode of doing nothing is the status quo (the claim stays).
+    """
+    try:
+        from app.services import position_claim
+        from app.services.trade_scope import claim_scope
+
+        def _norm(value) -> str:
+            return (value or "").upper()
+
+        held = {
+            _norm(getattr(p, "underlying", None) or getattr(p, "symbol", ""))
+            for p in live_positions
+        }
+        held.discard("")
+        # Hard bound: the fill poll that calls this has a 20 s budget of its
+        # own, and a slow gateway must not be able to spend it here and cancel
+        # the position reconciliation this pass merely sits beside.
+        counts = await asyncio.wait_for(
+            position_claim.reconcile_from_evidence(
+                scope=claim_scope(scoped.organization_id),
+                held=held,
+                tracked_open={_norm(t.underlying) for t in open_trades},
+                tracked_pending={_norm(t.underlying) for t in pending_trades},
+                confirm_flat=broker.confirm_symbol_flat,
+            ),
+            timeout=_CLAIM_EVIDENCE_BUDGET_SECONDS,
+        )
+        released = (
+            counts["released_position_tracked"] + counts["released_broker_flat"]
+        )
+        if released:
+            logger.info("Released %d position claim(s) on broker evidence: %s",
+                        released, counts)
+    except asyncio.TimeoutError:
+        logger.warning(
+            "Claim evidence pass exceeded %.0fs (claims left as they are; "
+            "it resumes next cycle)", _CLAIM_EVIDENCE_BUDGET_SECONDS,
+        )
+    except Exception as exc:  # noqa: BLE001 — see docstring
+        logger.warning("Claim evidence pass failed (claims left as they are): %s", exc)
+
+
 async def _poll_fills_for_scope(scoped) -> None:
     """
     Compare one owner's broker positions against that owner's open DB trades.
@@ -2322,6 +2373,13 @@ async def _poll_fills_for_scope(scoped) -> None:
 
         open_trades    = [t for t in all_trades if t.status == "open"]
         pending_trades = [t for t in all_trades if t.status == "pending"]
+
+        # BEFORE the early return below: the case this exists for is an unknown
+        # claim with no trade row at all, which is exactly when there is
+        # nothing else to reconcile.
+        await _release_claims_on_broker_evidence(
+            scoped, broker, live_positions, open_trades, pending_trades,
+        )
 
         if not open_trades and not pending_trades:
             _close_pending.clear()

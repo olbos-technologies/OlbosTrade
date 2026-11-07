@@ -306,7 +306,7 @@ async def close_equity_trade(
             ticker=ticker, qty=qty, side=close_side,
             order_type=order_type, limit_price=limit_price,
         ),
-        req_type="PLACE_ORDER", symbol=ticker,
+        req_type="PLACE_ORDER", symbol=ticker, increases_risk=False,
     )
     if result.status in ("cancelled", "rejected"):
         raise RuntimeError(f"broker rejected close for {ticker}: {result.status}")
@@ -472,7 +472,7 @@ async def close_options_trade(
     result = await ibkr_coordinator.submit(
         Priority.P0,
         lambda: broker.place_order(order),
-        req_type="PLACE_ORDER", symbol=ticker,
+        req_type="PLACE_ORDER", symbol=ticker, increases_risk=False,
     )
     if result.status in ("cancelled", "rejected"):
         raise RuntimeError(f"broker rejected options close for {ticker}: {result.status}")

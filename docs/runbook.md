@@ -148,6 +148,46 @@ ssh root@46.224.0.213 'cd /opt/olbostrade && git pull --ff-only origin main'
 ssh root@46.224.0.213 'cd /opt/olbostrade && nohup bash deploy/hetzner/update.sh > /tmp/deploy.log 2>&1 &'
 ```
 
+### Entry halt and cancellation outcomes
+
+An engaged kill switch invalidates entry permits already held by requests,
+queued dispatches and IBKR retry loops. Resetting does not revive that work;
+an entry must be evaluated again. Reviewed manual closes and emergency
+flattening remain exempt from the entry halt, and any order submission nobody
+has classified is treated as an entry (it fails closed).
+
+IBKR limit-order replacement requires a confirmed zero-fill cancellation.
+For bracket orders, old children must also be confirmed terminal and unfilled.
+A parent that fills while cancellation is pending keeps its protective
+children. Cancellation confirmation has a shared ten-second bound; if the
+outcome is still unknown, the response is `pending`, not `cancelled`, and the
+entry's position claim is marked `unknown`. `Inactive` alone is not accepted as
+cancellation evidence. A terminal partial fill is never replaced.
+
+**How an `unknown` claim clears.** Not by waiting, and not by a person unless
+nothing else can. Every position-reconciliation cycle (IBKR scope) looks at
+each unresolved claim and releases it only on broker evidence:
+
+* the broker holds the underlying and an `open` trade row records it; or
+* the broker holds nothing, no open or pending trade row exists, the claim is
+  past the 120 s settle window, and a fresh network read of positions and
+  working orders (`confirm_symbol_flat`, not the local cache) shows neither.
+
+Anything else leaves the claim in place: a position with no recording row (the
+adoption case), a pending row, a claim inside the settle window, and any read
+that failed or timed out. Each automatic release writes a `claim_resolved`
+event (`released_by_evidence`) naming the evidence; a manual release still
+writes `claim_override`, so the two are distinguishable. Manual release on
+Brokers → Blocked Entries remains the last resort, after checking IBKR Orders
+and Portfolio for the ticker.
+
+These are process-local interlocks for the current single-worker deployment,
+not a distributed OMS. They do not fix partial-fill ledger accounting (an
+equity partial is still reported as `filled` with the counts in the message and
+recorded at the planned quantity) or organization-to-account routing. No
+migration or new environment variables are required; a backend rebuild/restart
+applies the change.
+
 ### Why the pull is a separate stage
 
 `update.sh` used to run `git pull origin main` as its own first step, which

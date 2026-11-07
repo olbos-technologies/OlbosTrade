@@ -581,6 +581,23 @@ async def test_options_execution_submits_and_records(stub_position_claim):
 
 
 @pytest.mark.asyncio
+async def test_options_unknown_cancel_retains_claim_after_recording(stub_position_claim):
+    broker = MagicMock()
+    broker.get_positions = AsyncMock(return_value=[])  # the portfolio gate reads it
+    broker.place_order = AsyncMock(return_value=MagicMock(order_id="ORD-unknown", status="pending"))
+    with patch("app.api.routes.trade_desk._fetch_portfolio_state", new=AsyncMock(return_value=_clean())), \
+         patch("app.api.routes.trade_desk._is_kill_switch_active", return_value=False), \
+         patch("app.api.routes.trade_desk._strategy_health_for", new=AsyncMock(return_value=None)), \
+         patch("app.broker.broker_factory.get_broker", return_value=broker), \
+         patch("app.core.database.AsyncSessionLocal", return_value=_dup_session(None)), \
+         patch("app.services.trade_recorder.trade_recorder.record_fill", new=AsyncMock(return_value="trade-1")):
+        result = await _execute_signal(_options_signal(), approved_by="autopilot")
+    assert result["order_status"] == "pending"
+    stub_position_claim.mark_unknown.assert_awaited_once()
+    stub_position_claim.resolve.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_options_execution_zero_size_skipped():
     sig = _options_signal()
     sig["quantity"] = 0
