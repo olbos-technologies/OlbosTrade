@@ -41,6 +41,19 @@ from app.services.trade_recorder import trade_recorder
 from conftest import single_operator_work
 
 
+@pytest.fixture(autouse=True)
+def _claim_evidence_pass_is_not_under_test_here():
+    """`_poll_fills_for_scope` also runs the claim-evidence pass, which makes its
+    own database read. These tests script `AsyncSessionLocal` as an ORDERED
+    sequence of results for the trade reads, so an extra read would consume one
+    and shift everything after it. That pass has its own tests
+    (test_claim_evidence_pg.py, test_claim_evidence_hook.py, including one that
+    pins where in this function it runs); here it is stubbed so these tests keep
+    exercising only promotion, cancellation and the orphan sweep."""
+    with patch.object(m, "_release_claims_on_broker_evidence", new=AsyncMock()):
+        yield
+
+
 def _db_session(trades):
     session = AsyncMock()
     session.__aenter__ = AsyncMock(return_value=session)

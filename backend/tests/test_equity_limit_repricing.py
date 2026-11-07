@@ -72,6 +72,60 @@ async def _run(signal, broker):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("reason", ["kill_switch"])
+async def test_entry_halt_keeps_its_reason_and_releases_unsent_claim(stub_position_claim, reason):
+    from app.services.execution_interlock import EntryHalted
+    broker = MagicMock()
+    broker.get_positions = AsyncMock(return_value=[])  # the portfolio gate reads it
+    broker.get_latest_quote = AsyncMock(return_value=_quote(150, 151))
+    broker.get_account_summary = AsyncMock(return_value=MagicMock(net_liquidation=100_000.0))
+    broker.place_equity_order = AsyncMock(side_effect=EntryHalted(reason))
+    result = await _run(_equity_signal(), broker)
+    assert result["result"] == "blocked"
+    assert result["reason"] == reason
+    stub_position_claim.resolve.assert_awaited_once()
+    # Dispatch reserves the claim before calling the adapter; a proven unsent
+    # veto releases that reservation rather than retaining an unknown outcome.
+    stub_position_claim.mark_unknown.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_unconfirmed_cancel_keeps_claim_even_after_pending_row_written(stub_position_claim):
+    broker = MagicMock()
+    broker.get_positions = AsyncMock(return_value=[])  # the portfolio gate reads it
+    broker.get_latest_quote = AsyncMock(return_value=_quote(150, 151))
+    broker.get_account_summary = AsyncMock(return_value=MagicMock(net_liquidation=100_000.0))
+    broker.place_equity_order = AsyncMock(return_value=MagicMock(order_id="o-pending", status="pending"))
+    result = await _run(_equity_signal(), broker)
+    assert result["order_status"] == "pending"
+    stub_position_claim.mark_unknown.assert_awaited_once()
+    stub_position_claim.resolve.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reset_before_return", [False, True])
+async def test_halt_during_quote_blocks_dispatch(stub_position_claim, monkeypatch, reset_before_return):
+    from app.services.kill_switch import KillSwitch
+    switch = KillSwitch()
+    monkeypatch.setattr("app.services.kill_switch.kill_switch_service", switch)
+    broker = MagicMock()
+    broker.get_positions = AsyncMock(return_value=[])  # the portfolio gate reads it
+    broker.get_account_summary = AsyncMock(return_value=MagicMock(net_liquidation=100_000.0))
+    broker.place_equity_order = AsyncMock()
+
+    async def quote_then_halt(*args):
+        switch._entry_epoch += 1
+        switch._engaged = not reset_before_return
+        return _quote(150, 151)
+
+    broker.get_latest_quote = quote_then_halt
+    result = await _run(_equity_signal(), broker)
+    assert result["result"] == "blocked" and result["reason"] == "kill_switch"
+    broker.place_equity_order.assert_not_awaited()
+    stub_position_claim.resolve.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_buy_reprices_to_live_ask_with_marketable_buffer(stub_position_claim):
     """A stale entry_price of $150 with a live ask of $160 must submit near
     $160 (marketable), not the stale $150 that would never fill."""

@@ -30,10 +30,14 @@ from __future__ import annotations
 import asyncio
 import time
 from dataclasses import dataclass
+from contextlib import nullcontext
 from enum import IntEnum
 from typing import Any, Awaitable, Callable, Optional, TypeVar
 
 from app.services.observability import observability
+from app.services.execution_interlock import (
+    EntryPermit, capture_entry_permit, check_entry_permit, submission_scope,
+)
 from app.utils.logger import get_logger
 from app.utils.request_context import request_id_var
 
@@ -78,6 +82,8 @@ class _Job:
     # long-lived worker Task's own context won't see it otherwise, since
     # contextvars only propagate at Task *creation*, not at each queue pull.
     request_id: str = "-"
+    increases_risk: Optional[bool] = None
+    entry_permit: Any = None
 
 
 class IBKRRequestCoordinator:
@@ -166,6 +172,8 @@ class IBKRRequestCoordinator:
         timeout: float = DEFAULT_TIMEOUT_SECONDS,
         req_type: str = "generic",
         symbol: Optional[str] = None,
+        increases_risk: Optional[bool] = None,
+        entry_permit: Optional[EntryPermit] = None,
     ) -> T:
         """Queue fn for execution against the shared IBKR connection.
 
@@ -173,6 +181,12 @@ class IBKRRequestCoordinator:
         same key is already in-flight, this call awaits that same result
         instead of enqueueing a duplicate IBKR round-trip.
         """
+        # Order submissions default to risk-increasing. Only reviewed close
+        # call sites opt out; reads are unaffected by the halt.
+        if increases_risk is None and req_type == "PLACE_ORDER":
+            increases_risk = True
+        permit = (entry_permit or capture_entry_permit()) if increases_risk else None
+        check_entry_permit(permit)
         self.start()
 
         if key is not None:
@@ -202,6 +216,7 @@ class IBKRRequestCoordinator:
         job = _Job(
             priority=priority, fn=fn, future=future, queued_at=time.monotonic(),
             req_type=req_type, symbol=symbol, request_id=request_id_var.get(),
+            increases_risk=increases_risk, entry_permit=permit,
         )
         observability.incr(f"ibkr.request.{priority.name.lower()}.submitted")
         await self._queues[priority].put(job)
@@ -213,6 +228,11 @@ class IBKRRequestCoordinator:
             # bookkeeping in _run_job should still see it through.
             return await asyncio.wait_for(asyncio.shield(future), timeout=timeout)
         except asyncio.TimeoutError:
+            # A shielded queued job can later fail its halt check after this
+            # caller has stopped awaiting. Observe that future's exception so
+            # it does not become an unhandled-future warning; other awaiters
+            # still receive the original result/exception normally.
+            future.add_done_callback(lambda done: None if done.cancelled() else done.exception())
             observability.incr(f"ibkr.request.{priority.name.lower()}.timeout")
             logger.warning(
                 "IBKR REQUEST symbol=%s type=%s priority=%s status=timeout after=%.1fs",
@@ -262,7 +282,9 @@ class IBKRRequestCoordinator:
         token = request_id_var.set(job.request_id)
         status = "success"
         try:
-            result = await job.fn()
+            scope = submission_scope(job.entry_permit) if job.increases_risk is not None else nullcontext()
+            with scope:
+                result = await job.fn()
             if not job.future.done():
                 job.future.set_result(result)
         except Exception as exc:  # noqa: BLE001 — propagated to the caller via the future

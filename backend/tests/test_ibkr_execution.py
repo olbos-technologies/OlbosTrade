@@ -15,6 +15,7 @@ from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+import asyncio
 
 from app.broker.broker_interface import SpreadLeg, SpreadOrder
 from app.broker.ibkr_client import IBKRClient
@@ -50,6 +51,7 @@ class FakeIB:
         self._script = list(status_script)
         self.placed = []      # list of (contract, order)
         self.cancelled = []
+        self.trades = []
         self._conid = 1000
 
     def isConnected(self):
@@ -62,12 +64,20 @@ class FakeIB:
 
     def placeOrder(self, contract, order):
         self.placed.append((contract, order))
-        st = self._script.pop(0) if self._script else _OrderStatus()
+        scripted = self._script.pop(0) if self._script else _OrderStatus()
+        st = _OrderStatus(scripted.status, scripted.filled, scripted.avgFillPrice)
         order.orderId = len(self.placed)
-        return _Trade(order, st)
+        trade = _Trade(order, st)
+        self.trades.append(trade)
+        return trade
 
     def cancelOrder(self, order):
         self.cancelled.append(order)
+        # Default fake acknowledges cancellation. Race tests explicitly
+        # control _await_order when acknowledgement is delayed or missing.
+        for trade in self.trades:
+            if trade.order is order:
+                trade.orderStatus.status = "Cancelled"
 
 
 def _make_client(status_script):
@@ -95,9 +105,156 @@ def _credit_spread(limit=Decimal("1.50"), order_type="LMT", q_short=1, q_long=1)
 
 # Patch out the real 1-2s sleeps so tests run instantly.
 @pytest.fixture(autouse=True)
+def _clean_account_for_order_mechanics():
+    # These tests exercise order construction/fill/halt mechanics. Reconciliation
+    # vetoes are driven separately with the real gate and controlled snapshots.
+    from types import SimpleNamespace
+    with patch("app.services.position_reconciler.PositionReconciler.check",
+               new=AsyncMock(return_value=SimpleNamespace(clean=True))):
+        yield
+
+
+@pytest.fixture(autouse=True)
 def _no_sleep():
     with patch("app.broker.ibkr_client.asyncio.sleep", new_callable=AsyncMock):
         yield
+
+
+@pytest.fixture
+def entry_halt(monkeypatch):
+    from app.services.kill_switch import KillSwitch
+    switch = KillSwitch()
+    monkeypatch.setattr("app.services.kill_switch.kill_switch_service", switch)
+    return switch
+
+
+async def _send_entry(client, asset):
+    if asset == "options":
+        return await client.place_order(_credit_spread(q_short=5, q_long=5))
+    return await client.place_equity_order(
+        "SPY", 5, "BUY", order_type="limit", limit_price=450,
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("asset", ["equity", "options"])
+async def test_halt_during_qualification_prevents_first_send(asset, entry_halt):
+    from app.services.execution_interlock import EntryHalted
+    client = _make_client([])
+    qualify = client.ib.qualifyContractsAsync
+
+    async def qualify_then_halt(contract):
+        result = await qualify(contract)
+        entry_halt._engaged = True
+        return result
+
+    client.ib.qualifyContractsAsync = qualify_then_halt
+    with pytest.raises(EntryHalted):
+        await _send_entry(client, asset)
+    assert not client.ib.placed
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("asset", ["equity", "options"])
+async def test_replacement_waits_for_cancel_ack(asset, entry_halt):
+    client = _make_client([_OrderStatus(), _OrderStatus("Filled", 5, 1.5)])
+    cancelling, acknowledge = asyncio.Event(), asyncio.Event()
+    calls = 0
+
+    async def await_order(trade, qty, timeout):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return "timeout", 0, 0
+        if calls == 2:
+            cancelling.set()
+            await acknowledge.wait()
+            return "cancelled", 0, 0
+        return "filled", 5, 1.5
+
+    client._await_order = await_order
+    task = asyncio.create_task(_send_entry(client, asset))
+    try:
+        await asyncio.wait_for(cancelling.wait(), 1)
+        assert len(client.ib.placed) == 1
+        acknowledge.set()
+        result = await task
+        assert result.status == "filled"
+        assert len(client.ib.placed) == 2
+    finally:
+        acknowledge.set()
+        if not task.done():
+            task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("asset", ["equity", "options"])
+@pytest.mark.parametrize("cancel_result", ["timeout", "filled", "partial"])
+@pytest.mark.parametrize("initial_filled", [0, 2])
+async def test_unknown_or_filled_cancel_never_replaces(asset, cancel_result, initial_filled, entry_halt):
+    client = _make_client([_OrderStatus()])
+    fills = {"timeout": 0, "filled": 5, "partial": 2}
+    client._await_order = AsyncMock(side_effect=[
+        ("timeout", initial_filled, 1.5), (cancel_result, max(initial_filled, fills[cancel_result]), 1.5),
+    ])
+    result = await _send_entry(client, asset)
+    assert len(client.ib.placed) == 1
+    assert len(client.ib.cancelled) == 1
+    if cancel_result == "timeout":
+        assert result.status == "pending"
+    elif asset == "options":
+        assert result.filled_quantity == max(initial_filled, fills[cancel_result])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("asset", ["equity", "options"])
+async def test_halt_after_cancel_ack_prevents_retry(asset, entry_halt):
+    from app.services.execution_interlock import EntryHalted
+    client = _make_client([_OrderStatus()])
+    calls = 0
+
+    async def await_order(*args):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return "timeout", 0, 0
+        entry_halt._engaged = True
+        return "cancelled", 0, 0
+
+    client._await_order = await_order
+    with pytest.raises(EntryHalted):
+        await _send_entry(client, asset)
+    assert len(client.ib.placed) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("asset", ["equity", "options"])
+async def test_inactive_cancel_is_unknown_not_permission_to_retry(asset, entry_halt):
+    client = _make_client([_OrderStatus("Inactive")])
+    client.ib.cancelOrder = lambda order: client.ib.cancelled.append(order)
+    with patch("app.broker.ibkr_client._fill_timeout", return_value=0), \
+         patch("app.broker.ibkr_client.CANCEL_CONFIRM_TIMEOUT_SECONDS", 0):
+        result = await _send_entry(client, asset)
+    assert result.status == "pending"
+    assert len(client.ib.placed) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("asset", ["equity", "options"])
+async def test_real_status_fill_during_cancel_prevents_retry(asset, entry_halt):
+    client = _make_client([_OrderStatus()])
+
+    def cancel_then_fill(order):
+        client.ib.cancelled.append(order)
+        status = client.ib.trades[0].orderStatus
+        status.status, status.filled, status.avgFillPrice = "Filled", 5, 1.5
+
+    client.ib.cancelOrder = cancel_then_fill
+    with patch("app.broker.ibkr_client._fill_timeout", return_value=0):
+        result = await _send_entry(client, asset)
+    assert result.status == "filled"
+    assert len(client.ib.placed) == 1
 
 
 # ── Combo sizing (task 4) ───────────────────────────────────────────────────────
@@ -294,6 +451,76 @@ def _make_equity_client(parent_status: str) -> IBKRClient:
     return c
 
 
+@pytest.mark.asyncio
+async def test_halt_during_bracket_ack_does_not_transmit_children(entry_halt):
+    client = _make_equity_client(parent_status="")
+
+    def cancel(order):
+        client.ib.placed[0].orderStatus.status = "Cancelled"
+
+    async def acknowledge_then_halt(*args):
+        client.ib.placed[0].orderStatus.status = "PreSubmitted"
+        entry_halt._engaged = True
+
+    client.ib.cancelOrder = MagicMock(side_effect=cancel)
+    with patch("app.broker.ibkr_client.asyncio.sleep", side_effect=acknowledge_then_halt):
+        result = await client.place_equity_order(
+            "SPY", 5, "BUY", order_type="market", stop=440, take_profit=460,
+        )
+    assert len(client.ib.placed) == 1
+    client.ib.cancelOrder.assert_called_once()
+    assert result.status == "cancelled"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("child_ack", [False, True])
+async def test_bracket_replacement_requires_child_cancellation(entry_halt, child_ack):
+    client = _make_equity_client(parent_status="PreSubmitted")
+    send = client.ib.placeOrder
+
+    def place(contract, order):
+        if len(client.ib.placed) == 3:
+            assert all(t.orderStatus.status == "Cancelled" for t in client.ib.placed)
+        return send(contract, order)
+
+    def cancel(order):
+        for trade in client.ib.placed:
+            if trade.order is order:
+                trade.orderStatus.status = "Cancelled" if child_ack or not order.parentId else "PendingCancel"
+
+    client.ib.placeOrder = place
+    client.ib.cancelOrder = MagicMock(side_effect=cancel)
+    with patch("app.broker.ibkr_client._fill_timeout", return_value=0), \
+         patch("app.broker.ibkr_client.CANCEL_CONFIRM_TIMEOUT_SECONDS", 0), \
+         patch("app.broker.ibkr_client._max_retries", return_value=1):
+        result = await client.place_equity_order(
+            "SPY", 5, "BUY", order_type="limit", limit_price=450, stop=440, take_profit=460,
+        )
+    assert len(client.ib.placed) == (6 if child_ack else 3)
+    assert result.status == ("cancelled" if child_ack else "pending")
+
+
+@pytest.mark.asyncio
+async def test_late_bracket_fill_keeps_protective_children(entry_halt):
+    client = _make_equity_client(parent_status="PreSubmitted")
+
+    def cancel_then_fill(order):
+        parent = client.ib.placed[0]
+        parent.orderStatus.status = "Filled"
+        parent.orderStatus.filled = 5
+        parent.orderStatus.avgFillPrice = 450
+
+    client.ib.cancelOrder = MagicMock(side_effect=cancel_then_fill)
+    with patch("app.broker.ibkr_client._fill_timeout", return_value=0):
+        result = await client.place_equity_order(
+            "SPY", 5, "BUY", order_type="limit", limit_price=450, stop=440, take_profit=460,
+        )
+    assert result.status == "filled"
+    assert len(client.ib.placed) == 3
+    client.ib.cancelOrder.assert_called_once_with(client.ib.placed[0].order)
+    assert all(child.orderStatus.status == "Submitted" for child in client.ib.placed[1:])
+
+
 class TestEquityBracketAck:
     @pytest.mark.asyncio
     async def test_children_wait_for_parent_ack_before_sending(self):
@@ -414,3 +641,145 @@ class TestEquityLimitRetry:
         )
         assert result.status == "filled"
         assert result.fill_price == Decimal("268.5")
+
+
+# ── Terminal partial fill, and the broker's own flat-check ──────────────────────
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("asset", ["equity", "options"])
+async def test_cancel_after_partial_fill_never_replaces_the_filled_portion(asset, entry_halt):
+    """The order fills 2 of 5, then the cancel is acknowledged. The filled
+    portion exists at the broker, so no replacement may be sent: it would
+    double it. How the result is REPORTED differs by path and is pinned here
+    so a change is deliberate:
+
+      * options: status "partial" with the real filled/remaining counts;
+      * equity: EquityOrderResult has no partial status or quantity field, so
+        it is reported "filled" with the real counts only in the message. That
+        is a known accounting gap (the trade row is written at the planned
+        quantity), not something this change fixes.
+    """
+    client = _make_client([_OrderStatus()])
+
+    def partial_then_cancelled(order):
+        client.ib.cancelled.append(order)
+        status = client.ib.trades[0].orderStatus
+        status.status, status.filled, status.avgFillPrice = "Cancelled", 2, 1.5
+
+    client.ib.cancelOrder = partial_then_cancelled
+    with patch("app.broker.ibkr_client._fill_timeout", return_value=0):
+        result = await _send_entry(client, asset)
+
+    assert len(client.ib.placed) == 1, "a replacement would double the filled portion"
+    if asset == "options":
+        assert result.status == "partial"
+        assert result.filled_quantity == 2 and result.remaining_quantity == 3
+    else:
+        assert result.status == "filled"
+        assert "2/5" in (result.message or "")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("asset", ["equity", "options"])
+async def test_replacement_is_sent_only_after_a_zero_fill_cancel_acknowledgement(asset, entry_halt):
+    """The positive control for the rule above: with an acknowledged, zero-fill
+    cancel the limit IS replaced (at a better price). Without this, the
+    'never replaces' tests could pass because nothing ever replaces."""
+    client = _make_client([_OrderStatus(), _OrderStatus("Filled", 5, 1.4)])
+    with patch("app.broker.ibkr_client._fill_timeout", return_value=0), \
+         patch("app.broker.ibkr_client._max_retries", return_value=1):
+        result = await _send_entry(client, asset)
+    assert len(client.ib.placed) == 2
+    assert result.status == "filled"
+    assert len(client.ib.cancelled) >= 1
+
+
+class _FakeContract:
+    def __init__(self, symbol):
+        self.symbol = symbol
+
+
+class _FakePosition:
+    def __init__(self, symbol, position):
+        self.contract = _FakeContract(symbol)
+        self.position = position
+
+
+class _FlatIB:
+    """Just enough of ib_insync.IB for confirm_symbol_flat."""
+    def __init__(self, positions=(), open_symbols=(), fail=None):
+        self._positions = list(positions)
+        self._open = [MagicMock(contract=_FakeContract(s)) for s in open_symbols]
+        self._fail = fail
+        self.positions_requested = 0
+        self.open_orders_requested = 0
+
+    def isConnected(self):
+        return True
+
+    async def reqPositionsAsync(self):
+        self.positions_requested += 1
+        if self._fail == "positions":
+            raise asyncio.TimeoutError()
+        return self._positions
+
+    async def reqAllOpenOrdersAsync(self):
+        self.open_orders_requested += 1
+        if self._fail == "orders":
+            raise ConnectionError("gateway dropped")
+
+    def openTrades(self):
+        return self._open
+
+
+def _flat_client(**kw):
+    c = IBKRClient()
+    c._connected = True
+    c.ib = _FlatIB(**kw)
+    return c
+
+
+@pytest.mark.asyncio
+async def test_flat_only_when_both_network_reads_succeed_and_are_empty():
+    c = _flat_client()
+    assert await c.confirm_symbol_flat("AAPL") is True
+    # It asked the broker; it did not trust a local cache.
+    assert c.ib.positions_requested == 1 and c.ib.open_orders_requested == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kwargs", [
+    dict(positions=[_FakePosition("AAPL", 10)]),
+    dict(positions=[_FakePosition("AAPL", -3)]),   # short is exposure too
+    dict(open_symbols=["AAPL"]),                   # resting order, no position
+], ids=["long", "short", "working-order"])
+async def test_exposure_or_a_working_order_is_not_flat(kwargs):
+    assert await _flat_client(**kwargs).confirm_symbol_flat("aapl") is False
+
+
+@pytest.mark.asyncio
+async def test_other_symbols_and_zero_rows_do_not_count_as_exposure():
+    c = _flat_client(positions=[_FakePosition("AAPL", 0), _FakePosition("MSFT", 50)],
+                     open_symbols=["MSFT"])
+    assert await c.confirm_symbol_flat("AAPL") is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fail", ["positions", "orders"])
+async def test_a_failed_or_timed_out_read_is_not_flat(fail):
+    """An empty answer from a read that failed is the dangerous one."""
+    assert await _flat_client(fail=fail).confirm_symbol_flat("AAPL") is None
+
+
+@pytest.mark.asyncio
+async def test_not_connected_or_no_symbol_is_not_flat():
+    c = _flat_client()
+    c._connected = False
+    assert await c.confirm_symbol_flat("AAPL") is None
+    assert await _flat_client().confirm_symbol_flat("") is None
+
+
+@pytest.mark.asyncio
+async def test_a_broker_that_cannot_answer_says_none_by_default():
+    from app.broker.broker_interface import BrokerInterface
+    assert await BrokerInterface.confirm_symbol_flat(object(), "AAPL") is None

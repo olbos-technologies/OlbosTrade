@@ -399,6 +399,197 @@ async def reconcile_unresolved(
     return counts
 
 
+#: Why a claim was released by evidence rather than by an operator. Recorded on
+#: the audit event so the two kinds of release can always be told apart.
+EVIDENCE_POSITION_TRACKED = "position_at_broker_and_tracked"
+EVIDENCE_BROKER_FLAT = "broker_flat_confirmed"
+
+#: Asks the broker, over the network and now, whether it has neither a position
+#: nor a working order in a symbol. True is the only answer that is evidence of
+#: absence; False is exposure; None is "could not establish". See
+#: BrokerInterface.confirm_symbol_flat.
+FlatCheck = Callable[[str], Awaitable[Optional[bool]]]
+
+#: Network flat-checks allowed per reconciliation call. Each is two round trips
+#: to the gateway inside a time-budgeted poll cycle; the rest wait a cycle.
+DEFAULT_MAX_FLAT_CHECKS = 3
+
+
+async def _release_with_evidence(claim: PositionClaim, evidence: str, detail: str) -> bool:
+    """Delete one unresolved claim and record why, in ONE transaction.
+
+    Keyed on the token AND on an unresolved state, so it can never delete a
+    `pending` claim (which is still inside its submit lease and owned by a
+    live caller) or a claim somebody else re-took after this one was read. The
+    audit row is written only if the delete removed something.
+    """
+    from app.core.database import AsyncSessionLocal
+    from app.models.execution_event import ExecutionEvent
+
+    async with AsyncSessionLocal() as session:
+        async with session.begin():
+            result = await session.execute(
+                delete(PositionClaim).where(
+                    PositionClaim.claim_token == claim.claim_token,
+                    PositionClaim.state.in_(UNRESOLVED_STATES),
+                )
+            )
+            if result.rowcount != 1:
+                return False
+            session.add(ExecutionEvent(
+                kind="claim_resolved",
+                ticker=claim.underlying,
+                asset_type=claim.asset_class,
+                status="released_by_evidence",
+                payload={
+                    "claim_token": str(claim.claim_token),
+                    "scope": claim.scope,
+                    "underlying": claim.underlying,
+                    "asset_class": claim.asset_class,
+                    "state": claim.state,
+                    "idempotency_key": claim.idempotency_key,
+                    "unresolved_reason": claim.unresolved_reason,
+                    "evidence": evidence,
+                    "detail": detail,
+                },
+            ))
+    logger.info(
+        "Claim %s (%s %s, state=%s) released by evidence %s: %s",
+        claim.claim_token, claim.underlying, claim.asset_class, claim.state,
+        evidence, detail,
+    )
+    return True
+
+
+async def reconcile_from_evidence(
+    *,
+    scope: str,
+    held: set[str],
+    tracked_open: set[str],
+    tracked_pending: set[str],
+    confirm_flat: FlatCheck,
+    limit: int = 50,
+    settle_seconds: int = DEFAULT_SETTLE_SECONDS,
+    max_flat_checks: int = DEFAULT_MAX_FLAT_CHECKS,
+) -> dict:
+    """Release unresolved claims whose outcome the broker's own state settles.
+
+    This is what stops an `unknown` claim from needing a person. IBKR cannot be
+    asked about a client order id, so `reconcile_unresolved` can never resolve
+    an IBKR claim; what IBKR CAN be asked is what it holds and what is working.
+    Two answers settle a claim, and nothing else does — in particular not the
+    passage of time, and not a trade row being cancelled by a timer:
+
+    * POSITION TRACKED — the broker holds the underlying AND an `open` trade
+      row records it. The duplicate guard now reads that row, so the claim has
+      done its job. (A `pending` row does not count: it is still unresolved.)
+    * BROKER FLAT — no position in the broker's cache, no open or pending trade
+      row, the claim is past the settle window, AND `confirm_flat` — a fresh
+      network read of positions and working orders, not the local cache —
+      returns True. Nothing is held or resting, so a new entry cannot duplicate
+      anything.
+
+    Everything else leaves the claim exactly as it is: exposure with no tracked
+    row (that is the reconciler's adoption to resolve), a pending row, a claim
+    inside the settle window, a failed or timed-out read, and `None`.
+
+    The inputs are snapshots from the caller's cycle. They can only lag in the
+    safe direction: a row promoted or cancelled this cycle still shows as
+    pending, so the claim waits one cycle rather than going early.
+
+    Level-triggered on purpose: it looks at every unresolved claim every call,
+    so a restart between a timeout and its resolution loses nothing.
+
+    Each `confirm_flat` is a pair of network round trips, and this runs inside a
+    poll cycle with a hard time budget. At most `max_flat_checks` are made per
+    call; the rest are counted as `deferred`, stay exactly as they are, and are
+    picked up on the next cycle (oldest first, so none starves).
+    """
+    from app.core.database import AsyncSessionLocal
+
+    counts = {
+        "released_position_tracked": 0,
+        "released_broker_flat": 0,
+        "still_unresolved": 0,
+        "too_fresh": 0,
+        "indeterminate": 0,
+        "unreachable": 0,
+        "deferred": 0,
+    }
+    flat_checks = 0
+
+    async with AsyncSessionLocal() as session:
+        rows = (await session.execute(
+            select(
+                PositionClaim,
+                (
+                    func.extract(
+                        "epoch",
+                        func.now() - func.coalesce(
+                            PositionClaim.submitted_at, PositionClaim.claimed_at
+                        ),
+                    ) >= settle_seconds
+                ).label("settled"),
+            )
+            .where(
+                PositionClaim.state.in_(UNRESOLVED_STATES),
+                PositionClaim.scope == scope,
+            )
+            .order_by(PositionClaim.claimed_at)
+            .limit(limit)
+        )).all()
+
+    for claim, settled in rows:
+        sym = (claim.underlying or "").upper()
+
+        if sym in held and sym in tracked_open:
+            if await _release_with_evidence(
+                claim, EVIDENCE_POSITION_TRACKED,
+                "broker holds the position and an open trade row records it",
+            ):
+                counts["released_position_tracked"] += 1
+            continue
+
+        if sym in held or sym in tracked_open or sym in tracked_pending:
+            # Exposure with no tracked row, a row waiting on its own
+            # resolution, or a row whose position has not shown yet.
+            counts["still_unresolved"] += 1
+            continue
+
+        if not settled:
+            counts["too_fresh"] += 1
+            continue
+
+        if flat_checks >= max_flat_checks:
+            counts["deferred"] += 1
+            continue
+        flat_checks += 1
+
+        try:
+            flat = await confirm_flat(sym)
+        except Exception as exc:
+            counts["unreachable"] += 1
+            logger.error(
+                "Could not ask the broker whether %s is flat for claim %s: %s",
+                sym, claim.claim_token, exc,
+            )
+            continue
+
+        if flat is True:
+            if await _release_with_evidence(
+                claim, EVIDENCE_BROKER_FLAT,
+                "broker confirmed no position and no working order, and no "
+                "open or pending trade row exists",
+            ):
+                counts["released_broker_flat"] += 1
+        elif flat is False:
+            counts["still_unresolved"] += 1
+        else:
+            counts["indeterminate"] += 1
+
+    return counts
+
+
 async def force_release(
     claim_token: uuid.UUID, *, operator: str, reason: str
 ) -> bool:

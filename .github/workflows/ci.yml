@@ -139,10 +139,13 @@ jobs:
           tests/test_income_screener.py tests/test_flow_recommender.py
           tests/test_options_decision_engine.py
           tests/test_kill_switch.py tests/test_kill_switch_engage.py
+          tests/test_execution_interlock.py tests/test_ibkr_execution.py
+          tests/test_equity_limit_repricing.py
           tests/test_guardrails.py tests/test_risk_manager.py
           tests/test_position_reconciler.py
           --cov=app.services.options_decision_engine
           --cov=app.services.kill_switch
+          --cov=app.services.execution_interlock
           --cov=app.services.guardrails
           --cov=app.services.risk_manager
           --cov=app.services.position_reconciler
@@ -222,6 +225,7 @@ jobs:
             tests/test_position_claim_pg.py \
             tests/test_trade_desk_claim_route.py \
             tests/test_claim_reconciliation_pg.py \
+            tests/test_claim_evidence_pg.py \
             tests/test_admin_claims_routes.py \
             tests/test_update_script_deploys_in_order.py \
             tests/test_approval_concurrency_pg.py \

@@ -23,6 +23,7 @@ from app.api.tier_deps import require_broker_access
 from app.api.rate_limit import rate_limit
 from app.broker.ibkr_coordinator import Priority, ibkr_coordinator
 from app.services.execution_mode import ExecutionMode, execution_mode_manager
+from app.services.execution_interlock import EntryHalted, capture_entry_permit
 from app.services.guardrails import GuardrailEngine, PortfolioState
 from app.services.kill_switch import kill_switch_service
 from app.services.observability import observability
@@ -1361,7 +1362,7 @@ async def close_untracked_position(req: CloseUntrackedPositionRequest, conn: HTT
             ticker=ticker, qty=qty, side=close_side,
             order_type=req.order_type, limit_price=req.limit_price,
         ),
-        req_type="PLACE_ORDER", symbol=ticker,
+        req_type="PLACE_ORDER", symbol=ticker, increases_risk=False,
     )
 
     if result.status in ("cancelled", "rejected"):
@@ -1494,6 +1495,10 @@ async def _execute_signal(
     if _is_kill_switch_active():
         logger.warning("Order blocked for %s — kill switch is engaged", ticker)
         return _blocked("kill_switch")
+    try:
+        entry_permit = capture_entry_permit()
+    except EntryHalted as exc:
+        return _blocked(str(exc))
 
     # ── Stage 1a: EmotionGuard (consecutive-loss pause / tilt) ─────────────────
     # Fail-open: an import error or DB error must never halt trading here.
@@ -2067,6 +2072,7 @@ async def _execute_signal(
                         take_profit=trade_plan.get("target_price"),
                     ),
                     req_type="PLACE_ORDER", symbol=ticker, timeout=150.0,
+                    increases_risk=True, entry_permit=entry_permit,
                 )
             except asyncio.TimeoutError:
                 # The outcome is genuinely unknown, so the claim stays and
@@ -2113,11 +2119,14 @@ async def _execute_signal(
                     _report_unrecorded_entry(ticker=ticker, asset_type="equity",
                                              stage="timeout_pending_write_failed", claim=_claim)
                 else:
-                    # The position is tracked now, so the trade read blocks any
-                    # re-entry and the claim has done its job. Leaving it would
-                    # over-block: if the reconciler later cancels this pending
-                    # row, a fresh entry should be allowed.
-                    await position_claim.resolve(_claim)
+                    # The pending row is the record, so this is not an
+                    # unrecorded entry. The claim is deliberately KEPT as
+                    # `unknown`: the row being written says nothing about
+                    # whether the order is live, and the reconciler's later
+                    # cancellation of a stale row is time-based, not broker
+                    # proof. The pending-trade reconciliation releases the
+                    # claim itself once the broker shows the position or shows
+                    # neither a position nor a working order.
                     _unresolved_claim = None
                 observability.incr("execute.timeout")
                 observability.event("timeout", ticker=ticker, asset_type="equity")
@@ -2147,6 +2156,8 @@ async def _execute_signal(
             # Record as a live position only on a confirmed fill; otherwise record
             # as pending so the fill reconciler promotes/cancels it later.
             entry_status = "open" if result.status == "filled" else "pending"
+            if result.status == "pending":
+                await position_claim.mark_unknown(_claim, "broker cancellation unconfirmed")
 
             # Encode direction so exit P&L is computed with the right sign.
             # SELL = short (profit when price falls), default BUY = long.
@@ -2187,7 +2198,10 @@ async def _execute_signal(
                 # re-entry and the claim has done its job. Leaving it would
                 # over-block: if the reconciler later cancels this pending
                 # row, a fresh entry should be allowed.
-                await position_claim.resolve(_claim)
+                if result.status != "pending":
+                    await position_claim.resolve(_claim)
+                # status == "pending": cancellation was not confirmed, the claim
+                # was marked unknown above and stays until broker evidence.
                 _unresolved_claim = None
             observability.incr("execute.submitted")
             observability.event("submitted", ticker=ticker, asset_type="equity",
@@ -2260,6 +2274,7 @@ async def _execute_signal(
                 result = await ibkr_coordinator.submit(
                     Priority.P0, lambda: broker.place_order(order),
                     req_type="PLACE_ORDER", symbol=ticker, timeout=150.0,
+                    increases_risk=True, entry_permit=entry_permit,
                 )
             except asyncio.TimeoutError:
                 await position_claim.mark_unknown(_claim, "submit timed out")
@@ -2293,11 +2308,8 @@ async def _execute_signal(
                     _report_unrecorded_entry(ticker=ticker, asset_type="options",
                                              stage="timeout_pending_write_failed", claim=_claim)
                 else:
-                    # The position is tracked now, so the trade read blocks any
-                    # re-entry and the claim has done its job. Leaving it would
-                    # over-block: if the reconciler later cancels this pending
-                    # row, a fresh entry should be allowed.
-                    await position_claim.resolve(_claim)
+                    # Same reasoning as the equity path above: keep the unknown
+                    # claim; the reconciler releases it on broker evidence.
                     _unresolved_claim = None
                 observability.incr("execute.timeout")
                 observability.event("timeout", ticker=ticker, asset_type="options", strategy=strategy)
@@ -2328,6 +2340,8 @@ async def _execute_signal(
             # "filled"/"partial" → a real position exists now → open.
             # "submitted"/"pending" → still working → pending (reconciler resolves).
             entry_status = "open" if result.status in ("filled", "partial") else "pending"
+            if result.status == "pending":
+                await position_claim.mark_unknown(_claim, "broker cancellation unconfirmed")
 
             # Stage 5: fill recording — CRITICAL on failure
             from app.services.trade_recorder import trade_recorder
@@ -2366,7 +2380,8 @@ async def _execute_signal(
                 # re-entry and the claim has done its job. Leaving it would
                 # over-block: if the reconciler later cancels this pending
                 # row, a fresh entry should be allowed.
-                await position_claim.resolve(_claim)
+                if result.status != "pending":
+                    await position_claim.resolve(_claim)
                 _unresolved_claim = None
             observability.incr("execute.submitted")
             observability.event("submitted", ticker=ticker, asset_type="options",
@@ -2391,6 +2406,11 @@ async def _execute_signal(
         else:
             return _blocked(f"unknown asset_type: {asset_type}")
 
+    except EntryHalted as exc:
+        # Raised only before the first send, or after a confirmed zero-fill
+        # cancellation. Ambiguous broker outcomes return pending instead.
+        await position_claim.resolve(_claim)
+        return _blocked(str(exc))
     except Exception as exc:
         observability.incr("execute.error")
         observability.event("error", ticker=ticker, asset_type=asset_type, error=str(exc))
