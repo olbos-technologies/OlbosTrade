@@ -304,3 +304,188 @@ def test_full_coverage_reads_without_caveats(monkeypatch, capsys):
     assert "commission recorded on : 40 of 40 trades" in out
     assert "only the" not in out.split("7 COST DRAG")[1].split("8 SCORE")[0]
     assert "have no commission recorded" not in out
+
+
+# ---------- sections 9-12: payoff, confidence buckets, style, asset class ----------
+
+def _t(day=0, pnl=10.0, score=0.7, strategy="equity", spread_type="equity_long",
+       style="aggressive", regime="normal_mean_revert"):
+    t = _trade(day_offset=day, pnl=pnl, strategy=strategy, regime=regime, score=score)
+    t.spread_type = spread_type
+    t.trading_mode_at_entry = style
+    return t
+
+
+@pytest.mark.parametrize("score, expected", [
+    (0.0001, "< 0.50"), (0.4999, "< 0.50"),
+    (0.50, "0.50 - 0.59"), (0.5999, "0.50 - 0.59"),
+    (0.60, "0.60 - 0.69"), (0.6999, "0.60 - 0.69"),
+    (0.70, ">= 0.70"), (0.99, ">= 0.70"), (1.0, ">= 0.70"),
+])
+def test_confidence_bucket_boundaries_belong_to_the_higher_bucket(score, expected):
+    """0.70 is the Aggressive routing bar: a trade AT the bar must read as meeting it."""
+    assert mod.confidence_bucket(score) == expected
+    assert mod.confidence_bucket(Decimal(str(score))) == expected
+
+
+@pytest.mark.parametrize("score", [None, 0, 0.0, Decimal("0"), -0.2, 1.5])
+def test_a_missing_zero_or_impossible_score_is_unscored_not_low(score):
+    """A stored 0 is the old 'no score supplied' fallback; it is not a 0%-confidence
+    trade, and filing it under '< 0.50' would make the lowest bucket look worse."""
+    assert mod.confidence_bucket(score) == mod.UNSCORED
+
+
+def test_payoff_matches_a_hand_worked_example():
+    s = mod.payoff_summary([30.0, 30.0, -10.0, -10.0, -10.0])
+    assert (s["n_wins"], s["n_losses"]) == (2, 3)
+    assert s["avg_win"] == 30.0 and s["avg_loss"] == -10.0
+    assert s["payoff_ratio"] == pytest.approx(3.0)
+    assert s["win_rate"] == pytest.approx(0.40)
+    assert s["breakeven_win_rate"] == pytest.approx(0.25)     # 1 / (1 + 3)
+
+
+def test_a_high_win_rate_can_still_be_below_break_even():
+    """The reason the number is printed: 90% winners at 1 against one -20 loser."""
+    s = mod.payoff_summary([1.0] * 9 + [-20.0])
+    assert s["win_rate"] == pytest.approx(0.90)
+    assert s["breakeven_win_rate"] == pytest.approx(1 / (1 + 1 / 20))   # 95.2%
+    assert s["win_rate"] < s["breakeven_win_rate"]
+
+
+def test_payoff_needs_both_sides_and_does_not_invent_a_ratio():
+    for pnls in ([5.0, 7.0], [-5.0, -7.0], []):
+        s = mod.payoff_summary(pnls)
+        assert s["payoff_ratio"] != s["payoff_ratio"]            # NaN
+        assert s["breakeven_win_rate"] != s["breakeven_win_rate"]
+
+
+def test_a_flat_trade_is_neither_a_win_nor_a_loss():
+    s = mod.payoff_summary([10.0, 0.0, -10.0])
+    assert (s["n_wins"], s["n_losses"], s["n_flat"]) == (1, 1, 1)
+    assert s["win_rate"] == pytest.approx(1 / 3)
+
+
+def test_the_payoff_section_prints_the_arithmetic_and_the_gap(monkeypatch, capsys):
+    trades = [_t(day=i, pnl=p) for i, p in enumerate([30, 30, -10, -10, -10])]
+    _run(monkeypatch, trades)
+    out = capsys.readouterr().out
+    assert "9 PAYOFF" in out
+    assert "avg win=   +30.00 (n=2)" in out and "avg loss=   -10.00 (n=3)" in out
+    assert "payoff=3.00:1" in out
+    assert "win rate  40.0% vs  25.0% needed to break even" in out and "+15.0 pts" in out
+
+
+def test_an_all_winning_book_does_not_get_a_payoff_ratio(monkeypatch, capsys):
+    _run(monkeypatch, [_t(day=i, pnl=10) for i in range(5)])
+    out = capsys.readouterr().out
+    assert "only winners recorded -- no payoff ratio exists" in out
+
+
+def test_the_confidence_table_files_each_trade_in_the_right_bucket(monkeypatch, capsys):
+    trades = (
+        [_t(day=i, score=0.45) for i in range(3)]
+        + [_t(day=10 + i, score=0.55) for i in range(4)]
+        + [_t(day=20 + i, score=0.65) for i in range(5)]
+        + [_t(day=30 + i, score=0.75) for i in range(6)]
+        + [_t(day=40, score=None), _t(day=41, score=0)]
+    )
+    _run(monkeypatch, trades)
+    out = capsys.readouterr().out
+    section = out.split("10 BY CONFIDENCE BUCKET")[1].split("11 BY TRADING STYLE")[0]
+    for label, n in (("< 0.50", 3), ("0.50 - 0.59", 4), ("0.60 - 0.69", 5), (">= 0.70", 6),
+                     ("(unscored)", 2)):
+        line = next(l for l in section.splitlines() if l.strip().startswith(label))
+        assert f"n={n}" in line, line
+    assert "scored desk trades: 18 of 20" in section
+
+
+def test_buckets_without_enough_trades_are_never_compared(monkeypatch, capsys):
+    """The honest state of a young journal: say the buckets cannot be compared, and
+    never read that as 'a lower bar is safe' or 'unsafe'."""
+    trades = [_t(day=i, score=0.45, pnl=-5) for i in range(5)] + \
+             [_t(day=10 + i, score=0.75, pnl=20) for i in range(5)]
+    _run(monkeypatch, trades)
+    section = capsys.readouterr().out.split("10 BY CONFIDENCE BUCKET")[1].split("11 BY")[0]
+    assert "NOT INTERPRETABLE" in section
+    assert "Fewer than two buckets reach n>=30" in section
+    assert "SEPARATED" not in section
+    assert "NOT say a lower routing bar is safe or unsafe" in section
+
+
+def test_overlapping_buckets_are_refused_a_ranking(monkeypatch, capsys):
+    pattern = [20.0, -20.0]
+    low = [_t(day=i, score=0.45, pnl=pattern[i % 2]) for i in range(40)]
+    high = [_t(day=100 + i, score=0.75, pnl=pattern[i % 2]) for i in range(40)]
+    _run(monkeypatch, low + high)
+    section = capsys.readouterr().out.split("10 BY CONFIDENCE BUCKET")[1].split("11 BY")[0]
+    assert "No two buckets are separated" in section
+    assert "SEPARATED" not in section
+
+
+def test_a_genuinely_separated_bucket_pair_is_reported_and_still_needs_a_forward_test(
+    monkeypatch, capsys,
+):
+    low = [_t(day=i, score=0.45, pnl=-20.0 - (i % 3)) for i in range(40)]
+    high = [_t(day=100 + i, score=0.75, pnl=20.0 + (i % 3)) for i in range(40)]
+    _run(monkeypatch, low + high)
+    section = capsys.readouterr().out.split("10 BY CONFIDENCE BUCKET")[1].split("11 BY")[0]
+    assert "SEPARATED: bucket >= 0.70 beats < 0.50" in section
+    assert "Forward-test any threshold change on paper" in section
+
+
+def test_inherited_positions_are_not_scored_buckets(monkeypatch, capsys):
+    """An adopted position was chosen by no score; counting it would dilute a bucket."""
+    adopted = _t(day=0, pnl=-50, score=0.80, strategy="adopted_untracked")
+    desk = [_t(day=1 + i, score=0.75, pnl=10) for i in range(3)]
+    _run(monkeypatch, desk + [adopted])
+    section = capsys.readouterr().out.split("10 BY CONFIDENCE BUCKET")[1].split("11 BY")[0]
+    line = next(l for l in section.splitlines() if l.strip().startswith(">= 0.70"))
+    assert "n=3" in line
+    assert "scored desk trades: 3 of 3" in section
+
+
+def test_the_payoff_section_splits_desk_from_inherited_when_both_exist(monkeypatch, capsys):
+    adopted = _t(day=0, pnl=-50, strategy="adopted_untracked")
+    desk = [_t(day=1, pnl=10), _t(day=2, pnl=-5)]
+    _run(monkeypatch, desk + [adopted])
+    section = capsys.readouterr().out.split("9 PAYOFF")[1].split("10 BY")[0]
+    assert "all closed trades" in section and "desk-originated only" in section
+
+
+def test_styles_and_asset_classes_are_each_tabulated(monkeypatch, capsys):
+    trades = (
+        [_t(day=i, style="aggressive") for i in range(4)]
+        + [_t(day=10 + i, style="balanced") for i in range(2)]
+        + [_t(day=20, style=None)]
+        + [_t(day=30 + i, strategy="bull_put_spread", spread_type="put") for i in range(3)]
+    )
+    _run(monkeypatch, trades)
+    out = capsys.readouterr().out
+    style = out.split("11 BY TRADING STYLE")[1].split("12 BY ASSET CLASS")[0]
+    assert "aggressive" in style and "balanced" in style and "(unrecorded)" in style
+    klass = out.split("12 BY ASSET CLASS")[1]
+    equity = next(l for l in klass.splitlines() if l.strip().startswith("equity"))
+    options = next(l for l in klass.splitlines() if l.strip().startswith("options"))
+    assert "n=7" in equity            # 4 + 2 + 1 equity rows
+    assert "n=3" in options
+
+
+def test_the_new_sections_survive_the_shapes_that_break_report_code(monkeypatch, capsys):
+    """No scores, no styles, no spread_type attribute at all, a single trade."""
+    bare = SimpleNamespace(
+        entry_date=datetime(2026, 8, 3, tzinfo=timezone.utc), exit_date=None,
+        pnl=Decimal("1"), strategy=None, exit_reason=None, regime=None,
+        underlying="X", trading_mode_at_entry=None, signal_score=None,
+        commission_paid=None, pnl_capture_pct=None, mfe_pnl=None, mae_pnl=None,
+    )
+    _run(monkeypatch, [bare])
+    out = capsys.readouterr().out
+    for heading in ("9 PAYOFF", "10 BY CONFIDENCE BUCKET", "11 BY TRADING STYLE",
+                    "12 BY ASSET CLASS"):
+        assert heading in out
+
+
+def test_the_new_sections_keep_the_multiplicity_warning_last(monkeypatch, capsys):
+    _run(monkeypatch, [_t(day=i) for i in range(5)])
+    out = capsys.readouterr().out
+    assert out.index("12 BY ASSET CLASS") < out.index("Multiplicity: several cells")
