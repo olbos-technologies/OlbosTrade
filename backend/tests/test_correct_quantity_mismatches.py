@@ -185,6 +185,7 @@ async def test_reconcile_positions_calls_correct_when_mismatch_and_flag_on():
         clean=False, untracked_at_broker=[], phantom_in_db=[],
         warnings=["QUANTITY MISMATCH MRVL: broker=599 db=86"],
         quantity_mismatch_tickers=["MRVL"],
+        direction_mismatch_tickers=[],
     ))
 
     with patch("app.services.worker_scope.scopes_with_open_trades",
@@ -210,6 +211,7 @@ async def test_reconcile_positions_skips_correct_when_flag_off():
         clean=False, untracked_at_broker=[], phantom_in_db=[],
         warnings=["QUANTITY MISMATCH MRVL: broker=599 db=86"],
         quantity_mismatch_tickers=["MRVL"],
+        direction_mismatch_tickers=[],
     ))
 
     with patch("app.services.worker_scope.scopes_with_open_trades",

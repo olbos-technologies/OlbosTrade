@@ -2866,6 +2866,26 @@ async def _reconcile_positions() -> None:
             phantom_in_db=result.phantom_in_db,
             warnings=result.warnings,
         )
+        if result.direction_mismatch_tickers:
+            # A position the broker holds on the OPPOSITE side of what the
+            # database records. Deliberately reported and nothing else: it is
+            # not in quantity_mismatch_tickers (so the auto-correct below can
+            # never resize it to the broker's number and make a flipped
+            # position look settled) and not in untracked_at_broker (so it is
+            # not adopted). Someone has to look at the broker and decide.
+            logger.critical(
+                "DIRECTION_MISMATCH [scope=%s] %s — the broker holds the opposite "
+                "side of what the database records. Not auto-corrected. Check the "
+                "broker's positions and orders for these tickers.",
+                scoped.organization_id or "single-operator",
+                result.direction_mismatch_tickers,
+            )
+            observability.incr("reconciliation.direction_mismatch")
+            observability.event(
+                "reconciliation_direction_mismatch",
+                organization_id=str(scoped.organization_id) if scoped.organization_id else None,
+                tickers=result.direction_mismatch_tickers,
+            )
         if result.untracked_at_broker:
             from app.core.config import settings
             if getattr(settings, "reconciliation_auto_adopt_untracked", True):

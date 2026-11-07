@@ -291,6 +291,7 @@ async def run_reconciliation(conn: HTTPConnection):
                 "untracked_at_broker": result.untracked_at_broker,
                 "phantom_in_db": result.phantom_in_db,
                 "quantity_mismatches": result.quantity_mismatches,
+                "direction_mismatch_tickers": result.direction_mismatch_tickers,
                 "warnings": result.warnings,
                 "checked_at": result.checked_at.isoformat(),
             },
@@ -306,6 +307,9 @@ async def run_reconciliation(conn: HTTPConnection):
                 "untracked_at_broker": exc.result.untracked_at_broker if exc.result else [],
                 "phantom_in_db": exc.result.phantom_in_db if exc.result else [],
                 "quantity_mismatches": exc.result.quantity_mismatches if exc.result else [],
+                "direction_mismatch_tickers": (
+                    exc.result.direction_mismatch_tickers if exc.result else []
+                ),
                 "warnings": exc.result.warnings if exc.result else [],
                 "checked_at": exc.result.checked_at.isoformat() if exc.result else None,
             },
@@ -634,6 +638,7 @@ async def get_reconciliation(conn: HTTPConnection):
         "db_open_trade_count":   res.db_open_trade_count,
         "untracked_at_broker":   res.untracked_at_broker,
         "phantom_in_db":         res.phantom_in_db,
+        "direction_mismatch_tickers": res.direction_mismatch_tickers,
         "warnings":              res.warnings,
         "checked_at":            res.checked_at.isoformat(),
     }

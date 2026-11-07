@@ -43,8 +43,131 @@ class ReconciliationResult:
     # strings instead) — main.py's auto-correct step needs plain tickers,
     # not prose, to look the position back up.
     quantity_mismatch_tickers: list[str] = field(default_factory=list)
+    # Equity positions the broker holds in the OPPOSITE direction to what the
+    # database records (broker short, row long, or the reverse). Kept apart
+    # from the quantity lists on purpose: quantity_mismatch_tickers feeds an
+    # auto-correct that rewrites a row's size to the broker's, and a flipped
+    # position must never be "fixed" by being resized. Report, never repair.
+    direction_mismatch_tickers: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     checked_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+@dataclass(frozen=True)
+class SignedFinding:
+    """One disagreement found by the signed equity comparison."""
+    symbol: str
+    kind: str          # "direction" | "quantity" | "unverified"
+    broker_signed: int
+    db_signed: int
+
+    def describe(self) -> str:
+        if self.kind == "direction":
+            return (
+                f"DIRECTION MISMATCH {self.symbol}: broker={_side(self.broker_signed)} "
+                f"{abs(self.broker_signed)}, db={_side(self.db_signed)} {abs(self.db_signed)}"
+            )
+        if self.kind == "quantity":
+            return (
+                f"QUANTITY MISMATCH {self.symbol}: broker={abs(self.broker_signed)} "
+                f"db={abs(self.db_signed)}"
+            )
+        return (
+            f"DIRECTION UNVERIFIED {self.symbol}: the open trade row has no "
+            f"recognised long/short direction, so only its size was compared"
+        )
+
+
+def _side(signed: int) -> str:
+    return "long" if signed > 0 else "short" if signed < 0 else "flat"
+
+
+def _text(value) -> str:
+    """A trade attribute as lower-case text, or "" if it is anything else.
+
+    Deliberately strict: a missing column, None or a test double must read as
+    "unknown", never as a truthy something that happens to answer .lower().
+    """
+    return value.strip().lower() if isinstance(value, str) else ""
+
+
+def _trade_is_equity(trade) -> bool:
+    return _text(getattr(trade, "spread_type", None)).startswith("equity") \
+        or _text(getattr(trade, "strategy", None)) == "equity"
+
+
+def _trade_direction(trade) -> int:
+    """+1 long, -1 short, 0 when the row does not say."""
+    spread = _text(getattr(trade, "spread_type", None))
+    return 1 if spread == "equity_long" else -1 if spread == "equity_short" else 0
+
+
+def signed_equity_findings(
+    broker_positions, db_open_trades,
+) -> tuple[list[SignedFinding], set[str]]:
+    """Compare equity holdings WITH direction, underlying by underlying.
+
+    The legacy comparison summed abs(quantity) on both sides, so long 10 and
+    short 10 looked identical. That hides exactly the failures worth catching:
+    an exit that fires on top of a manual close and flips the position, a
+    stop that triggers after the position was already flat, an entry sent in
+    the wrong direction. The position is then the same SIZE and the opposite
+    SIDE, and every check that compared sizes called it clean.
+
+    Scope is deliberately narrow. It covers an underlying only when it is
+    equity on BOTH sides and has no option exposure on either: an option
+    spread is several legs whose signs cancel or add by structure, and no
+    verified leg ledger exists for legacy rows, so a signed comparison there
+    would be invented evidence. Those underlyings stay on the legacy size
+    check. Returns (findings, handled): `handled` is the set of underlyings
+    this function fully compared, which the caller must not compare again.
+
+    A row whose direction is not recognised cannot be compared by sign. It is
+    reported as "unverified" and left to the legacy size check; it is never
+    guessed to be long.
+    """
+    broker_equity: dict[str, int] = {}
+    broker_option: set[str] = set()
+    for p in broker_positions:
+        qty = int(getattr(p, "quantity", 0) or 0)
+        if not qty:
+            continue
+        sym = str(p.underlying).upper()
+        if getattr(p, "asset_type", "option") == "equity":
+            broker_equity[sym] = broker_equity.get(sym, 0) + qty
+        else:
+            broker_option.add(sym)
+
+    db_equity: dict[str, int] = {}
+    db_unknown: set[str] = set()
+    db_option: set[str] = set()
+    for t in db_open_trades:
+        sym = str(t.underlying).upper()
+        if not _trade_is_equity(t):
+            db_option.add(sym)
+            continue
+        direction = _trade_direction(t)
+        if direction == 0:
+            db_unknown.add(sym)
+        db_equity[sym] = db_equity.get(sym, 0) + direction * int(t.quantity or 1)
+
+    findings: list[SignedFinding] = []
+    handled: set[str] = set()
+    for sym in sorted(set(broker_equity) & set(db_equity)):
+        if sym in broker_option or sym in db_option:
+            continue                       # mixed exposure: legacy size check
+        b, d = broker_equity[sym], db_equity[sym]
+        if sym in db_unknown:
+            findings.append(SignedFinding(sym, "unverified", b, d))
+            continue                       # not handled: legacy size check runs
+        handled.add(sym)
+        if b == d:
+            continue
+        if b * d < 0:
+            findings.append(SignedFinding(sym, "direction", b, d))
+        else:
+            findings.append(SignedFinding(sym, "quantity", b, d))
+    return findings, handled
 
 
 class PositionReconciler:
@@ -140,12 +263,22 @@ class PositionReconciler:
 
         warnings = []
         mismatch_tickers = []
+        direction_tickers = []
+        signed, handled = signed_equity_findings(broker_positions, db_open_trades)
         for sym in sorted(set(broker_qty) & set(db_qty)):
+            if sym in handled:
+                continue            # compared with direction below
             if broker_qty[sym] != db_qty[sym]:
                 warnings.append(
                     f"QUANTITY MISMATCH {sym}: broker={broker_qty[sym]} db={db_qty[sym]}"
                 )
                 mismatch_tickers.append(sym)
+        for finding in signed:
+            warnings.append(finding.describe())
+            if finding.kind == "quantity":
+                mismatch_tickers.append(finding.symbol)
+            elif finding.kind == "direction":
+                direction_tickers.append(finding.symbol)
 
         return ReconciliationResult(
             clean=not untracked and not phantom and not warnings,
@@ -154,6 +287,7 @@ class PositionReconciler:
             untracked_at_broker=untracked,
             phantom_in_db=phantom,
             quantity_mismatch_tickers=mismatch_tickers,
+            direction_mismatch_tickers=direction_tickers,
             warnings=warnings,
         )
 
@@ -245,8 +379,13 @@ class PositionReconciler:
         quantity_mismatches: list[str] = []
 
         # Quantity mismatches on known underlyings (e.g. doubled position)
+        signed, handled = signed_equity_findings(broker_positions, db_open_trades)
+        direction_mismatches: list[str] = []
+        direction_tickers: list[str] = []
         common = broker_underlyings & db_underlyings
-        for sym in common:
+        for sym in sorted(common):
+            if sym in handled:
+                continue            # compared with direction below
             if broker_qty[sym] != db_qty[sym]:
                 warn = (
                     f"QUANTITY MISMATCH for {sym}: broker={broker_qty[sym]} "
@@ -255,15 +394,31 @@ class PositionReconciler:
                 logger.critical(warn)
                 warnings.append(warn)
                 quantity_mismatches.append(warn)
+        for finding in signed:
+            text = finding.describe()
+            if finding.kind == "direction":
+                text += (
+                    ". The position is the opposite SIDE of what is recorded "
+                    "(a flipped or wrong-way position); it is not auto-corrected."
+                )
+                direction_mismatches.append(text)
+                direction_tickers.append(finding.symbol)
+            elif finding.kind == "quantity":
+                text += ". Possible double-fill or partial close."
+                quantity_mismatches.append(text)
+            logger.critical(text)
+            warnings.append(text)
 
         result = ReconciliationResult(
             # DB-only trades are drift too; warning-only does not mean clean.
-            clean=not untracked and not phantom and not quantity_mismatches,
+            clean=(not untracked and not phantom and not quantity_mismatches
+                   and not direction_mismatches),
             broker_position_count=len(broker_positions),
             db_open_trade_count=len(db_open_trades),
             untracked_at_broker=list(untracked),
             phantom_in_db=list(phantom),
             quantity_mismatches=quantity_mismatches,
+            direction_mismatch_tickers=direction_tickers,
             warnings=warnings,
         )
 
@@ -277,6 +432,13 @@ class PositionReconciler:
             )
             logger.critical(msg)
             raise ReconciliationError(msg, result=result)
+
+        # A position on the wrong side is the more serious of the two
+        if direction_mismatches:
+            raise ReconciliationError(
+                f"Position direction mismatch detected — trading halted: {direction_mismatches}",
+                result=result,
+            )
 
         # Quantity mismatches are also a hard halt
         if quantity_mismatches:
