@@ -188,6 +188,69 @@ recorded at the planned quantity) or organization-to-account routing. No
 migration or new environment variables are required; a backend rebuild/restart
 applies the change.
 
+### Reconciliation entry gate: off, observe, enforce
+
+Before an IBKR **entry** order is sent, the gate asks whether the desk's picture
+of the account (single-operator rows against IBKR's positions) agrees with the
+broker's. `RECONCILIATION_ENTRY_GATE_MODE` in `backend/.env.prod` (case
+insensitive; changing it needs a backend restart; anything other than the three
+values fails startup instead of silently meaning off):
+
+| Mode | Behaviour |
+|---|---|
+| `off` | never evaluated |
+| `observe` (default) | evaluated before each entry send; what would have been vetoed, and every check that could not be made, is **recorded**; nothing is blocked. Bounded to 3 s and can never raise into the entry. |
+| `enforce` | the entry is vetoed (`reconciliation_unresolved`) when the book disagrees, or (`reconciliation_unavailable`) when it cannot be checked: broker unreadable, database unreadable, timeout, error. "Could not check" is never "clean". |
+
+**Closes and emergency flattening are never evaluated in any mode.** A veto
+releases the entry's unsent claim and returns a blocked entry.
+
+A position that has just filled but whose row is still `pending` (up to a fill
+poll, about 30 s) is *explained*, not counted, for untracked and size findings.
+A pending row never explains a flipped position or a phantom row.
+
+**Reading what observe collected** (a clean check writes nothing):
+
+```bash
+# in the app, signed in: GET /api/admin/entry-gate/records?days=7
+docker logs olbostrade-backend 2>&1 | grep ENTRY_GATE | tail -20      # lost on redeploy; the API/DB is durable
+```
+
+Each record carries its scope (`single-operator`), the ticker and asset type of
+the entry, the mode, categorised `reasons` (`untracked_at_broker:SYM`,
+`phantom_in_db:SYM`, `quantity_mismatch:SYM`, `direction_mismatch:SYM`,
+`direction_unverified:SYM`, `unclassified`), what was `explained`, and for
+unreadable checks the `unavailable_cause` (`broker_unavailable`,
+`db_unavailable`, `timeout`, `error:<Type>`).
+
+**Drill it without trading.** `GET /api/admin/entry-gate` (signed in, read-only,
+sends and records nothing) runs the same evaluation now and says what an entry
+would meet in each mode. Run it clean, then with a real problem or a lost
+broker connection, then after recovery.
+
+**Do not enable `enforce` until all of these are true** (a quiet day on its own
+is not evidence):
+
+1. Observe has run through several full sessions, including an open and a close.
+2. Every `would_veto` has been read and its cause understood; none is a false
+   positive that enforcing would turn into a blocked legitimate entry.
+3. Every `unavailable` has a known cause, and the count is low enough that
+   "could not check" blocking entries is acceptable.
+4. The policy question is decided with data: enforce vetoes on a finding
+   **anywhere** in the book, not only on the entry's own ticker. The records show
+   how often a would-veto concerned a different ticker than the entry.
+5. The drill has been run through a known mismatch, a disconnect (outside market
+   hours) and the recovery, and the answer returned to clean each time.
+
+To enforce: set `RECONCILIATION_ENTRY_GATE_MODE=enforce`, restart the backend
+outside 09:30-16:00 ET. To roll back: set `observe` (or `off`) and restart.
+
+Known limits: IBKR positions come from a local cache (`ib.portfolio()`) that can
+be empty without raising right after a reconnect, which can read as clean when
+nothing is tracked in the database either; and an entry whose order has been
+sent but whose row is not yet written looks untracked for that instant. Observe
+shows how often either matters.
+
 ### Why the pull is a separate stage
 
 `update.sh` used to run `git pull origin main` as its own first step, which

@@ -783,3 +783,174 @@ async def test_not_connected_or_no_symbol_is_not_flat():
 async def test_a_broker_that_cannot_answer_says_none_by_default():
     from app.broker.broker_interface import BrokerInterface
     assert await BrokerInterface.confirm_symbol_flat(object(), "AAPL") is None
+
+
+# ── The reconciliation gate at the real send sites ──────────────────────────────
+#
+# These drive the actual adapter with a fake IB and a stubbed verdict, so what is
+# asserted is whether an ORDER REACHES THE BROKER, which is the only thing the
+# gate exists to decide.
+
+from app.services.reconciliation_entry_gate import GateAssessment, ReconciliationBlocked
+
+_CLEAN = GateAssessment(available=True)
+_UNRESOLVED = GateAssessment(available=True, findings=(("direction_mismatch", "SPY"),))
+_UNAVAILABLE = GateAssessment(available=False, unavailable_cause="broker_unavailable")
+
+
+@pytest.fixture
+def gate_verdicts(monkeypatch):
+    """Set the gate's mode and the verdict(s) its evaluation returns, in order
+    (the last repeats). Returns the list of evaluations made and the record spy."""
+    from app.core.config import settings
+    from app.services import reconciliation_entry_gate as gate
+
+    def configure(mode, *verdicts):
+        sequence = list(verdicts)
+        evaluations: list = []
+
+        async def evaluate(broker):
+            evaluations.append(broker)
+            return sequence.pop(0) if len(sequence) > 1 else sequence[0]
+
+        record = AsyncMock()
+        monkeypatch.setattr(settings, "reconciliation_entry_gate_mode", mode)
+        monkeypatch.setattr(gate, "evaluate_entry_reconciliation", evaluate)
+        monkeypatch.setattr(gate, "_record", record)
+        return evaluations, record
+
+    return configure
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("asset", ["equity", "options"])
+@pytest.mark.parametrize("verdict, reason", [
+    (_UNRESOLVED, "reconciliation_unresolved"),
+    (_UNAVAILABLE, "reconciliation_unavailable"),
+])
+async def test_enforce_sends_nothing_when_reconciliation_is_not_clean(
+    asset, verdict, reason, gate_verdicts, entry_halt,
+):
+    gate_verdicts("enforce", verdict)
+    client = _make_client([_OrderStatus("Filled", 5, 1.5)])
+    with pytest.raises(ReconciliationBlocked) as exc:
+        await _send_entry(client, asset)
+    assert str(exc.value) == reason
+    assert client.ib.placed == [], "an order reached the broker past a veto"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("asset", ["equity", "options"])
+@pytest.mark.parametrize("verdict", [_UNRESOLVED, _UNAVAILABLE], ids=["unresolved", "unavailable"])
+async def test_observe_sends_the_order_anyway_and_records_what_it_would_have_done(
+    asset, verdict, gate_verdicts, entry_halt,
+):
+    evaluations, record = gate_verdicts("observe", verdict)
+    client = _make_client([_OrderStatus("Filled", 5, 1.5)])
+    result = await _send_entry(client, asset)
+    assert result.status == "filled"
+    assert len(client.ib.placed) == 1, "observe changed what the entry does"
+    assert len(evaluations) == 1
+    status = record.await_args.args[1]
+    assert status == ("would_veto" if verdict is _UNRESOLVED else "unavailable")
+    assert record.await_args.args[3] == "SPY"                 # the ticker is recorded
+    assert record.await_args.args[4] == asset
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("asset", ["equity", "options"])
+@pytest.mark.parametrize("mode_name", ["observe", "enforce"])
+async def test_a_clean_book_sends_in_every_mode(asset, mode_name, gate_verdicts, entry_halt):
+    evaluations, record = gate_verdicts(mode_name, _CLEAN)
+    client = _make_client([_OrderStatus("Filled", 5, 1.5)])
+    assert (await _send_entry(client, asset)).status == "filled"
+    assert len(client.ib.placed) == 1 and len(evaluations) == 1
+    record.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("asset", ["equity", "options"])
+async def test_off_neither_evaluates_nor_blocks(asset, gate_verdicts, entry_halt):
+    evaluations, _ = gate_verdicts("off", _UNRESOLVED)
+    client = _make_client([_OrderStatus("Filled", 5, 1.5)])
+    assert (await _send_entry(client, asset)).status == "filled"
+    assert evaluations == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("asset", ["equity", "options"])
+async def test_a_replacement_attempt_is_gated_again_before_it_is_sent(
+    asset, gate_verdicts, entry_halt,
+):
+    """First send is clean and times out; the cancel is acknowledged with no
+    fill; the replacement is a NEW entry on a book that may have changed, so it
+    is evaluated again and, here, vetoed."""
+    evaluations, _ = gate_verdicts("enforce", _CLEAN, _UNRESOLVED)
+    client = _make_client([_OrderStatus(), _OrderStatus("Filled", 5, 1.4)])
+    with patch("app.broker.ibkr_client._fill_timeout", return_value=0), \
+         patch("app.broker.ibkr_client._max_retries", return_value=1):
+        with pytest.raises(ReconciliationBlocked):
+            await _send_entry(client, asset)
+    assert len(evaluations) == 2
+    assert len(client.ib.placed) == 1, "the vetoed replacement was still sent"
+    assert len(client.ib.cancelled) >= 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("asset", ["equity", "options"])
+async def test_a_clean_replacement_is_sent_after_a_second_evaluation(
+    asset, gate_verdicts, entry_halt,
+):
+    """The positive control for the test above."""
+    evaluations, _ = gate_verdicts("enforce", _CLEAN)
+    client = _make_client([_OrderStatus(), _OrderStatus("Filled", 5, 1.4)])
+    with patch("app.broker.ibkr_client._fill_timeout", return_value=0), \
+         patch("app.broker.ibkr_client._max_retries", return_value=1):
+        result = await _send_entry(client, asset)
+    assert result.status == "filled" and len(client.ib.placed) == 2
+    assert len(evaluations) == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("asset", ["equity", "options"])
+async def test_an_exit_is_never_evaluated_or_blocked_even_when_enforcing_a_bad_book(
+    asset, gate_verdicts, entry_halt,
+):
+    """A close under submission_scope(None) is how the reviewed exit paths and
+    emergency flattening call the adapter."""
+    from app.services.execution_interlock import submission_scope
+    evaluations, record = gate_verdicts("enforce", _UNRESOLVED)
+    client = _make_client([_OrderStatus("Filled", 5, 1.5)])
+    with submission_scope(None):
+        if asset == "options":
+            result = await client.place_order(_credit_spread(q_short=5, q_long=5))
+        else:
+            result = await client.place_equity_order("SPY", 5, "SELL", order_type="market")
+    assert result.status == "filled" and len(client.ib.placed) == 1
+    assert evaluations == []
+    record.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_bracket_is_evaluated_once_for_the_parent_not_again_for_its_children(
+    gate_verdicts, entry_halt,
+):
+    evaluations, _ = gate_verdicts("enforce", _CLEAN)
+    client = _make_equity_client(parent_status="PreSubmitted")
+    with patch("app.broker.ibkr_client._fill_timeout", return_value=0):
+        await client.place_equity_order(
+            "NVDA", 10, "BUY", order_type="market", stop=190.0, take_profit=210.0,
+        )
+    assert len(client.ib.placed) == 3          # parent + take-profit + stop-loss
+    assert len(evaluations) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_vetoed_bracket_sends_neither_parent_nor_children(gate_verdicts, entry_halt):
+    gate_verdicts("enforce", _UNRESOLVED)
+    client = _make_equity_client(parent_status="PreSubmitted")
+    with pytest.raises(ReconciliationBlocked):
+        await client.place_equity_order(
+            "NVDA", 10, "BUY", order_type="market", stop=190.0, take_profit=210.0,
+        )
+    assert client.ib.placed == []

@@ -36,6 +36,7 @@ from app.core.config import settings
 from app.services.execution_interlock import (
     EntryHalted, check_entry_permit, current_entry_permit,
 )
+from app.services.reconciliation_entry_gate import require_reconciled_entry
 
 logger = logging.getLogger(__name__)
 
@@ -619,6 +620,9 @@ class IBKRClient(BrokerInterface):
                 "" if is_market else f" net_limit={limit_price:.2f}",
             )
 
+            await require_reconciled_entry(
+                self, permit, ticker=spread.underlying, asset_type="options",
+            )
             check_entry_permit(permit)
             trade = self.ib.placeOrder(contract, order)
 
@@ -940,7 +944,12 @@ class IBKRClient(BrokerInterface):
         use_bracket = (stop is not None) or (take_profit is not None)
 
         async def _submit(price: Optional[float]):
-            check_entry_permit(permit)
+            # Immediately before each send, replacement attempts included. The
+            # bracket's children are NOT gated separately: they are the parent's
+            # protective exits, and the parent was gated here.
+            await require_reconciled_entry(
+                self, permit, ticker=ticker, asset_type="equity",
+            )
             if use_bracket:
                 exit_action = "SELL" if ib_action == "BUY" else "BUY"
                 parent_id = self.ib.client.getReqId()
