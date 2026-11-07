@@ -142,7 +142,7 @@ jobs:
           tests/test_execution_interlock.py tests/test_ibkr_execution.py
           tests/test_equity_limit_repricing.py
           tests/test_guardrails.py tests/test_risk_manager.py
-          tests/test_position_reconciler.py
+          tests/test_position_reconciler.py tests/test_signed_reconciliation.py
           --cov=app.services.options_decision_engine
           --cov=app.services.kill_switch
           --cov=app.services.execution_interlock

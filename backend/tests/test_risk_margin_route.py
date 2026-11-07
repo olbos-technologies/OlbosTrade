@@ -74,6 +74,7 @@ async def test_reconciliation_route_reports_status():
     fake = SimpleNamespace(
         clean=False, broker_position_count=1, db_open_trade_count=0,
         untracked_at_broker=["SPY"], phantom_in_db=[], warnings=[],
+        direction_mismatch_tickers=[],
         checked_at=datetime.now(timezone.utc),
     )
     recon = MagicMock()
