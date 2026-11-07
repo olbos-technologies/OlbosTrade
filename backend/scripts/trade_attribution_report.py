@@ -73,6 +73,22 @@ WHAT EACH SECTION IMPLIES
                       amount of exit tuning, sizing, or strategy selection
                       will help, because there is nothing to select on.
 
+  9 PAYOFF            Average win against average loss, and the win rate the
+                      payoff REQUIRES. A 40% win rate is fine at 2:1 and fatal at
+                      0.5:1; neither number alone says which book this is.
+ 10 BY CONFIDENCE     Results by signal_score bucket (<0.50, 0.50-0.59, 0.60-0.69,
+                      >=0.70). Answers "does a higher score mean a better trade,
+                      and what does the routing bar cost?" in the terms an
+                      operator actually sets it in. Section 8 is the same
+                      question as one number; this is the same question as a
+                      table you can read a threshold off.
+ 11 BY TRADING STYLE  trading_mode_at_entry. Styles differ in how often and how
+                      confidently they trade, so this is mostly a frequency and
+                      selection comparison, not a verdict on risk appetite.
+ 12 BY ASSET CLASS    Equity against options. They are sized and exited by
+                      different rules, so pooling them hides which one is
+                      carrying the result.
+
 A note on multiplicity: this report tests several strategies across several
 regimes. Running enough cells guarantees one looks significant. Treat a single
 flagged cell among many as a hypothesis to test forward, never as a result to
@@ -222,6 +238,75 @@ def _cell(name: str, rows: list, width: int = 22) -> str:
         f"total={sum(pnls):+11.2f}  mean={mean:+9.2f} {_ci(lo, hi)} "
         f"{_verdict(lo, hi):<9}  PF={profit_factor(pnls):6.2f}{flag}"
     )
+
+
+#: (low, high, label). A score of exactly 0 is NOT a low score: before the
+#: scorer was threaded through, record_fill fell back to 0 when none was
+#: supplied, so 0 and None both mean "not recorded".
+CONFIDENCE_BUCKETS = (
+    (0.00, 0.50, "< 0.50"),
+    (0.50, 0.60, "0.50 - 0.59"),
+    (0.60, 0.70, "0.60 - 0.69"),
+    (0.70, 1.01, ">= 0.70"),
+)
+UNSCORED = "(unscored)"
+
+
+def confidence_bucket(score) -> str:
+    if score is None:
+        return UNSCORED
+    value = float(score)
+    if value <= 0:
+        return UNSCORED
+    for low, high, label in CONFIDENCE_BUCKETS:
+        if low <= value < high:
+            return label
+    return UNSCORED          # above 1.0 is not a confidence; do not file it as one
+
+
+def payoff_summary(pnls: list[float]) -> dict:
+    """Average win, average loss, the ratio, and the win rate that ratio needs.
+
+    breakeven_win_rate = 1 / (1 + payoff_ratio): the share of trades that must
+    win for the average win to pay for the average loss. Reporting it beside the
+    actual win rate is the point -- either number alone is uninformative.
+    """
+    wins = [p for p in pnls if p > 0]
+    losses = [p for p in pnls if p < 0]
+    out = {
+        "n": len(pnls), "n_wins": len(wins), "n_losses": len(losses),
+        "n_flat": len(pnls) - len(wins) - len(losses),
+        "win_rate": (len(wins) / len(pnls)) if pnls else float("nan"),
+        "avg_win": (sum(wins) / len(wins)) if wins else float("nan"),
+        "avg_loss": (sum(losses) / len(losses)) if losses else float("nan"),
+        "payoff_ratio": float("nan"), "breakeven_win_rate": float("nan"),
+    }
+    if wins and losses:
+        ratio = out["avg_win"] / abs(out["avg_loss"])
+        out["payoff_ratio"] = ratio
+        out["breakeven_win_rate"] = 1.0 / (1.0 + ratio)
+    return out
+
+
+def _payoff_lines(label: str, pnls: list[float]) -> list[str]:
+    s = payoff_summary(pnls)
+    if not pnls:
+        return [f"  {label:<24} no trades"]
+    if s["n_wins"] == 0 or s["n_losses"] == 0:
+        side = "winners" if s["n_losses"] == 0 else "losers"
+        return [f"  {label:<24} n={s['n']:<4} only {side} recorded -- no payoff ratio exists"]
+    gap = (s["win_rate"] - s["breakeven_win_rate"]) * 100
+    return [
+        f"  {label:<24} n={s['n']:<4} avg win={s['avg_win']:+9.2f} (n={s['n_wins']})  "
+        f"avg loss={s['avg_loss']:+9.2f} (n={s['n_losses']})  payoff={s['payoff_ratio']:.2f}:1",
+        f"  {'':<24} win rate {s['win_rate'] * 100:5.1f}% vs {s['breakeven_win_rate'] * 100:5.1f}% "
+        f"needed to break even at this payoff  ({gap:+.1f} pts)",
+    ]
+
+
+def _asset_class_of(trade) -> str:
+    from app.services.trade_identity import asset_class_from_trade
+    return asset_class_from_trade(trade)
 
 
 def _group(trades: list, key) -> dict:
@@ -484,6 +569,69 @@ async def main(days: int, mode: str | None) -> None:
             print("  VERDICT                : the score carries signal. Raising the routing")
             print("                           threshold should improve trade quality — test it")
             print("                           forward, on paper, before changing the live gate.")
+
+    # ---------- 9 PAYOFF ----------
+    desk_trades = [t for t in trades if (t.strategy or "") != "adopted_untracked"]
+    print(f"\n9 PAYOFF -- how big are wins against losses?")
+    print( "  Win rate means nothing without the payoff: the break-even win rate is the")
+    print( "  share of trades that must win for the average win to pay for the average loss.")
+    for line in _payoff_lines("all closed trades", [_f(t.pnl) for t in trades]):
+        print(line)
+    if adopted:
+        for line in _payoff_lines("desk-originated only", [_f(t.pnl) for t in desk_trades]):
+            print(line)
+    if len(trades) < MIN_CELL:
+        print(f"  (n<{MIN_CELL}: description only, not evidence.)")
+
+    # ---------- 10 BY CONFIDENCE BUCKET ----------
+    print(f"\n10 BY CONFIDENCE BUCKET -- does a higher score mean a better trade?")
+    print( "  Desk-originated trades only: an inherited position was chosen by no score.")
+    print( "  A row marked (unscored) has no recorded score; a stored 0 means the same and is")
+    print( "  not a low score.")
+    buckets = defaultdict(list)
+    for t in desk_trades:
+        buckets[confidence_bucket(t.signal_score)].append(t)
+    order = [label for _, _, label in CONFIDENCE_BUCKETS] + [UNSCORED]
+    for label in order:
+        if label in buckets:
+            print(_cell(label, buckets[label]))
+    scored_n = sum(len(buckets[l]) for l in order[:-1] if l in buckets)
+    print(f"  scored desk trades: {scored_n} of {len(desk_trades)}")
+    interpretable = [l for l in order[:-1] if len(buckets.get(l, [])) >= MIN_CELL]
+    if len(interpretable) < 2:
+        print(f"  Fewer than two buckets reach n>={MIN_CELL}, so the buckets cannot be compared:")
+        print( "  nothing here says whether a lower score trades worse. In particular it does")
+        print( "  NOT say a lower routing bar is safe or unsafe -- it says the evidence for")
+        print( "  either is not in the journal yet. Section 8 gives the same answer as one number.")
+    else:
+        means = {
+            l: clustered_bootstrap_mean(
+                [(t.entry_date.date().isoformat(), _f(t.pnl)) for t in buckets[l]])
+            for l in interpretable
+        }
+        separated = [
+            (a, b) for a in interpretable for b in interpretable
+            if a != b and means[a][1] > means[b][2]
+        ]
+        if separated:
+            for a, b in separated:
+                print(f"  SEPARATED: bucket {a} beats {b} -- intervals do not overlap.")
+            print( "  Forward-test any threshold change on paper before applying it live.")
+        else:
+            print( "  No two buckets are separated: every interval overlaps every other, so the")
+            print( "  data cannot say a higher score earns more. Do not move the bar on this.")
+
+    # ---------- 11 BY TRADING STYLE ----------
+    print(f"\n11 BY TRADING STYLE -- recorded at entry")
+    print( "  Styles differ in how OFTEN and how CONFIDENTLY they trade, so differences here")
+    print( "  are mostly selection and frequency, not a verdict on risk appetite.")
+    for name, rows in _group(trades, lambda t: t.trading_mode_at_entry).items():
+        print(_cell(name, rows))
+
+    # ---------- 12 BY ASSET CLASS ----------
+    print(f"\n12 BY ASSET CLASS -- equity and options are sized and exited differently")
+    for name, rows in _group(trades, _asset_class_of).items():
+        print(_cell(name, rows))
 
     print(f"\n{'=' * 100}")
     print("Multiplicity: several cells were tested. One flagged cell among many is a")
