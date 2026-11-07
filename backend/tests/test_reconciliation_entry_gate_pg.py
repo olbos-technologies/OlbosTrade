@@ -21,7 +21,7 @@ from app.services import reconciliation_entry_gate as gate
 from app.services.execution_interlock import EntryPermit
 from test_signed_reconciliation import eq_pos
 from test_worker_scope_pg import (  # noqa: F401  (db is a fixture)
-    ORG_A, _seed, db, pytestmark,
+    ORG_A, ORG_B, _seed, db, pytestmark,
 )
 from unittest.mock import AsyncMock, MagicMock
 
@@ -238,3 +238,82 @@ async def test_an_empty_record_is_an_empty_answer_not_an_error(gate_db):
     with _operator():
         out = await route.records(object())
     assert out["counts"] == {} and out["records"] == []
+
+
+# ── whose book: the operator's, exactly as the periodic sweep sees it ───────
+#
+# The first version of the gate reconciled against unattributed rows only. A
+# desk whose own open positions are attributed to the designated operator
+# organization then saw every one of them as untracked, and a live drill
+# against production reported all three open positions that way. The tests
+# above never used that shape, which is why they passed.
+
+@pytest.fixture
+def designated(monkeypatch):
+    """Designate ORG_A as the operator organization, as production does."""
+    from app.core.config import settings
+    monkeypatch.setattr(settings, "operator_organization_id", str(ORG_A))
+    return ORG_A
+
+
+async def test_positions_attributed_to_the_designated_operator_are_tracked(gate_db, designated):
+    """The live failure, exactly: three open rows owned by the operator's
+    organization, the same three positions at the broker."""
+    for ticker, qty in (("AMZN", 7), ("FER", 337), ("SPCX", 18)):
+        await _seed(gate_db, ORG_A, ticker, status="open", qty=qty)
+    book = [eq_pos("AMZN", 7), eq_pos("FER", 337), eq_pos("SPCX", 18)]
+    assessment = await gate.evaluate_entry_reconciliation(_broker(book))
+    assert assessment.reasons() == [] and assessment.clean is True
+    assert assessment.scope == str(ORG_A)
+
+
+async def test_unattributed_rows_are_also_the_designated_operators(gate_db, designated):
+    """The sweep treats unattributed rows and the designated operator as ONE
+    scope, because they share one broker."""
+    await _seed(gate_db, None, "LEGACY", status="open", qty=10)
+    await _seed(gate_db, ORG_A, "NEWER", status="open", qty=5)
+    assessment = await gate.evaluate_entry_reconciliation(
+        _broker([eq_pos("LEGACY", 10), eq_pos("NEWER", 5)]))
+    assert assessment.clean is True
+
+
+async def test_another_organizations_row_does_not_track_the_operators_position(gate_db, designated):
+    await _seed(gate_db, ORG_B, "AMZN", status="open", qty=7)
+    assessment = await gate.evaluate_entry_reconciliation(_broker([eq_pos("AMZN", 7)]))
+    assert assessment.reasons() == ["untracked_at_broker:AMZN"]
+
+
+async def test_without_a_designation_rows_attributed_to_an_organization_are_not_the_operators(gate_db):
+    """The strict side of the same rule: undesignated, the operator's book is
+    the unattributed rows, and an organization's row is somebody else's."""
+    await _seed(gate_db, ORG_A, "AMZN", status="open", qty=7)
+    assessment = await gate.evaluate_entry_reconciliation(_broker([eq_pos("AMZN", 7)]))
+    assert assessment.reasons() == ["untracked_at_broker:AMZN"]
+    assert assessment.scope == "single-operator"
+
+
+async def test_pending_rows_are_looked_up_in_the_designated_operators_scope(gate_db, designated):
+    await _seed(gate_db, ORG_A, "MINE", status="pending")
+    await _seed(gate_db, None, "LEGACY", status="pending")
+    await _seed(gate_db, ORG_B, "THEIRS", status="pending")
+    assert await gate._pending_underlyings(ORG_A) == {"MINE", "LEGACY"}
+    assert await gate._pending_underlyings(None) == {"LEGACY"}
+
+
+async def test_a_fresh_fill_on_a_designated_operator_is_explained_not_flagged(gate_db, designated):
+    await _seed(gate_db, ORG_A, "NVDA", status="pending")
+    assessment = await gate.evaluate_entry_reconciliation(_broker([eq_pos("NVDA", 10)]))
+    assert assessment.clean is True
+    assert assessment.explained == {"NVDA": "untracked_at_broker: pending_trade"}
+
+
+async def test_the_record_names_the_designated_scope(gate_db, designated, monkeypatch):
+    from app.core.config import settings
+    from app.services.kill_switch import KillSwitch
+    monkeypatch.setattr(settings, "reconciliation_entry_gate_mode", "observe")
+    monkeypatch.setattr("app.services.kill_switch.kill_switch_service", KillSwitch())
+    await gate.require_reconciled_entry(
+        _broker([eq_pos("ZZZ", 5)]), EntryPermit(epoch=0), ticker="NVDA", asset_type="equity",
+    )
+    (event,) = await _events(gate_db)
+    assert event.payload["scope"] == str(ORG_A)

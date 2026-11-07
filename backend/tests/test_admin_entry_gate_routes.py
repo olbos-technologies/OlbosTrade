@@ -64,6 +64,14 @@ async def test_a_clean_book_is_reported_clean_and_an_entry_would_proceed(monkeyp
 
 
 @pytest.mark.asyncio
+async def test_the_drill_reports_the_scope_the_check_was_made_in():
+    verdict = _assess(available=True, scope="aaaaaaaa-0000-4000-8000-0000000000c1")
+    with _as({"id": "ops"}), patch.object(gate, "evaluate_entry_reconciliation", new=verdict):
+        out = await route.evaluate_now(object())
+    assert out["scope"] == "aaaaaaaa-0000-4000-8000-0000000000c1"
+
+
+@pytest.mark.asyncio
 async def test_a_known_mismatch_is_reported_with_what_each_mode_would_do():
     verdict = _assess(available=True, findings=(("direction_mismatch", "AAPL"),),
                       explained={"NVDA": "untracked_at_broker: pending_trade"})
