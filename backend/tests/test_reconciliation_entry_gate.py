@@ -51,7 +51,7 @@ def book(positions=(), open_trades=(), pending=(), *, broker_error=None,
     session = MagicMock()
     session.execute = execute
 
-    async def pending_rows():
+    async def pending_rows(org=None):
         if pending_error:
             raise pending_error
         return {p.upper() for p in pending}
@@ -369,7 +369,7 @@ async def test_pending_rows_are_only_read_when_a_finding_could_be_explained_by_o
     a wasted read on the entry path."""
     queried = []
 
-    async def pending_rows():
+    async def pending_rows(org=None):
         queried.append(1)
         return set()
 
@@ -383,7 +383,7 @@ async def test_pending_rows_are_read_when_an_untracked_position_might_be_one():
     """The positive control: the lookup does happen when it can matter."""
     queried = []
 
-    async def pending_rows():
+    async def pending_rows(org=None):
         queried.append(1)
         return set()
 
@@ -464,6 +464,82 @@ async def test_option_exposure_is_still_compared_by_the_size_check():
               open_trades=[row("SPY", 1, spread_type="put", strategy="bull_put_spread")]) as broker:
         assessment = await gate.evaluate_entry_reconciliation(broker)
     assert assessment.reasons() == ["quantity_mismatch:SPY"]
+
+
+# ── whose book: resolved the way the periodic sweep resolves it ────────────
+
+@pytest.mark.asyncio
+async def test_the_reconciler_is_built_for_the_designated_operator_organization(monkeypatch):
+    """With OPERATOR_ORGANIZATION_ID set, the operator's book is that
+    organization's, not the unattributed rows alone."""
+    import uuid
+    org = uuid.UUID("aaaaaaaa-0000-4000-8000-0000000000c1")
+    monkeypatch.setattr(settings, "operator_organization_id", str(org))
+    seen = {}
+
+    class Spy:
+        def __init__(self, broker, *, organization_id):
+            seen["org"] = organization_id
+
+        async def check(self):
+            return ReconciliationResult(
+                clean=True, broker_position_count=0, db_open_trade_count=0,
+                untracked_at_broker=[], phantom_in_db=[],
+            )
+
+    with patch("app.services.position_reconciler.PositionReconciler", Spy):
+        assessment = await gate.evaluate_entry_reconciliation(MagicMock())
+    assert seen == {"org": org} and assessment.scope == str(org)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("raw", ["", "   ", "not-a-uuid"])
+async def test_an_unset_or_unusable_designation_means_the_unattributed_scope(raw, monkeypatch):
+    monkeypatch.setattr(settings, "operator_organization_id", raw)
+    assert gate.operator_scope() is None and gate.scope_label(None) == "single-operator"
+
+
+@pytest.mark.asyncio
+async def test_the_pending_lookup_receives_the_same_scope_as_the_reconciler(monkeypatch):
+    import uuid
+    org = uuid.UUID("aaaaaaaa-0000-4000-8000-0000000000c1")
+    monkeypatch.setattr(settings, "operator_organization_id", str(org))
+    received = []
+
+    async def pending_rows(o=None):
+        received.append(o)
+        return set()
+
+    with book(positions=[eq_pos("ZZZ", 5)]) as broker, \
+         patch.object(gate, "_pending_underlyings", new=pending_rows):
+        await gate.evaluate_entry_reconciliation(broker)
+    assert received == [org]
+
+
+@pytest.mark.asyncio
+async def test_every_outcome_carries_the_scope_it_was_made_in(monkeypatch):
+    import uuid
+    org = uuid.UUID("bbbbbbbb-0000-4000-8000-0000000000c2")
+    monkeypatch.setattr(settings, "operator_organization_id", str(org))
+    monkeypatch.setattr(gate, "GATE_TIMEOUT_SECONDS", 0.05)
+    with book(broker_error=ConnectionError("down")) as broker:
+        assert (await gate.evaluate_entry_reconciliation(broker)).scope == str(org)
+    with book(hang=True) as broker:
+        assert (await gate.evaluate_entry_reconciliation(broker)).scope == str(org)
+    with book(positions=[eq_pos("ZZZ", 5)]) as broker:
+        assert (await gate.evaluate_entry_reconciliation(broker)).scope == str(org)
+
+
+@pytest.mark.asyncio
+async def test_if_the_scope_cannot_be_resolved_the_check_is_unavailable_not_clean(monkeypatch):
+    def boom():
+        raise RuntimeError("settings unreadable")
+
+    monkeypatch.setattr(gate, "operator_scope", boom)
+    assessment = await gate.evaluate_entry_reconciliation(MagicMock())
+    assert assessment.available is False
+    assert assessment.unavailable_cause == "error:RuntimeError"
+    assert assessment.clean is False
 
 
 # ── the setting ────────────────────────────────────────────────────────────

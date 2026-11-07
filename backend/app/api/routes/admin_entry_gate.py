@@ -52,7 +52,7 @@ async def evaluate_now(request: Request) -> dict:
         "broker": settings.broker,
         # The gate is wired into the IBKR adapter only.
         "applies_to_current_broker": settings.broker == "ibkr",
-        "scope": gate.SCOPE,
+        "scope": assessment.scope,
         "clean": assessment.clean,
         "available": assessment.available,
         "unavailable_cause": assessment.unavailable_cause,

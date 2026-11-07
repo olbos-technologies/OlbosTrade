@@ -22,10 +22,14 @@ from real entries: every would-veto and every unreadable check is written to
 ``execution_events`` (kind ``entry_gate``) with its scope, ticker, categorised
 reasons, and what was explained away, so it survives a redeploy.
 
-Scope. IBKR is the single-operator account in this process (worker_scope.py).
-Its holdings are compared with the single-operator rows only (organization
-``None``); an organization's separate broker or trades are never part of this
-comparison, and every record says so.
+Scope. IBKR is the operator's account in this process (worker_scope.py). Its
+holdings are compared with the OPERATOR's rows - the same scope the periodic
+reconciliation sweep uses: unattributed rows, plus the rows of the designated
+operator organization when ``OPERATOR_ORGANIZATION_ID`` is set (the sweep treats
+those as ONE scope, because they share one broker). An organization's separate
+broker or trades are never part of this comparison, and every record names the
+scope it was made in. Comparing against unattributed rows alone is wrong for a
+designated operator: their own open positions then read as untracked.
 
 What is explained, and what is not. The comparison reads only ``open`` trade
 rows. A working order's row is ``pending``, so a position that has just filled
@@ -47,6 +51,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+import uuid
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -59,7 +64,25 @@ logger = get_logger(__name__)
 #: not wait on this longer, in any mode; past it the check is "unavailable".
 GATE_TIMEOUT_SECONDS = 3.0
 
+#: Label for the operator's book when no organization is designated.
 SCOPE = "single-operator"
+
+
+def operator_scope() -> Optional[uuid.UUID]:
+    """The organization whose book the process broker belongs to.
+
+    ``None`` when no operator organization is designated: the unattributed
+    rows are then the operator's. Otherwise the designated organization, whose
+    scope (via ``owned_by_operator_aware``) also includes the unattributed
+    rows. This is the scope ``worker_scope.scopes_with_open_trades`` hands the
+    periodic sweep, so the gate and the sweep always judge the same book.
+    """
+    from app.services.trade_scope import designated_operator_id
+    return designated_operator_id()
+
+
+def scope_label(org: Optional[uuid.UUID]) -> str:
+    return SCOPE if org is None else str(org)
 
 #: Findings a pending row can explain. Direction mismatches and phantom rows
 #: are deliberately absent: a pending entry accounts for neither.
@@ -83,6 +106,8 @@ class GateAssessment:
     #: ticker -> why it was not counted, e.g. "untracked_at_broker: pending_trade"
     explained: dict = field(default_factory=dict)
     elapsed_ms: int = 0
+    #: whose book this was made against ("single-operator" or the org's id)
+    scope: str = SCOPE
 
     @property
     def clean(self) -> bool:
@@ -105,8 +130,8 @@ def _mode() -> str:
     return getattr(settings, "reconciliation_entry_gate_mode", "observe")
 
 
-async def _pending_underlyings() -> set[str]:
-    """Underlyings with a pending row in the single-operator book."""
+async def _pending_underlyings(org: Optional[uuid.UUID] = None) -> set[str]:
+    """Underlyings with a pending row in the operator's book (`org`)."""
     from sqlalchemy import select
 
     from app.core.database import AsyncSessionLocal
@@ -116,7 +141,7 @@ async def _pending_underlyings() -> set[str]:
     async with AsyncSessionLocal() as session:
         rows = (await session.execute(
             select(Trade.underlying).where(
-                owned_by_operator_aware(None), Trade.status == "pending",
+                owned_by_operator_aware(org), Trade.status == "pending",
             )
         )).scalars().all()
     return {str(u).upper() for u in rows if u}
@@ -150,53 +175,69 @@ def _raw_findings(result) -> list[tuple]:
     return found
 
 
-async def _assess(broker) -> GateAssessment:
+async def _assess(broker, org: Optional[uuid.UUID]) -> GateAssessment:
     from app.services.position_reconciler import PositionReconciler
 
-    result = await PositionReconciler(broker, organization_id=None).check()
+    label = scope_label(org)
+    result = await PositionReconciler(broker, organization_id=org).check()
 
     cause = _unavailable_cause(result.warnings)
     if cause:
-        return GateAssessment(available=False, unavailable_cause=cause)
+        return GateAssessment(available=False, unavailable_cause=cause, scope=label)
 
     raw = _raw_findings(result)
     if result.clean is not True and not raw:
         # Unclean, and nothing here can say why. Never read that as clean.
         raw = [("unclassified", None)]
     if not raw:
-        return GateAssessment(available=True)
+        return GateAssessment(available=True, scope=label)
 
     explained: dict[str, str] = {}
     findings = raw
     if any(cat in _EXPLAINABLE_BY_PENDING for cat, _ in raw):
         try:
-            pending = await _pending_underlyings()
+            pending = await _pending_underlyings(org)
         except Exception as exc:  # cannot tell what is explained -> cannot tell
             logger.warning("entry gate: could not read pending trades (%s)", exc)
-            return GateAssessment(available=False, unavailable_cause="db_unavailable")
+            return GateAssessment(
+                available=False, unavailable_cause="db_unavailable", scope=label,
+            )
         findings = []
         for cat, ticker in raw:
             if cat in _EXPLAINABLE_BY_PENDING and ticker in pending:
                 explained[ticker] = f"{cat}: pending_trade"
             else:
                 findings.append((cat, ticker))
-    return GateAssessment(available=True, findings=tuple(findings), explained=explained)
+    return GateAssessment(
+        available=True, findings=tuple(findings), explained=explained, scope=label,
+    )
 
 
 async def evaluate_entry_reconciliation(broker) -> GateAssessment:
     """Assess reconciliation for a new entry. Never raises; bounded in time."""
     started = time.monotonic()
     try:
-        assessment = await asyncio.wait_for(_assess(broker), timeout=GATE_TIMEOUT_SECONDS)
+        org = operator_scope()
+    except Exception as exc:  # noqa: BLE001 — cannot say whose book -> cannot check
+        logger.warning("entry gate: could not resolve the operator scope (%s)", exc)
+        return GateAssessment(
+            available=False, unavailable_cause=f"error:{type(exc).__name__}",
+            elapsed_ms=int((time.monotonic() - started) * 1000),
+        )
+    label = scope_label(org)
+    try:
+        assessment = await asyncio.wait_for(_assess(broker, org), timeout=GATE_TIMEOUT_SECONDS)
     except asyncio.TimeoutError:
-        assessment = GateAssessment(available=False, unavailable_cause="timeout")
+        assessment = GateAssessment(available=False, unavailable_cause="timeout", scope=label)
     except Exception as exc:  # noqa: BLE001 — an error is "unavailable", not "clean"
         logger.warning("entry gate: reconciliation errored (%s: %s)", type(exc).__name__, exc)
-        assessment = GateAssessment(available=False, unavailable_cause=f"error:{type(exc).__name__}")
+        assessment = GateAssessment(
+            available=False, unavailable_cause=f"error:{type(exc).__name__}", scope=label,
+        )
     return GateAssessment(
         available=assessment.available, unavailable_cause=assessment.unavailable_cause,
         findings=assessment.findings, explained=assessment.explained,
-        elapsed_ms=int((time.monotonic() - started) * 1000),
+        elapsed_ms=int((time.monotonic() - started) * 1000), scope=label,
     )
 
 
@@ -206,7 +247,7 @@ async def _record(mode: str, status: str, assessment: GateAssessment,
     what the entry does, so it is logged and swallowed."""
     payload = {
         "mode": mode,
-        "scope": SCOPE,
+        "scope": assessment.scope,
         "ticker": ticker,
         "asset_type": asset_type,
         "available": assessment.available,
@@ -218,7 +259,7 @@ async def _record(mode: str, status: str, assessment: GateAssessment,
     logger.warning(
         "ENTRY_GATE mode=%s status=%s scope=%s ticker=%s asset=%s unavailable=%s "
         "reasons=%s explained=%s elapsed_ms=%d",
-        mode, status, SCOPE, ticker, asset_type, assessment.unavailable_cause,
+        mode, status, assessment.scope, ticker, asset_type, assessment.unavailable_cause,
         assessment.reasons(), dict(assessment.explained), assessment.elapsed_ms,
     )
     try:
