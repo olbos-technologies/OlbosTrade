@@ -483,6 +483,14 @@ async def _on_shutdown() -> None:
         logger.warning("IBKR coordinator shutdown failed: %s", exc)
 
 
+# Where each guarded scan had got to, so a timeout can say what it cut off.
+_scan_progress: dict[str, str] = {}
+
+
+def _note_progress(name: str, text: str) -> None:
+    _scan_progress[name] = text
+
+
 async def _guarded(coro, name: str, timeout: float) -> None:
     """
     Run a scheduler sub-task with a hard timeout. A hung broker/IO call (e.g. an
@@ -493,10 +501,12 @@ async def _guarded(coro, name: str, timeout: float) -> None:
     global _scheduler_last_tick
     import time as _t
     token = request_id_var.set(f"sched-{name}-{uuid.uuid4().hex[:8]}")
+    _scan_progress.pop(name, None)
     try:
         await asyncio.wait_for(coro, timeout=timeout)
     except asyncio.TimeoutError:
-        logger.error("Scheduler task '%s' timed out after %.0fs — skipped", name, timeout)
+        logger.error("Scheduler task '%s' timed out after %.0fs — skipped (last progress: %s)",
+                     name, timeout, _scan_progress.get(name, "unknown"))
     except Exception as exc:
         logger.error("Scheduler task '%s' failed: %s", name, exc)
     finally:
@@ -1227,6 +1237,7 @@ async def _run_equity_scan() -> None:
                     logger.warning("Equity scan failed for %s: %s", ticker, exc)
                     return None
 
+        _note_progress("equity_scan", f"scoring {len(scan_window)} tickers")
         results = await asyncio.gather(*[_scan_one(t) for t in scan_window])
 
         routable: list = []   # qualifying signals to rank + route highest-first
@@ -1244,10 +1255,12 @@ async def _run_equity_scan() -> None:
         # capacity is reached the lower-ranked signals are blocked, not the best.
         if routable:
             from app.services.trade_frequency_controller import trade_frequency_controller
-            from app.api.routes.trade_desk import handle_signal
-            for sig in trade_frequency_controller.rank(routable):
+            from app.services.entry_dispatch import dispatch_entry
+            ranked = trade_frequency_controller.rank(routable)
+            for i, sig in enumerate(ranked, 1):
+                _note_progress("equity_scan", f"placing entries {i}/{len(ranked)} ({sig.get('ticker')})")
                 try:
-                    await handle_signal(sig)
+                    await dispatch_entry(sig)
                 except Exception as exec_exc:
                     logger.warning("Execution handler failed for %s: %s",
                                    sig.get("ticker"), exec_exc)
@@ -2083,8 +2096,8 @@ async def _run_options_scan(symbol: str = "SPY", execute: bool = True) -> Option
         await record_options_signal(signal)
 
         if execute:
-            from app.api.routes.trade_desk import handle_signal
-            await handle_signal(signal)
+            from app.services.entry_dispatch import dispatch_entry
+            await dispatch_entry(signal)
 
         return signal
 
@@ -2142,10 +2155,10 @@ async def _run_options_scan_watchlist() -> None:
         return
 
     from app.services.trade_frequency_controller import trade_frequency_controller
-    from app.api.routes.trade_desk import handle_signal
+    from app.services.entry_dispatch import dispatch_entry
     for sig in trade_frequency_controller.rank(candidates):
         try:
-            await handle_signal(sig)
+            await dispatch_entry(sig)
         except Exception as exec_exc:
             logger.warning("Options execution handler failed for %s: %s",
                            sig.get("ticker"), exec_exc)

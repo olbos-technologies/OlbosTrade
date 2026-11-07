@@ -1434,6 +1434,57 @@ def _report_unrecorded_entry(*, ticker: str, asset_type: str, stage: str,
                         stage=stage, order_id=order_id)
 
 
+_SETTLE_BUDGET_SECONDS = 10.0
+
+
+async def _settle_interrupted_entry(*, ticker: str, asset_type: str, signal: dict,
+                                    claim, row: dict | None) -> None:
+    """Leave an honest record behind when an entry is cancelled after its order
+    was sent.
+
+    The order may be live at the broker, so the claim becomes `unknown` (the
+    reconciler releases it on broker evidence, never on a timer) and the same
+    pending trade row the timeout path writes is written, so the fill poller
+    promotes or cancels it. Runs shielded and bounded: it executes while the task
+    is being cancelled, and must neither be cancelled again part-way nor hang.
+    Failure here is reported loudly (ENTRY_UNRECORDED) and never raised over the
+    cancellation.
+    """
+    async def _settle() -> bool:
+        from app.services import position_claim
+        await position_claim.mark_unknown(claim, "entry cancelled after submit")
+        if row is None:
+            return False
+        from app.services.trade_recorder import trade_recorder
+        return (await trade_recorder.record_fill(**row)) is not None
+
+    recorded = False
+    error = None
+    try:
+        recorded = await asyncio.wait_for(asyncio.shield(_settle()), _SETTLE_BUDGET_SECONDS)
+    except BaseException as exc:  # noqa: BLE001 - incl. a second cancellation
+        error = f"{type(exc).__name__}: {exc}"
+    observability.incr("execute.interrupted")
+    observability.event("interrupted", ticker=ticker, asset_type=asset_type, recorded=recorded)
+    logger.error(
+        "Entry for %s %s was cancelled after its order was sent; "
+        "claim kept as unknown, pending row %s.",
+        ticker, asset_type, "written" if recorded else "NOT written",
+    )
+    if not recorded:
+        _report_unrecorded_entry(ticker=ticker, asset_type=asset_type,
+                                 stage="cancelled_after_submit", claim=claim, error=error)
+    try:
+        await asyncio.shield(_log_execution({
+            "signal_id": signal.get("id"), "ticker": ticker, "asset_type": asset_type,
+            "result": "interrupted",
+            "note": "cancelled after the order was sent; outcome unconfirmed",
+            "executed_at": datetime.now(timezone.utc).isoformat(),
+        }))
+    except BaseException:  # noqa: BLE001
+        pass
+
+
 async def _execute_signal(
     signal: dict,
     approved_by: str = "autopilot",
@@ -1463,6 +1514,10 @@ async def _execute_signal(
     # Set once an entry has been submitted and not yet recorded or released; read by
     # the outer handler so an exception in that window is reported, not swallowed.
     _unresolved_claim = None
+    # The pending-row arguments for the entry in flight, set with the claim and
+    # cleared with it. If the task is cancelled after the order was sent, these
+    # are what let the bookkeeping still be written (see _settle_interrupted_entry).
+    _interrupted_row: dict | None = None
     ticker      = signal.get("ticker", "")
     asset_type  = signal.get("asset_type", "equity")
     executed_at = datetime.now(timezone.utc).isoformat()
@@ -2059,6 +2114,24 @@ async def _execute_signal(
             if not await position_claim.mark_submitted(_claim):
                 return _skipped("claim_lost")
             _unresolved_claim = _claim
+            _interrupted_row = dict(
+                organization_id=_org,
+                strategy="equity",
+                underlying=ticker,
+                option_type="equity_short" if action.upper() == "SELL" else "equity_long",
+                short_strike=trade_plan.get("entry_price") or 0,
+                long_strike=trade_plan.get("stop_price") or 0,
+                target_price=trade_plan.get("target_price"),
+                expiration=date.today(),
+                quantity=shares,
+                entry_credit=trade_plan.get("entry_price") or 0,
+                signal_score=signal.get("signal_score", 0),
+                iv_rank=signal.get("iv_rank", 0),
+                regime=signal.get("regime", "unknown"),
+                approved_by=approved_by,
+                dispatch_id=signal.get("id", ""),
+                status="pending",
+            )
             try:
                 result = await ibkr_coordinator.submit(
                     Priority.P0,
@@ -2128,6 +2201,7 @@ async def _execute_signal(
                     # claim itself once the broker shows the position or shows
                     # neither a position nor a working order.
                     _unresolved_claim = None
+                    _interrupted_row = None
                 observability.incr("execute.timeout")
                 observability.event("timeout", ticker=ticker, asset_type="equity")
                 return {
@@ -2151,6 +2225,7 @@ async def _execute_signal(
                 # so a corrected entry is not blocked for the lease duration.
                 await position_claim.resolve(_claim)
                 _unresolved_claim = None
+                _interrupted_row = None
                 return _blocked(f"order_{result.status}")
 
             # Record as a live position only on a confirmed fill; otherwise record
@@ -2203,6 +2278,7 @@ async def _execute_signal(
                 # status == "pending": cancellation was not confirmed, the claim
                 # was marked unknown above and stays until broker evidence.
                 _unresolved_claim = None
+                _interrupted_row = None
             observability.incr("execute.submitted")
             observability.event("submitted", ticker=ticker, asset_type="equity",
                                 order_id=result.order_id)
@@ -2270,6 +2346,24 @@ async def _execute_signal(
             if not await position_claim.mark_submitted(_claim):
                 return _skipped("claim_lost")
             _unresolved_claim = _claim
+            _interrupted_row = dict(
+                organization_id=_org,
+                strategy=strategy,
+                underlying=ticker,
+                option_type=opt_type,
+                short_strike=float(short_str),
+                long_strike=float(long_str),
+                expiration=expiry_date,
+                quantity=quantity,
+                entry_credit=credit_per_share,
+                spread_width=abs(float(short_str) - float(long_str)),
+                signal_score=signal.get("signal_score", 0),
+                iv_rank=signal.get("iv_rank", 0),
+                regime=signal.get("regime", "unknown"),
+                approved_by=approved_by,
+                dispatch_id=signal.get("id", ""),
+                status="pending",
+            )
             try:
                 result = await ibkr_coordinator.submit(
                     Priority.P0, lambda: broker.place_order(order),
@@ -2311,6 +2405,7 @@ async def _execute_signal(
                     # Same reasoning as the equity path above: keep the unknown
                     # claim; the reconciler releases it on broker evidence.
                     _unresolved_claim = None
+                    _interrupted_row = None
                 observability.incr("execute.timeout")
                 observability.event("timeout", ticker=ticker, asset_type="options", strategy=strategy)
                 return {
@@ -2335,6 +2430,7 @@ async def _execute_signal(
                 # so a corrected entry is not blocked for the lease duration.
                 await position_claim.resolve(_claim)
                 _unresolved_claim = None
+                _interrupted_row = None
                 return _blocked(f"order_{result.status}")
 
             # "filled"/"partial" → a real position exists now → open.
@@ -2383,6 +2479,7 @@ async def _execute_signal(
                 if result.status != "pending":
                     await position_claim.resolve(_claim)
                 _unresolved_claim = None
+                _interrupted_row = None
             observability.incr("execute.submitted")
             observability.event("submitted", ticker=ticker, asset_type="options",
                                 strategy=strategy, order_id=result.order_id)
@@ -2411,6 +2508,15 @@ async def _execute_signal(
         # cancellation. Ambiguous broker outcomes return pending instead.
         await position_claim.resolve(_claim)
         return _blocked(str(exc))
+    except asyncio.CancelledError:
+        # Not an Exception, so the handler below never saw it. An entry cancelled
+        # after its order was sent used to leave the claim `submitted` and no row.
+        if _unresolved_claim is not None:
+            await _settle_interrupted_entry(
+                ticker=ticker, asset_type=asset_type, signal=signal,
+                claim=_unresolved_claim, row=_interrupted_row,
+            )
+        raise
     except Exception as exc:
         observability.incr("execute.error")
         observability.event("error", ticker=ticker, asset_type=asset_type, error=str(exc))
