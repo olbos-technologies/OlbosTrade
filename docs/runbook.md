@@ -148,6 +148,64 @@ ssh root@46.224.0.213 'cd /opt/olbostrade && git pull --ff-only origin main'
 ssh root@46.224.0.213 'cd /opt/olbostrade && nohup bash deploy/hetzner/update.sh > /tmp/deploy.log 2>&1 &'
 ```
 
+### Entry halt and cancellation outcomes
+
+An engaged kill switch invalidates entry permits already held by requests,
+queued dispatches and IBKR retry loops. Resetting does not revive that work;
+an entry must be evaluated again. Reviewed manual closes and emergency
+flattening remain exempt from the entry halt.
+
+IBKR limit-order replacement requires a confirmed zero-fill cancellation.
+For bracket orders, old children must also be confirmed terminal and unfilled.
+A parent that fills while cancellation is pending keeps its protective
+children. Cancellation confirmation has a shared ten-second bound; if the
+outcome is still unknown, the response is `pending`, not `cancelled`, and entry
+position claims remain blocked for reconciliation. `Inactive` alone is not
+accepted as cancellation evidence. Do not delete a claim or resubmit merely
+because time has elapsed; establish broker truth first.
+
+These are process-local interlocks for the current single-worker deployment,
+not a distributed OMS. They do not fix partial-fill ledger accounting or
+organization-to-account routing. No migration or new environment variables
+are required; a backend rebuild/restart applies the change.
+
+### Docker build context protection
+
+The backend and frontend each have a `.dockerignore` because their build
+contexts are separate directories. Git ignore rules do not protect Docker
+contexts. Environment files (including backup/example variants), private key
+files, logs, caches and local build outputs are excluded. Backend application
+code, migrations, ML source, scripts and tests remain included. Frontend source,
+public assets, lockfile, scripts and tests remain included. Trained backend
+models are supplied by the existing read-only deployment mount.
+
+Verify filtering without sending this checkout or its credentials to Docker:
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 python3.11 -m unittest backend/tests/test_docker_build_context.py -v
+```
+
+These tests copy only the ignore rules into temporary contexts, create harmless
+sentinels, and export a `FROM scratch` build locally. They neither start the
+application nor contact brokers. They skip if no Docker daemon is available;
+a skipped run does not verify context filtering.
+
+Exclusions apply only to future builds. They do not remove files from existing
+containers, old images, image layers, exports or build caches. To check the
+running backend for the known deployment env path without printing credentials:
+
+```bash
+docker exec olbostrade-backend sh -c 'if [ -e /app/.env.prod ]; then echo "deployment env file PRESENT"; else echo "deployment env file absent"; fi'
+```
+
+That checks only the running container's filesystem, not old image layers.
+Never use `cat`, unfiltered image/container inspection, or image history output
+to investigate credentials. If an exposure is confirmed, assess who could read
+the images/exports and follow `credential_rotation_runbook.md`. Image cleanup,
+credential rotation and deployment are separate authorized operations. Rebuild
+to apply these rules; no migration, new environment variables or nginx config
+regeneration is required.
+
 ### Why the pull is a separate stage
 
 `update.sh` used to run `git pull origin main` as its own first step, which

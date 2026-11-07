@@ -1,9 +1,9 @@
 """
 Position Reconciler — ensures OlbosTrade's DB state matches broker truth.
 
-FIX #10: On every startup and before every signal cycle, compare broker
-positions against DB open trades. Any discrepancy halts trading until
-manually resolved to prevent position doubling on restart.
+Compare broker positions against scoped DB open trades. check() reports a
+snapshot without halting; reconcile() raises on untracked holdings. The IBKR
+entry adapter separately vetoes submissions on a non-clean fresh check.
 """
 
 from dataclasses import dataclass, field
@@ -94,7 +94,7 @@ class PositionReconciler:
         without saying whose book it describes."""
         return "single-operator" if self.organization_id is None else str(self.organization_id)
 
-    async def check(self) -> ReconciliationResult:
+    async def check(self, *, fresh_broker: bool = False) -> ReconciliationResult:
         """
         Non-raising reconciliation status for dashboards/monitoring.
 
@@ -127,6 +127,19 @@ class PositionReconciler:
                 db_open_trade_count=0, untracked_at_broker=[], phantom_in_db=[],
                 warnings=[f"db_unavailable: {exc}"],
             )
+
+        if fresh_broker:
+            # Entry checks must not compare a broker cache captured before the
+            # database await. IBKR's get_positions is a local connected-cache
+            # read; refresh it after the DB query and immediately compare.
+            try:
+                broker_positions = await self.broker.get_positions()
+            except Exception as exc:
+                return ReconciliationResult(
+                    clean=False, broker_position_count=0, db_open_trade_count=len(db_open_trades),
+                    untracked_at_broker=[], phantom_in_db=[],
+                    warnings=[f"broker_unavailable: {exc}"],
+                )
 
         broker_qty: dict[str, int] = defaultdict(int)
         for p in broker_positions:

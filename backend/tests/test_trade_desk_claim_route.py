@@ -274,10 +274,9 @@ async def test_intent_is_recorded_before_submission_not_after(claims_table):
     assert len(rows) == 1 and rows[0].state == STATE_UNKNOWN
 
 
-async def test_a_timeout_whose_pending_row_was_written_releases_the_claim(claims_table):
-    """The position is tracked now, so the trade read takes over the blocking.
-    Holding the claim too would over-block: if the fill reconciler later
-    cancels that pending row, a fresh entry should be allowed."""
+async def test_a_timeout_keeps_unknown_claim_even_when_pending_row_is_written(claims_table):
+    """Writing a pending row is not proof of the broker's economic outcome.
+    A time-based cleanup of that row must not authorize a duplicate entry."""
     async def _timeout(_order):
         raise asyncio.TimeoutError("never answered")
 
@@ -292,7 +291,8 @@ async def test_a_timeout_whose_pending_row_was_written_releases_the_claim(claims
         res = await _execute_signal(_signal(), approved_by="manual")
 
     assert res["result"] == "pending_confirmation"
-    assert await _rows(claims_table) == []
+    rows = await _rows(claims_table)
+    assert len(rows) == 1 and rows[0].state == STATE_UNKNOWN
 
 
 # ── deployment ordering: the migration must land before this code ──────────

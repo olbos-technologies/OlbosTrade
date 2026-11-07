@@ -33,11 +33,16 @@ from app.broker.broker_interface import (
     SpreadOrder,
 )
 from app.core.config import settings
+from app.services.execution_interlock import (
+    EntryHalted, check_entry_permit, current_entry_permit,
+)
+from app.services.reconciliation_entry_gate import require_reconciled_entry
 
 logger = logging.getLogger(__name__)
 
 MAX_RETRIES = 3
 RETRY_DELAY_SECONDS = 5
+CANCEL_CONFIRM_TIMEOUT_SECONDS = 10.0
 
 
 def _safe_int(value, default: int = 0) -> int:
@@ -453,9 +458,11 @@ class IBKRClient(BrokerInterface):
         """
         loop = asyncio.get_event_loop()
         deadline = loop.time() + timeout
-        cancel_states = {"Cancelled", "ApiCancelled", "Inactive"}
-        while loop.time() < deadline:
-            await asyncio.sleep(1)
+        # Inactive is not a cancellation acknowledgement; it may be a held
+        # order. Never use it as proof that a replacement is safe.
+        cancel_states = {"Cancelled", "ApiCancelled"}
+        remaining = max(0, timeout)
+        while remaining >= 0:
             st = trade.orderStatus
             status = st.status
             filled = int(st.filled or 0)
@@ -466,8 +473,47 @@ class IBKRClient(BrokerInterface):
                 return ("partial" if filled > 0 else "rejected"), filled, avg
             if status in cancel_states:
                 return ("partial" if filled > 0 else "cancelled"), filled, avg
-        st = trade.orderStatus
-        return "timeout", int(st.filled or 0), float(st.avgFillPrice or 0.0)
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                return "timeout", filled, avg
+            await asyncio.sleep(min(0.1, remaining))
+
+    async def _cancel_and_confirm(self, trade, total_qty: int) -> Tuple[str, int, float]:
+        """Cancellation requests are not acknowledgements. Unknown stays unknown.
+
+        Bracket children must also be terminal and unfilled before replacing a
+        parent. All confirmations share one deadline rather than one per leg.
+        """
+        children = getattr(trade, "_olbos_bracket_children", ())
+        try:
+            self.ib.cancelOrder(trade.order)
+        except Exception:
+            logger.warning("Order cancellation could not be requested; outcome unconfirmed", exc_info=True)
+            st = trade.orderStatus
+            return "timeout", int(st.filled or 0), float(st.avgFillPrice or 0)
+        deadline = asyncio.get_running_loop().time() + CANCEL_CONFIRM_TIMEOUT_SECONDS
+        outcome = await self._await_order(trade, total_qty, CANCEL_CONFIRM_TIMEOUT_SECONDS)
+        if outcome[0] not in ("cancelled", "rejected") or outcome[1]:
+            # A late/partial fill still needs its protective children. An
+            # unknown parent may yet fill, so preserve protection there too.
+            return outcome
+        try:
+            for child in children:
+                self.ib.cancelOrder(child.order)
+        except Exception:
+            logger.warning("Bracket child cancellation unconfirmed", exc_info=True)
+            return "timeout", outcome[1], outcome[2]
+        for child in children:
+            child_outcome, child_filled, _ = await self._await_order(
+                child, total_qty, max(0, deadline - asyncio.get_running_loop().time()),
+            )
+            if child_outcome not in ("cancelled", "rejected") or child_filled:
+                return "timeout", outcome[1], outcome[2]
+        if children:
+            # Child confirmation awaited broker updates: refresh the parent's
+            # fill count before making a replacement decision.
+            return await self._await_order(trade, total_qty, 0)
+        return outcome
 
     async def place_order(self, spread: SpreadOrder) -> OrderResult:
         """
@@ -491,6 +537,7 @@ class IBKRClient(BrokerInterface):
         with ``filled_quantity`` / ``remaining_quantity`` — they are NEVER reported
         as a clean fill.
         """
+        permit = current_entry_permit()
         self._require_connection()
 
         from ib_insync import ComboLeg, Contract as IBContract, MarketOrder
@@ -549,7 +596,6 @@ class IBKRClient(BrokerInterface):
                               lmtPrice=lmt, tif=tif)
 
         limit_price = float(spread.limit_price)
-        last_trade = None
         _timeout = _fill_timeout()
         _step = _retry_step()
         _retries = 0 if is_market else _max_retries()
@@ -564,8 +610,9 @@ class IBKRClient(BrokerInterface):
                 "" if is_market else f" net_limit={limit_price:.2f}",
             )
 
+            await require_reconciled_entry(self, permit)
+            check_entry_permit(permit)
             trade = self.ib.placeOrder(contract, order)
-            last_trade = trade
 
             # ── Real-time status + fill event logging ──────────────────────────
             def _on_status(t=trade):
@@ -587,6 +634,17 @@ class IBKRClient(BrokerInterface):
             trade.fillEvent += _on_fill
 
             outcome, filled, avg = await self._await_order(trade, total_qty, _timeout)
+            was_timeout = outcome == "timeout"
+            if was_timeout and (not is_market or filled > 0):
+                outcome, filled, avg = await self._cancel_and_confirm(trade, total_qty)
+
+            # Only an acknowledged cancellation with zero fills permits a
+            # replacement. A rejected order or spontaneous cancellation does not.
+            if was_timeout and outcome == "cancelled" and not filled and attempt <= _retries:
+                new_price = round(limit_price - _step, 2)
+                if new_price > 0:
+                    limit_price = new_price
+                    continue
 
             # ── Fully filled ───────────────────────────────────────────────────
             if outcome == "filled":
@@ -602,15 +660,13 @@ class IBKRClient(BrokerInterface):
                     message=f"Filled {filled} @ ${avg:.4f}",
                 )
 
-            # ── Partial fill — cancel the remainder and report it explicitly ───
+            # ── Terminal partial fill — never replace the filled portion ───
             if outcome == "partial":
                 logger.warning(
-                    "Order %s PARTIAL fill: %d/%d filled — cancelling remainder, "
+                    "Order %s terminal PARTIAL fill: %d/%d filled — "
                     "not retrying (would double the filled portion)",
                     trade.order.orderId, filled, total_qty,
                 )
-                self.ib.cancelOrder(trade.order)
-                await asyncio.sleep(1)
                 return OrderResult(
                     order_id=str(trade.order.orderId),
                     status="partial",
@@ -633,69 +689,17 @@ class IBKRClient(BrokerInterface):
                     message=outcome,
                 )
 
-            # ── Timeout (outcome == "timeout") ─────────────────────────────────
-            if filled > 0:
-                # Still working but partially filled — cancel remainder, report partial.
-                logger.warning(
-                    "Order %s timed out PARTIALLY filled: %d/%d — cancelling remainder",
-                    trade.order.orderId, filled, total_qty,
-                )
-                self.ib.cancelOrder(trade.order)
-                await asyncio.sleep(1)
-                return OrderResult(
-                    order_id=str(trade.order.orderId),
-                    status="partial",
-                    fill_price=Decimal(str(round(avg, 4))),
-                    filled_at=datetime.now(timezone.utc),
-                    filled_quantity=filled,
-                    remaining_quantity=max(0, total_qty - filled),
-                    message=f"Partial fill {filled}/{total_qty} @ ${avg:.4f} (timeout)",
-                )
-
-            if is_market:
-                # A market order with no fill is still working (e.g. market closed).
-                # Leave it live — cancelling a flatten could strand naked risk.
-                logger.warning(
-                    "Market order %s still working after %ds — leaving it live",
-                    trade.order.orderId, _timeout,
-                )
-                return OrderResult(
-                    order_id=str(trade.order.orderId),
-                    status="submitted",
-                    filled_quantity=0,
-                    remaining_quantity=total_qty,
-                    message=f"Market order working — no fill after {_timeout}s",
-                )
-
-            # LMT timeout with no fill → cancel and retry at a better net price
-            if attempt <= _retries:
-                new_price = round(limit_price - _step, 2)
-                logger.warning(
-                    "Order %s timed out after %ds — cancelling and retrying at "
-                    "lower net limit (%.2f → %.2f)",
-                    trade.order.orderId, _timeout, limit_price, new_price,
-                )
-                self.ib.cancelOrder(trade.order)
-                await asyncio.sleep(2)  # let cancel propagate
-                limit_price = new_price
-                if limit_price <= 0:
-                    logger.error("Net limit reached zero — aborting retries")
-                    break
-            else:
-                logger.error("Order %s timed out on final attempt — cancelling",
-                             trade.order.orderId)
-                self.ib.cancelOrder(trade.order)
-                await asyncio.sleep(2)
-
-        # All attempts exhausted with no fill
-        order_id = str(last_trade.order.orderId) if last_trade else "unknown"
-        return OrderResult(
-            order_id=order_id,
-            status="cancelled",
-            filled_quantity=0,
-            remaining_quantity=total_qty,
-            message=f"No fill after {_retries + 1} attempt(s)",
-        )
+            # A market close can remain working. A limit cancellation whose
+            # terminal state is unknown must stay pending for reconciliation.
+            return OrderResult(
+                order_id=str(trade.order.orderId),
+                status="submitted" if is_market else "pending",
+                fill_price=Decimal(str(round(avg, 4))) if filled else None,
+                filled_quantity=filled,
+                remaining_quantity=max(0, total_qty - filled),
+                message="Market order still working" if is_market else
+                        "Cancellation unconfirmed; no replacement submitted",
+            )
 
     async def cancel_all_open_orders(self) -> CancelSweep:
         """Cancel every working order on the account, reporting what survived.
@@ -900,6 +904,7 @@ class IBKRClient(BrokerInterface):
         widening price step closes the gap for these names instead of
         silently failing every attempt.
         """
+        permit = current_entry_permit()
         self._require_connection()
         stock = Stock(ticker, "SMART", "USD")
         await self.ib.qualifyContractsAsync(stock)
@@ -927,6 +932,7 @@ class IBKRClient(BrokerInterface):
         use_bracket = (stop is not None) or (take_profit is not None)
 
         async def _submit(price: Optional[float]):
+            await require_reconciled_entry(self, permit)
             if use_bracket:
                 exit_action = "SELL" if ib_action == "BUY" else "BUY"
                 parent_id = self.ib.client.getReqId()
@@ -959,6 +965,7 @@ class IBKRClient(BrokerInterface):
                     f"${take_profit:.2f}" if take_profit else "—",
                     f"${stop:.2f}" if stop else "—",
                 )
+                check_entry_permit(permit)
                 t = self.ib.placeOrder(stock, parent)
                 # Gateway registration of the parent is asynchronous — submitting
                 # the children immediately can beat it there, and IBKR rejects
@@ -979,11 +986,21 @@ class IBKRClient(BrokerInterface):
                         "submitting children anyway (may hit Error 135)",
                         ticker, parent.orderId, BRACKET_ACK_TIMEOUT_SECONDS,
                     )
-                for child in children:
-                    self.ib.placeOrder(stock, child)
+                # The parent registration wait is an await boundary. Do not
+                # transmit a held bracket after its entry permit was halted.
+                try:
+                    await require_reconciled_entry(self, permit)
+                    check_entry_permit(permit)
+                except EntryHalted:
+                    self.ib.cancelOrder(parent)
+                    return t
+                t._olbos_bracket_children = [
+                    self.ib.placeOrder(stock, child) for child in children
+                ]
             else:
                 logger.info("Submitting equity order: %s %s x%d @ %s",
                             side, ticker, qty, f"${price:.2f}" if price else "MKT")
+                check_entry_permit(permit)
                 t = self.ib.placeOrder(stock, _build_entry(price))
 
             # ── Real-time status/fill logging ────────────────────────────────
@@ -1004,14 +1021,22 @@ class IBKRClient(BrokerInterface):
             t.fillEvent += _on_fill
             return t
 
-        last_trade = None
         for attempt in range(1, _retries + 2):  # +1 initial; +N retries (LMT only)
             trade = await _submit(px)
-            last_trade = trade
             logger.info("Equity order attempt %d/%d for %s x%d",
                         attempt, _retries + 1, ticker, qty)
 
             outcome, filled, avg = await self._await_order(trade, qty, _timeout)
+            was_timeout = outcome == "timeout"
+            if was_timeout and not is_market:
+                outcome, filled, avg = await self._cancel_and_confirm(trade, qty)
+            if was_timeout and outcome == "cancelled" and not filled and attempt <= _retries:
+                base_px = px or 0
+                step = round(base_px * _step_pct, 2) or _retry_step()
+                new_px = round(base_px + step, 2) if ib_action == "BUY" else round(base_px - step, 2)
+                if new_px > 0:
+                    px = new_px
+                    continue
 
             if outcome == "filled":
                 logger.info("Equity order %s fully filled: %d @ avg $%.4f",
@@ -1052,48 +1077,13 @@ class IBKRClient(BrokerInterface):
                     message=outcome,
                 )
 
-            # ── outcome == "timeout" ─────────────────────────────────────────
-            if is_market:
-                # A market order with no fill is still working (e.g. market
-                # closed). Leave it live — cancelling a flatten could strand
-                # naked risk.
-                logger.warning(
-                    "Equity market order %s still working after %ds — leaving it live",
-                    trade.order.orderId, _timeout,
-                )
-                return EquityOrderResult(
-                    order_id=str(trade.order.orderId),
-                    status="submitted",
-                    message=f"Order working — no fill after {_timeout}s",
-                )
-
-            if attempt <= _retries:
-                base_px = px or 0
-                step = round(base_px * _step_pct, 2) or _retry_step()
-                new_px = round(base_px + step, 2) if ib_action == "BUY" else round(base_px - step, 2)
-                logger.warning(
-                    "Equity order %s timed out after %ds — cancelling and retrying "
-                    "at a more aggressive limit (%.2f → %.2f)",
-                    trade.order.orderId, _timeout, base_px, new_px,
-                )
-                self.ib.cancelOrder(trade.order)
-                await asyncio.sleep(2)  # let cancel propagate
-                px = new_px
-                if px <= 0:
-                    logger.error("Equity retry price reached zero — aborting retries")
-                    break
-            else:
-                logger.error("Equity order %s timed out on final attempt — cancelling",
-                             trade.order.orderId)
-                self.ib.cancelOrder(trade.order)
-                await asyncio.sleep(2)
-
-        order_id = str(last_trade.order.orderId) if last_trade else "unknown"
-        return EquityOrderResult(
-            order_id=order_id,
-            status="cancelled",
-            message=f"No fill after {_retries + 1} attempt(s)",
-        )
+            return EquityOrderResult(
+                order_id=str(trade.order.orderId),
+                status="submitted" if is_market else "pending",
+                fill_price=Decimal(str(round(avg, 4))) if filled else None,
+                message="Market order still working" if is_market else
+                        "Cancellation unconfirmed; no replacement submitted",
+            )
 
     async def get_bars(
         self, ticker: str, timeframe: str = "1 day", limit: int = 100,
