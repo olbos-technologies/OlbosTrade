@@ -3,8 +3,10 @@ Application configuration loaded from environment variables.
 All runtime settings must come through this module — no hardcoded values.
 """
 
+from typing import Literal
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 
 
 class Settings(BaseSettings):
@@ -443,6 +445,15 @@ class Settings(BaseSettings):
     # untracked options position is logged for manual review instead.
     # Rollback: set false.
     reconciliation_auto_adopt_untracked: bool = Field(default=True)
+    # Reconciliation gate for NEW IBKR entries (services/reconciliation_entry_gate.py).
+    #   off      never evaluated
+    #   observe  evaluate before each entry send, record what WOULD have been
+    #            vetoed and why, block nothing (default; a read, no behaviour)
+    #   enforce  veto the entry when reconciliation is unresolved or cannot be
+    #            established
+    # Closes and emergency flattening are never gated in any mode. A value
+    # outside these three fails startup rather than silently meaning "off".
+    reconciliation_entry_gate_mode: Literal["off", "observe", "enforce"] = Field(default="observe")
     # When the reconciler finds an open Trade row whose tracked quantity
     # disagrees with the broker's live quantity for that underlying,
     # correct the DB row to match the broker (source of truth) -- confirmed
@@ -525,6 +536,13 @@ class Settings(BaseSettings):
         if self.broker == "alpaca":
             return "paper" in self.alpaca_base_url.lower()
         return self.ibkr_trading_mode.lower() == "paper"
+
+    @field_validator("reconciliation_entry_gate_mode", mode="before")
+    @classmethod
+    def _gate_mode_is_case_insensitive(cls, value):
+        """`ENFORCE` and ` enforce ` mean enforce. Anything else is still
+        rejected by the Literal, so a typo cannot mean "off"."""
+        return value.strip().lower() if isinstance(value, str) else value
 
     @model_validator(mode="after")
     def _capital_pools_come_as_a_pair(self):

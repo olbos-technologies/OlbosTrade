@@ -188,3 +188,19 @@ def single_operator_work(broker=None):
 
         broker = get_broker()
     return ScopedWork(organization_id=None, broker=broker, broker_source="process")
+
+
+@pytest.fixture(autouse=True)
+def _entry_gate_is_off_unless_a_test_is_about_it(monkeypatch):
+    """The reconciliation entry gate ships in `observe`, which evaluates the
+    account before every IBKR entry send. A test that merely places an order
+    through a fake broker should not be silently running a reconciliation (and
+    attempting a database write) as a side effect, so the gate is off here.
+
+    The gate's own tests, and the adapter tests that are about it, set the mode
+    they mean explicitly — `observe` and `enforce` each get theirs, so "off by
+    default in the suite" never stands in for "tested".
+    """
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "reconciliation_entry_gate_mode", "off", raising=False)

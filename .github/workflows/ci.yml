@@ -143,9 +143,11 @@ jobs:
           tests/test_equity_limit_repricing.py
           tests/test_guardrails.py tests/test_risk_manager.py
           tests/test_position_reconciler.py tests/test_signed_reconciliation.py
+          tests/test_reconciliation_entry_gate.py
           --cov=app.services.options_decision_engine
           --cov=app.services.kill_switch
           --cov=app.services.execution_interlock
+          --cov=app.services.reconciliation_entry_gate
           --cov=app.services.guardrails
           --cov=app.services.risk_manager
           --cov=app.services.position_reconciler
@@ -226,6 +228,7 @@ jobs:
             tests/test_trade_desk_claim_route.py \
             tests/test_claim_reconciliation_pg.py \
             tests/test_claim_evidence_pg.py \
+            tests/test_reconciliation_entry_gate_pg.py \
             tests/test_admin_claims_routes.py \
             tests/test_update_script_deploys_in_order.py \
             tests/test_approval_concurrency_pg.py \
