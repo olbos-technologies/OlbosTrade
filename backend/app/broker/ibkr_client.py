@@ -172,6 +172,40 @@ def _equity_retry_step_pct() -> float:
         return EQUITY_RETRY_STEP_PCT
 
 
+def order_source(client_id, own_client_id) -> str:
+    """Who placed an order, judged from the client ID IBKR stamps on it.
+
+    IBKR attaches to every order the ID of the API client that sent it, so this
+    is evidence about the SENDER, read off the broker's own record rather than
+    anything the app logged about itself:
+
+      this_app          our own API client id
+      tws_or_manual     client id 0: orders entered in TWS / IB Gateway itself
+                        (IBKR reports those as client 0). It is where a person
+                        typing an order appears, but it is not proof of one.
+      other_api_client  any other id: a different program using the same
+                        account (a script, a tool, a second app instance)
+      unknown           IBKR did not say, or the value is unusable
+
+    Deliberately not "assume ours": an order nobody can place is the one this
+    exists to catch, so anything unrecognised is labelled as such.
+    """
+    try:
+        if client_id is None or isinstance(client_id, bool):
+            return "unknown"
+        client = int(client_id)
+        own = int(own_client_id)
+    except (TypeError, ValueError):
+        return "unknown"
+    if client == own:
+        return "this_app"
+    if client == 0:
+        return "tws_or_manual"
+    if client < 0:
+        return "unknown"
+    return "other_api_client"
+
+
 class IBKRClient(BrokerInterface):
     """
     IBKR broker implementation using ib_insync.
@@ -1361,7 +1395,13 @@ class IBKRClient(BrokerInterface):
         returned `source` says which answer the caller is holding, so an empty
         list is never silently read as "confirmed no stops".
 
-        Returns {"source": str, "orders": [ ... ]}.
+        Each order also carries who sent it, from IBKR's own record of it:
+        `client_id`, `perm_id` (IBKR's permanent order id), `order_ref` (a tag
+        the sender may have set; the app sets none today) and `account`, plus
+        `placed_by` (see `order_source`). That is how an order nobody can
+        account for gets traced to a program, not guessed at.
+
+        Returns {"source": str, "app_client_id": int, "orders": [ ... ]}.
         """
         self._require_connection()
 
@@ -1405,10 +1445,16 @@ class IBKRClient(BrokerInterface):
                 # A protective exit is a stop-flavoured order, however it was
                 # created — bracket child or placed by hand at the broker.
                 "is_protective": str(getattr(o, "orderType", "")).upper().startswith("STP"),
+                # Provenance: read off the order exactly as IBKR reports it.
+                "client_id": getattr(o, "clientId", None),
+                "perm_id": getattr(o, "permId", 0) or None,
+                "order_ref": getattr(o, "orderRef", "") or None,
+                "account": getattr(o, "account", "") or None,
+                "placed_by": order_source(getattr(o, "clientId", None), settings.ibkr_client_id),
             })
 
         out.sort(key=lambda r: (r["symbol"] or "", r["order_id"] or 0))
-        return {"source": source, "orders": out}
+        return {"source": source, "app_client_id": settings.ibkr_client_id, "orders": out}
 
     async def get_account_summary(self) -> AccountSummary:
         """

@@ -158,6 +158,9 @@ async def portfolio_open_orders(conn: HTTPConnection):
         "protected_tickers": sorted(protected),
         "open_position_count": len(open_trades),
         "positions_without_stop": unprotected,
+        # The id this app connects to IBKR with, so each order's `placed_by`
+        # can be checked by eye against its `client_id`.
+        "app_client_id": result.get("app_client_id"),
         "orders": orders,
     }
 
