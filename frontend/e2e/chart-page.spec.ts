@@ -1,7 +1,7 @@
 /**
- * The desktop chart page is one instrument bar and a tall chart, nothing else.
- * Measured in a real browser: "the chart starts below the middle of the screen"
- * and "the page is just the chart" are layout facts jsdom cannot see.
+ * The desktop chart page: one instrument bar, the chart in the top two thirds and
+ * a Positions / Watchlist panel in the bottom third. Measured in a real browser:
+ * the split and "the chart starts high" are layout facts jsdom cannot see.
  */
 import { test, expect, type Page } from "@playwright/test";
 import { stubBackend, expectNoHorizontalOverflow } from "./helpers";
@@ -23,23 +23,45 @@ async function open(page: Page, width = 1440, height = 900) {
     const t = r.request().url().split("/").pop()!.split("?")[0];
     return r.fulfill(reply({ last_close: t === "AAPL" ? 342.36 : 100.5, prev_close: 343, change_pct: t === "AAPL" ? -0.52 : 1.2 }));
   });
+  await page.route("**/api/paper-trade/positions", r => r.fulfill(reply({ positions: [
+    { symbol: "AMZN", quantity: 7, avg_cost: 262.35, unrealized_pnl: -21, hold_days: 2 },
+    { symbol: "FER", quantity: -337, avg_cost: 58.57, unrealized_pnl: -46, hold_days: 2 },
+  ] })));
   await page.addInitScript(() => { try { localStorage.clear(); } catch { /* ignore */ } });
   await page.setViewportSize({ width, height });
   await page.goto("/terminal/markets/chart?symbol=AAPL");
   await expect(page.getByRole("heading", { name: "Market workspace" })).toBeVisible();
 }
 
-test("the page is the chart: high on the screen, wide and tall, with nothing under it", async ({ page }) => {
+test("the chart takes the top two thirds and the panel the bottom third", async ({ page }) => {
   await open(page);
-  const plot = await page.getByLabel("Price chart", { exact: true }).boundingBox();
-  expect(plot!.y, "chart starts in the top third").toBeLessThan(330);
-  expect(plot!.width, "full width").toBeGreaterThan(1000);
-  expect(plot!.height, "tall enough to read").toBeGreaterThan(450);
-  await expect(page.getByLabel("Chart research dock")).toHaveCount(0);
-  await expect(page.getByRole("tab")).toHaveCount(0);
+  const chart = await page.locator(".dock-chart").boundingBox();
+  const panel = await page.getByLabel("Chart research dock").boundingBox();
+  expect(chart!.y, "chart starts in the top third").toBeLessThan(330);
+  expect(chart!.width, "full width").toBeGreaterThan(1000);
+  const ratio = chart!.height / panel!.height;
+  expect(ratio, `chart ${chart!.height} : panel ${panel!.height} should be about 2 : 1`).toBeGreaterThan(1.6);
+  expect(ratio).toBeLessThan(2.5);
+  expect(panel!.height, "panel is tall enough to read").toBeGreaterThan(140);
+  await expect(page.getByRole("tab")).toHaveCount(2);
   await expect(page.locator(".workstation-right, .workstation-watchlist, .workstation-top-strip, .chart-quote")).toHaveCount(0);
   await expect(page.getByRole("button", { name: /Focus chart|Show research/ })).toHaveCount(0);
   await expectNoHorizontalOverflow(page, 1440);
+});
+
+test("the bottom panel shows positions first and the watchlist on the second tab", async ({ page }) => {
+  await open(page);
+  await expect(page.getByRole("tab", { name: /Positions/ })).toHaveAttribute("aria-selected", "true");
+  const positions = page.getByRole("table", { name: "Open positions" });
+  await expect(positions).toContainText("FER");
+  await expect(positions).toContainText("−$46.00");
+  await page.getByRole("tab", { name: /Watchlist/ }).click();
+  const list = page.getByRole("table", { name: "Watchlist" });
+  await expect(list).toContainText("AAPL");
+  await expect(list).toContainText("342.36");
+  await list.getByRole("button", { name: "MSFT", exact: true }).click();
+  await expect(page.getByLabel("Selected instrument quote")).toContainText("100.50");
+  await expect(page.getByRole("button", { name: "Remove MSFT from Market Watch" }).first()).toBeVisible();
 });
 
 test("the instrument bar carries the price, the last bar and the controls once", async ({ page }) => {
@@ -84,9 +106,10 @@ test("choosing a picker symbol changes the instrument", async ({ page }) => {
   await expect(page.getByLabel("Selected instrument quote")).toContainText("100.50");
 });
 
-test("a laptop-height window still gives the chart a usable height", async ({ page }) => {
+test("a laptop-height window keeps both the chart and the panel usable", async ({ page }) => {
   await open(page, 1280, 720);
   const plot = await page.getByLabel("Price chart", { exact: true }).boundingBox();
-  expect(plot!.height).toBeGreaterThan(330);
+  expect(plot!.height, "price chart keeps a usable height").toBeGreaterThan(250);
+  expect((await page.getByLabel("Chart research dock").boundingBox())!.height).toBeGreaterThan(140);
   await expectNoHorizontalOverflow(page, 1280);
 });
