@@ -3,7 +3,6 @@ import { Button } from "../ui";
 import { pnlColor } from "../../utils/pnlTone";
 
 type Bar = { open: number; high: number; low: number; close: number; volume: number } | null;
-type TF = { key: string; label: string };
 
 const px = (n: number | null | undefined) => (typeof n === "number" && Number.isFinite(n) ? n.toFixed(2) : "—");
 const vol = (n: number | null | undefined) => {
@@ -17,8 +16,8 @@ const vol = (n: number | null | undefined) => {
  * last bar's numbers, how fresh they are, and the chart controls.
  */
 export default function InstrumentBar({
-  symbols, symbol, onSelect, onGoTo, onUnpin, price, changePct, bar, freshness,
-  timeframes, timeframe, onTimeframe, signalBadge, onSignalDetail,
+  symbols, symbol, onSelect, onGoTo, onUnpin, price, changePct, bar, freshness, freshnessShort,
+  signalBadge, onSignalDetail,
 }: {
   symbols: string[];
   symbol: string;
@@ -31,9 +30,8 @@ export default function InstrumentBar({
   changePct: number | null | undefined;
   bar: Bar;
   freshness: string;
-  timeframes: TF[];
-  timeframe: string;
-  onTimeframe: (k: string) => void;
+  /** A shorter form of `freshness` for phones, where the full line would wrap over several rows. */
+  freshnessShort?: string;
   signalBadge: React.ReactNode;
   onSignalDetail: () => void;
 }) {
@@ -76,18 +74,14 @@ export default function InstrumentBar({
           <strong className="tnum">{px(price)}</strong>
           <span className="tnum" style={{ color: typeof changePct === "number" ? pnlColor(changePct) : "var(--ink-faint)" }}>{move}</span>
         </div>
-        <span className="instrument-bar__fresh">{freshness}</span>
+        <span className="instrument-bar__fresh instrument-bar__fresh--long">{freshness}</span>
+        {freshnessShort && <span className="instrument-bar__fresh instrument-bar__fresh--short">{freshnessShort}</span>}
       </div>
       <div className="instrument-bar__ohlc tnum" aria-label="Last bar">
         {bar ? <>O {px(bar.open)} &nbsp;H {px(bar.high)} &nbsp;L {px(bar.low)} &nbsp;C {px(bar.close)} &nbsp;Vol {vol(bar.volume)}</> : "No bar data"}
       </div>
       <div className="instrument-bar__signal">{signalBadge}</div>
       <div className="instrument-bar__controls">
-        <div className="chart-timeframes" role="group" aria-label="Chart timeframe">
-          {timeframes.map((t) => (
-            <Button selector key={t.key} active={timeframe === t.key} onClick={() => onTimeframe(t.key)}>{t.label}</Button>
-          ))}
-        </div>
         <Button flat onClick={onSignalDetail}>Signal detail</Button>
       </div>
     </header>

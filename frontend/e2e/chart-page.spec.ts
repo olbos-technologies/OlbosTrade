@@ -1,7 +1,7 @@
 /**
- * The desktop chart page: one instrument bar, the chart on the left two thirds and
- * a Positions / Watchlist panel on the right third. Measured in a real browser:
- * the split and "the chart starts high" are layout facts jsdom cannot see.
+ * The chart page: one instrument bar; Positions on the left, the chart in the
+ * middle (interval strip above it, range bar below, right-aligned) and the
+ * Watchlist on the right. Measured in a real browser: layout is not visible to jsdom.
  */
 import { test, expect, type Page } from "@playwright/test";
 import { stubBackend, expectNoHorizontalOverflow } from "./helpers";
@@ -12,13 +12,22 @@ const bars = Array.from({ length: 60 }, (_, i) => ({
   open: 340 + Math.sin(i / 5) * 3, high: 343 + Math.sin(i / 5) * 3, low: 338 + Math.sin(i / 5) * 3,
   close: 341 + Math.sin(i / 4) * 3, volume: 1_000_000 + i * 10_000,
 }));
+const requests: string[] = [];
+const lastRequest = () => requests[requests.length - 1];
 
 async function open(page: Page, width = 1440, height = 900) {
+  requests.length = 0;
   await stubBackend(page);
   await page.route("**/api/**", r => r.fulfill(r.request().url().includes("/api/auth/status")
     ? reply({ auth_enabled: false, authenticated: false, user: null })
     : { status: 503, contentType: "application/json", body: "{}" }));
-  await page.route("**/api/equity/chart/**", r => r.fulfill(reply({ bars })));
+  await page.route("**/api/equity/chart/**", r => {
+    requests.push(r.request().url());
+    const u = new URL(r.request().url());
+    // the real endpoint clamps a wide range at 1-minute bars to the last 7 days
+    const clamped = u.searchParams.get("timeframe") === "1m" && u.searchParams.get("range") !== "1d" && u.searchParams.get("range") !== "5d";
+    return r.fulfill(reply({ bars, range: u.searchParams.get("range"), range_clamped: clamped, period: clamped ? "7d" : "5d" }));
+  });
   await page.route("**/api/market/snapshot/**", r => {
     const t = r.request().url().split("/").pop()!.split("?")[0];
     return r.fulfill(reply({ last_close: t === "AAPL" ? 342.36 : 100.5, prev_close: 343, change_pct: t === "AAPL" ? -0.52 : 1.2 }));
@@ -33,37 +42,65 @@ async function open(page: Page, width = 1440, height = 900) {
   await expect(page.getByRole("heading", { name: "Market workspace" })).toBeVisible();
 }
 
-test("the chart takes the left two thirds and the panel the right third", async ({ page }) => {
+test("positions on the left, the chart in the middle, the watchlist on the right", async ({ page }) => {
   await open(page);
-  const chart = await page.locator(".dock-chart").boundingBox();
-  const panel = await page.getByLabel("Chart research dock").boundingBox();
-  expect(chart!.y, "chart starts in the top third").toBeLessThan(330);
-  expect(chart!.height, "chart is tall").toBeGreaterThan(400);
-  expect(panel!.x, "panel is to the right of the chart").toBeGreaterThanOrEqual(chart!.x + chart!.width - 1);
-  expect(Math.abs(panel!.y - chart!.y), "same top edge").toBeLessThan(2);
-  const ratio = chart!.width / panel!.width;
-  expect(ratio, `chart ${chart!.width} : panel ${panel!.width} should be about 2 : 1`).toBeGreaterThan(1.7);
-  expect(ratio).toBeLessThan(2.3);
-  expect(panel!.width, "panel is wide enough to read a table").toBeGreaterThan(300);
-  await expect(page.getByRole("tab")).toHaveCount(2);
+  const left = (await page.getByLabel("Open positions panel").boundingBox())!;
+  const chart = (await page.locator(".dock-chart").boundingBox())!;
+  const right = (await page.getByLabel("Watchlist panel").boundingBox())!;
+  expect(left.x + left.width, "positions end where the chart starts").toBeLessThanOrEqual(chart.x + 1);
+  expect(right.x, "watchlist starts where the chart ends").toBeGreaterThanOrEqual(chart.x + chart.width - 1);
+  expect(chart.width, "the chart is the widest column").toBeGreaterThan(left.width * 2);
+  expect(chart.width).toBeGreaterThan(right.width * 2);
+  expect(left.width, "panel wide enough to read").toBeGreaterThan(200);
+  expect(chart.height, "chart is tall").toBeGreaterThan(380);
+  expect(chart.y, "chart starts in the top half").toBeLessThan(450);
+  await expect(page.getByLabel("Open positions panel")).toContainText("FER");
+  await expect(page.getByLabel("Open positions panel")).toContainText("−$46.00");
+  await expect(page.getByLabel("Watchlist panel")).toContainText("342.36");
+  await expect(page.getByRole("tab")).toHaveCount(0);
   await expect(page.locator(".workstation-right, .workstation-watchlist, .workstation-top-strip, .chart-quote")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: /Focus chart|Show research/ })).toHaveCount(0);
   await expectNoHorizontalOverflow(page, 1440);
 });
 
-test("the side panel shows positions first and the watchlist on the second tab", async ({ page }) => {
+test("the interval strip is at the top-left of the chart and the range bar at the bottom-right", async ({ page }) => {
   await open(page);
-  await expect(page.getByRole("tab", { name: /Positions/ })).toHaveAttribute("aria-selected", "true");
-  const positions = page.getByRole("table", { name: "Open positions" });
-  await expect(positions).toContainText("FER");
-  await expect(positions).toContainText("−$46.00");
-  await page.getByRole("tab", { name: /Watchlist/ }).click();
-  const list = page.getByRole("table", { name: "Watchlist" });
-  await expect(list).toContainText("AAPL");
-  await expect(list).toContainText("342.36");
-  await list.getByRole("button", { name: "MSFT", exact: true }).click();
-  await expect(page.getByLabel("Selected instrument quote")).toContainText("100.50");
-  await expect(page.getByRole("button", { name: "Remove MSFT from Market Watch" }).first()).toBeVisible();
+  const chart = (await page.locator(".dock-chart").boundingBox())!;
+  const strip = (await page.getByRole("group", { name: "Chart timeframe" }).boundingBox())!;
+  const range = (await page.getByRole("group", { name: "Chart range" }).boundingBox())!;
+  expect(strip.y + strip.height, "interval strip is above the chart").toBeLessThanOrEqual(chart.y + 1);
+  expect(strip.x, "interval strip hugs the left edge").toBeLessThan(chart.x + 60);
+  expect(range.y, "range bar is below the chart").toBeGreaterThanOrEqual(chart.y + chart.height - 1);
+  expect(range.x + range.width, "range bar hugs the right edge").toBeGreaterThan(chart.x + chart.width - 60);
+  await expect(page.getByRole("group", { name: "Chart timeframe" }).getByRole("button")).toHaveCount(9);
+  await expect(page.getByRole("group", { name: "Chart range" }).getByRole("button")).toHaveCount(9);
+  await expect(page.getByLabel("Selected instrument").getByRole("group", { name: "Chart timeframe" })).toHaveCount(0);
+});
+
+test("picking an interval keeps the range; picking a range picks a fitting interval", async ({ page }) => {
+  await open(page);
+  const strip = page.getByRole("group", { name: "Chart timeframe" });
+  const ranges = page.getByRole("group", { name: "Chart range" });
+  await expect(strip.getByRole("button", { name: "15 minutes" })).toHaveAttribute("aria-pressed", "true");
+  await expect(ranges.getByRole("button", { name: "5 days" })).toHaveAttribute("aria-pressed", "true");
+  await strip.getByRole("button", { name: "4 hours" }).click();
+  await expect(strip.getByRole("button", { name: "4 hours" })).toHaveAttribute("aria-pressed", "true");
+  await expect(ranges.getByRole("button", { name: "5 days" })).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(() => lastRequest()).toContain("timeframe=4h");
+  expect(lastRequest()).toContain("range=5d");
+  await ranges.getByRole("button", { name: "1 year" }).click();
+  await expect(strip.getByRole("button", { name: "1 day" })).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(() => lastRequest()).toContain("range=1y");
+  expect(lastRequest()).toContain("timeframe=1d");
+});
+
+test("a range the data cannot cover at that interval says so, and the note clears", async ({ page }) => {
+  await open(page);
+  const strip = page.getByRole("group", { name: "Chart timeframe" });
+  await page.getByRole("group", { name: "Chart range" }).getByRole("button", { name: "1 year" }).click();
+  await strip.getByRole("button", { name: "1 minute" }).click();
+  await expect(page.locator(".range-bar__note")).toContainText("Showing the last 7 days: 1 minute bars don't go back further.");
+  await strip.getByRole("button", { name: "1 day" }).click();
+  await expect(page.locator(".range-bar__note")).toHaveCount(0);
 });
 
 test("the instrument bar carries the price, the last bar and the controls once", async ({ page }) => {
@@ -93,13 +130,18 @@ test("any symbol can be typed, pinned to the picker, and removed again", async (
   await input.fill("amd");
   await input.press("Enter");
   await expect(page.locator(".instrument-bar .chart-symbol-picker button[aria-pressed='true']")).toHaveText("AMD");
-  await page.getByRole("button", { name: "Remove AMD from Market Watch" }).click();
-  // removing the symbol you are looking at moves you to another one
+  await page.locator(".instrument-bar").getByRole("button", { name: "Remove AMD from Market Watch" }).click();
   await expect(page.locator(".instrument-bar .chart-symbol-picker button", { hasText: "AMD" })).toHaveCount(0);
   await expect(page.locator(".instrument-bar .chart-symbol-picker button[aria-pressed='true']")).not.toHaveText("AMD");
   await input.fill("not a symbol!");
   await input.press("Enter");
   await expect(input).toHaveAttribute("aria-invalid", "true");
+});
+
+test("choosing from the watchlist panel changes the instrument", async ({ page }) => {
+  await open(page);
+  await page.getByLabel("Watchlist panel").getByRole("button", { name: "MSFT", exact: true }).click();
+  await expect(page.getByLabel("Selected instrument quote")).toContainText("100.50");
 });
 
 test("choosing a picker symbol changes the instrument", async ({ page }) => {
@@ -108,10 +150,27 @@ test("choosing a picker symbol changes the instrument", async ({ page }) => {
   await expect(page.getByLabel("Selected instrument quote")).toContainText("100.50");
 });
 
-test("a laptop-size window keeps both the chart and the panel usable", async ({ page }) => {
+test("a laptop-size window keeps the chart and both panels usable", async ({ page }) => {
   await open(page, 1280, 720);
   const plot = await page.getByLabel("Price chart", { exact: true }).boundingBox();
   expect(plot!.height, "price chart keeps a usable height").toBeGreaterThan(250);
-  expect((await page.getByLabel("Chart research dock").boundingBox())!.width).toBeGreaterThan(300);
+  expect((await page.getByLabel("Watchlist panel").boundingBox())!.width).toBeGreaterThan(180);
+  expect((await page.getByLabel("Open positions panel").boundingBox())!.width).toBeGreaterThan(180);
   await expectNoHorizontalOverflow(page, 1280);
+});
+
+test("on a phone the chart comes first with the controls above and below it, then the panels", async ({ page }) => {
+  await open(page, 390, 844);
+  const chart = (await page.locator(".dock-chart").boundingBox())!;
+  const strip = (await page.getByRole("group", { name: "Chart timeframe" }).boundingBox())!;
+  const range = (await page.getByRole("group", { name: "Chart range" }).boundingBox())!;
+  const positions = (await page.getByLabel("Open positions panel").boundingBox())!;
+  expect(strip.y + strip.height).toBeLessThanOrEqual(chart.y + 1);
+  expect(range.y).toBeGreaterThanOrEqual(chart.y + chart.height - 1);
+  expect(positions.y, "panels are below the chart").toBeGreaterThan(range.y);
+  expect(chart.y, "the chart starts in the upper 55% of the screen").toBeLessThan(844 * 0.55);
+  for (const b of await page.getByRole("group", { name: "Chart timeframe" }).getByRole("button").all()) {
+    expect((await b.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  }
+  await expectNoHorizontalOverflow(page, 390);
 });

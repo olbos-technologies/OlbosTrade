@@ -43,7 +43,7 @@ for(const width of [320,375,390,430]) {
   await expect(page.getByRole('group',{name:'Chart timeframe'})).toBeVisible();
   await expect(page.locator('.chart-canvas-wrap canvas').first()).toBeVisible();
   const plot=(await page.getByLabel('Price chart',{exact:true}).boundingBox())!;
-  expect(plot.y,'the chart starts in the top half of the screen').toBeLessThan(422);
+  expect(plot.y,'the chart starts in the upper 55% of the screen (the interval strip sits above it)').toBeLessThan(844*0.55);
   await expectNoHorizontalOverflow(page,width);
   await quote.scrollIntoViewIfNeeded();
   await page.screenshot({path:`ui-audit-artifacts/adaptive-chart-${width}.png`,animations:'disabled'});

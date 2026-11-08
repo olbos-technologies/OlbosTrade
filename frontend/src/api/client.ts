@@ -245,9 +245,10 @@ export const api = {
       : "";
     return request(`/api/options/signals/history${q}`);
   },
-  getEquityChart: (symbol: string, params?: { timeframe?: string; limit?: number }) => {
+  getEquityChart: (symbol: string, params?: { timeframe?: string; limit?: number; range?: string }) => {
     const search = new URLSearchParams();
     if (params?.timeframe) search.set("timeframe", params.timeframe);
+    if (params?.range) search.set("range", params.range);
     if (params?.limit) search.set("limit", String(params.limit));
     const q = search.toString();
     return request(`/api/equity/chart/${symbol}${q ? `?${q}` : ""}`);
