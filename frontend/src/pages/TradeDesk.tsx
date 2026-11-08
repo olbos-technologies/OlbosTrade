@@ -23,6 +23,9 @@ import { Button } from "../components/ui";
 import ManualTradePanel from "../trade-desk/orders/ManualTradePanel";
 import { tint } from "../utils/tint";
 import { useTabRoute } from "../hooks/useTabRoute";
+import OrderCoveragePanel from "../components/OrderCoveragePanel";
+import { stopState, STOP_LABEL } from "../utils/orderCoverage";
+import { useResource, readCoverage } from "./MobileHome";
 
 function AuxiliaryDeskTools({embedded,children}:{embedded:boolean;children:React.ReactNode}) {
  const isMobile=useIsMobile();
@@ -503,6 +506,9 @@ export default function TradeDesk({
   embedded = false,
 }: { initialTab?: Tab; routeTabsToUrl?: boolean; embedded?: boolean }) {
   const { positions, lastSignal, cycleLog, loading, runCycle, refresh, positionsError } = usePaperTrade();
+  const [coverageNow, setCoverageNow] = useState(Date.now());
+  useEffect(() => { const t = setInterval(() => setCoverageNow(Date.now()), 5000); return () => clearInterval(t); }, []);
+  const orderBook = useResource(readCoverage, coverageNow);
   const [tab, setTab] = useTabRoute<Tab>(
     initialTab,
     routeTabsToUrl ? TAB_PAGE_KEYS : EMPTY_TAB_KEYS,
@@ -793,6 +799,7 @@ export default function TradeDesk({
             sheet, where hold-to-confirm provides the destructive-action
             friction after the operator has verified the broker position.
           */}
+          <OrderCoveragePanel book={orderBook.value} loading={orderBook.loading} at={orderBook.at} now={coverageNow} />
           <div className="positions-table-scroll" role="region" aria-label="Position details table" tabIndex={0}>
           <table className="t-table t-table--cards">
             <thead><tr>
@@ -883,7 +890,14 @@ export default function TradeDesk({
                       style={{ color: "var(--red)" }}
                     >{fmtDollars(p.mae_pnl)}</td>
                     <td data-col="hold" data-label="Held" className="mono">{p.hold_days != null ? `${p.hold_days}d` : "—"}</td>
-                    <td data-col="status"><Badge text="OPEN" color="var(--ink-dim)" /></td>
+                    <td data-col="status">
+                      <Badge text="OPEN" color="var(--ink-dim)" />
+                      {p.asset_type === "equity" && (
+                        <small className={`position-stop position-stop--${stopState(orderBook.value, symbol)}`}>
+                          {stopState(orderBook.value, symbol) === "protected" ? "✓ " : "⚠ "}{STOP_LABEL[stopState(orderBook.value, symbol)]}
+                        </small>
+                      )}
+                    </td>
                     <td data-col="mode"><span className={`mode-badge ${p.trading_mode || "balanced"}`}>{p.trading_mode || "balanced"}</span></td>
                     <td data-col="action" style={{ minWidth: 90 }}>
                       {canClose ? (
