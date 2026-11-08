@@ -55,15 +55,33 @@ export default function SetupScannerPanel() {
           <div style={{ fontSize: 12, color: "var(--ink-faint)", padding: 8 }}>No results.</div>
         ) : rows.map(r => (
           <div key={r.symbol} style={{ borderBottom: "1px solid var(--line-dim)", padding: "6px 4px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}
-              onClick={() => setOpen(open === r.symbol ? null : r.symbol)}>
+            <button
+              type="button"
+              aria-expanded={open === r.symbol}
+              aria-controls={`setup-detail-${r.symbol}`}
+              onClick={() => setOpen(open === r.symbol ? null : r.symbol)}
+              style={{
+                display: "flex", alignItems: "center", gap: 8, cursor: "pointer", width: "100%",
+                background: "none", border: "none", padding: 0, margin: 0,
+                color: "inherit", font: "inherit", textAlign: "left",
+              }}>
               <span className="mono" style={{ fontWeight: 600, width: 44 }}>{r.symbol}</span>
               <span style={{ color: BIAS_TONE[r.bias], fontSize: 12, textTransform: "capitalize", width: 56 }}>{r.bias}</span>
               <span className="tnum" style={{ fontSize: 13, fontWeight: 600, width: 30, color: r.confirmation_score >= 60 ? "var(--green)" : "var(--ink-dim)" }}>{r.confirmation_score}</span>
               <span style={{ marginLeft: "auto", fontSize: 11, color: STATUS_TONE[r.status], border: `1px solid ${STATUS_TONE[r.status]}`, borderRadius: 3, padding: "0 6px", textTransform: "capitalize" }}>{r.status}</span>
-            </div>
+              <span aria-hidden="true" style={{ color: "var(--ink-faint)", width: 10 }}>{open === r.symbol ? "▾" : "▸"}</span>
+            </button>
+            {open !== r.symbol && r.blocked_reasons.length > 0 && (
+              <div title={r.blocked_reasons.join("; ")} style={{
+                fontSize: 11, color: "var(--ink-dim)", marginTop: 2, paddingLeft: 2,
+                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+              }}>
+                {r.status === "blocked" ? "Blocked" : "Caution"}: {r.blocked_reasons[0]}
+                {r.blocked_reasons.length > 1 ? ` (+${r.blocked_reasons.length - 1} more)` : ""}
+              </div>
+            )}
             {open === r.symbol && (
-              <div style={{ padding: "6px 4px 2px", fontSize: 12, color: "var(--ink-dim)" }}>
+              <div id={`setup-detail-${r.symbol}`} style={{ padding: "6px 4px 2px", fontSize: 12, color: "var(--ink-dim)" }}>
                 <div>{r.timeframe_alignment} · structure {r.structure_state.replace(/_/g, " ")} · macro {r.macro_risk}</div>
                 {r.blocked_reasons.length > 0 ? (
                   <div style={{ color: "var(--red)", marginTop: 4 }}>
@@ -81,7 +99,7 @@ export default function SetupScannerPanel() {
           </div>
         ))}
         <div style={{ fontSize: 10, color: "var(--ink-faint)", padding: "6px 4px 2px" }}>
-          Readiness evidence only — not a trade signal. Blocked setups show why.
+          Readiness evidence only — not a trade signal. Select a row to see the full reason.
         </div>
     </Panel>
   );

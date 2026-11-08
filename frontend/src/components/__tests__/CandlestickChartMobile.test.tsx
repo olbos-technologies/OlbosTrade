@@ -46,6 +46,7 @@ const sampleBars: ChartBar[] = [
 
 beforeEach(() => {
   cleanup();
+  window.localStorage.clear();
   mockSeries.createPriceLine.mockClear();
 });
 
