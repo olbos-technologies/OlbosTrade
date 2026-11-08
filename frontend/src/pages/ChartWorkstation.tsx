@@ -1,29 +1,14 @@
 import { useIsMobile } from "../hooks/useIsMobile";
-import { pnlColor, gainSign } from "../utils/pnlTone";
+import { pnlColor } from "../utils/pnlTone";
 import React, { useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
-import MarketBiasPanel from "../components/MarketBiasPanel";
-import MarketStructurePanel from "../components/MarketStructurePanel";
 import SignalAttribution from "../components/SignalAttribution";
 import SignalDetailDrawer from "../components/SignalDetailDrawer";
-import SetupScannerPanel from "../components/SetupScannerPanel";
-import TimeframeAlignmentPanel from "../components/TimeframeAlignmentPanel";
-import { usePaperTrade } from "../hooks/usePaperTrade";
-import { useRisk } from "../hooks/useRisk";
-import {
-  chartLevelColors,
-  formatExecutionModeDisplay,
-  toChartSignalAttribution,
-  tradePlanCardTitle,
-  type ExecMode,
-} from "../utils/chartWorkstationDisplay";
+import { chartLevelColors, toChartSignalAttribution } from "../utils/chartWorkstationDisplay";
 import MetricHint, { resolveMetricHint } from "../components/MetricHint";
-import { Panel, StatTile, Badge, Button } from "../components/ui";
+import { Panel, StatTile, Button } from "../components/ui";
 import CandlestickChart from "../components/CandlestickChart";
-import ChartDock, { type DockTab } from "../components/chart/ChartDock";
 import InstrumentBar from "../components/chart/InstrumentBar";
-import PositionsTable from "../components/chart/PositionsTable";
-import WatchlistTable from "../components/chart/WatchlistTable";
 import { tint } from "../utils/tint";
 import "./markets/Markets.css";
 
@@ -117,11 +102,6 @@ function fmtMoney(value: number | null | undefined, digits = 2) {
   return `$${value.toFixed(digits)}`;
 }
 
-function fmtSigned(value: number | null | undefined, digits = 2) {
-  if (value == null || Number.isNaN(value)) return "—";
-  return `${value < 0 ? "-" : gainSign(value, digits)}$${Math.abs(value).toFixed(digits)}`;
-}
-
 function fmtPct(value: number | null | undefined, digits = 1) {
   if (value == null || Number.isNaN(value)) return "—";
   return `${value >= 0 ? "+" : ""}${value.toFixed(digits)}%`;
@@ -129,12 +109,6 @@ function fmtPct(value: number | null | undefined, digits = 1) {
 
 function hintFor(label: string): React.ReactNode {
   return resolveMetricHint(label) ? <MetricHint id={label} /> : label;
-}
-
-function normalizeReasons(value: unknown): string[] {
-  if (Array.isArray(value)) return value.filter((item): item is string => typeof item === "string");
-  if (typeof value === "string" && value.trim()) return [value];
-  return [];
 }
 
 function UpcomingCatalysts({ events }: { events: CatalystEvent[] }) {
@@ -200,14 +174,11 @@ export default function ChartWorkstation({
   compact?: boolean;
 } = {}) {
   const isMobile = useIsMobile();
-  const { positions, portfolio, portfolioError, positionsError } = usePaperTrade();
-  const { guardrailStatus, reconciliation, killSwitch } = useRisk();
 
   const [internalSymbol, setInternalSymbol] = useState(() => {
     const requested = new URLSearchParams(window.location.search).get("symbol")?.toUpperCase();
     return controlledSymbol || (requested && /^[A-Z0-9.^=:-]{1,20}$/.test(requested) ? requested : "AAPL");
   });
-  const [focusChart, setFocusChart] = useState(false);
   const symbol = controlledSymbol ?? internalSymbol;
   const setSymbol = (next: string) => {
     if (controlledSymbol === undefined) setInternalSymbol(next);
@@ -223,20 +194,15 @@ export default function ChartWorkstation({
   const [timeframe, setTimeframe] = useState<Timeframe>("15m");
   const [watchSnapshots, setWatchSnapshots] = useState<Record<string, WatchSnapshot>>({});
   const [signals, setSignals] = useState<Signal[]>([]);
-  const [regime, setRegime] = useState<any>(null);
   const [ivRank, setIvRank] = useState<any>(null);
   const [chartBars, setChartBars] = useState<ChartBar[]>([]);
   const [chartLoading, setChartLoading] = useState(false);
   const [chartError, setChartError] = useState<string | null>(null);
   const [catalystEvents, setCatalystEvents] = useState<CatalystEvent[]>([]);
   const [signalDrawerOpen, setSignalDrawerOpen] = useState(false);
-  const [execMode, setExecMode] = useState<ExecMode | null>(null);
   const [watchlist, setWatchlist] = useState<string[]>(loadStoredWatchlist);
-  const [tickerInput, setTickerInput] = useState("");
 
-  // Desktop dock layout: which dock tab is open, and a chart height that follows
-  // the window so the dock stays on the first screen.
-  const [dockTab, setDockTab] = useState("readiness");
+  // Desktop chart height follows the window.
   const [viewportH, setViewportH] = useState(() => window.innerHeight);
   useEffect(() => {
     const onResize = () => setViewportH(window.innerHeight);
@@ -251,14 +217,6 @@ export default function ChartWorkstation({
     } catch {
       /* ignore quota/storage errors — in-memory state still updates */
     }
-  };
-
-  const addTicker = () => {
-    const t = tickerInput.trim().toUpperCase();
-    if (!t || watchlist.includes(t)) { setTickerInput(""); return; }
-    persistWatchlist([...watchlist, t]);
-    setTickerInput("");
-    setSymbol(t);
   };
 
   const removeTicker = (ticker: string) => {
@@ -296,20 +254,8 @@ export default function ChartWorkstation({
   useEffect(() => {
     loadSignals();
     const si = setInterval(loadSignals, 60000);
-    (api.getRegime() as Promise<any>).then(setRegime).catch(() => setRegime(null));
-    const loadExec = () =>
-      (api.getExecutionMode() as Promise<{ mode?: string }>)
-        .then((d) => {
-          if (d.mode === "manual" || d.mode === "copilot" || d.mode === "autopilot") {
-            setExecMode(d.mode);
-          }
-        })
-        .catch(() => setExecMode(null));
-    loadExec();
-    const ei = setInterval(loadExec, 15000);
     return () => {
       clearInterval(si);
-      clearInterval(ei);
     };
   }, []);
 
@@ -381,155 +327,18 @@ export default function ChartWorkstation({
         { label: "RESISTANCE", value: resistance, color: levelColors.resistance },
       ].filter((level) => level.value > 0);
 
-  const actionableSignals = signals.filter((item) => item.action !== "HOLD");
-  const netLiq = portfolioError ? null : portfolio?.account_value ?? portfolio?.net_liquidation;
-  const dayPnl = guardrailStatus?.daily_pnl;
-  const execDisplay = execMode === null && !killSwitch?.active
-    ? { label: "Execution mode", value: "UNKNOWN", tone: "var(--amber)" }
-    : formatExecutionModeDisplay(execMode, Boolean(killSwitch?.active));
-  const planTitle = tradePlanCardTitle(Boolean(selectedSignal), selectedSignal?.source);
 
-  const tradePlanPanel = (
-            <Panel title={planTitle} sectionStyle={{ overflow: "hidden" }}>
-              {selectedSignal?.source && selectedSignal.source !== "unknown" && (
-                <div className="instrument-card--flat" style={{
-                  marginBottom: 10, fontFamily: "var(--mono)", fontSize: 11,
-                  color: "var(--ink-dim)", padding: "8px 10px",
-                }}>
-                  Source: {selectedSignal.source}
-                </div>
-              )}
-              {!selectedSignal && (
-                <div className="instrument-card--flat" style={{
-                  marginBottom: 10, fontFamily: "var(--mono)", fontSize: 11,
-                  color: "var(--ink-dim)", padding: "8px 10px",
-                }}>
-                  No signal for {symbol} — levels below are chart-derived
-                  (recent support/resistance), not the signal engine's own plan.
-                </div>
-              )}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10 }} className="workstation-plan-grid">
-                {[
-                  { label: "Entry", value: fmtMoney(entry, 2), tone: "var(--cyan)" },
-                  { label: "Stop", value: fmtMoney(stop, 2), tone: "var(--red)" },
-                  { label: "Target", value: fmtMoney(target, 2), tone: "var(--green)" },
-                  { label: "R:R", value: selectedSignal?.trade_plan?.risk_reward != null ? `${selectedSignal.trade_plan.risk_reward.toFixed(2)}x` : "—", tone: "var(--amber)" },
-                ].map((item) => (
-                  <StatTile key={item.label} variant="boxed" label={item.label} hint={hintFor(item.label)} value={item.value} tone={item.tone} />
-                ))}
-              </div>
-            </Panel>
-  );
-  const contextPanel = (
-            <Panel title="Context Stack" sectionStyle={{ overflow: "hidden" }}>
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <Badge kind="mode" tone="balanced">{regime?.regime ? regime.regime.replace(/_/g, " ") : "unknown"}</Badge>
-                  <Badge kind="mode" tone="conservative">VIX {regime?.vix != null ? regime.vix.toFixed(1) : "—"}</Badge>
-                  <Badge kind="mode" tone="aggressive">IVR {ivRank?.iv_rank != null ? Math.round(ivRank.iv_rank) : "—"}</Badge>
-                </div>
-                <div style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--ink-dim)", lineHeight: 1.7 }}>
-                  {normalizeReasons(selectedSignal?.reasons).length
-                    ? normalizeReasons(selectedSignal?.reasons).join(" · ")
-                    : "Signal stack will describe momentum, trend, volume, and volatility context when available."}
-                </div>
-              </div>
-            </Panel>
-  );
-  const researchSection = (
-    <section className="chart-intel-grid">
-            <MarketBiasPanel symbol={symbol} />
-            <TimeframeAlignmentPanel symbol={symbol} />
-            <MarketStructurePanel symbol={symbol} timeframe="1d" />
-          </section>
-  );
-
-  // Desktop layout: one instrument bar, the chart at full width, and the
-  // research behind a tabbed dock. Phones, the compact Equity/Options desk and
-  // "focus chart" keep the layout below.
-  if (!compact && !isMobile && !focusChart) {
-    const chartH = Math.max(340, Math.min(560, viewportH - 560));
-    const dockTabs: DockTab[] = [
-      { key: "readiness", label: "Setup readiness" },
-      { key: "watchlist", label: "Watchlist", count: watchlist.length },
-      { key: "signals", label: "Signals" },
-      { key: "positions", label: "Positions", count: positionsError ? "—" : positions.length },
-      { key: "plan", label: "Plan & context" },
-      { key: "research", label: "Research" },
-      { key: "safety", label: "Safety" },
-    ];
-    const rawLoss = guardrailStatus?.daily_loss_pct;
-    const dockLossPct = typeof rawLoss === "number" ? Math.max(0, -rawLoss) * 100 : null;
-    const safetyRows: { label: string; value: string; tone: string }[] = [
-      { label: execDisplay.label, value: execDisplay.value, tone: execDisplay.tone },
-      { label: "Kill switch", value: !killSwitch || typeof killSwitch.active !== "boolean" ? "UNKNOWN" : killSwitch.active ? "ACTIVE" : "INACTIVE", tone: !killSwitch || typeof killSwitch.active !== "boolean" ? "var(--amber)" : killSwitch.active ? "var(--red)" : "var(--green)" },
-      { label: "Day P&L", value: typeof dayPnl === "number" ? fmtSigned(dayPnl) : "—", tone: pnlColor(dayPnl) },
-      { label: "Daily loss", value: fmtPct(dockLossPct, 2), tone: dockLossPct ? "var(--red)" : "var(--green)" },
-      { label: "Portfolio", value: typeof netLiq === "number" ? fmtMoney(netLiq, 2) : "—", tone: "var(--ink)" },
-      { label: "Open positions", value: positionsError ? "—" : String(positions.length), tone: "var(--ink)" },
-      { label: "Win rate", value: portfolio?.win_rate != null ? `${Math.round(portfolio.win_rate * 100)}%` : "—", tone: "var(--ink)" },
-      { label: "Reconciliation", value: !reconciliation ? "UNAVAILABLE" : reconciliation.clean ? "CLEAN" : "REVIEW", tone: reconciliation?.clean ? "var(--green)" : "var(--amber)" },
-    ];
-    const shownSignals = (actionableSignals.length ? actionableSignals : signals).slice(0, 8);
-    const dockBody = (() => {
-      switch (dockTab) {
-        case "watchlist":
-          return <WatchlistTable watchlist={watchlist} snapshots={watchSnapshots} symbol={symbol}
-            onSelect={setSymbol} onAdd={(t) => { if (!watchlist.includes(t)) { persistWatchlist([...watchlist, t]); } setSymbol(t); }} onRemove={removeTicker} />;
-        case "signals":
-          return (
-            <div className="dock-table-wrap">
-              <p className="dock-line">
-                <span style={{ color: regime?.equity_allowed === true ? "var(--green)" : "var(--amber)" }}>
-                  Macro {regime?.equity_allowed === true ? "entries allowed" : regime?.equity_allowed === false ? "paused" : "unverified"}
-                </span>
-                {" · "}VIX {regime?.vix != null ? regime.vix.toFixed(1) : "—"}
-                {regime?.description ? ` · ${regime.description}` : ""}
-              </p>
-              <p className="dock-line dock-line--dim">
-                {symbol}: model score {selectedSignal ? `${Math.round(selectedSignal.confidence * 100)}%` : "—"}
-                {" · "}IV rank {ivRank?.iv_rank != null ? Math.round(ivRank.iv_rank) : "—"}
-                {" · "}RSI {selectedSignal?.indicators?.rsi != null ? selectedSignal.indicators.rsi.toFixed(1) : "—"}
-                {" · "}Volume ×{selectedSignal?.indicators?.volume_ratio != null ? selectedSignal.indicators.volume_ratio.toFixed(2) : "—"}
-                <button type="button" className="dock-link dock-link--right" onClick={() => loadSignals()}>Refresh</button>
-              </p>
-              {shownSignals.length === 0 ? <p className="dock-note">No signals right now.</p> : (
-                <table className="dock-table" aria-label="Recent signals">
-                  <thead><tr><th>Symbol</th><th>Signal</th><th>Why</th></tr></thead>
-                  <tbody>
-                    {shownSignals.map((item) => {
-                      const why = normalizeReasons(item.reasons).slice(0, 3).join(" · ");
-                      return (
-                        <tr key={item.id} className={item.ticker === symbol ? "dock-row--current" : undefined}>
-                          <td><button type="button" className="dock-link" aria-pressed={item.ticker === symbol} onClick={() => setSymbol(item.ticker)}>{item.ticker}</button></td>
-                          <td><SignalAttribution data={toChartSignalAttribution(item)} size="sm" /></td>
-                          <td className="dock-why">{why || <span className="faint">No reasons recorded</span>}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          );
-        case "positions":
-          return <PositionsTable positions={positions as never[]} error={Boolean(positionsError)} />;
-        case "plan":
-          return <div className="dock-panels">{tradePlanPanel}{contextPanel}</div>;
-        case "research":
-          return researchSection;
-        case "safety":
-          return (
-            <dl className="dock-facts">
-              {safetyRows.map((row) => (
-                <div key={row.label}><dt>{row.label}</dt><dd style={{ color: row.tone }}>{row.value}</dd></div>
-              ))}
-            </dl>
-          );
-        default:
-          return <SetupScannerPanel bare />;
-      }
-    })();
+  // The chart page, on desktop and on phones: just the instrument bar and a tall
+  // chart. Only the compact Equity/Options desk chart uses the layout below.
+  if (!compact) {
+    const chartH = isMobile ? Math.max(300, Math.min(720, viewportH - 330)) : Math.max(380, Math.min(900, viewportH - 330));
+    const goTo = (raw: string) => {
+      const next = raw.trim().toUpperCase();
+      if (!/^[A-Z0-9.^=:-]{1,20}$/.test(next)) return false;
+      if (!watchlist.includes(next)) persistWatchlist([...watchlist, next]);
+      setSymbol(next);
+      return true;
+    };
     return (
       <div className="chart-workspace chart-workspace--dock">
         <div className="workstation-center">
@@ -537,6 +346,8 @@ export default function ChartWorkstation({
             symbols={Array.from(new Set([symbol, ...watchlist])).slice(0, 6)}
             symbol={symbol}
             onSelect={setSymbol}
+            onGoTo={goTo}
+            onUnpin={watchlist.includes(symbol) && watchlist.length > 1 ? () => { const rest = watchlist.filter((t) => t !== symbol); removeTicker(symbol); setSymbol(rest[0]); } : undefined}
             price={selectedSnapshot?.last_close ?? latestBar?.close}
             changePct={selectedSnapshot?.change_pct}
             bar={latestBar}
@@ -548,8 +359,6 @@ export default function ChartWorkstation({
               ? <SignalAttribution data={toChartSignalAttribution(selectedSignal)} size="sm" />
               : <span className="dock-nosignal">No signal</span>}
             onSignalDetail={() => setSignalDrawerOpen(true)}
-            focused={false}
-            onToggleFocus={() => setFocusChart(true)}
           />
           <div className="dock-chart instrument-card--flat chart-canvas-wrap" style={{ position: "relative" }}>
             {!chartLoading && <UpcomingCatalysts events={catalystEvents} />}
@@ -562,7 +371,6 @@ export default function ChartWorkstation({
             )}
             {chartError && <div className="dock-chart__error" role="status">{chartError}</div>}
           </div>
-          <ChartDock tabs={dockTabs} active={dockTab} onChange={setDockTab}>{dockBody}</ChartDock>
         </div>
         <SignalDetailDrawer
           open={signalDrawerOpen}
@@ -577,133 +385,8 @@ export default function ChartWorkstation({
   }
 
   return (
-    <div className={compact ? "chart-workspace chart-workspace--compact" : "chart-workspace"} style={{ padding: compact ? 0 : 16, display: "flex", flexDirection: "column", gap: 14, height: compact ? "100%" : undefined }}>
-      {!compact && <div className="markets-toolbar" style={{marginBottom:0}}>
-        <div><div className="markets-kicker">MARKET INTELLIGENCE</div><h1>Market workspace</h1><p>Signal direction and model score are research inputs, not permission to execute.</p></div>
-        <div className="markets-controls"><button aria-pressed={focusChart} onClick={()=>setFocusChart(v=>!v)}>{focusChart ? "Show research panels" : "Focus chart"}</button></div>
-      </div>}
-      {!compact && <div className="chart-symbol-picker" aria-label="Chart instruments">
-        {Array.from(new Set([symbol, ...watchlist])).slice(0, 5).map(ticker => (
-          <button key={ticker} aria-pressed={symbol === ticker} onClick={() => setSymbol(ticker)}>{ticker}</button>
-        ))}
-      </div>}
-      {!compact && !focusChart && (
-      <div style={{
-        display: "grid",
-
-        gap: 10,
-      }} className="workstation-top-strip">
-        {[
-          { label: execDisplay.label, value: execDisplay.value, tone: execDisplay.tone },
-          { label: "Day P&L", value: typeof dayPnl === "number" ? fmtSigned(dayPnl) : "—", tone: pnlColor(dayPnl) },
-          { label: "Portfolio", value: typeof netLiq === "number" ? fmtMoney(netLiq, 2) : "—", tone: "var(--cyan)" },
-          { label: "Reconciliation", value: !reconciliation ? "UNAVAILABLE" : reconciliation.clean ? "CLEAN" : "REVIEW", tone: reconciliation?.clean ? "var(--green)" : "var(--amber)" },
-        ].map((item) => (
-          <StatTile key={item.label} variant="boxed" label={item.label} hint={hintFor(item.label)} value={item.value} tone={item.tone} />
-        ))}
-      </div>
-      )}
-
-      <div className="workstation-grid" style={compact || focusChart ? { gridTemplateColumns: "1fr", flex: 1, minHeight: 0 } : undefined}>
-        {!compact && !focusChart && (
-        <div className="workstation-col workstation-watchlist">
-          <Panel title="Your watchlist" sectionStyle={{ overflow: "hidden" }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <div style={{ display: "flex", gap: 6 }}>
-                <input
-                  value={tickerInput}
-                  onChange={(e) => setTickerInput(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") addTicker(); }}
-                  placeholder="Add ticker…"
-                  aria-label="Add ticker to Market Watch"
-                  style={{
-                    flex: 1, minWidth: 0, background: "var(--bg-3)",
-                    border: "1px solid var(--line-dim)", color: "var(--ink)",
-                    fontFamily: "var(--mono)", fontSize: 11, padding: "6px 8px",
-                    outline: "none", textTransform: "uppercase",
-                  }}
-                />
-                <button className="btn-t" onClick={addTicker} style={{ flexShrink: 0 }}>+</button>
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                {watchlist.map((ticker) => {
-                  const snap = watchSnapshots[ticker];
-                  const active = ticker === symbol;
-                  return (
-                    <div key={ticker} style={{ position: "relative" }}>
-                      <button
-                        onClick={() => setSymbol(ticker)}
-                        className={`watch-item ${active ? "active" : ""}`}
-                        style={{ width: "100%", paddingRight: 24 }}
-                      >
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                          <span style={{ fontFamily: "var(--mono)", fontSize: 12, fontWeight: 700 }}>{ticker}</span>
-                          <span style={{
-                            fontFamily: "var(--mono)",
-                            fontSize: 10,
-                            color: pnlColor(snap?.change_pct),
-                          }}>
-                            {fmtPct(snap?.change_pct, 2)}
-                          </span>
-                        </div>
-                        <div style={{ fontFamily: "var(--mono)", fontSize: 10, color: "var(--ink-dim)", marginTop: 2 }}>
-                          {fmtMoney(snap?.last_close, 2)}
-                        </div>
-                      </button>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); removeTicker(ticker); }}
-                        aria-label={`Remove ${ticker} from Market Watch`}
-                        title={`Remove ${ticker}`}
-                        style={{
-                          position: "absolute", right: 4, top: 4,
-                          background: "transparent", border: "none", cursor: "pointer",
-                          color: "var(--ink-faint)", fontFamily: "var(--mono)", fontSize: 12,
-                          padding: "2px 4px", lineHeight: 1,
-                        }}
-                      >
-                        ×
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </Panel>
-
-          <Panel title="Positions" sectionStyle={{ overflow: "hidden" }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {positionsError ? <p role="status">Positions unavailable. Check broker connection.</p> : positions.length === 0 ? (
-                <div style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--ink-faint)" }}>
-                  NO OPEN POSITIONS
-                </div>
-              ) : positions.slice(0, 6).map((position: any) => (
-                <div key={`${position.symbol}-${position.entry_date || "open"}`} style={{
-                  border: "1px solid var(--line-dim)",
-                  padding: "10px 12px",
-                  background: "rgba(255,255,255,0.01)",
-                }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                    <span style={{ fontFamily: "var(--mono)", fontSize: 14, color: "var(--ink)" }}>{position.symbol}</span>
-                    <span style={{
-                      fontFamily: "var(--mono)",
-                      fontSize: 12,
-                      color: pnlColor(position.unrealized_pnl),
-                    }}>
-                      {fmtSigned(position.unrealized_pnl)}
-                    </span>
-                  </div>
-                  <div style={{ display: "flex", gap: 12, flexWrap: "wrap", fontFamily: "var(--mono)", fontSize: 10, color: "var(--ink-dim)" }}>
-                    <span>{position.quantity ?? "—"} sh</span>
-                    <span>@ {fmtMoney(position.avg_cost, 2)}</span>
-                    <span>hold {position.hold_days ?? 0}d</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Panel>
-        </div>
-        )}
-
+    <div className="chart-workspace chart-workspace--compact" style={{ padding: 0, display: "flex", flexDirection: "column", gap: 14, height: "100%" }}>
+      <div className="workstation-grid" style={{ gridTemplateColumns: "1fr", flex: 1, minHeight: 0 }}>
         <div className="workstation-center">
           <div className="chart-quote" aria-label="Selected instrument quote">
             <div><span className="design-eyebrow">{symbol} · MARKET SNAPSHOT</span><strong>{fmtMoney(selectedSnapshot?.last_close)}</strong></div>
@@ -731,7 +414,7 @@ export default function ChartWorkstation({
                     </Button>
                   ))}
                 </div>
-                <Button onClick={() => setSignalDrawerOpen(true)}>Signal Detail</Button>
+                <Button flat onClick={() => setSignalDrawerOpen(true)}>Signal Detail</Button>
               </div>
             }
           >
@@ -775,96 +458,7 @@ export default function ChartWorkstation({
               )}
             </div>
           </Panel>
-
-          {!compact && (
-          <details className="chart-research" open={!isMobile}><summary>Research evidence</summary>{researchSection}</details>
-          )}
-
-          {!compact && (
-          <details className="chart-research" open={!isMobile}><summary>Trade plan and context</summary><div className="workstation-bottom-grid">
-            {tradePlanPanel}
-
-            {contextPanel}
-          </div></details>
-          )}
         </div>
-
-        {!compact && !focusChart && (
-        <div className="workstation-col workstation-right">
-          <SetupScannerPanel />
-          <Panel
-            title="Research & Execution"
-            sectionStyle={{ overflow: "hidden" }}
-            action={<Button onClick={() => loadSignals()}>Refresh</Button>}
-          >
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              <div className="instrument-card--flat" style={{
-                padding: "10px 12px",
-              }}>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-                  <span style={{ fontFamily: "var(--mono)", fontSize: 11, color: regime?.equity_allowed === true ? "var(--green)" : "var(--amber)" }}>
-                    Macro {regime?.equity_allowed === true ? "ENTRIES ALLOWED" : regime?.equity_allowed === false ? "PAUSED" : "UNVERIFIED"}
-                  </span>
-                  <span style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--ink-dim)" }}>
-                    VIX {regime?.vix != null ? regime.vix.toFixed(1) : "—"}
-                  </span>
-                </div>
-                <div style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--ink-dim)", lineHeight: 1.7 }}>
-                  {regime?.description || "Regime engine warming up. Once available, this panel will summarize volatility, trend, and execution allowance."}
-                </div>
-              </div>
-
-              {(actionableSignals.length ? actionableSignals : signals).slice(0, 4).map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => setSymbol(item.ticker)}
-                  style={{
-                    textAlign: "left",
-                    background: item.ticker === symbol ? "rgba(244,198,79,0.08)" : "var(--bg-2)",
-                    border: item.ticker === symbol ? "1px solid rgba(244,198,79,0.4)" : "1px solid var(--line-dim)",
-                    padding: "12px 14px",
-                    cursor: "pointer",
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8, flexWrap: "wrap" }}>
-                    <span style={{ fontFamily: "var(--mono)", fontSize: 16, color: "var(--ink)", fontWeight: 700 }}>{item.ticker}</span>
-                    <SignalAttribution data={toChartSignalAttribution(item)} size="sm" />
-                  </div>
-                  <div style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--ink-dim)", lineHeight: 1.7 }}>
-                    {normalizeReasons(item.reasons).slice(0, 3).join(" · ") || "Signal narrative not available yet."}
-                  </div>
-                </button>
-              ))}
-            </div>
-          </Panel>
-
-          <Panel title="Operator Safety" sectionStyle={{ overflow: "hidden" }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {/* daily_loss_pct is a signed P&L ratio (fraction, e.g. 0.0015
-                  for 0.15%) that's positive on a gain day — clamp to the
-                  negative portion and scale to a percent before display, so
-                  a gain doesn't render as a small red "loss" (it also wasn't
-                  being multiplied by 100 here, unlike every other consumer
-                  of this field). */}
-              {(() => {
-                const raw = guardrailStatus?.daily_loss_pct;
-                const dailyLossPct = typeof raw === "number" ? Math.max(0, -raw) * 100 : null;
-                return [
-                  { label: "Kill Switch", value: !killSwitch || typeof killSwitch.active !== "boolean" ? "UNKNOWN" : killSwitch.active ? "ACTIVE" : "INACTIVE", tone: !killSwitch || typeof killSwitch.active !== "boolean" ? "var(--amber)" : killSwitch.active ? "var(--red)" : "var(--ink-dim)" },
-                  { label: "Daily Loss", value: fmtPct(dailyLossPct, 2), tone: dailyLossPct ? "var(--red)" : "var(--green)" },
-                  { label: "Open Positions", value: positionsError ? "—" : String(positions.length), tone: "var(--ink)" },
-                  { label: "Win Rate", value: portfolio?.win_rate != null ? `${Math.round(portfolio.win_rate * 100)}%` : "—", tone: "var(--cyan)" },
-                ].map((row) => (
-                  <div key={row.label} style={{ display: "flex", justifyContent: "space-between", gap: 16, borderBottom: "1px solid var(--line-dim)", paddingBottom: 8 }}>
-                    <span className="kicker">{row.label}</span>
-                    <span style={{ fontFamily: "var(--mono)", fontSize: 12, color: row.tone }}>{row.value}</span>
-                  </div>
-                ));
-              })()}
-            </div>
-          </Panel>
-        </div>
-        )}
       </div>
       <SignalDetailDrawer
         open={signalDrawerOpen}

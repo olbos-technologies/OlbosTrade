@@ -37,7 +37,7 @@ for (const width of [390,1440]) test(`Command Center prioritizes an actual weekl
   await expect(alert).toContainText("Weekly loss limit exceeded");
 });
 
-test("chart symbol links and focus mode keep the chart available",async({page})=>{
+test("chart symbol links keep the chart available, with no focus toggle",async({page})=>{
   await stubBackend(page);
   // The shell helper deliberately returns malformed empty objects. For the
   // chart itself, model unavailable services as failures, so its own catch
@@ -49,9 +49,11 @@ test("chart symbol links and focus mode keep the chart available",async({page})=
   await page.goto("/terminal/markets/chart?symbol=MSFT");
   await expect(page.getByRole("heading",{name:"Market workspace"})).toBeVisible();
   await expect(page.locator(".workstation-center").getByText("MSFT",{exact:true}).first()).toBeVisible();
-  await page.getByRole("button",{name:"Focus chart",exact:true}).click();
-  await expect(page.getByRole("button",{name:"Show research panels",exact:true})).toHaveAttribute("aria-pressed","true");
+  // The desktop chart page is the chart alone: no research panels, no focus toggle.
+  await expect(page.getByRole("button",{name:"Focus chart",exact:true})).toHaveCount(0);
   await expect(page.locator(".workstation-right")).toHaveCount(0);
+  // With the data call failing the chart says so, in words, instead of drawing nothing.
+  await expect(page.getByText("NO CHART DATA",{exact:true})).toBeVisible();
   await expectNoHorizontalOverflow(page,1440);
 });
 
@@ -76,8 +78,11 @@ test("phone chart keeps the legend collapsed until asked for",async({page})=>{
   await page.setViewportSize({width:390,height:844});
   await page.goto("/terminal/markets/chart?symbol=AAPL");
   await expect(page.getByRole("heading",{name:"Market workspace"})).toBeVisible();
-  const panel = page.locator(".workstation-chart-panel");
-  for (const button of await panel.locator(".chart-timeframes button").all()) {
+  const panel = page.locator(".chart-workspace");
+  for (const button of await page.locator(".instrument-bar .chart-timeframes button").all()) {
+    expect((await button.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  }
+  for (const button of await page.locator(".instrument-bar .chart-symbol-picker button").all()) {
     expect((await button.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   }
   const catalysts = panel.getByLabel("Upcoming catalysts");

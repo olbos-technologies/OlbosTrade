@@ -37,12 +37,15 @@ for(const width of [320,375,390,430]) {
  });
  test(`single mobile quote and chart controls fit ${width}px`,async({page})=>{
   await fixtures(page);await page.setViewportSize({width,height:844});await page.goto('/terminal/markets/chart?symbol=AAPL');
-  await expect(page.locator('.chart-quote')).toContainText('$339.11');
-  await expect(page.locator('.chart-instrument-title')).toBeHidden();
+  const quote=page.getByLabel('Selected instrument quote');
+  await expect(quote).toContainText('339.11');
+  await expect(page.locator('.instrument-bar__price strong')).toHaveCount(1);   // the price appears once
   await expect(page.getByRole('group',{name:'Chart timeframe'})).toBeVisible();
-  await expect(page.locator('.workstation-chart-panel canvas').first()).toBeVisible();
+  await expect(page.locator('.chart-canvas-wrap canvas').first()).toBeVisible();
+  const plot=(await page.getByLabel('Price chart',{exact:true}).boundingBox())!;
+  expect(plot.y,'the chart starts in the top half of the screen').toBeLessThan(422);
   await expectNoHorizontalOverflow(page,width);
-  await page.locator('.chart-quote').scrollIntoViewIfNeeded();
+  await quote.scrollIntoViewIfNeeded();
   await page.screenshot({path:`ui-audit-artifacts/adaptive-chart-${width}.png`,animations:'disabled'});
  });
 }

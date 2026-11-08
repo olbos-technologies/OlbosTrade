@@ -43,15 +43,9 @@ for (const width of [320,390,768,1440]) {
         expect(search!.width).toBeGreaterThan(width * .65);
       }
       if (surface === 'markets/chart') {
-        await expect(page.getByText('Setup readiness unavailable. Rescan to retry.')).toBeVisible();
-        if (width > 768) {
-          // Desktop uses the instrument bar; its content must not spill out.
-          const bar = page.locator('.instrument-bar');
-          expect(await bar.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
-        } else {
-          const value = page.locator('.workstation-top-strip .data-val').last();
-          expect(await value.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
-        }
+        // The chart page is the instrument bar and a chart; the bar must not spill out.
+        const bar = page.locator('.instrument-bar');
+        expect(await bar.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
       }
       if (width <= 768) {
         await expect(page.locator('.instrument-status')).toBeHidden();
