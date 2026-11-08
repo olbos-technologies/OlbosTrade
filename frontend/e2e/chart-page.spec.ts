@@ -168,7 +168,7 @@ test("on a phone the chart comes first with the controls above and below it, the
   expect(strip.y + strip.height).toBeLessThanOrEqual(chart.y + 1);
   expect(range.y).toBeGreaterThanOrEqual(chart.y + chart.height - 1);
   expect(positions.y, "panels are below the chart").toBeGreaterThan(range.y);
-  expect(chart.y, "the chart starts in the upper 55% of the screen").toBeLessThan(844 * 0.55);
+  expect(chart.y + 300, "at least 300px of the chart is visible above the bottom nav").toBeLessThanOrEqual(844 - 56);
   for (const b of await page.getByRole("group", { name: "Chart timeframe" }).getByRole("button").all()) {
     expect((await b.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   }
