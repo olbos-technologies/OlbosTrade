@@ -56,6 +56,21 @@ REGIME_CONCURRENCY_MULTIPLIER: dict[str, float] = {
 }
 
 
+def effective_max_positions(global_cap: int, mode_cap: int, regime: Any) -> tuple[int, float, bool]:
+    """How many positions may be open: (cap, regime multiplier, regime tightened it).
+
+    The tighter of the global and trading-style caps, then tightened (never
+    loosened) by the regime's multiplier, never below 1. An unrecognised regime
+    leaves it alone. Single source for the portfolio gate and the capacity panel.
+    """
+    max_pos = min(global_cap, mode_cap)
+    multiplier = REGIME_CONCURRENCY_MULTIPLIER.get(regime, 1.0)
+    tightened = multiplier < 1.0
+    if tightened:
+        max_pos = max(1, math.floor(max_pos * multiplier))
+    return max_pos, multiplier, tightened
+
+
 @dataclass
 class PortfolioGateResult:
     allowed: bool
@@ -204,14 +219,12 @@ def evaluate_portfolio_gates(
     # own risk design intends. Take the tighter of the two; mode can only
     # restrict further, never loosen past the global default.
     from app.services.trading_mode import trading_mode_manager
-    max_pos = min(rm.max_concurrent, trading_mode_manager.config.max_concurrent)
-
     # Regime can only ever tighten max_pos further, never loosen past the
-    # mode/global caps already computed above.
-    regime_multiplier = REGIME_CONCURRENCY_MULTIPLIER.get(signal.get("regime"), 1.0)
-    regime_tightened = regime_multiplier < 1.0
-    if regime_tightened:
-        max_pos = max(1, math.floor(max_pos * regime_multiplier))
+    # mode/global caps. The arithmetic lives in effective_max_positions() so the
+    # dashboard's capacity panel reads the very same rule it enforces here.
+    max_pos, regime_multiplier, regime_tightened = effective_max_positions(
+        rm.max_concurrent, trading_mode_manager.config.max_concurrent, signal.get("regime"),
+    )
 
     if portfolio.open_position_count >= max_pos:
         return PortfolioGateResult(

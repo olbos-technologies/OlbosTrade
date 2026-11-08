@@ -273,6 +273,8 @@ app.include_router(admin_claims_routes.router)
 from app.api.routes import admin_entry_gate as admin_entry_gate_routes  # noqa: E402
 
 app.include_router(admin_entry_gate_routes.router)
+from app.api.routes import desk_capacity as desk_capacity_routes  # noqa: E402
+app.include_router(desk_capacity_routes.router)
 
 # Per-user broker credentials. Own prefix, and deliberately NOT under
 # /api/ibkr or any broker-specific path: it is where a user connects any

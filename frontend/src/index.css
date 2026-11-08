@@ -1997,3 +1997,16 @@ summary span[aria-hidden="true"] { display: inline-block; transition: transform 
   border-bottom-color: var(--brand);
   color: var(--brand);
 }
+
+/* Trading capacity panel (Command Center, desktop and phone). Words carry the
+   meaning; amber only marks "could not confirm". */
+.capacity-panel { padding: 12px; display: grid; gap: 10px; }
+.capacity-headline { font-size: 15px; font-weight: 600; margin: 0; color: var(--ink); }
+.capacity-steps { margin: 0; padding-left: 18px; color: var(--ink-dim); font-size: 12px; line-height: 1.6; }
+.capacity-steps strong { color: var(--ink); }
+.capacity-label { display: block; font: 600 10px var(--mono); text-transform: uppercase; letter-spacing: .06em; color: var(--ink-faint); margin-bottom: 4px; }
+.capacity-blocks ul { margin: 0; padding-left: 18px; font-size: 12px; color: var(--ink-dim); }
+.capacity-blocks strong { color: var(--ink); font-variant-numeric: tabular-nums; }
+.capacity-warn { color: var(--amber); font-size: 12px; margin: 0; padding: 12px; }
+.capacity-panel .capacity-warn { padding: 0; }
+.capacity-muted { color: var(--ink-dim); font-size: 12px; margin: 0; }
