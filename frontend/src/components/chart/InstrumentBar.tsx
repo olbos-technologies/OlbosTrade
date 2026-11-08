@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { Button } from "../ui";
 import { pnlColor } from "../../utils/pnlTone";
 
@@ -17,12 +17,16 @@ const vol = (n: number | null | undefined) => {
  * last bar's numbers, how fresh they are, and the chart controls.
  */
 export default function InstrumentBar({
-  symbols, symbol, onSelect, price, changePct, bar, freshness,
-  timeframes, timeframe, onTimeframe, signalBadge, onSignalDetail, focused, onToggleFocus,
+  symbols, symbol, onSelect, onGoTo, onUnpin, price, changePct, bar, freshness,
+  timeframes, timeframe, onTimeframe, signalBadge, onSignalDetail,
 }: {
   symbols: string[];
   symbol: string;
   onSelect: (s: string) => void;
+  /** Load any symbol typed in the box; returns false when it is not a valid symbol. */
+  onGoTo: (s: string) => boolean;
+  /** Remove the current symbol from the picker; omitted when it cannot be removed. */
+  onUnpin?: () => void;
   price: number | null | undefined;
   changePct: number | null | undefined;
   bar: Bar;
@@ -32,9 +36,15 @@ export default function InstrumentBar({
   onTimeframe: (k: string) => void;
   signalBadge: React.ReactNode;
   onSignalDetail: () => void;
-  focused: boolean;
-  onToggleFocus: () => void;
 }) {
+  const [draft, setDraft] = useState("");
+  const [invalid, setInvalid] = useState(false);
+  const submit = () => {
+    if (!draft.trim()) return;
+    const ok = onGoTo(draft);
+    setInvalid(!ok);
+    if (ok) setDraft("");
+  };
   const move = typeof changePct === "number" && Number.isFinite(changePct)
     ? `${changePct < 0 ? "−" : changePct > 0 ? "+" : ""}${Math.abs(changePct).toFixed(2)}%` : "—";
   return (
@@ -45,7 +55,21 @@ export default function InstrumentBar({
           {symbols.map((s) => (
             <button key={s} type="button" aria-pressed={symbol === s} onClick={() => onSelect(s)}>{s}</button>
           ))}
+          {onUnpin && (
+            <button type="button" className="instrument-bar__unpin" aria-label={`Remove ${symbol} from Market Watch`} onClick={onUnpin}>×</button>
+          )}
         </div>
+      </div>
+      <div className="instrument-bar__goto">
+        <input
+          value={draft}
+          onChange={(e) => { setDraft(e.target.value); setInvalid(false); }}
+          onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
+          placeholder="Symbol…"
+          aria-label="Go to symbol"
+          aria-invalid={invalid || undefined}
+          maxLength={20}
+        />
       </div>
       <div className="instrument-bar__quote" aria-label="Selected instrument quote">
         <div className="instrument-bar__price">
@@ -65,9 +89,6 @@ export default function InstrumentBar({
           ))}
         </div>
         <Button flat onClick={onSignalDetail}>Signal detail</Button>
-        <Button flat aria-pressed={focused} onClick={onToggleFocus}>
-          {focused ? "Show research panels" : "Focus chart"}
-        </Button>
       </div>
     </header>
   );

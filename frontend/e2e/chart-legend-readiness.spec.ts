@@ -45,8 +45,9 @@ test("desktop chart starts with the legend collapsed and opens it on demand", as
   await expectNoHorizontalOverflow(page, 1440);
 });
 
-test("a blocked setup says why on its row, and the row expands by keyboard", async ({ page }) => {
-  await open(page, 1440);
+test("a blocked setup says why on its row, and the row expands by keyboard (phone)", async ({ page }) => {
+  // Setup Readiness is on the phone layout only; the desktop chart page is the chart alone.
+  await open(page, 390);
   const nvda = page.locator('button[aria-controls="setup-detail-NVDA"]');
   await expect(nvda).toHaveAttribute("aria-expanded", "false");
   await expect(page.getByText(/Blocked: Daily timeframe disagrees/)).toBeVisible();
@@ -55,5 +56,5 @@ test("a blocked setup says why on its row, and the row expands by keyboard", asy
   await page.keyboard.press("Enter");
   await expect(nvda).toHaveAttribute("aria-expanded", "true");
   await expect(page.getByText(/Daily closes back above/)).toBeVisible();
-  await expectNoHorizontalOverflow(page, 1440);
+  await expectNoHorizontalOverflow(page, 390);
 });

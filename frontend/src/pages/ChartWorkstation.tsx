@@ -20,10 +20,7 @@ import {
 import MetricHint, { resolveMetricHint } from "../components/MetricHint";
 import { Panel, StatTile, Badge, Button } from "../components/ui";
 import CandlestickChart from "../components/CandlestickChart";
-import ChartDock, { type DockTab } from "../components/chart/ChartDock";
 import InstrumentBar from "../components/chart/InstrumentBar";
-import PositionsTable from "../components/chart/PositionsTable";
-import WatchlistTable from "../components/chart/WatchlistTable";
 import { tint } from "../utils/tint";
 import "./markets/Markets.css";
 
@@ -234,9 +231,7 @@ export default function ChartWorkstation({
   const [watchlist, setWatchlist] = useState<string[]>(loadStoredWatchlist);
   const [tickerInput, setTickerInput] = useState("");
 
-  // Desktop dock layout: which dock tab is open, and a chart height that follows
-  // the window so the dock stays on the first screen.
-  const [dockTab, setDockTab] = useState("readiness");
+  // Desktop chart height follows the window.
   const [viewportH, setViewportH] = useState(() => window.innerHeight);
   useEffect(() => {
     const onResize = () => setViewportH(window.innerHeight);
@@ -444,92 +439,17 @@ export default function ChartWorkstation({
           </section>
   );
 
-  // Desktop layout: one instrument bar, the chart at full width, and the
-  // research behind a tabbed dock. Phones, the compact Equity/Options desk and
-  // "focus chart" keep the layout below.
-  if (!compact && !isMobile && !focusChart) {
-    const chartH = Math.max(340, Math.min(560, viewportH - 560));
-    const dockTabs: DockTab[] = [
-      { key: "readiness", label: "Setup readiness" },
-      { key: "watchlist", label: "Watchlist", count: watchlist.length },
-      { key: "signals", label: "Signals" },
-      { key: "positions", label: "Positions", count: positionsError ? "—" : positions.length },
-      { key: "plan", label: "Plan & context" },
-      { key: "research", label: "Research" },
-      { key: "safety", label: "Safety" },
-    ];
-    const rawLoss = guardrailStatus?.daily_loss_pct;
-    const dockLossPct = typeof rawLoss === "number" ? Math.max(0, -rawLoss) * 100 : null;
-    const safetyRows: { label: string; value: string; tone: string }[] = [
-      { label: execDisplay.label, value: execDisplay.value, tone: execDisplay.tone },
-      { label: "Kill switch", value: !killSwitch || typeof killSwitch.active !== "boolean" ? "UNKNOWN" : killSwitch.active ? "ACTIVE" : "INACTIVE", tone: !killSwitch || typeof killSwitch.active !== "boolean" ? "var(--amber)" : killSwitch.active ? "var(--red)" : "var(--green)" },
-      { label: "Day P&L", value: typeof dayPnl === "number" ? fmtSigned(dayPnl) : "—", tone: pnlColor(dayPnl) },
-      { label: "Daily loss", value: fmtPct(dockLossPct, 2), tone: dockLossPct ? "var(--red)" : "var(--green)" },
-      { label: "Portfolio", value: typeof netLiq === "number" ? fmtMoney(netLiq, 2) : "—", tone: "var(--ink)" },
-      { label: "Open positions", value: positionsError ? "—" : String(positions.length), tone: "var(--ink)" },
-      { label: "Win rate", value: portfolio?.win_rate != null ? `${Math.round(portfolio.win_rate * 100)}%` : "—", tone: "var(--ink)" },
-      { label: "Reconciliation", value: !reconciliation ? "UNAVAILABLE" : reconciliation.clean ? "CLEAN" : "REVIEW", tone: reconciliation?.clean ? "var(--green)" : "var(--amber)" },
-    ];
-    const shownSignals = (actionableSignals.length ? actionableSignals : signals).slice(0, 8);
-    const dockBody = (() => {
-      switch (dockTab) {
-        case "watchlist":
-          return <WatchlistTable watchlist={watchlist} snapshots={watchSnapshots} symbol={symbol}
-            onSelect={setSymbol} onAdd={(t) => { if (!watchlist.includes(t)) { persistWatchlist([...watchlist, t]); } setSymbol(t); }} onRemove={removeTicker} />;
-        case "signals":
-          return (
-            <div className="dock-table-wrap">
-              <p className="dock-line">
-                <span style={{ color: regime?.equity_allowed === true ? "var(--green)" : "var(--amber)" }}>
-                  Macro {regime?.equity_allowed === true ? "entries allowed" : regime?.equity_allowed === false ? "paused" : "unverified"}
-                </span>
-                {" · "}VIX {regime?.vix != null ? regime.vix.toFixed(1) : "—"}
-                {regime?.description ? ` · ${regime.description}` : ""}
-              </p>
-              <p className="dock-line dock-line--dim">
-                {symbol}: model score {selectedSignal ? `${Math.round(selectedSignal.confidence * 100)}%` : "—"}
-                {" · "}IV rank {ivRank?.iv_rank != null ? Math.round(ivRank.iv_rank) : "—"}
-                {" · "}RSI {selectedSignal?.indicators?.rsi != null ? selectedSignal.indicators.rsi.toFixed(1) : "—"}
-                {" · "}Volume ×{selectedSignal?.indicators?.volume_ratio != null ? selectedSignal.indicators.volume_ratio.toFixed(2) : "—"}
-                <button type="button" className="dock-link dock-link--right" onClick={() => loadSignals()}>Refresh</button>
-              </p>
-              {shownSignals.length === 0 ? <p className="dock-note">No signals right now.</p> : (
-                <table className="dock-table" aria-label="Recent signals">
-                  <thead><tr><th>Symbol</th><th>Signal</th><th>Why</th></tr></thead>
-                  <tbody>
-                    {shownSignals.map((item) => {
-                      const why = normalizeReasons(item.reasons).slice(0, 3).join(" · ");
-                      return (
-                        <tr key={item.id} className={item.ticker === symbol ? "dock-row--current" : undefined}>
-                          <td><button type="button" className="dock-link" aria-pressed={item.ticker === symbol} onClick={() => setSymbol(item.ticker)}>{item.ticker}</button></td>
-                          <td><SignalAttribution data={toChartSignalAttribution(item)} size="sm" /></td>
-                          <td className="dock-why">{why || <span className="faint">No reasons recorded</span>}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          );
-        case "positions":
-          return <PositionsTable positions={positions as never[]} error={Boolean(positionsError)} />;
-        case "plan":
-          return <div className="dock-panels">{tradePlanPanel}{contextPanel}</div>;
-        case "research":
-          return researchSection;
-        case "safety":
-          return (
-            <dl className="dock-facts">
-              {safetyRows.map((row) => (
-                <div key={row.label}><dt>{row.label}</dt><dd style={{ color: row.tone }}>{row.value}</dd></div>
-              ))}
-            </dl>
-          );
-        default:
-          return <SetupScannerPanel bare />;
-      }
-    })();
+  // Desktop: the chart page is just the instrument bar and a tall chart. Phones
+  // and the compact Equity/Options desk chart keep the layout below.
+  if (!compact && !isMobile) {
+    const chartH = Math.max(380, Math.min(900, viewportH - 330));
+    const goTo = (raw: string) => {
+      const next = raw.trim().toUpperCase();
+      if (!/^[A-Z0-9.^=:-]{1,20}$/.test(next)) return false;
+      if (!watchlist.includes(next)) persistWatchlist([...watchlist, next]);
+      setSymbol(next);
+      return true;
+    };
     return (
       <div className="chart-workspace chart-workspace--dock">
         <div className="workstation-center">
@@ -537,6 +457,8 @@ export default function ChartWorkstation({
             symbols={Array.from(new Set([symbol, ...watchlist])).slice(0, 6)}
             symbol={symbol}
             onSelect={setSymbol}
+            onGoTo={goTo}
+            onUnpin={watchlist.includes(symbol) && watchlist.length > 1 ? () => { const rest = watchlist.filter((t) => t !== symbol); removeTicker(symbol); setSymbol(rest[0]); } : undefined}
             price={selectedSnapshot?.last_close ?? latestBar?.close}
             changePct={selectedSnapshot?.change_pct}
             bar={latestBar}
@@ -548,8 +470,6 @@ export default function ChartWorkstation({
               ? <SignalAttribution data={toChartSignalAttribution(selectedSignal)} size="sm" />
               : <span className="dock-nosignal">No signal</span>}
             onSignalDetail={() => setSignalDrawerOpen(true)}
-            focused={false}
-            onToggleFocus={() => setFocusChart(true)}
           />
           <div className="dock-chart instrument-card--flat chart-canvas-wrap" style={{ position: "relative" }}>
             {!chartLoading && <UpcomingCatalysts events={catalystEvents} />}
@@ -562,7 +482,6 @@ export default function ChartWorkstation({
             )}
             {chartError && <div className="dock-chart__error" role="status">{chartError}</div>}
           </div>
-          <ChartDock tabs={dockTabs} active={dockTab} onChange={setDockTab}>{dockBody}</ChartDock>
         </div>
         <SignalDetailDrawer
           open={signalDrawerOpen}
