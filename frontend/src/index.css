@@ -1952,3 +1952,31 @@ summary span[aria-hidden="true"] { display: inline-block; transition: transform 
 @media (max-width: 768px) {
   .app-shell:not(.app-shell--legacy-desk) .instrument-status { display: none !important; }
 }
+
+/* Orders at the broker + per-position stop marker (Positions tab).
+   Meaning is carried by the words and the ✓ / ⚠ marks; colour only reinforces. */
+.order-coverage { margin: 12px 0 16px; }
+.order-coverage__title { font-size: 12px; font-weight: 600; margin: 0 0 6px; color: var(--ink); }
+.order-coverage__warn { color: var(--amber); }
+.order-coverage__unverified, .order-coverage__empty { color: var(--ink-dim); font-size: 12px; }
+.order-coverage__age { color: var(--ink-faint); }
+.order-coverage__notable { color: var(--amber); }
+.position-stop { display: block; margin-top: 4px; font-size: 10px; color: var(--ink-dim); }
+.position-stop--unprotected { color: var(--amber); }
+.position-stop--protected { color: var(--green); }
+
+/* Orders table on a phone: stacked rows with a label per value, so "Placed by"
+   is never scrolled out of sight. */
+@media (max-width: 760px) {
+  .order-coverage__table thead { display: none; }
+  .order-coverage__table, .order-coverage__table tbody { display: block; width: 100%; min-width: 0; }
+  .order-coverage__table tr {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 12px;
+    width: 100%; box-sizing: border-box; padding: 10px 0; border-bottom: 1px solid var(--line-dim);
+  }
+  .order-coverage__table td { display: block; padding: 0; border: 0; }
+  .order-coverage__table td::before {
+    content: attr(data-label); display: block; font-size: 10px; color: var(--ink-faint);
+  }
+  .order-coverage__table td[data-label="Placed by"] { grid-column: 1 / -1; }
+}
