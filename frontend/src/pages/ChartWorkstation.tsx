@@ -731,7 +731,7 @@ export default function ChartWorkstation({
                     </Button>
                   ))}
                 </div>
-                <Button onClick={() => setSignalDrawerOpen(true)}>Signal Detail</Button>
+                <Button flat onClick={() => setSignalDrawerOpen(true)}>Signal Detail</Button>
               </div>
             }
           >
