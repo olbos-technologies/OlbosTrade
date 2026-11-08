@@ -8,7 +8,11 @@ import { chartLevelColors, toChartSignalAttribution } from "../utils/chartWorkst
 import MetricHint, { resolveMetricHint } from "../components/MetricHint";
 import { Panel, StatTile, Button } from "../components/ui";
 import CandlestickChart from "../components/CandlestickChart";
+import ChartDock from "../components/chart/ChartDock";
 import InstrumentBar from "../components/chart/InstrumentBar";
+import PositionsTable from "../components/chart/PositionsTable";
+import WatchlistTable from "../components/chart/WatchlistTable";
+import { usePaperTrade } from "../hooks/usePaperTrade";
 import { tint } from "../utils/tint";
 import "./markets/Markets.css";
 
@@ -175,6 +179,7 @@ export default function ChartWorkstation({
 } = {}) {
   const isMobile = useIsMobile();
 
+  const { positions, positionsError } = usePaperTrade();
   const [internalSymbol, setInternalSymbol] = useState(() => {
     const requested = new URLSearchParams(window.location.search).get("symbol")?.toUpperCase();
     return controlledSymbol || (requested && /^[A-Z0-9.^=:-]{1,20}$/.test(requested) ? requested : "AAPL");
@@ -204,6 +209,18 @@ export default function ChartWorkstation({
 
   // Desktop chart height follows the window.
   const [viewportH, setViewportH] = useState(() => window.innerHeight);
+  // The chart takes the left two thirds of the page and the panel the right third,
+  // so the chart is sized from the space it was actually given, not from a guess.
+  const [bottomTab, setBottomTab] = useState<"positions" | "watchlist">("positions");
+  const [chartWrap, setChartWrap] = useState<HTMLDivElement | null>(null);
+  const [wrapH, setWrapH] = useState(0);
+  useEffect(() => {
+    if (!chartWrap || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => setWrapH(chartWrap.clientHeight));
+    ro.observe(chartWrap);
+    setWrapH(chartWrap.clientHeight);
+    return () => ro.disconnect();
+  }, [chartWrap]);
   useEffect(() => {
     const onResize = () => setViewportH(window.innerHeight);
     window.addEventListener("resize", onResize);
@@ -331,7 +348,10 @@ export default function ChartWorkstation({
   // The chart page, on desktop and on phones: just the instrument bar and a tall
   // chart. Only the compact Equity/Options desk chart uses the layout below.
   if (!compact) {
-    const chartH = isMobile ? Math.max(300, Math.min(720, viewportH - 330)) : Math.max(380, Math.min(900, viewportH - 330));
+    const chipsH = catalystEvents.length && !chartLoading ? 30 : 0;
+    const chartH = isMobile
+      ? Math.max(300, Math.min(720, viewportH - 330))
+      : Math.max(260, (wrapH || viewportH - 430) - chipsH);
     const goTo = (raw: string) => {
       const next = raw.trim().toUpperCase();
       if (!/^[A-Z0-9.^=:-]{1,20}$/.test(next)) return false;
@@ -360,7 +380,8 @@ export default function ChartWorkstation({
               : <span className="dock-nosignal">No signal</span>}
             onSignalDetail={() => setSignalDrawerOpen(true)}
           />
-          <div className="dock-chart instrument-card--flat chart-canvas-wrap" style={{ position: "relative" }}>
+          <div className="chart-split">
+          <div ref={setChartWrap} className="dock-chart instrument-card--flat chart-canvas-wrap" style={{ position: "relative" }}>
             {!chartLoading && <UpcomingCatalysts events={catalystEvents} />}
             {chartLoading ? (
               <div className="skeleton-block" style={{ height: chartH }} aria-busy="true" aria-label="Loading chart">
@@ -370,6 +391,20 @@ export default function ChartWorkstation({
               <CandlestickChart bars={chartBars} levels={levels} height={chartH} />
             )}
             {chartError && <div className="dock-chart__error" role="status">{chartError}</div>}
+          </div>
+          <ChartDock
+            tabs={[
+              { key: "positions", label: "Positions", count: positionsError ? "—" : positions.length },
+              { key: "watchlist", label: "Watchlist", count: watchlist.length },
+            ]}
+            active={bottomTab}
+            onChange={(k) => setBottomTab(k as "positions" | "watchlist")}
+          >
+            {bottomTab === "positions"
+              ? <PositionsTable positions={positions as never[]} error={Boolean(positionsError)} />
+              : <WatchlistTable watchlist={watchlist} snapshots={watchSnapshots} symbol={symbol}
+                  onSelect={setSymbol} onRemove={(t) => { removeTicker(t); if (t === symbol) setSymbol(watchlist.find((w) => w !== t) ?? symbol); }} />}
+          </ChartDock>
           </div>
         </div>
         <SignalDetailDrawer
