@@ -7,6 +7,7 @@ import {api} from "../api/client";
 import {useTerminalNav} from "../components/TerminalNavContext";
 import {riskWarnings} from "../components/CommandAttention";
 import {useResource, json, readSummary, readBroker, readGuard, readRiskState, readCoverage, readMode, readKill, readPositions, readPending, money} from "./MobileHome";
+import CapacityPanel, {readCapacity} from "../components/CapacityPanel";
 import "./DesktopCommandCenter.css";
 
 export const finiteNumber = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n);
@@ -52,8 +53,8 @@ export default function DesktopCommandCenter() {
   const positions=useResource(readPositions,now), pending=useResource(readPending,now), coverage=useResource(readCoverage,now);
   const kill=useResource(readKill,now), guard=useResource(readGuard,now), risk=useResource(readRiskState,now);
   const history=useResource(readHistory,now), buyingPower=useResource(readBuyingPower,now);
-  const pulse=useResource(readPulse,now), events=useResource(readEvents,now);
-  const resources=[summary,broker,mode,positions,pending,coverage,kill,guard,risk,history,buyingPower,pulse,events];
+  const pulse=useResource(readPulse,now), events=useResource(readEvents,now), capacity=useResource(readCapacity,now);
+  const resources=[summary,broker,mode,positions,pending,coverage,kill,guard,risk,history,buyingPower,pulse,events,capacity];
   const refresh=()=>{resources.forEach(r=>r.refresh());setNow(Date.now());};
   const reliableCoverage=coverage.value?.available===true && coverage.value.source==="refreshed" && coverage.value.unprotected_is_reliable===true && !coverage.value.positions_error && Array.isArray(coverage.value.positions_without_stop);
   const missingStops=reliableCoverage ? coverage.value!.positions_without_stop! : null;
@@ -93,6 +94,7 @@ export default function DesktopCommandCenter() {
         <div><dt>Entry checks</dt><dd>{guard.value?guard.value.trading_allowed?"ALLOWED":"BLOCKED":"UNVERIFIED"}</dd></div>
       </dl><small>{checked(mode.at,mode.fresh)} · {mode.value?.persistence==="confirmed"?"mode saved":"saved mode unconfirmed"}</small><button className="dc-primary" onClick={()=>nav("trade:overview")}>Manage execution →</button><button onClick={()=>nav("risk")}>Review protection →</button></div></section>
     </div>
+    <section className="dc-panel dc-capacity" aria-label="Trading capacity"><header><h2>Trading capacity</h2><button onClick={()=>nav("trade:overview")}>Trading style →</button></header><CapacityPanel data={capacity.value} loading={capacity.loading}/><p className="dc-footnote">{checked(capacity.at,capacity.fresh)} · The same rule the portfolio gate enforces on every entry.</p></section>
     <section className="dc-panel dc-positions" aria-label="Open positions"><header><h2><i>03</i> Open positions <small>{positions.value?positions.value.length:"—"}</small></h2><button onClick={()=>nav("trade:positions")}>View all →</button></header><div className="dc-table-scroll" role="region" aria-label="Holdings table" tabIndex={0}><table><thead><tr>{["Symbol / strategy","Quantity","Average cost","Unrealized P&L","Tracking","Stop coverage"].map(t=><th key={t}>{t}</th>)}</tr></thead><tbody>{positions.value===null?<tr><td colSpan={6}>{positions.loading?"Loading positions…":"Positions unavailable. Refresh to retry."}</td></tr>:positions.value.length===0?<tr><td colSpan={6}>No open positions reported.</td></tr>:positions.value.map((p,i)=><tr key={`${p.symbol}-${i}`}><td><strong>{p.symbol||"Unknown symbol"}</strong><small>{adoptedLabel(p.strategy)??(p.strategy||p.option_type||"Position")}</small></td><td>{finiteNumber(p.quantity)?p.quantity:"—"}</td><td>{money(p.avg_cost)}</td><td style={{color:pnlTone(p.unrealized_pnl)}}>{money(p.unrealized_pnl,true)}</td><td>{p.tracked===false?"Untracked broker holding":p.tracked===true?(isAdopted(p.strategy)?`${ADOPTED_LABEL} · ${ADOPTED_NOTE}`:"Olbos tracked"):"Unknown"}</td><td>{missingStops===null||!p.symbol?"Unverified":missingStops.some(s=>s.ticker===p.symbol)?"Missing stop":"No missing stop reported"}</td></tr>)}</tbody></table></div><p className="dc-footnote">{checked(positions.at,positions.fresh)} · Broker holdings and Olbos trade P&L may cover different positions. Protection is a separate read.</p></section>
     <div className="dc-lower-grid">
       <section className="dc-panel" aria-label="Market pulse"><header><h2><i>04</i> Market pulse</h2><button onClick={()=>nav("markets:chart")}>Explore →</button></header><div className="dc-pulse">{pulse.value?pulse.value.map(p=><div key={p.symbol}><strong>{p.symbol}</strong><span>{money(p.price)}</span><b style={{color:pnlTone(p.change)}}>{p.change===null?"Unavailable":`${gainSign(p.change)}${p.change.toFixed(2)}%`}</b></div>):<p>Market snapshots unavailable.</p>}</div><p className="dc-footnote">Last-close snapshots, not streaming quotes. Missing prices remain unavailable.</p></section>

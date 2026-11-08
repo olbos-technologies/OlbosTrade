@@ -5,6 +5,7 @@ import { api } from "../api/client";
 import { useTerminalNav } from "../components/TerminalNavContext";
 import { riskWarnings } from "../components/CommandAttention";
 import KillSwitchButton from "../components/KillSwitchButton";
+import CapacityPanel, { readCapacity } from "../components/CapacityPanel";
 import "./MobileHome.css";
 
 type Mode = { mode: string; persistence?: string; detail?: string };
@@ -120,6 +121,7 @@ export default function MobileHome() {
   const positions = useResource(readPositions, now);
   const pending = useResource(readPending, now);
   const coverage = useResource(readCoverage, now);
+  const capacity = useResource(readCapacity, now);
   const kill = useResource(readKill, now);
   const guard = useResource(readGuard, now);
   const riskState = useResource(readRiskState, now);
@@ -153,7 +155,7 @@ export default function MobileHome() {
     } finally { setStopping(false); }
   };
   const refresh = () => {
-    [summary, mode, broker, positions, pending, coverage, kill, guard, riskState].forEach(r => r.refresh());
+    [summary, mode, broker, positions, pending, coverage, capacity, kill, guard, riskState].forEach(r => r.refresh());
     setNow(Date.now());
   };
 
@@ -230,6 +232,11 @@ export default function MobileHome() {
         <p className="mh-muted">{uncovered === null ? "A refreshed broker order book is required."
           : uncovered.length ? uncovered.map(p => p.ticker).join(" · ") : "Based on the latest refreshed order book."}</p>
         <button className="mh-link" onClick={() => nav("trade:positions")}>Review positions <span aria-hidden="true">↗</span></button>
+      </section>
+
+      <section className="mh-card mh-capacity" aria-label="Trading capacity">
+        <div className="mh-section-title">Trading capacity</div>
+        <CapacityPanel data={capacity.value} loading={capacity.loading} />
       </section>
 
       <section className="mh-card mh-attention" aria-label="Pending signals">
