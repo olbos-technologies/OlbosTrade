@@ -222,6 +222,14 @@ function fmtNum(n: number | null, digits = 2): string {
   return n == null || !Number.isFinite(n) ? "—" : n.toFixed(digits);
 }
 
+const LEGEND_KEY = "olbos.chart.legend";
+function readLegendPreference(): boolean {
+  try { return window.localStorage.getItem(LEGEND_KEY) === "open"; } catch { return false; }
+}
+function writeLegendPreference(open: boolean): void {
+  try { window.localStorage.setItem(LEGEND_KEY, open ? "open" : "closed"); } catch { /* storage unavailable: fine */ }
+}
+
 export default function CandlestickChart({
   bars,
   levels,
@@ -243,11 +251,17 @@ export default function CandlestickChart({
   const macdSignalRef = useRef<ISeriesApi<"Line"> | null>(null);
   const macdHistRef = useRef<ISeriesApi<"Histogram"> | null>(null);
   const isMobile = useIsMobile();
-  const [legendOpen, setLegendOpen] = useState(!isMobile);
-
-  useEffect(() => {
-    setLegendOpen(!isMobile);
-  }, [isMobile]);
+  // Collapsed by default on every screen size: the key is 13 rows tall and sat
+  // over the first part of the price line. The indicator readout above stays
+  // visible, and the chart's own right-axis chips name entry / stop / targets.
+  // The choice is remembered per viewer; storage can be unavailable, so it is
+  // read and written defensively and the chart works without it.
+  const [legendOpen, setLegendOpen] = useState<boolean>(readLegendPreference);
+  const toggleLegend = () =>
+    setLegendOpen((open) => {
+      writeLegendPreference(!open);
+      return !open;
+    });
 
   useEffect(() => {
     const container = containerRef.current;
@@ -404,18 +418,16 @@ export default function CandlestickChart({
         </span>
       </div>
       <div className="candlestick-chart__legend-chrome">
-        {isMobile && (
-          <button
-            type="button"
-            className="candlestick-chart__legend-toggle"
-            aria-expanded={legendOpen}
-            aria-controls="candlestick-chart-legend"
-            onClick={() => setLegendOpen((open) => !open)}
-          >
-            {legendOpen ? "Hide legend" : "Legend"}
-          </button>
-        )}
-        {(legendOpen || !isMobile) && (
+        <button
+          type="button"
+          className="candlestick-chart__legend-toggle"
+          aria-expanded={legendOpen}
+          aria-controls="candlestick-chart-legend"
+          onClick={toggleLegend}
+        >
+          {legendOpen ? "Hide legend" : "Legend"}
+        </button>
+        {legendOpen && (
           <div
             id="candlestick-chart-legend"
             className="candlestick-chart__legend"

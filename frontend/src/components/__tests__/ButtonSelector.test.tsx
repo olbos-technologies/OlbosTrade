@@ -11,3 +11,12 @@ describe("Button selector", () => {
     expect(screen.getByText("Halt").className).not.toContain("btn-t--selector");
   });
 });
+
+describe("Button flat", () => {
+  it("is flat only when asked, and independent of selector", () => {
+    render(<><Button flat>Signal detail</Button><Button>Close</Button></>);
+    expect(screen.getByText("Signal detail").className).toContain("btn-t--flat");
+    expect(screen.getByText("Signal detail").className).not.toContain("btn-t--selector");
+    expect(screen.getByText("Close").className).not.toContain("btn-t--flat");
+  });
+});

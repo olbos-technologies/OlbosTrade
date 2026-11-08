@@ -20,6 +20,10 @@ import {
 import MetricHint, { resolveMetricHint } from "../components/MetricHint";
 import { Panel, StatTile, Badge, Button } from "../components/ui";
 import CandlestickChart from "../components/CandlestickChart";
+import ChartDock, { type DockTab } from "../components/chart/ChartDock";
+import InstrumentBar from "../components/chart/InstrumentBar";
+import PositionsTable from "../components/chart/PositionsTable";
+import WatchlistTable from "../components/chart/WatchlistTable";
 import { tint } from "../utils/tint";
 import "./markets/Markets.css";
 
@@ -230,6 +234,16 @@ export default function ChartWorkstation({
   const [watchlist, setWatchlist] = useState<string[]>(loadStoredWatchlist);
   const [tickerInput, setTickerInput] = useState("");
 
+  // Desktop dock layout: which dock tab is open, and a chart height that follows
+  // the window so the dock stays on the first screen.
+  const [dockTab, setDockTab] = useState("readiness");
+  const [viewportH, setViewportH] = useState(() => window.innerHeight);
+  useEffect(() => {
+    const onResize = () => setViewportH(window.innerHeight);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
   const persistWatchlist = (next: string[]) => {
     setWatchlist(next);
     try {
@@ -374,6 +388,193 @@ export default function ChartWorkstation({
     ? { label: "Execution mode", value: "UNKNOWN", tone: "var(--amber)" }
     : formatExecutionModeDisplay(execMode, Boolean(killSwitch?.active));
   const planTitle = tradePlanCardTitle(Boolean(selectedSignal), selectedSignal?.source);
+
+  const tradePlanPanel = (
+            <Panel title={planTitle} sectionStyle={{ overflow: "hidden" }}>
+              {selectedSignal?.source && selectedSignal.source !== "unknown" && (
+                <div className="instrument-card--flat" style={{
+                  marginBottom: 10, fontFamily: "var(--mono)", fontSize: 11,
+                  color: "var(--ink-dim)", padding: "8px 10px",
+                }}>
+                  Source: {selectedSignal.source}
+                </div>
+              )}
+              {!selectedSignal && (
+                <div className="instrument-card--flat" style={{
+                  marginBottom: 10, fontFamily: "var(--mono)", fontSize: 11,
+                  color: "var(--ink-dim)", padding: "8px 10px",
+                }}>
+                  No signal for {symbol} — levels below are chart-derived
+                  (recent support/resistance), not the signal engine's own plan.
+                </div>
+              )}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10 }} className="workstation-plan-grid">
+                {[
+                  { label: "Entry", value: fmtMoney(entry, 2), tone: "var(--cyan)" },
+                  { label: "Stop", value: fmtMoney(stop, 2), tone: "var(--red)" },
+                  { label: "Target", value: fmtMoney(target, 2), tone: "var(--green)" },
+                  { label: "R:R", value: selectedSignal?.trade_plan?.risk_reward != null ? `${selectedSignal.trade_plan.risk_reward.toFixed(2)}x` : "—", tone: "var(--amber)" },
+                ].map((item) => (
+                  <StatTile key={item.label} variant="boxed" label={item.label} hint={hintFor(item.label)} value={item.value} tone={item.tone} />
+                ))}
+              </div>
+            </Panel>
+  );
+  const contextPanel = (
+            <Panel title="Context Stack" sectionStyle={{ overflow: "hidden" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <Badge kind="mode" tone="balanced">{regime?.regime ? regime.regime.replace(/_/g, " ") : "unknown"}</Badge>
+                  <Badge kind="mode" tone="conservative">VIX {regime?.vix != null ? regime.vix.toFixed(1) : "—"}</Badge>
+                  <Badge kind="mode" tone="aggressive">IVR {ivRank?.iv_rank != null ? Math.round(ivRank.iv_rank) : "—"}</Badge>
+                </div>
+                <div style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--ink-dim)", lineHeight: 1.7 }}>
+                  {normalizeReasons(selectedSignal?.reasons).length
+                    ? normalizeReasons(selectedSignal?.reasons).join(" · ")
+                    : "Signal stack will describe momentum, trend, volume, and volatility context when available."}
+                </div>
+              </div>
+            </Panel>
+  );
+  const researchSection = (
+    <section className="chart-intel-grid">
+            <MarketBiasPanel symbol={symbol} />
+            <TimeframeAlignmentPanel symbol={symbol} />
+            <MarketStructurePanel symbol={symbol} timeframe="1d" />
+          </section>
+  );
+
+  // Desktop layout: one instrument bar, the chart at full width, and the
+  // research behind a tabbed dock. Phones, the compact Equity/Options desk and
+  // "focus chart" keep the layout below.
+  if (!compact && !isMobile && !focusChart) {
+    const chartH = Math.max(340, Math.min(560, viewportH - 560));
+    const dockTabs: DockTab[] = [
+      { key: "readiness", label: "Setup readiness" },
+      { key: "watchlist", label: "Watchlist", count: watchlist.length },
+      { key: "signals", label: "Signals" },
+      { key: "positions", label: "Positions", count: positionsError ? "—" : positions.length },
+      { key: "plan", label: "Plan & context" },
+      { key: "research", label: "Research" },
+      { key: "safety", label: "Safety" },
+    ];
+    const rawLoss = guardrailStatus?.daily_loss_pct;
+    const dockLossPct = typeof rawLoss === "number" ? Math.max(0, -rawLoss) * 100 : null;
+    const safetyRows: { label: string; value: string; tone: string }[] = [
+      { label: execDisplay.label, value: execDisplay.value, tone: execDisplay.tone },
+      { label: "Kill switch", value: !killSwitch || typeof killSwitch.active !== "boolean" ? "UNKNOWN" : killSwitch.active ? "ACTIVE" : "INACTIVE", tone: !killSwitch || typeof killSwitch.active !== "boolean" ? "var(--amber)" : killSwitch.active ? "var(--red)" : "var(--green)" },
+      { label: "Day P&L", value: typeof dayPnl === "number" ? fmtSigned(dayPnl) : "—", tone: pnlColor(dayPnl) },
+      { label: "Daily loss", value: fmtPct(dockLossPct, 2), tone: dockLossPct ? "var(--red)" : "var(--green)" },
+      { label: "Portfolio", value: typeof netLiq === "number" ? fmtMoney(netLiq, 2) : "—", tone: "var(--ink)" },
+      { label: "Open positions", value: positionsError ? "—" : String(positions.length), tone: "var(--ink)" },
+      { label: "Win rate", value: portfolio?.win_rate != null ? `${Math.round(portfolio.win_rate * 100)}%` : "—", tone: "var(--ink)" },
+      { label: "Reconciliation", value: !reconciliation ? "UNAVAILABLE" : reconciliation.clean ? "CLEAN" : "REVIEW", tone: reconciliation?.clean ? "var(--green)" : "var(--amber)" },
+    ];
+    const shownSignals = (actionableSignals.length ? actionableSignals : signals).slice(0, 8);
+    const dockBody = (() => {
+      switch (dockTab) {
+        case "watchlist":
+          return <WatchlistTable watchlist={watchlist} snapshots={watchSnapshots} symbol={symbol}
+            onSelect={setSymbol} onAdd={(t) => { if (!watchlist.includes(t)) { persistWatchlist([...watchlist, t]); } setSymbol(t); }} onRemove={removeTicker} />;
+        case "signals":
+          return (
+            <div className="dock-table-wrap">
+              <p className="dock-line">
+                <span style={{ color: regime?.equity_allowed === true ? "var(--green)" : "var(--amber)" }}>
+                  Macro {regime?.equity_allowed === true ? "entries allowed" : regime?.equity_allowed === false ? "paused" : "unverified"}
+                </span>
+                {" · "}VIX {regime?.vix != null ? regime.vix.toFixed(1) : "—"}
+                {regime?.description ? ` · ${regime.description}` : ""}
+              </p>
+              <p className="dock-line dock-line--dim">
+                {symbol}: model score {selectedSignal ? `${Math.round(selectedSignal.confidence * 100)}%` : "—"}
+                {" · "}IV rank {ivRank?.iv_rank != null ? Math.round(ivRank.iv_rank) : "—"}
+                {" · "}RSI {selectedSignal?.indicators?.rsi != null ? selectedSignal.indicators.rsi.toFixed(1) : "—"}
+                {" · "}Volume ×{selectedSignal?.indicators?.volume_ratio != null ? selectedSignal.indicators.volume_ratio.toFixed(2) : "—"}
+                <button type="button" className="dock-link dock-link--right" onClick={() => loadSignals()}>Refresh</button>
+              </p>
+              {shownSignals.length === 0 ? <p className="dock-note">No signals right now.</p> : (
+                <table className="dock-table" aria-label="Recent signals">
+                  <thead><tr><th>Symbol</th><th>Signal</th><th>Why</th></tr></thead>
+                  <tbody>
+                    {shownSignals.map((item) => {
+                      const why = normalizeReasons(item.reasons).slice(0, 3).join(" · ");
+                      return (
+                        <tr key={item.id} className={item.ticker === symbol ? "dock-row--current" : undefined}>
+                          <td><button type="button" className="dock-link" aria-pressed={item.ticker === symbol} onClick={() => setSymbol(item.ticker)}>{item.ticker}</button></td>
+                          <td><SignalAttribution data={toChartSignalAttribution(item)} size="sm" /></td>
+                          <td className="dock-why">{why || <span className="faint">No reasons recorded</span>}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          );
+        case "positions":
+          return <PositionsTable positions={positions as never[]} error={Boolean(positionsError)} />;
+        case "plan":
+          return <div className="dock-panels">{tradePlanPanel}{contextPanel}</div>;
+        case "research":
+          return researchSection;
+        case "safety":
+          return (
+            <dl className="dock-facts">
+              {safetyRows.map((row) => (
+                <div key={row.label}><dt>{row.label}</dt><dd style={{ color: row.tone }}>{row.value}</dd></div>
+              ))}
+            </dl>
+          );
+        default:
+          return <SetupScannerPanel bare />;
+      }
+    })();
+    return (
+      <div className="chart-workspace chart-workspace--dock">
+        <div className="workstation-center">
+          <InstrumentBar
+            symbols={Array.from(new Set([symbol, ...watchlist])).slice(0, 6)}
+            symbol={symbol}
+            onSelect={setSymbol}
+            price={selectedSnapshot?.last_close ?? latestBar?.close}
+            changePct={selectedSnapshot?.change_pct}
+            bar={latestBar}
+            freshness={latestBar ? `Last close snapshot · Chart bar: ${new Date(latestBar.timestamp).toLocaleString()}` : "Chart data unavailable"}
+            timeframes={TIMEFRAMES}
+            timeframe={timeframe}
+            onTimeframe={(k) => setTimeframe(k as Timeframe)}
+            signalBadge={selectedSignal
+              ? <SignalAttribution data={toChartSignalAttribution(selectedSignal)} size="sm" />
+              : <span className="dock-nosignal">No signal</span>}
+            onSignalDetail={() => setSignalDrawerOpen(true)}
+            focused={false}
+            onToggleFocus={() => setFocusChart(true)}
+          />
+          <div className="dock-chart instrument-card--flat chart-canvas-wrap" style={{ position: "relative" }}>
+            {!chartLoading && <UpcomingCatalysts events={catalystEvents} />}
+            {chartLoading ? (
+              <div className="skeleton-block" style={{ height: chartH }} aria-busy="true" aria-label="Loading chart">
+                <div className="skeleton-shimmer" />
+              </div>
+            ) : (
+              <CandlestickChart bars={chartBars} levels={levels} height={chartH} />
+            )}
+            {chartError && <div className="dock-chart__error" role="status">{chartError}</div>}
+          </div>
+          <ChartDock tabs={dockTabs} active={dockTab} onChange={setDockTab}>{dockBody}</ChartDock>
+        </div>
+        <SignalDetailDrawer
+          open={signalDrawerOpen}
+          onClose={() => setSignalDrawerOpen(false)}
+          signal={selectedSignal}
+          symbol={symbol}
+          timeframe={timeframe}
+          latestBar={latestBar}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className={compact ? "chart-workspace chart-workspace--compact" : "chart-workspace"} style={{ padding: compact ? 0 : 16, display: "flex", flexDirection: "column", gap: 14, height: compact ? "100%" : undefined }}>
@@ -576,59 +777,14 @@ export default function ChartWorkstation({
           </Panel>
 
           {!compact && (
-          <details className="chart-research" open={!isMobile}><summary>Research evidence</summary><section className="chart-intel-grid">
-            <MarketBiasPanel symbol={symbol} />
-            <TimeframeAlignmentPanel symbol={symbol} />
-            <MarketStructurePanel symbol={symbol} timeframe="1d" />
-          </section></details>
+          <details className="chart-research" open={!isMobile}><summary>Research evidence</summary>{researchSection}</details>
           )}
 
           {!compact && (
           <details className="chart-research" open={!isMobile}><summary>Trade plan and context</summary><div className="workstation-bottom-grid">
-            <Panel title={planTitle} sectionStyle={{ overflow: "hidden" }}>
-              {selectedSignal?.source && selectedSignal.source !== "unknown" && (
-                <div className="instrument-card--flat" style={{
-                  marginBottom: 10, fontFamily: "var(--mono)", fontSize: 11,
-                  color: "var(--ink-dim)", padding: "8px 10px",
-                }}>
-                  Source: {selectedSignal.source}
-                </div>
-              )}
-              {!selectedSignal && (
-                <div className="instrument-card--flat" style={{
-                  marginBottom: 10, fontFamily: "var(--mono)", fontSize: 11,
-                  color: "var(--ink-dim)", padding: "8px 10px",
-                }}>
-                  No signal for {symbol} — levels below are chart-derived
-                  (recent support/resistance), not the signal engine's own plan.
-                </div>
-              )}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10 }} className="workstation-plan-grid">
-                {[
-                  { label: "Entry", value: fmtMoney(entry, 2), tone: "var(--cyan)" },
-                  { label: "Stop", value: fmtMoney(stop, 2), tone: "var(--red)" },
-                  { label: "Target", value: fmtMoney(target, 2), tone: "var(--green)" },
-                  { label: "R:R", value: selectedSignal?.trade_plan?.risk_reward != null ? `${selectedSignal.trade_plan.risk_reward.toFixed(2)}x` : "—", tone: "var(--amber)" },
-                ].map((item) => (
-                  <StatTile key={item.label} variant="boxed" label={item.label} hint={hintFor(item.label)} value={item.value} tone={item.tone} />
-                ))}
-              </div>
-            </Panel>
+            {tradePlanPanel}
 
-            <Panel title="Context Stack" sectionStyle={{ overflow: "hidden" }}>
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <Badge kind="mode" tone="balanced">{regime?.regime ? regime.regime.replace(/_/g, " ") : "unknown"}</Badge>
-                  <Badge kind="mode" tone="conservative">VIX {regime?.vix != null ? regime.vix.toFixed(1) : "—"}</Badge>
-                  <Badge kind="mode" tone="aggressive">IVR {ivRank?.iv_rank != null ? Math.round(ivRank.iv_rank) : "—"}</Badge>
-                </div>
-                <div style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--ink-dim)", lineHeight: 1.7 }}>
-                  {normalizeReasons(selectedSignal?.reasons).length
-                    ? normalizeReasons(selectedSignal?.reasons).join(" · ")
-                    : "Signal stack will describe momentum, trend, volume, and volatility context when available."}
-                </div>
-              </div>
-            </Panel>
+            {contextPanel}
           </div></details>
           )}
         </div>

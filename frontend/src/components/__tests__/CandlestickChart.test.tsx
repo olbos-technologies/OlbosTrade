@@ -1,6 +1,6 @@
 import React from "react";
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 
 const mockSeries = {
   setData: vi.fn(),
@@ -139,11 +139,37 @@ describe("CandlestickChart component", () => {
     expect(screen.getByLabelText("Indicator readout").textContent).toMatch(/MACD/);
   });
 
-  it("keeps the legend open on desktop without a collapse toggle", () => {
+  it("collapses the legend on desktop too, so it does not cover the price line", () => {
     cleanup();
+    window.localStorage.clear();
+    render(<CandlestickChart bars={sampleBars} levels={[]} />);
+    expect(screen.queryByLabelText("Chart legend")).not.toBeInTheDocument();
+    const toggle = screen.getByRole("button", { name: "Legend" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    // the readout stays visible while the key is collapsed
+    expect(screen.getByLabelText("Indicator readout").textContent).toMatch(/MA5/);
+  });
+
+  it("opens the legend on demand and remembers the choice", () => {
+    cleanup();
+    window.localStorage.clear();
+    const { unmount } = render(<CandlestickChart bars={sampleBars} levels={[]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Legend" }));
+    expect(screen.getByLabelText("Chart legend")).toBeInTheDocument();
+    unmount();
     render(<CandlestickChart bars={sampleBars} levels={[]} />);
     expect(screen.getByLabelText("Chart legend")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /legend/i })).not.toBeInTheDocument();
+    window.localStorage.clear();
+  });
+
+  it("still works when storage is unavailable", () => {
+    cleanup();
+    const get = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => { throw new Error("blocked"); });
+    const set = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new Error("blocked"); });
+    render(<CandlestickChart bars={sampleBars} levels={[]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Legend" }));
+    expect(screen.getByLabelText("Chart legend")).toBeInTheDocument();
+    get.mockRestore(); set.mockRestore();
   });
 
   it("removes the chart on unmount", () => {
