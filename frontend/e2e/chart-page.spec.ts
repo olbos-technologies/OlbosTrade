@@ -1,6 +1,6 @@
 /**
- * The desktop chart page: one instrument bar, the chart in the top two thirds and
- * a Positions / Watchlist panel in the bottom third. Measured in a real browser:
+ * The desktop chart page: one instrument bar, the chart on the left two thirds and
+ * a Positions / Watchlist panel on the right third. Measured in a real browser:
  * the split and "the chart starts high" are layout facts jsdom cannot see.
  */
 import { test, expect, type Page } from "@playwright/test";
@@ -33,23 +33,25 @@ async function open(page: Page, width = 1440, height = 900) {
   await expect(page.getByRole("heading", { name: "Market workspace" })).toBeVisible();
 }
 
-test("the chart takes the top two thirds and the panel the bottom third", async ({ page }) => {
+test("the chart takes the left two thirds and the panel the right third", async ({ page }) => {
   await open(page);
   const chart = await page.locator(".dock-chart").boundingBox();
   const panel = await page.getByLabel("Chart research dock").boundingBox();
   expect(chart!.y, "chart starts in the top third").toBeLessThan(330);
-  expect(chart!.width, "full width").toBeGreaterThan(1000);
-  const ratio = chart!.height / panel!.height;
-  expect(ratio, `chart ${chart!.height} : panel ${panel!.height} should be about 2 : 1`).toBeGreaterThan(1.6);
-  expect(ratio).toBeLessThan(2.5);
-  expect(panel!.height, "panel is tall enough to read").toBeGreaterThan(140);
+  expect(chart!.height, "chart is tall").toBeGreaterThan(400);
+  expect(panel!.x, "panel is to the right of the chart").toBeGreaterThanOrEqual(chart!.x + chart!.width - 1);
+  expect(Math.abs(panel!.y - chart!.y), "same top edge").toBeLessThan(2);
+  const ratio = chart!.width / panel!.width;
+  expect(ratio, `chart ${chart!.width} : panel ${panel!.width} should be about 2 : 1`).toBeGreaterThan(1.7);
+  expect(ratio).toBeLessThan(2.3);
+  expect(panel!.width, "panel is wide enough to read a table").toBeGreaterThan(300);
   await expect(page.getByRole("tab")).toHaveCount(2);
   await expect(page.locator(".workstation-right, .workstation-watchlist, .workstation-top-strip, .chart-quote")).toHaveCount(0);
   await expect(page.getByRole("button", { name: /Focus chart|Show research/ })).toHaveCount(0);
   await expectNoHorizontalOverflow(page, 1440);
 });
 
-test("the bottom panel shows positions first and the watchlist on the second tab", async ({ page }) => {
+test("the side panel shows positions first and the watchlist on the second tab", async ({ page }) => {
   await open(page);
   await expect(page.getByRole("tab", { name: /Positions/ })).toHaveAttribute("aria-selected", "true");
   const positions = page.getByRole("table", { name: "Open positions" });
@@ -106,10 +108,10 @@ test("choosing a picker symbol changes the instrument", async ({ page }) => {
   await expect(page.getByLabel("Selected instrument quote")).toContainText("100.50");
 });
 
-test("a laptop-height window keeps both the chart and the panel usable", async ({ page }) => {
+test("a laptop-size window keeps both the chart and the panel usable", async ({ page }) => {
   await open(page, 1280, 720);
   const plot = await page.getByLabel("Price chart", { exact: true }).boundingBox();
   expect(plot!.height, "price chart keeps a usable height").toBeGreaterThan(250);
-  expect((await page.getByLabel("Chart research dock").boundingBox())!.height).toBeGreaterThan(140);
+  expect((await page.getByLabel("Chart research dock").boundingBox())!.width).toBeGreaterThan(300);
   await expectNoHorizontalOverflow(page, 1280);
 });

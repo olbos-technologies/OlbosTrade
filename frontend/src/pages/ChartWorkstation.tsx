@@ -209,8 +209,8 @@ export default function ChartWorkstation({
 
   // Desktop chart height follows the window.
   const [viewportH, setViewportH] = useState(() => window.innerHeight);
-  // The chart area is two thirds of the page and the panel below it one third, so
-  // the chart is sized from the space it was actually given, not from a guess.
+  // The chart takes the left two thirds of the page and the panel the right third,
+  // so the chart is sized from the space it was actually given, not from a guess.
   const [bottomTab, setBottomTab] = useState<"positions" | "watchlist">("positions");
   const [chartWrap, setChartWrap] = useState<HTMLDivElement | null>(null);
   const [wrapH, setWrapH] = useState(0);
@@ -380,6 +380,7 @@ export default function ChartWorkstation({
               : <span className="dock-nosignal">No signal</span>}
             onSignalDetail={() => setSignalDrawerOpen(true)}
           />
+          <div className="chart-split">
           <div ref={setChartWrap} className="dock-chart instrument-card--flat chart-canvas-wrap" style={{ position: "relative" }}>
             {!chartLoading && <UpcomingCatalysts events={catalystEvents} />}
             {chartLoading ? (
@@ -404,6 +405,7 @@ export default function ChartWorkstation({
               : <WatchlistTable watchlist={watchlist} snapshots={watchSnapshots} symbol={symbol}
                   onSelect={setSymbol} onRemove={(t) => { removeTicker(t); if (t === symbol) setSymbol(watchlist.find((w) => w !== t) ?? symbol); }} />}
           </ChartDock>
+          </div>
         </div>
         <SignalDetailDrawer
           open={signalDrawerOpen}

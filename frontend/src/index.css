@@ -2132,15 +2132,19 @@ summary span[aria-hidden="true"] { display: inline-block; transition: transform 
 .dock-line { margin: 4px 0; font-size: 12px; color: var(--ink); }
 .dock-line--dim { color: var(--ink-dim); }
 
-/* The chart page splits the window 2:1 — chart on top, panel below. */
-.chart-workspace--dock { height: 100%; min-height: 560px; }
+/* The chart page splits side by side 2:1 — chart on the left, panel on the right. */
+.chart-workspace--dock { height: 100%; min-height: 520px; }
 .chart-workspace--dock .workstation-center { flex: 1 1 0; min-height: 0; }
-.chart-workspace--dock .dock-chart { flex: 2 1 0; min-height: 300px; overflow: hidden; }
-.chart-workspace--dock .chart-dock { flex: 1 1 0; min-height: 150px; }
+.chart-split {
+  flex: 1 1 0; min-height: 0;
+  display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr);
+}
+.chart-split .dock-chart { min-width: 0; min-height: 0; overflow: hidden; }
+.chart-split .chart-dock { min-width: 0; min-height: 0; border-top: 0; border-left: 1px solid var(--line-dim); }
 @media (max-width: 768px) {
   .chart-workspace--dock { height: auto; min-height: 0; }
   .chart-workspace--dock .workstation-center { flex: 0 0 auto; }
-  .chart-workspace--dock .dock-chart { flex: 0 0 auto; }
-  .chart-workspace--dock .chart-dock { flex: 0 0 auto; min-height: 0; }
+  .chart-split { display: block; }
+  .chart-split .chart-dock { border-left: 0; border-top: 1px solid var(--line-dim); }
   .chart-dock__body { max-height: 320px; }
 }
