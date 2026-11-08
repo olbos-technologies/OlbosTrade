@@ -79,10 +79,10 @@ function ExecModeBar({ hideOnMobile = false }: { hideOnMobile?: boolean }) {
     }
   };
 
-  const modes: { key: ExecMode; label: string; desc: string; color: string }[] = [
-    { key: "manual",    label: "Manual",    desc: "Signals displayed only — you decide when to trade",  color: "var(--ink-dim)" },
-    { key: "copilot",   label: "Copilot",   desc: "System queues trades — you approve each one first",   color: "var(--accent)" },
-    { key: "autopilot", label: "Autopilot", desc: "Fully automatic — executes within guardrail limits",  color: "var(--orange)" },
+  const modes: { key: ExecMode; label: string; desc: string }[] = [
+    { key: "manual",    label: "Manual",    desc: "Signals displayed only — you decide when to trade" },
+    { key: "copilot",   label: "Copilot",   desc: "System queues trades — you approve each one first" },
+    { key: "autopilot", label: "Autopilot", desc: "Fully automatic — executes within guardrail limits" },
   ];
 
   return (
@@ -99,12 +99,10 @@ function ExecModeBar({ hideOnMobile = false }: { hideOnMobile?: boolean }) {
       <span className="kicker" style={{ marginRight: 4 }}>Execution</span>
       {modes.map(m => (
         <Button
+          selector
           key={m.key}
           active={mode === m.key}
-          style={{
-            fontSize: 12,
-            ...(mode === m.key ? { borderColor: m.color, color: m.color, background: tint(m.color, 0.082) } : {}),
-          }}
+          style={{ fontSize: 12 }}
           onClick={() => select(m.key)}
           disabled={saving}
           title={m.desc}
@@ -405,7 +403,7 @@ function PnLBreakdown() {
 
       <div style={{ display: "flex", gap: 1, marginBottom: 12 }}>
         {(["date","pnl","commission"] as const).map(s => (
-          <Button key={s} active={sort === s}
+          <Button selector key={s} active={sort === s}
             style={{ borderRadius: 0, fontSize: 10 }} onClick={() => setSort(s)}>
             SORT: {s === "commission" ? "COMMISSION" : s.toUpperCase()}
           </Button>
@@ -661,7 +659,7 @@ export default function TradeDesk({
       }}>
         <div style={{ display: "flex", gap: 4 }}>
           {tabs.map(t => (
-            <Button key={t.key} active={tab === t.key}
+            <Button selector key={t.key} active={tab === t.key}
               onClick={() => setTab(t.key)}>
               {t.label}
             </Button>

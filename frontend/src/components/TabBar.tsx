@@ -43,8 +43,8 @@ export default function TabBar({ tabs, active, onChange, label }: {
               padding: "10px 18px", fontSize: 11, letterSpacing: "0.1em",
               textTransform: "uppercase", cursor: "pointer", background: "transparent",
               border: "none",
-              borderBottom: on ? "2px solid var(--cyan)" : "2px solid transparent",
-              color: on ? "var(--cyan)" : "var(--ink-dim)",
+              borderBottom: on ? "2px solid var(--brand)" : "2px solid transparent",
+              color: on ? "var(--brand)" : "var(--ink-dim)",
             }}
           >
             {t.label}

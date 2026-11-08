@@ -306,14 +306,14 @@ export default function Journal() {
           { key: "mistakes",    label: "MISTAKES" },
           { key: "review",      label: "MONTHLY REVIEW" },
         ] as const).map(t => (
-          <Button key={t.key} active={tab === t.key}
+          <Button selector key={t.key} active={tab === t.key}
             onClick={() => setTab(t.key)}>{t.label}</Button>
         ))}
         {tab === "entries" && (
           <>
             <div style={{ width: 1, height: 16, background: "var(--line-dim)", margin: "0 4px" }} />
             {(["all","open","closed"] as const).map(f => (
-              <Button key={f} active={filter === f}
+              <Button selector key={f} active={filter === f}
                 style={{ fontSize: 10 }} onClick={() => setFilter(f)}>
                 {f.toUpperCase()}
               </Button>

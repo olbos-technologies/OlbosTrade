@@ -83,7 +83,7 @@ export default function AlertsManager() {
         <Field label="Mode">
           <div style={{ display: "flex", gap: 6 }}>
             {["manual", "copilot", "autopilot"].map(m => (
-              <Button key={m} active={mode === m} style={{ fontSize: 12, textTransform: "capitalize" }} onClick={() => setMode(m)}>{m}</Button>
+              <Button selector key={m} active={mode === m} style={{ fontSize: 12, textTransform: "capitalize" }} onClick={() => setMode(m)}>{m}</Button>
             ))}
           </div>
         </Field>

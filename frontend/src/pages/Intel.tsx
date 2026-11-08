@@ -269,7 +269,7 @@ export default function Intel() {
       </div>
       <div className="workspace-toolbar" style={{ display: "flex", gap: 6, borderBottom: "1px solid var(--line-dim)", paddingBottom: 8 }}>
         {TABS.map(t => (
-          <Button key={t.key} active={tab === t.key} onClick={() => setTab(t.key)}>{t.label}</Button>
+          <Button selector key={t.key} active={tab === t.key} onClick={() => setTab(t.key)}>{t.label}</Button>
         ))}
       </div>
       {tab === "calendar" && <CalendarTab />}

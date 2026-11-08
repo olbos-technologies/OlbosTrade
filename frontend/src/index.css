@@ -1245,9 +1245,9 @@ summary span[aria-hidden="true"] { display: inline-block; transition: transform 
 }
 .desk-tab:hover { color: var(--ink); }
 .desk-tab--active {
-  color: var(--accent);
-  border-bottom-color: var(--accent);
-  background: linear-gradient(180deg, rgba(59,130,246,0.08) 0%, transparent 100%);
+  color: var(--brand);
+  border-bottom-color: var(--brand);
+  background: linear-gradient(180deg, rgba(212,175,55,0.08) 0%, transparent 100%);
 }
 .desk-tab__badge {
   font-size: 9px;
@@ -1979,4 +1979,21 @@ summary span[aria-hidden="true"] { display: inline-block; transition: transform 
     content: attr(data-label); display: block; font-size: 10px; color: var(--ink-faint);
   }
   .order-coverage__table td[data-label="Placed by"] { grid-column: 1 / -1; }
+}
+
+/* Selector buttons (tab / filter / range pickers): flat, underline when selected,
+   matching the main tab bar. The raised .btn-t stays for actions. */
+.btn-t.btn-t--selector {
+  background: transparent;
+  box-shadow: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+}
+.btn-t.btn-t--selector:hover { background: rgba(255,255,255,0.03); color: var(--ink); border-bottom-color: rgba(212,175,55,0.45); }
+.btn-t.btn-t--selector:active { box-shadow: none; transform: none; }
+.btn-t.btn-t--selector.active {
+  background: transparent;
+  border-bottom-color: var(--brand);
+  color: var(--brand);
 }

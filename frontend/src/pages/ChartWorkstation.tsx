@@ -525,7 +525,7 @@ export default function ChartWorkstation({
               <div className="chart-panel-actions">
                 <div className="chart-timeframes" role="group" aria-label="Chart timeframe">
                   {TIMEFRAMES.map((item) => (
-                    <Button key={item.key} active={timeframe === item.key} onClick={() => setTimeframe(item.key)}>
+                    <Button selector key={item.key} active={timeframe === item.key} onClick={() => setTimeframe(item.key)}>
                       {item.label}
                     </Button>
                   ))}

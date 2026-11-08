@@ -172,6 +172,7 @@ export function Badge(props: BadgeProps) {
 export function Button({
   active,
   danger,
+  selector,
   size = "default",
   children,
   style,
@@ -179,11 +180,14 @@ export function Button({
 }: {
   active?: boolean;
   danger?: boolean;
+  /** A tab / filter / range picker choice: flat, with an underline when selected,
+   *  like the main tab bar. Actions (Close, Run, Save) stay the raised key. */
+  selector?: boolean;
   size?: "default" | "sm";
 } & React.ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
     <button
-      className={`btn-t${active ? " active" : ""}${danger ? " danger" : ""}`}
+      className={`btn-t${selector ? " btn-t--selector" : ""}${active ? " active" : ""}${danger ? " danger" : ""}`}
       style={size === "sm" ? { padding: "2px 8px", fontSize: 10, ...style } : style}
       {...rest}
     >

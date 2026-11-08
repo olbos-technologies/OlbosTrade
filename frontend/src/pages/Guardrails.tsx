@@ -187,7 +187,7 @@ export default function Guardrails() {
     <div className="workspace-page" style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
       <div style={{ padding: "8px 16px", borderBottom: "1px solid var(--line-dim)", background: "var(--bg-2)", display: "flex", gap: 1 }}>
         {(["status","history"] as const).map(t => (
-          <Button key={t} active={tab === t} onClick={() => setTab(t)}>
+          <Button selector key={t} active={tab === t} onClick={() => setTab(t)}>
             {t.toUpperCase()}
           </Button>
         ))}

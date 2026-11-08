@@ -438,7 +438,7 @@ function DesktopDashboard() {
               </div>
               <div style={{ display: "flex", gap: 6 }}>
                 {["1W","1M","3M","YTD","ALL"].map(t => (
-                  <Button key={t} size="sm" active={t === range} onClick={() => setRange(t)}>{t}</Button>
+                  <Button selector key={t} size="sm" active={t === range} onClick={() => setRange(t)}>{t}</Button>
                 ))}
               </div>
             </div>
