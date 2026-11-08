@@ -181,7 +181,7 @@ TRADING_MODES: dict[TradingModeType, TradingModeConfig] = {
         min_iv_rank=30.0,
         min_credit_to_width=0.20,
         # Sizing — loosened from the old Balanced's 2% / 3 / 5
-        risk_per_trade_pct=0.0225,  # 2.25% per trade
+        risk_per_trade_pct=0.02,  # 2% per trade — the TRADING_POLICY.md charter ceiling
         max_trades_per_day=10,
         max_concurrent=6,
         # Strategies — all allowed (DTE is no longer the 7-15 danger zone
