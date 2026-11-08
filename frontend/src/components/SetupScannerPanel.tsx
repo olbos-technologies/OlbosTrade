@@ -25,7 +25,7 @@ const BIAS_TONE: Record<string, string> = {
   bullish: "var(--green)", bearish: "var(--red)", neutral: "var(--ink-dim)",
 };
 
-export default function SetupScannerPanel() {
+export default function SetupScannerPanel({ bare = false }: { bare?: boolean } = {}) {
   const [rows, setRows] = useState<SetupRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
@@ -41,12 +41,14 @@ export default function SetupScannerPanel() {
   };
   useEffect(() => { run(); }, []);
 
-  return (
-    <Panel
-      padding={8}
-      title="Setup Readiness"
-      action={<Button style={{ fontSize: 11 }} onClick={run} disabled={loading}>{loading ? "Scanning…" : "Rescan"}</Button>}
-    >
+  const rescan = <Button flat={bare} style={{ fontSize: 11 }} onClick={run} disabled={loading}>{loading ? "Scanning…" : "Rescan"}</Button>;
+  // A function, not an inner component: a component defined here would get a new
+  // identity on every render and remount the rows, dropping keyboard focus.
+  const shell = (children: React.ReactNode) => bare
+    ? <div className="setup-readiness--bare"><div className="setup-readiness__bar">{rescan}</div>{children}</div>
+    : <Panel padding={8} title="Setup Readiness" action={rescan}>{children}</Panel>;
+  return shell(
+    <>
         {error ? (
           <div role="status" style={{ fontSize: 12, color: "var(--amber)", padding: 8 }}>Setup readiness unavailable. Rescan to retry.</div>
         ) : loading && rows.length === 0 ? (
@@ -101,6 +103,6 @@ export default function SetupScannerPanel() {
         <div style={{ fontSize: 10, color: "var(--ink-faint)", padding: "6px 4px 2px" }}>
           Readiness evidence only — not a trade signal. Select a row to see the full reason.
         </div>
-    </Panel>
+    </>
   );
 }

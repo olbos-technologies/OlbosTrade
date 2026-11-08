@@ -173,6 +173,7 @@ export function Button({
   active,
   danger,
   selector,
+  flat,
   size = "default",
   children,
   style,
@@ -183,11 +184,13 @@ export function Button({
   /** A tab / filter / range picker choice: flat, with an underline when selected,
    *  like the main tab bar. Actions (Close, Run, Save) stay the raised key. */
   selector?: boolean;
+  /** An action that should not look like a raised key: flat, thin outline. */
+  flat?: boolean;
   size?: "default" | "sm";
 } & React.ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
     <button
-      className={`btn-t${selector ? " btn-t--selector" : ""}${active ? " active" : ""}${danger ? " danger" : ""}`}
+      className={`btn-t${selector ? " btn-t--selector" : ""}${flat ? " btn-t--flat" : ""}${active ? " active" : ""}${danger ? " danger" : ""}`}
       style={size === "sm" ? { padding: "2px 8px", fontSize: 10, ...style } : style}
       {...rest}
     >
