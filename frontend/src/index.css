@@ -2089,9 +2089,9 @@ summary span[aria-hidden="true"] { display: inline-block; transition: transform 
   .instrument-bar__goto { order: 3; }
   .instrument-bar__goto input { width: 96px; min-height: 44px; font-size: 16px; }
   .instrument-bar__signal { display: none; }
-  .instrument-bar__controls { order: 5; flex: 0 0 auto; margin-left: 0; gap: 6px; flex-wrap: nowrap; }
+  .instrument-bar__controls { order: 4; flex: 0 0 auto; margin-left: 0; gap: 6px; flex-wrap: nowrap; }
   .instrument-bar__controls .btn-t { min-height: 44px; flex: 0 0 auto; padding-inline: 10px; font-size: 10px; }
-  .instrument-bar__ohlc { order: 4; flex: 1 1 100%; min-width: 0; white-space: nowrap; overflow-x: auto; font-size: 10px; padding-top: 2px; }
+  .instrument-bar__ohlc { order: 4; flex: 1 1 0; min-width: 0; white-space: normal; font-size: 10px; padding-top: 2px; align-self: center; }
 }
 
 .dock-table-wrap { min-width: 0; }
