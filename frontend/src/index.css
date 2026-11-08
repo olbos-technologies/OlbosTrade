@@ -1980,3 +1980,20 @@ summary span[aria-hidden="true"] { display: inline-block; transition: transform 
   }
   .order-coverage__table td[data-label="Placed by"] { grid-column: 1 / -1; }
 }
+
+/* Selector buttons (tab / filter / range pickers): flat, underline when selected,
+   matching the main tab bar. The raised .btn-t stays for actions. */
+.btn-t.btn-t--selector {
+  background: transparent;
+  box-shadow: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+}
+.btn-t.btn-t--selector:hover { background: rgba(255,255,255,0.03); color: var(--ink); border-bottom-color: var(--line); }
+.btn-t.btn-t--selector:active { box-shadow: none; transform: none; }
+.btn-t.btn-t--selector.active {
+  background: transparent;
+  border-bottom-color: var(--cyan);
+  color: var(--cyan);
+}

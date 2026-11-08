@@ -405,7 +405,7 @@ function PnLBreakdown() {
 
       <div style={{ display: "flex", gap: 1, marginBottom: 12 }}>
         {(["date","pnl","commission"] as const).map(s => (
-          <Button key={s} active={sort === s}
+          <Button selector key={s} active={sort === s}
             style={{ borderRadius: 0, fontSize: 10 }} onClick={() => setSort(s)}>
             SORT: {s === "commission" ? "COMMISSION" : s.toUpperCase()}
           </Button>
@@ -661,7 +661,7 @@ export default function TradeDesk({
       }}>
         <div style={{ display: "flex", gap: 4 }}>
           {tabs.map(t => (
-            <Button key={t.key} active={tab === t.key}
+            <Button selector key={t.key} active={tab === t.key}
               onClick={() => setTab(t.key)}>
               {t.label}
             </Button>

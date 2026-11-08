@@ -240,7 +240,7 @@ export default function OptionsFlow() {
 
         <div style={{ display: "flex", gap: 6 }}>
           {(["all", "call", "put"] as const).map(f => (
-            <Button key={f} active={f === typeFilter}
+            <Button selector key={f} active={f === typeFilter}
               style={{ padding: "2px 10px", fontSize: 10 }} onClick={() => setTypeFilter(f)}>
               {f === "all" ? "ALL" : f === "call" ? "CALLS" : "PUTS"}
             </Button>
