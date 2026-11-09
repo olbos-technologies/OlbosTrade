@@ -365,3 +365,10 @@
 @media (max-width: 768px) {
   .app-shell .desk-tool-rail .btn-ghost, .app-shell .desk-tool-rail__btn { min-height: 40px; padding: 6px 12px; }
 }
+
+/* Phone Home: the page gutter already puts the content on the Find workspace box's edges (16px each
+   side), but .mobile-home added its own 16px inside it, so Overview and every card below it started
+   at 32px. Drop the inner inset; vertical spacing is unchanged. */
+@media (max-width: 768px) {
+ .app-shell .home-workspace .mobile-home { padding-inline: 0 !important; }
+}
