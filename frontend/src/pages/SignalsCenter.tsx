@@ -13,11 +13,13 @@ import SignalResearch from "./SignalResearch";
 import OptionsSignalHistory from "./OptionsSignalHistory";
 import StrategyHealthPanel from "./StrategyHealthPanel";
 import AlphaEdgePanel from "./AlphaEdgePanel";
+import SetupScannerPanel from "../components/SetupScannerPanel";
 import { useTabRoute } from "../hooks/useTabRoute";
 
 export const TABS = [
   { key: "alpha-edge", label: "Alpha Edge" },
   { key: "signals", label: "Live Signals" },
+  { key: "readiness", label: "Setup Readiness" },
   { key: "history", label: "History" },
   { key: "strategies", label: "Strategy Library" },
   { key: "health", label: "Health" },
@@ -46,6 +48,7 @@ export const TAB_PAGE_KEYS = {
   signals: "equity",
   strategies: "strat:cards",
   health: "strat:health",
+  readiness: "strat:readiness",
   "alpha-edge": "strat:alpha-edge",
   history: "strat:signal-history",
 } as const;
@@ -60,6 +63,7 @@ export default function SignalsCenter({ initialTab = DEFAULT_TAB }: { initialTab
           : tab === "signals" ? <EquitySignals />
           : tab === "history" ? <SignalsHistory />
           : tab === "health" ? <StrategyHealthPanel />
+          : tab === "readiness" ? <div className="setup-readiness-page"><SetupScannerPanel /></div>
           : <Strategy />}
       </ErrorBoundary>
     </div>

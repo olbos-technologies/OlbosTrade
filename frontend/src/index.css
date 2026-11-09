@@ -2163,3 +2163,6 @@ summary span[aria-hidden="true"] { display: inline-block; transition: transform 
   .interval-strip button, .range-bar__buttons button { min-height: 44px; min-width: 44px; flex: 0 0 auto; }
   .range-bar__note { white-space: nowrap; }
 }
+
+/* Setup Readiness on the Signals page: a readable column, not a full-width stretch. */
+.setup-readiness-page { max-width: 720px; padding: 16px; }

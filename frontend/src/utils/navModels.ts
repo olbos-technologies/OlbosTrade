@@ -47,6 +47,7 @@ export const NAV_MODEL_LEGACY: NavGroup[] = [
     { key: "strat:signal-history", label: "History" },
     { key: "strat:cards", label: "Strategy Library", sidebar: false },
     { key: "strat:health", label: "Health", sidebar: false },
+    { key: "strat:readiness", label: "Setup Readiness", sidebar: false },
   ]},
   { id: "risk", label: "Risk", icon: "risk", key: "risk", children: [
     { key: "risk:heat",     label: "Risk Overview" },
@@ -120,6 +121,7 @@ export const NAV_MODEL_V2: NavGroup[] = [
     { key: "strat:signal-history", label: "History" },
     { key: "strat:cards", label: "Strategy Library", sidebar: false },
     { key: "strat:health", label: "Health", sidebar: false },
+    { key: "strat:readiness", label: "Setup Readiness", sidebar: false },
   ]},
   { id: "risk", label: "Risk", icon: "risk", key: "risk", children: [
     { key: "risk:heat",     label: "Risk Overview" },
