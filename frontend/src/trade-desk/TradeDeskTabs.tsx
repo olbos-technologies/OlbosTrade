@@ -2,6 +2,7 @@
  * Trade Desk primary tabs — workspace switch without full-page remount of shell chrome.
  */
 
+import { alignActiveTab } from "../utils/tabScroll";
 import React, { useEffect, useRef } from "react";
 
 export type TradeDeskTab =
@@ -76,9 +77,8 @@ export default function TradeDeskTabs({
   useEffect(() => {
     if (!ensureActiveVisible) return;
     const selected = activeRef.current;
-    if (selected && typeof selected.scrollIntoView === "function") {
-      selected.scrollIntoView({ block: "nearest", inline: "center" });
-    }
+    // Flush at the strip's start (on the page margin), not centered with a half-cut neighbour.
+    alignActiveTab(selected?.parentElement ?? null, selected);
   }, [active, ensureActiveVisible]);
 
   const moveFocus = (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {

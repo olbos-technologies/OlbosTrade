@@ -314,10 +314,11 @@
  .app-shell .instrument-rail .instrument-chip { background: var(--bg-3); box-shadow: none; border: 1px solid var(--chip-border, var(--line-dim)); border-radius: 3px; padding: 5px 10px; }
  .app-shell .instrument-rail .instrument-rail-toggle { align-self: stretch; border: 1px solid var(--line-dim); border-radius: 3px; background: var(--bg-3); }
  .app-shell .instrument-rail-kill { padding: 0; }
- .app-shell .desk-tablist { display: flex; align-items: center; gap: 6px; padding: 6px 16px; scroll-padding-inline: 16px; background: var(--bg-2); border-bottom: 1px solid var(--line-dim); box-shadow: none; }
+ /* Inset by margin (not padding), so tabs scrolled past the start are clipped at the page margin
+    instead of showing as a cut-off sliver in the gutter. The wrapper supplies the row background and rule. */
+ .app-shell .desk-tablist { display: flex; align-items: center; gap: 6px; margin-inline: 16px; padding: 6px 0; scroll-padding-inline: 0; background: transparent; border-bottom: 0; box-shadow: none; }
  .app-shell .desk-tablist .desk-tab { padding: 6px 12px; min-height: 40px; border: 1px solid var(--line-dim); border-radius: 3px; background: var(--bg-3); }
  .app-shell .desk-tablist .desk-tab--active { color: var(--brand); border-color: var(--brand); background: var(--bg-3); }
- .app-shell .trade-desk-mobile-tabs .desk-tablist { scroll-padding-inline: 16px; }
  .workspace-frame .tab-bar { padding-inline: 0; } /* the page gutter already provides the 16px */
 }
 

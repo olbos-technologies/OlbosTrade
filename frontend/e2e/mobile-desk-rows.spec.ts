@@ -57,3 +57,46 @@ test("tab rows on other pages also start at the Find workspace box's left edge o
   const tab = await boxInfo(page, '[role="tablist"].tab-bar [role="tab"]');
   expect(tab.x).toBe(find.x);
 });
+
+// The strip scrolls sideways. A tab with enough tabs after it is brought flush to the page margin (the
+// Find workspace box's left edge), with the tab before it fully out of view, not left as a cut-off sliver.
+test("on a phone the selected Positions tab is brought to the left margin, with no half-cut neighbour", async ({ page }) => {
+  await open(page, "/terminal/trade/positions", 390);
+  await expect(page.locator('.desk-tablist [role="tab"][aria-selected="true"]')).toBeVisible();
+  await page.waitForTimeout(300);
+  const m = await page.evaluate(() => {
+    const tabs = Array.from(document.querySelectorAll('.desk-tablist [role="tab"]')) as HTMLElement[];
+    const i = tabs.findIndex(t => t.getAttribute("aria-selected") === "true");
+    const find = document.querySelector(".workspace-command-search input")!.getBoundingClientRect();
+    return { findX: find.x, activeX: tabs[i].getBoundingClientRect().x, prevRight: tabs[i - 1].getBoundingClientRect().right };
+  });
+  expect(Math.abs(m.activeX - m.findX)).toBeLessThanOrEqual(1);
+  expect(m.prevRight).toBeLessThanOrEqual(m.findX + 1); // behind the margin, nothing peeking in
+});
+
+test("on a phone a tab near the end scrolls as far as the strip allows, never past it", async ({ page }) => {
+  await open(page, "/terminal/trade/settings", 390);
+  await expect(page.locator('.desk-tablist [role="tab"][aria-selected="true"]')).toBeVisible();
+  await page.waitForTimeout(300);
+  const m = await page.evaluate(() => {
+    const list = document.querySelector(".desk-tablist") as HTMLElement;
+    const last = list.querySelector('[role="tab"]:last-of-type')!.getBoundingClientRect();
+    return { atEnd: Math.abs(list.scrollLeft - (list.scrollWidth - list.clientWidth)) <= 1, lastRight: last.right, listRight: list.getBoundingClientRect().right, selected: list.querySelector('[role="tab"][aria-selected="true"]')!.textContent };
+  });
+  expect(m.selected).toMatch(/settings/i);
+  expect(m.atEnd).toBe(true);
+  expect(m.lastRight).toBeLessThanOrEqual(m.listRight + 1); // the last tab is fully visible
+});
+
+test("on a phone the Overview tab starts at the left margin", async ({ page }) => {
+  await open(page, "/terminal/trade/overview", 390);
+  await expect(page.locator('.desk-tablist [role="tab"][aria-selected="true"]')).toBeVisible();
+  await page.waitForTimeout(300);
+  const m = await page.evaluate(() => {
+    const tab = document.querySelector('.desk-tablist [role="tab"]')!.getBoundingClientRect();
+    const find = document.querySelector(".workspace-command-search input")!.getBoundingClientRect();
+    return { tab: Math.round(tab.x), find: Math.round(find.x), text: document.querySelector('.desk-tablist [role="tab"]')!.textContent };
+  });
+  expect(m.text).toMatch(/overview/i);
+  expect(m.tab).toBe(m.find);
+});

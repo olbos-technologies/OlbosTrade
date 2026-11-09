@@ -1,4 +1,5 @@
-import React from "react";
+import React, { useEffect, useRef } from "react";
+import { alignActiveTab } from "../utils/tabScroll";
 
 /**
  * Minimal terminal-style tab bar (boxed tabs; the styling lives in refined-theme.css). Used to fold related pages into one nav entry
@@ -12,6 +13,12 @@ export default function TabBar({ tabs, active, onChange, label }: {
   onChange: (key: string) => void;
   label?: string;
 }) {
+  const listRef = useRef<HTMLDivElement | null>(null);
+  // On a phone the strip scrolls sideways: keep the selected tab on the page margin.
+  useEffect(() => {
+    const list = listRef.current;
+    alignActiveTab(list, list?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]') ?? null);
+  }, [active]);
   const moveFocus = (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
     event.preventDefault();
@@ -23,7 +30,7 @@ export default function TabBar({ tabs, active, onChange, label }: {
     buttons[next].click();
   };
   return (
-    <div role="tablist" aria-label={label || "Workspace views"} className="tab-bar">
+    <div role="tablist" aria-label={label || "Workspace views"} className="tab-bar" ref={listRef}>
       {tabs.map((t, index) => {
         const on = t.key === active;
         return (
