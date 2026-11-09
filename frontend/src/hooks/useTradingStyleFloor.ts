@@ -24,12 +24,12 @@ export function formatConfidenceFloor(
   minConfidence: number,
 ): { text: string; passes: boolean | null } {
   if (typeof confidence !== "number" || Number.isNaN(confidence)) {
-    return { text: `need ${(minConfidence * 100).toFixed(0)}%`, passes: null };
+    return { text: `need score ${(minConfidence * 100).toFixed(0)}`, passes: null };
   }
   const pct = Math.round(confidence * 100);
   const need = Math.round(minConfidence * 100);
   const passes = confidence + 1e-9 >= minConfidence;
-  return { text: `${pct}% · need ${need}%`, passes };
+  return { text: `score ${pct} · need ${need}`, passes };
 }
 
 export function useTradingStyleFloor() {

@@ -312,7 +312,7 @@ function ApprovalsQueue() {
         ) : (
           <table className="t-table">
             <thead><tr>
-              {["Time","Ticker","Type","Action","Confidence","Executed By","Status"].map(h => <th key={h}>{h}</th>)}
+              {["Time","Ticker","Type","Action","Conf. score","Executed By","Status"].map(h => <th key={h}>{h}</th>)}
             </tr></thead>
             <tbody>
               {log.map((e: any, i: number) => (
@@ -323,7 +323,7 @@ function ApprovalsQueue() {
                   <td className="mono" style={{ color: "var(--ink)" }}>{e.ticker || "—"}</td>
                   <td><Badge text={e.asset_type?.toUpperCase() || "EQ"} color="var(--ink-dim)" /></td>
                   <td className="mono" style={{ fontSize: 10 }}>{e.action || e.strategy || "—"}</td>
-                  <td className="mono">{((e.confidence || 0) * 100).toFixed(1)}%</td>
+                  <td className="mono">{((e.confidence || 0) * 100).toFixed(0)}</td>
                   <td className="mono" style={{ fontSize: 10, color: "var(--amber)" }}>{e.executed_by || "—"}</td>
                   <td>
                     <Badge

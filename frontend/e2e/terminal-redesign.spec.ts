@@ -59,8 +59,8 @@ for (const width of [320,390,768,1440]) for (const state of ['populated','unavai
       if(state==='populated') {
         // Compact face keeps scores visible; expand to inspect levels and evidence.
         const card=page.locator('.design-signal-card').first();
-        await expect(card.locator('.mission-card__reward-value')).toHaveText('71%');
-        await expect(card.locator('.mission-card__reward-prefix')).toHaveText('Confidence');
+        await expect(card.locator('.mission-card__reward-value')).toHaveText('71/100');
+        await expect(card.locator('.mission-card__reward-prefix')).toHaveText('Confidence score');
         await card.locator(':scope > summary').click();
         await expect(card.locator('.trade-plan-well')).toContainText('ENTRY');
         await expect(card.locator('.trade-plan-well')).toContainText('STOP');

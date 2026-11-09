@@ -50,7 +50,7 @@ function HistoryRowView({ row }: { row: HistoryRow }) {
       <td className="mono" style={{ fontWeight: 600 }}>{row.ticker}</td>
       <td className="mono" style={{ color: "var(--cyan)" }}>{row.strategy.replace(/_/g, " ")}</td>
       <td className="mono" style={{ color: isDebit ? "var(--green)" : "var(--red)" }}>{row.action.replace("_", " ")}</td>
-      <td className="mono">{(row.confidence * 100).toFixed(0)}%</td>
+      <td className="mono">{(row.confidence * 100).toFixed(0)}</td>
       <td className="mono">{formatStrikePair(row.spread)}</td>
       <td className="mono" style={{ color: "var(--ink)" }}>
         {row.spread.net_credit != null ? `$${Math.abs(row.spread.net_credit).toFixed(2)}` : "—"}

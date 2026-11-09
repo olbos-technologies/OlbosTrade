@@ -9,6 +9,7 @@
  * breakdown, including explicit "unknown"/"unavailable" rows for anything
  * missing. Never infers or fabricates a missing field.
  */
+import { CONFIDENCE_NOTE, confidenceScore, confidenceScoreText } from "../utils/confidenceScore";
 import React from "react";
 
 import type { SignalAttributionData, SignalAuthority } from "../types/signal";
@@ -126,7 +127,7 @@ export default function SignalAttribution({
 
   const compactParts: string[] = [data.direction];
   if (data.timeframe) compactParts.push(data.timeframe);
-  if (typeof data.confidence === "number") compactParts.push(`${Math.round(data.confidence * 100)}%`);
+  if (typeof data.confidence === "number") compactParts.push(`score ${confidenceScore(data.confidence)}`);
   if (data.source && !data.timeframe && typeof data.confidence !== "number") compactParts.push(data.source);
 
   const fontSize = size === "sm" ? 10.5 : 11.5;
@@ -193,9 +194,12 @@ export default function SignalAttribution({
         <DetailRow label="Source" value={data.source || "Source unavailable"} />
         <DetailRow label="Timeframe" value={data.timeframe || "Timeframe unknown"} />
         <DetailRow
-          label="Confidence"
-          value={typeof data.confidence === "number" ? `${Math.round(data.confidence * 100)}%` : "Not provided"}
+          label="Confidence score"
+          value={typeof data.confidence === "number" ? confidenceScoreText(data.confidence) : "Not provided"}
         />
+        {typeof data.confidence === "number" && (
+          <DetailRow label="Meaning" value={CONFIDENCE_NOTE} />
+        )}
         <DetailRow label="Updated" value={data.updatedAt ? `${age ?? data.updatedAt}` : "Timestamp unavailable"} />
         <DetailRow label="Freshness" value={data.updatedAt ? (stale ? "Stale" : "Fresh") : "Unknown"} />
         <DetailRow label="Authority" value={authorityLabel(data.authority)} />

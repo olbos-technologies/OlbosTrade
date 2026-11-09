@@ -17,6 +17,7 @@ import SignalDivergence from "./SignalDivergence";
 import type { SignalAttributionData } from "../types/signal";
 import { useLiveData } from "../hooks/useLiveData";
 import { api, apiAuthHeaders } from "../api/client";
+import { confidenceScoreText } from "../utils/confidenceScore";
 
 interface Candidate {
   ticker: string;
@@ -230,10 +231,10 @@ function CandidateModal({ candidate, onClose }: { candidate: Candidate; onClose:
           </div>
           <div className="instrument-card" style={{ padding: 12 }}>
             <div style={{ fontSize: 10, color: "var(--ink-dim)", marginBottom: 4, fontFamily: "var(--mono)", fontWeight: 600, letterSpacing: "0.08em" }}>
-              CONFIDENCE
+              CONFIDENCE SCORE
             </div>
             <div style={{ fontSize: 16, fontWeight: 700, color: "var(--cyan)", fontFamily: "var(--mono)" }}>
-              {(candidate.confidence * 100).toFixed(0)}%
+              {confidenceScoreText(candidate.confidence)}
             </div>
           </div>
           <div className="instrument-card" style={{ padding: 12 }}>
@@ -1267,7 +1268,7 @@ export default function EquityScanPanel() {
                   <div style={{ display: "flex", justifyContent: "space-between" }}>
                     <span style={{ color: "var(--ink-dim)" }}>Conf</span>
                     <span style={{ color: "var(--cyan)", fontWeight: 600 }}>
-                      {(cand.confidence * 100).toFixed(0)}%
+                      {confidenceScoreText(cand.confidence)}
                     </span>
                   </div>
                   {!isMobile && (

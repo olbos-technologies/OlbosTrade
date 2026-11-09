@@ -21,7 +21,7 @@ describe("SignalAttribution", () => {
         data={{ direction: "BUY", timeframe: "Weekly", confidence: 0.78, source: "Equity Scan Engine" }}
       />
     );
-    expect(screen.getByText("BUY · Weekly · 78%")).toBeInTheDocument();
+    expect(screen.getByText("BUY · Weekly · score 78")).toBeInTheDocument();
   });
 
   it("never omits missing attribution — unknown fields say so explicitly in the disclosure", () => {

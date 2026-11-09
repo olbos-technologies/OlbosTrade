@@ -4,19 +4,19 @@ import { floorForStyle, formatConfidenceFloor } from "../../hooks/useTradingStyl
 describe("formatConfidenceFloor", () => {
   it("marks below-floor confidence as failing", () => {
     const r = formatConfidenceFloor(0.78, 0.9);
-    expect(r.text).toBe("78% · need 90%");
+    expect(r.text).toBe("score 78 · need 90");
     expect(r.passes).toBe(false);
   });
 
   it("marks at-or-above floor as passing", () => {
     const r = formatConfidenceFloor(0.7, 0.7);
-    expect(r.text).toBe("70% · need 70%");
+    expect(r.text).toBe("score 70 · need 70");
     expect(r.passes).toBe(true);
   });
 
   it("handles missing confidence", () => {
     const r = formatConfidenceFloor(null, 0.7);
-    expect(r.text).toBe("need 70%");
+    expect(r.text).toBe("need score 70");
     expect(r.passes).toBe(null);
   });
 });
