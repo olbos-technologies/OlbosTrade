@@ -3,6 +3,7 @@
  * Read-only display + mode switch via existing APIs. Paper/Live always labeled (not color-only).
  */
 
+import { tint } from "../utils/tint";
 import React, { useEffect, useState } from "react";
 import { api } from "../api/client";
 import KillSwitchButton from "../components/KillSwitchButton";
@@ -24,14 +25,14 @@ type Snap = {
   priority?: "always" | "expand";
 };
 
-function Chip({ label, value, compactValue, tone = "muted", priority = "expand" }: Snap) {
+function Chip({ label, value, compactValue, tone = "muted", priority = "expand", extraClass }: Snap & { extraClass?: string }) {
   const color =
     tone === "ok" ? "var(--green)" :
     tone === "warn" ? "var(--amber)" :
     tone === "crit" ? "var(--red)" :
     "var(--ink)";
   return (
-    <div className="instrument-chip" data-priority={priority}>
+    <div className={`instrument-chip${extraClass ? ` ${extraClass}` : ""}`} data-priority={priority} style={{ ["--chip-border" as string]: tint(color, 0.333) }}>
       <span className="instrument-chip-label">{label}</span>
       <span className="instrument-chip-value instrument-chip-value--desktop" style={{ color }}>{value}</span>
       {compactValue && (
@@ -202,7 +203,7 @@ export default function TradeDeskHeader() {
       <Chip label="Regime" value={regime} />
       <Chip label="Risk budget" value={heat} />
       <Chip label="Drawdown" value={drawdown} />
-      <Chip label="Kill switch" value={ks} tone={ksTone} />
+      <Chip label="Kill switch" value={ks} tone={ksTone} extraClass="instrument-chip--kill" />
       <button
         type="button"
         className="instrument-rail-toggle"

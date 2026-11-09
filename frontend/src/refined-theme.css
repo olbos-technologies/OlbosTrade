@@ -23,7 +23,7 @@
 .app-shell .workspace-frame__heading {padding:24px 24px 18px;border-bottom:0;}
 .app-shell .workspace-frame__heading h1 {font:600 26px/1.2 var(--sans);letter-spacing:-.025em;}
 .app-shell .workspace-frame__heading p {font-size:13px;line-height:1.6;color:var(--ink-dim);}
-.app-shell .workspace-frame [role="tab"] {font:600 12px var(--sans) !important;text-transform:none !important;letter-spacing:0 !important;}
+.app-shell .workspace-frame [role="tab"] {font:600 11px var(--mono) !important;text-transform:uppercase !important;letter-spacing:.1em !important;}
 .app-shell .workspace-frame .workspace-table-scroll {border-color:var(--line-dim);border-radius:6px;}
 .app-shell .workspace-frame .t-table th {font:500 11px var(--sans);color:var(--ink-dim);padding:10px 12px;}
 .app-shell .workspace-frame .t-table td {padding:10px 12px;}
@@ -277,4 +277,66 @@
  .app-shell .workspace-frame textarea {
   min-height:44px;font-size:16px !important; /* avoid iOS focus zoom */
  }
+}
+
+/* Desk header rows share the ENV chip row's treatment: each item is a bordered,
+   3px-radius box (dim label beside a bold value, mono), rows have a 6px / 16px inset
+   and one grey bottom rule, on the same flat background. The Session strip's boxes
+   take their border colour from their state tone, like the ENV chips do. The active
+   tab keeps the brand colour (active navigation). Desktop only; the phone has its own
+   collapsed rail and scrolling tab strip. */
+/* Laptop widths: the Session "Kill switch" box is the third copy of that state (the ENV row's KILL chip and the
+   kill-switch control are the others), and dropping it keeps the strip on one line instead of truncating values. */
+@media (min-width: 769px) and (max-width: 1599px) {
+ .app-shell .instrument-rail .instrument-chip--kill { display: none; }
+}
+@media (min-width: 769px) {
+ .app-shell .instrument-rail { background: var(--bg-2); border: 0; border-bottom: 1px solid var(--line-dim); border-radius: 0; box-shadow: none; padding: 6px 16px; gap: 6px; align-items: center !important; }
+ .app-shell .instrument-rail .instrument-chip { flex-direction: row; align-items: center; gap: 6px; padding: 3px 9px; border: 1px solid var(--chip-border, var(--line-dim)); border-radius: 3px; background: var(--bg-3); box-shadow: none; white-space: nowrap; flex-shrink: 0; }
+ .app-shell .instrument-rail .instrument-rail-kill { flex: 0 0 auto; margin-left: auto; }
+ .app-shell .instrument-rail .instrument-chip-label { font-size: 9px; letter-spacing: .08em; color: var(--ink-faint); }
+ .app-shell .instrument-rail .instrument-chip-value { font-size: 10.5px; font-weight: 700; }
+ .app-shell .desk-tablist { display: flex; align-items: center; gap: 6px; padding: 6px 16px; background: var(--bg-2); border-bottom: 1px solid var(--line-dim); box-shadow: none; }
+ .app-shell .desk-tablist .desk-tab { padding: 3px 10px; border: 1px solid var(--line-dim); border-radius: 3px; background: var(--bg-3); }
+ .app-shell .desk-tablist .desk-tab:hover { border-color: var(--line); }
+ .app-shell .desk-tablist .desk-tab--active { color: var(--brand); border-color: var(--brand); background: var(--bg-3); }
+ .app-shell .desk-auxiliary-tools { background: var(--bg-2); }
+ .app-shell .desk-auxiliary-tools > summary { display: inline-flex; align-items: center; min-height: 0; margin: 6px 16px; padding: 3px 10px; border: 1px solid var(--line-dim); border-radius: 3px; background: var(--bg-3); font: 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; list-style: none; }
+ .app-shell .desk-auxiliary-tools > summary::-webkit-details-marker { display: none; }
+ .app-shell .desk-auxiliary-tools > summary:hover { color: var(--ink); border-color: var(--line); }
+}
+
+/* Boxed tabs and toggles on every page, in the ENV chip's style: 1px border, 3px
+   radius, the chip fill, mono capitals. Tab rows (TabBar) are navigation, so the
+   active tab takes the brand colour; in-page toggles and filters (Options/Equities,
+   order filters, All/Buy/Sell) are not navigation, so theirs takes amber. */
+.tab-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 16px; background: var(--bg-2); border-bottom: 1px solid var(--line-dim); }
+.tab-bar__tab, .signal-dir-filter__btn, .asset-toggle__btn {
+  padding: 3px 10px; min-width: 0; border: 1px solid var(--line-dim); border-radius: 3px; background: var(--bg-3); box-shadow: none;
+  color: var(--ink-dim); font: 600 11px var(--mono); letter-spacing: .1em; text-transform: uppercase; white-space: nowrap; cursor: pointer;
+}
+.tab-bar__tab:hover, .signal-dir-filter__btn:hover, .asset-toggle__btn:hover:not(.asset-toggle__btn--active) { color: var(--ink); border-color: var(--line); background: var(--bg-3); }
+.tab-bar__tab--active, .tab-bar__tab--active:hover { color: var(--brand); border-color: var(--brand); }
+.signal-dir-filter__btn--active, .asset-toggle__btn--active, .asset-toggle__btn--active:hover { color: var(--amber); border-color: var(--amber); background: var(--bg-3); box-shadow: none; }
+.tab-bar__tab:focus-visible, .signal-dir-filter__btn:focus-visible, .asset-toggle__btn:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
+.asset-toggle { gap: 6px; padding: 0; background: none; border: 0; border-radius: 0; box-shadow: none; }
+.signal-dir-filter { display: flex; flex-wrap: wrap; gap: 6px; }
+@media (max-width: 768px) {
+  /* Boxes are bigger to tap on a phone. */
+  .tab-bar__tab, .signal-dir-filter__btn, .asset-toggle__btn { min-height: 40px; padding: 6px 12px; }
+  .tab-bar { padding: 6px 12px; }
+}
+
+/* Desk tool rails (Orders, Execution, Equity/Options desk, Copilot): the same flat row and
+   boxed controls as the header rows. The filters inside are left-aligned, never centered. */
+.app-shell .desk-tool-rail { background: var(--bg-2); box-shadow: none; gap: 6px; padding-inline: 16px; }
+.app-shell .desk-tool-rail .asset-toggle { align-self: flex-start; }
+.app-shell .desk-tool-rail .btn-ghost, .app-shell .desk-tool-rail__btn {
+  padding: 3px 10px; border: 1px solid var(--line-dim); border-radius: 3px; background: var(--bg-3);
+  color: var(--ink-dim); font: 600 11px var(--mono); letter-spacing: .1em; text-transform: uppercase; white-space: nowrap; cursor: pointer;
+}
+.app-shell .desk-tool-rail .btn-ghost:hover, .app-shell .desk-tool-rail__btn:hover { color: var(--ink); border-color: var(--line); }
+.app-shell .desk-tool-rail__btn--active, .app-shell .desk-tool-rail__btn--active:hover { color: var(--amber); border-color: var(--amber); background: var(--bg-3); }
+@media (max-width: 768px) {
+  .app-shell .desk-tool-rail .btn-ghost, .app-shell .desk-tool-rail__btn { min-height: 40px; padding: 6px 12px; }
 }

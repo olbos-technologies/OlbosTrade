@@ -41,9 +41,7 @@
 
 .app-shell .signal-ledger-stats .kicker { font-size: 10px; letter-spacing: 0; }
 
-.app-shell .signals-ledger-page > .asset-toggle { order: -1; display: flex; align-self: stretch; justify-content: flex-start; border: 0; border-bottom: 1px solid var(--line-dim); border-radius: 0; background: none; padding: 0; box-shadow: none; }
-.app-shell .signals-ledger-page > .asset-toggle .asset-toggle__btn { min-height: 44px; border: 0; border-radius: 0; background: none; box-shadow: none; color: var(--ink-dim); padding: 10px 20px; }
-.app-shell .signals-ledger-page > .asset-toggle .asset-toggle__btn--active { color: var(--amber); border-bottom: 2px solid var(--amber); }
+.app-shell .signals-ledger-page > .asset-toggle { order: -1; align-self: flex-start; }
 @media(max-width:768px) {
  .app-shell .signals-workspace .signals-ledger-page { padding: 0 !important; }
  .app-shell .signals-ledger-page .signal-ledger-stats > div > div:last-child { font-size: 9px; }
@@ -94,10 +92,6 @@
 .app-shell .signal-group-hint { margin: 0 0 6px; font: 12px/1.5 var(--sans); color: var(--ink-dim); }
 .app-shell .signal-desk-note { margin: 0; padding: 8px 12px; border-left: 2px solid var(--amber); font: 12px/1.5 var(--sans); color: var(--ink-dim); background: var(--bg-2); }
 
-.app-shell .signal-dir-filter { display: flex; gap: 0; border-bottom: 1px solid var(--line-dim); }
-.app-shell .signal-dir-filter__btn { min-height: 44px; padding: 10px 16px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; box-shadow: none; color: var(--ink-dim); font: 600 12px var(--mono); letter-spacing: .08em; text-transform: uppercase; cursor: pointer; }
-.app-shell .signal-dir-filter__btn--active { color: var(--amber); border-bottom-color: var(--amber); }
-.app-shell .signal-dir-filter__btn:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; }
 
 .app-shell .greeks-chip { border: 1px solid var(--line-dim); border-radius: 3px; background: var(--bg-2); }
 .app-shell .greeks-chip > summary { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 12px; cursor: pointer; list-style: none; font: 12px var(--mono); color: var(--ink); }

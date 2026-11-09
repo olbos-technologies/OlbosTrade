@@ -80,7 +80,7 @@ export default function ExecutionMonitor() {
             {total} events persisted · showing last {log.length}
           </span>
           <div style={{ flex: 1 }} />
-          <button type="button" className="btn-ghost" style={{ padding: "4px 10px", fontSize: 10 }} onClick={refresh}>
+          <button type="button" className="btn-ghost" onClick={refresh}>
             Refresh
           </button>
         </div>
@@ -110,7 +110,6 @@ export default function ExecutionMonitor() {
               key={f.key}
               type="button"
               className={`asset-toggle__btn${filter === f.key ? " asset-toggle__btn--active" : ""}`}
-              style={{ fontSize: 10, padding: "5px 10px" }}
               onClick={() => setFilter(f.key)}
             >
               {f.label}
@@ -119,7 +118,7 @@ export default function ExecutionMonitor() {
         </div>
       </div>
 
-      <div style={{ flex: 1, overflowY: "auto", padding: 8 }}>
+      <div style={{ flex: 1, overflowY: "auto", padding: "8px 16px" }}>
         {loading ? (
           <div className="instrument-card instrument-card--flat empty-chassis empty-chassis--compact">
             <p className="empty-chassis__title">Loading…</p>
