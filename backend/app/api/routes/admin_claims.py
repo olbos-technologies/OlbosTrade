@@ -73,6 +73,23 @@ def _operator(request: Request) -> str:
     return str(identity)
 
 
+async def unresolved_claims_by_symbol() -> dict[str, list[dict]]:
+    """Unresolved claims grouped by underlying, for read-only display.
+
+    Lives here, not in the Positions-vs-Trades report, because this module is
+    already on the claim guard's allowlist and a report must not widen it.
+    """
+    out: dict[str, list[dict]] = {}
+    for row in await position_claim.unresolved(limit=200):
+        out.setdefault(str(row.underlying).upper(), []).append({
+            "asset_class": row.asset_class,
+            "state": row.state,
+            "claimed_at": row.claimed_at.isoformat() if row.claimed_at else None,
+            "reason": row.unresolved_reason,
+        })
+    return out
+
+
 @router.get("")
 async def list_unresolved_claims(request: Request) -> dict:
     """What is currently blocking new entries, and why.

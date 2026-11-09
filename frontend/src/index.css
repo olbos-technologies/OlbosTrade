@@ -2166,3 +2166,23 @@ summary span[aria-hidden="true"] { display: inline-block; transition: transform 
 
 /* Setup Readiness on the Signals page: a readable column, not a full-width stretch. */
 .setup-readiness-page { max-width: 720px; padding: 16px; }
+
+/* Positions vs Trades (Brokers > System tabs): one card per holding. Meaning is in the
+   words and the mark (check / warning / dot); colour only reinforces it. */
+.position-trades__lede, .position-trades__summary { margin: 4px 0 8px; font-size: 12px; color: var(--ink-dim); }
+.position-trades__error { color: var(--amber); font-size: 12px; margin: 6px 0; }
+.position-trades__age { color: var(--ink-faint); }
+.pt-card { border: 1px solid var(--line-dim); background: var(--bg-2); padding: 12px 14px; }
+.pt-card--attention { border-left: 3px solid var(--amber); }
+.pt-card__head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; }
+.pt-card__symbol { margin: 0; font: 700 16px var(--mono); }
+.pt-card__class { font: 10px var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--ink-faint); }
+.pt-card__held { font-size: 12px; color: var(--ink-dim); }
+.pt-card__held strong { font-variant-numeric: tabular-nums; color: var(--ink); }
+.pt-card__verdict { margin-left: auto; font: 600 11px var(--mono); color: var(--ink-dim); }
+.pt-card__verdict--attention { color: var(--amber); }
+.pt-card__verdict--ok { color: var(--green); }
+.pt-card__why { margin: 8px 0 4px; font-size: 13px; line-height: 1.5; }
+.pt-card__shows, .pt-card__none { margin: 2px 0 8px; font-size: 12px; color: var(--ink-dim); }
+.pt-card__claims { margin: 8px 0 0; padding-left: 18px; font-size: 12px; color: var(--ink-dim); }
+.pt-owner { text-align: left; white-space: normal; }
