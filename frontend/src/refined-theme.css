@@ -279,14 +279,23 @@
  }
 }
 
-/* Desk header rows share one treatment with the ENV chip row (Session strip, tab row, tools row): flat page background,
-   a single bottom rule, and one left inset (16px box edge, labels 14px in, which is
-   where the tab labels start). Desktop only; the phone has its own collapsed rail. */
+/* Desk header rows share the ENV chip row's treatment: each item is a bordered,
+   3px-radius box (dim label beside a bold value, mono), rows have a 6px / 16px inset
+   and one grey bottom rule, on the same flat background. The Session strip's boxes
+   take their border colour from their state tone, like the ENV chips do. The active
+   tab keeps the brand colour (active navigation). Desktop only; the phone has its own
+   collapsed rail and scrolling tab strip. */
 @media (min-width: 769px) {
- .app-shell .instrument-rail { background: var(--bg-2); border: 0; border-bottom: 1px solid var(--line-dim); border-radius: 0; box-shadow: none; padding-inline: 16px; }
- .app-shell .instrument-rail .instrument-chip { background: none; box-shadow: none; padding-inline: 14px; }
- .app-shell .instrument-rail .instrument-chip:last-of-type { border-right: 0; }
- .app-shell .desk-tablist { background: var(--bg-2); border-bottom: 1px solid var(--line-dim); box-shadow: none; padding-inline: 16px; }
+ .app-shell .instrument-rail { background: var(--bg-2); border: 0; border-bottom: 1px solid var(--line-dim); border-radius: 0; box-shadow: none; padding: 6px 16px; gap: 6px; align-items: center !important; }
+ .app-shell .instrument-rail .instrument-chip { flex-direction: row; align-items: center; gap: 6px; padding: 3px 9px; border: 1px solid var(--chip-border, var(--line-dim)); border-radius: 3px; background: var(--bg-3); box-shadow: none; white-space: nowrap; flex-shrink: 0; }
+ .app-shell .instrument-rail .instrument-chip-label { font-size: 9px; letter-spacing: .08em; color: var(--ink-faint); }
+ .app-shell .instrument-rail .instrument-chip-value { font-size: 10.5px; font-weight: 700; }
+ .app-shell .desk-tablist { display: flex; align-items: center; gap: 6px; padding: 6px 16px; background: var(--bg-2); border-bottom: 1px solid var(--line-dim); box-shadow: none; }
+ .app-shell .desk-tablist .desk-tab { padding: 3px 10px; border: 1px solid var(--line-dim); border-radius: 3px; background: var(--bg-3); }
+ .app-shell .desk-tablist .desk-tab:hover { border-color: var(--line); }
+ .app-shell .desk-tablist .desk-tab--active { color: var(--brand); border-color: var(--brand); background: var(--bg-3); }
  .app-shell .desk-auxiliary-tools { background: var(--bg-2); }
- .app-shell .desk-auxiliary-tools > summary { display: flex; align-items: center; min-height: 36px; padding: 0 30px; font: 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+ .app-shell .desk-auxiliary-tools > summary { display: inline-flex; align-items: center; min-height: 0; margin: 6px 16px; padding: 3px 10px; border: 1px solid var(--line-dim); border-radius: 3px; background: var(--bg-3); font: 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; list-style: none; }
+ .app-shell .desk-auxiliary-tools > summary::-webkit-details-marker { display: none; }
+ .app-shell .desk-auxiliary-tools > summary:hover { color: var(--ink); border-color: var(--line); }
 }

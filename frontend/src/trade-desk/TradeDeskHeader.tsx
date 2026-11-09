@@ -3,6 +3,7 @@
  * Read-only display + mode switch via existing APIs. Paper/Live always labeled (not color-only).
  */
 
+import { tint } from "../utils/tint";
 import React, { useEffect, useState } from "react";
 import { api } from "../api/client";
 import KillSwitchButton from "../components/KillSwitchButton";
@@ -31,7 +32,7 @@ function Chip({ label, value, compactValue, tone = "muted", priority = "expand" 
     tone === "crit" ? "var(--red)" :
     "var(--ink)";
   return (
-    <div className="instrument-chip" data-priority={priority}>
+    <div className="instrument-chip" data-priority={priority} style={{ ["--chip-border" as string]: tint(color, 0.333) }}>
       <span className="instrument-chip-label">{label}</span>
       <span className="instrument-chip-value instrument-chip-value--desktop" style={{ color }}>{value}</span>
       {compactValue && (
