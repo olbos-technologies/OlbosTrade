@@ -9,6 +9,7 @@ import BrokerGateway from "./data/BrokerGateway";
 import MarketData from "./data/MarketData";
 import DataQuality from "./data/DataQuality";
 import PositionClaims from "./data/PositionClaims";
+import PositionTrades from "./data/PositionTrades";
 import { useTabRoute } from "../hooks/useTabRoute";
 
 export const TABS = [
@@ -16,6 +17,7 @@ export const TABS = [
   { key: "market", label: "Market Data" },
   { key: "quality", label: "Data Quality" },
   { key: "claims", label: "Blocked Entries" },
+  { key: "positions", label: "Positions vs Trades" },
 ];
 
 /** Tab -> the page key that renders it, so a tab change shows up in the URL. */
@@ -28,6 +30,7 @@ export const TAB_PAGE_KEYS = {
   market: "system:market",
   quality: "system:quality",
   claims: "system:claims",
+  positions: "system:positions",
 } as const;
 
 export default function SystemCenter({ initialTab = DEFAULT_TAB }: { initialTab?: string }) {
@@ -39,6 +42,7 @@ export default function SystemCenter({ initialTab = DEFAULT_TAB }: { initialTab?
       {tab === "market" && <MarketData />}
       {tab === "quality" && <DataQuality />}
       {tab === "claims" && <PositionClaims />}
+      {tab === "positions" && <PositionTrades />}
     </div>
   </div>;
 }

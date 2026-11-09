@@ -4,6 +4,7 @@
  */
 
 import type { PositionClaimsResponse } from "../types/positionClaims";
+import type { PositionTradesResponse } from "../types/positionTrades";
 
 // When running via Vite dev server (Docker or local), use "" so fetch calls
 // go to /api/... — Vite's proxy forwards them to the backend container.
@@ -203,6 +204,7 @@ export const api = {
   // needs a reason (3-200 chars) and an authenticated operator; the server
   // refuses both a blank reason and an anonymous caller.
   getPositionClaims: () => request<PositionClaimsResponse>("/api/admin/position-claims"),
+  getPositionTrades: () => request<PositionTradesResponse>("/api/admin/position-trades"),
   releasePositionClaim: (claimToken: string, reason: string) =>
     request<{ released: boolean; claim_token: string; operator: string }>(
       `/api/admin/position-claims/${encodeURIComponent(claimToken)}/release`,
