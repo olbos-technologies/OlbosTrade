@@ -326,3 +326,17 @@
   .tab-bar__tab, .signal-dir-filter__btn, .asset-toggle__btn { min-height: 40px; padding: 6px 12px; }
   .tab-bar { padding: 6px 12px; }
 }
+
+/* Desk tool rails (Orders, Execution, Equity/Options desk, Copilot): the same flat row and
+   boxed controls as the header rows. The filters inside are left-aligned, never centered. */
+.app-shell .desk-tool-rail { background: var(--bg-2); box-shadow: none; gap: 6px; padding-inline: 16px; }
+.app-shell .desk-tool-rail .asset-toggle { align-self: flex-start; }
+.app-shell .desk-tool-rail .btn-ghost, .app-shell .desk-tool-rail__btn {
+  padding: 3px 10px; border: 1px solid var(--line-dim); border-radius: 3px; background: var(--bg-3);
+  color: var(--ink-dim); font: 600 11px var(--mono); letter-spacing: .1em; text-transform: uppercase; white-space: nowrap; cursor: pointer;
+}
+.app-shell .desk-tool-rail .btn-ghost:hover, .app-shell .desk-tool-rail__btn:hover { color: var(--ink); border-color: var(--line); }
+.app-shell .desk-tool-rail__btn--active, .app-shell .desk-tool-rail__btn--active:hover { color: var(--amber); border-color: var(--amber); background: var(--bg-3); }
+@media (max-width: 768px) {
+  .app-shell .desk-tool-rail .btn-ghost, .app-shell .desk-tool-rail__btn { min-height: 40px; padding: 6px 12px; }
+}
