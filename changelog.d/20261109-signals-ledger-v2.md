@@ -4,3 +4,4 @@
 - "Clear" is only shown when the desk state (guardrails, kill switch) was actually read; if it could not be, rows say "Not checked" and a note explains that this is not the same as clear. The status is the same client-side preview the why-blocked chip always used; Evaluate stays authoritative.
 - The header is one summary line ("86 ideas · 16 candidates · 70 blocked · latest 23:06"), and Portfolio Greeks is a one-line chip ("Greeks Δ −3.48 ⚠ Hedge needed") that opens the full panel.
 - Frontend-only: needs a frontend rebuild, no backend restart, no migration, no new environment variables. No orders, thresholds or gates change.
+- The Options / Equities switch sits at the left of the page, in line with the search box, instead of centered.

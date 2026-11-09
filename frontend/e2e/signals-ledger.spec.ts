@@ -105,3 +105,17 @@ test("the table shows move and stop distance on desktop and fits a phone", async
     await expect(first.locator(".signal-status")).toBeVisible();
   }
 });
+
+for (const width of [1280, 390]) {
+  test(`Options / Equities sit at the left, lined up with the search box at ${width}px`, async ({ page }) => {
+    await open(page, { desk: true, width });
+    const options = await page.getByRole("button", { name: "OPTIONS", exact: true }).boundingBox();
+    const search = await page.getByRole("textbox", { name: "Search signals" }).boundingBox();
+    expect(options).not.toBeNull();
+    expect(search).not.toBeNull();
+    // The first button starts at the content's left edge (within the button's own padding).
+    expect(Math.abs(options!.x - search!.x)).toBeLessThanOrEqual(2);
+    // ...and it is not centered: it sits well left of the middle of the page.
+    expect(options!.x + options!.width).toBeLessThan(width / 2);
+  });
+}
