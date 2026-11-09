@@ -2,8 +2,8 @@
  * Trade Desk primary tabs — workspace switch without full-page remount of shell chrome.
  */
 
-import { alignActiveTab } from "../utils/tabScroll";
-import React, { useEffect, useRef } from "react";
+import { useAlignActiveTab } from "../hooks/useAlignActiveTab";
+import React, { useRef } from "react";
 
 export type TradeDeskTab =
   | "overview"
@@ -72,14 +72,10 @@ export default function TradeDeskTabs({
   /** Keep the selected tab in view when this tablist scrolls horizontally. */
   ensureActiveVisible?: boolean;
 }) {
-  const activeRef = useRef<HTMLButtonElement | null>(null);
-
-  useEffect(() => {
-    if (!ensureActiveVisible) return;
-    const selected = activeRef.current;
-    // Flush at the strip's start (on the page margin), not centered with a half-cut neighbour.
-    alignActiveTab(selected?.parentElement ?? null, selected);
-  }, [active, ensureActiveVisible]);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  // Flush at the strip's start (on the page margin), not centered with a half-cut neighbour,
+  // and kept there when the fonts load and the tab widths change.
+  useAlignActiveTab(listRef, active, ensureActiveVisible);
 
   const moveFocus = (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
@@ -97,13 +93,12 @@ export default function TradeDeskTabs({
   };
 
   return (
-    <div role="tablist" aria-label="Trade Desk workspaces" className="desk-tablist">
+    <div role="tablist" aria-label="Trade Desk workspaces" className="desk-tablist" ref={listRef}>
       {TRADE_DESK_TABS.map((t, index) => {
         const on = t.key === active;
         const badge = badges?.[t.key];
         return (
           <button
-            ref={on ? activeRef : undefined}
             type="button"
             role="tab"
             aria-selected={on}
