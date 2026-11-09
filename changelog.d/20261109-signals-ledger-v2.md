@@ -1,0 +1,6 @@
+## Unreleased — Signals page: one ranked table with a status on every idea
+
+- The equity Signals page is now one ranked **Candidates** table (symbol, score, direction, target move, stop distance, status) instead of separate Buy and Sell lists under a four-tile stat strip. Each row says whether Autopilot would take it now: **✓ Clear**, **⊘ Blocked · reason** (for example "max positions 3/3" or "below floor"), or **? Not checked**. Ideas the preview says Autopilot would refuse are folded into a **Blocked** group, which opens by itself when no candidate is left; HOLD and earnings-gated ideas sit in **Not actionable**. Ranking is by the score shown, newest scan cycle first. An All / Buy / Sell filter is added.
+- "Clear" is only shown when the desk state (guardrails, kill switch) was actually read; if it could not be, rows say "Not checked" and a note explains that this is not the same as clear. The status is the same client-side preview the why-blocked chip always used; Evaluate stays authoritative.
+- The header is one summary line ("86 ideas · 16 candidates · 70 blocked · latest 23:06"), and Portfolio Greeks is a one-line chip ("Greeks Δ −3.48 ⚠ Hedge needed") that opens the full panel.
+- Frontend-only: needs a frontend rebuild, no backend restart, no migration, no new environment variables. No orders, thresholds or gates change.
