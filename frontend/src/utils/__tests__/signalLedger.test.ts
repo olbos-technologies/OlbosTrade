@@ -7,7 +7,7 @@ const ctx = (over: Partial<DeskBlockContext> = {}): DeskBlockContext => ({
   consecutiveLosses: 0, maxConsecutiveLosses: null, tradesToday: 0, maxTradesPerDay: null,
   openCount: 0, maxConcurrent: 3, minConfidence: 0.7, ...over,
 });
-const seen = { guardrailAvailable: true, killStatusAvailable: true };
+const seen = { guardrailAvailable: true, killStatusAvailable: true, capacityAvailable: true };
 const sig = (id: string, over: Partial<LedgerSignal> = {}): LedgerSignal => ({
   id, generated_at: "2026-11-09T14:00:00Z", action: "BUY", confidence: 0.8,
   trade_plan: { entry_price: 100, stop_price: 95, target_move_pct: 5 }, ...over,
@@ -43,11 +43,14 @@ describe("ledgerStatus", () => {
     expect(ledgerStatus(sig("a"), ctx(), seen).kind).toBe("clear");
   });
   it("is UNKNOWN, never clear, when the desk state could not be read", () => {
-    expect(ledgerStatus(sig("a"), ctx(), { guardrailAvailable: false, killStatusAvailable: true }).kind).toBe("unknown");
-    expect(ledgerStatus(sig("a"), ctx(), { guardrailAvailable: true, killStatusAvailable: false }).kind).toBe("unknown");
+    expect(ledgerStatus(sig("a"), ctx(), { ...seen, guardrailAvailable: false }).kind).toBe("unknown");
+    expect(ledgerStatus(sig("a"), ctx(), { ...seen, killStatusAvailable: false }).kind).toBe("unknown");
+  });
+  it("is UNKNOWN when the gate's own capacity could not be read, because the cap is then only an estimate", () => {
+    expect(ledgerStatus(sig("a"), ctx(), { ...seen, capacityAvailable: false }).kind).toBe("unknown");
   });
   it("still reports a block it can see even when part of the desk state is unreadable", () => {
-    expect(ledgerStatus(sig("a", { confidence: 0.5 }), ctx(), { guardrailAvailable: false, killStatusAvailable: false }).kind).toBe("blocked");
+    expect(ledgerStatus(sig("a", { confidence: 0.5 }), ctx(), { guardrailAvailable: false, killStatusAvailable: false, capacityAvailable: false }).kind).toBe("blocked");
   });
 });
 

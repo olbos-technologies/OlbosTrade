@@ -565,7 +565,7 @@ function EquitySignalsGrid({ onTabChange }: { onTabChange: (tab: AssetTab) => vo
   // Min move % only makes sense for BUY/SELL: HOLD has no trade_plan to measure.
   // The split into candidates / blocked / parked lives in utils/signalLedger.
   const filteredSignals = signals.filter(s => `${s.ticker} ${equitySignalRationale(s)}`.toLowerCase().includes(query.toLowerCase()));
-  const desk = { guardrailAvailable: blockCtx.guardrailAvailable, killStatusAvailable: blockCtx.killStatusAvailable };
+  const desk = { guardrailAvailable: blockCtx.guardrailAvailable, killStatusAvailable: blockCtx.killStatusAvailable, capacityAvailable: blockCtx.capacityAvailable };
   const groups = groupLedger(filteredSignals, blockCtx, desk, { direction, minMovePct });
   const buySignals = filteredSignals.filter(s => s.action === "BUY" && !s.earnings_gated && (s.trade_plan?.target_move_pct ?? 0) >= minMovePct).sort(compareLedger);
   const sellSignals = filteredSignals.filter(s => s.action === "SELL" && !s.earnings_gated && (s.trade_plan?.target_move_pct ?? 0) >= minMovePct).sort(compareLedger);
@@ -651,7 +651,7 @@ function EquitySignalsGrid({ onTabChange }: { onTabChange: (tab: AssetTab) => vo
         </div>
       )}
 
-      {!blockCtx.guardrailAvailable || !blockCtx.killStatusAvailable ? (
+      {!blockCtx.guardrailAvailable || !blockCtx.killStatusAvailable || !blockCtx.capacityAvailable ? (
         <p className="signal-desk-note" role="status">
           Desk state could not be read, so blocks cannot be checked. Ideas show “Not checked”, which is not the same as clear.
         </p>

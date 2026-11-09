@@ -22,18 +22,29 @@ const SIGNALS = [
 const group = (page: Page, heading: RegExp) =>
   page.locator("details.signal-group").filter({ has: page.locator("summary.signal-group-head", { hasText: heading }) });
 
-async function open(page: Page, { desk, width = 1280, openPositions = 0 }: { desk: boolean; width?: number; openPositions?: number }) {
+type Capacity = { effective_cap: number | null; open_positions: number | null } | "down";
+
+async function open(page: Page, { desk, width = 1280, openPositions = 0, styleCap = 3, capacity }: {
+  desk: boolean; width?: number; openPositions?: number; styleCap?: number; capacity?: Capacity;
+}) {
   await stubBackend(page);
   await page.route("**/api/**", r => r.fulfill(r.request().url().includes("/api/auth/status")
     ? reply({ auth_enabled: false, authenticated: false, user: null })
     : { status: 503, contentType: "application/json", body: "{}" }));
   await page.route("**/api/equity/signals?**", r => r.fulfill(reply({ signals: SIGNALS })));
   if (desk) {
-    await page.route("**/api/mode/current", r => r.fulfill(reply({ mode: "aggressive", max_concurrent: 3 })));
+    await page.route("**/api/mode/current", r => r.fulfill(reply({ mode: "aggressive", max_concurrent: styleCap })));
     await page.route("**/api/mode/all", r => r.fulfill(reply({ aggressive: { min_confidence: 0.7, is_active: true } })));
     await page.route("**/api/guardrails/status", r => r.fulfill(reply({ trading_allowed: true })));
     await page.route("**/api/risk/kill-switch/status", r => r.fulfill(reply({ engaged: false })));
     await page.route("**/api/trade-desk/kill-switch", r => r.fulfill(reply({ engaged: false })));
+    // The gate's own cap and open count. Defaults to "what the style says", so the
+    // tests that do not care about regime tightening behave as before.
+    if (capacity !== "down") {
+      await page.route("**/api/trade-desk/capacity", r => r.fulfill(reply(
+        capacity ?? { effective_cap: styleCap, open_positions: openPositions },
+      )));
+    }
     await page.route("**/api/paper-trade/positions", r => r.fulfill(reply({
       positions: Array.from({ length: openPositions }, (_, i) => ({ symbol: `P${i}`, status: "open" })),
     })));
@@ -119,3 +130,21 @@ for (const width of [1280, 390]) {
     expect(options!.x + options!.width).toBeLessThan(width / 2);
   });
 }
+
+test("a regime-tightened cap blocks entries the style cap alone would call clear", async ({ page }) => {
+  // The style allows 5 and 3 are open, so by the style cap alone there is room.
+  // The gate's own effective cap is 3 (high-vol regime), so there is none.
+  await open(page, { desk: true, styleCap: 5, openPositions: 3, capacity: { effective_cap: 3, open_positions: 3 } });
+  await expect(page.getByRole("region", { name: "Candidates" })).toHaveCount(0);
+  const blocked = group(page, /^Blocked/);
+  await expect(blocked).toHaveAttribute("open", "");
+  await expect(blocked.locator(".signal-status--blocked").first()).toContainText("max positions 3/3");
+});
+
+test("when the gate's capacity cannot be read, rows say 'Not checked', never 'Clear'", async ({ page }) => {
+  // Everything else about the desk reads fine; only the capacity read fails.
+  await open(page, { desk: true, capacity: "down" });
+  await expect(page.locator(".signal-status--clear")).toHaveCount(0);
+  await expect(page.locator(".signal-status--unknown").first()).toContainText("Not checked");
+  await expect(page.getByText(/Desk state could not be read/)).toBeVisible();
+});

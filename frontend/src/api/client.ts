@@ -277,6 +277,7 @@ export const api = {
 
   // ── Trading Mode ────────────────────────────────────────────────────────────
   getCurrentMode:   () => request("/api/mode/current"),
+  getDeskCapacity: () => request("/api/trade-desk/capacity"),
   getAllModes:       () => request("/api/mode/all"),
   setTradingMode:   (body: { mode: string; confirmed: boolean }) =>
     request("/api/mode/set", { method: "POST", body: JSON.stringify(body) }),
