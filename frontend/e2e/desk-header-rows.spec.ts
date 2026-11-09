@@ -68,3 +68,24 @@ test("desk header items are bordered boxes like the ENV chips, on one left edge"
   // The Session strip is not itself an outlined, rounded box any more.
   expect([m.rows[1]!.bt, m.rows[1]!.bl, m.rows[1]!.radius]).toEqual(["0px", "0px", "0px"]);
 });
+
+test("the Session strip stays on one line at laptop and desktop widths, never truncating a value", async ({ page }) => {
+  await stubBackend(page);
+  await page.route("**/api/**", r => r.fulfill(r.request().url().includes("/api/auth/status")
+    ? reply({ auth_enabled: false, authenticated: false, user: null })
+    : { status: 503, contentType: "application/json", body: "{}" }));
+  await page.route("**/api/market/broker", r => r.fulfill(reply({ broker: "ibkr", paper_mode: true, status: "connected" })));
+  for (const width of [1440, 1600, 1920]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/terminal/trade/positions");
+    const chips = page.locator(".instrument-rail .instrument-chip:visible");
+    await expect(chips.first()).toBeVisible();
+    const ys = await chips.evaluateAll(els => els.map(e => Math.round(e.getBoundingClientRect().y)));
+    expect(new Set(ys).size, `all Session boxes on one line at ${width}px`).toBe(1);
+    // No value is cut off with an ellipsis.
+    const clipped = await page.locator(".instrument-rail .instrument-chip-value:visible").evaluateAll(els => els.filter(e => e.scrollWidth > e.clientWidth + 1).length);
+    expect(clipped, `no truncated values at ${width}px`).toBe(0);
+    const kill = await page.locator(".instrument-rail-kill").boundingBox();
+    expect(Math.abs(kill!.y - ys[0]) < 40, `kill switch control beside the boxes at ${width}px`).toBe(true);
+  }
+});

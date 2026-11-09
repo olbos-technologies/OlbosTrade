@@ -1,7 +1,7 @@
 import React from "react";
 
 /**
- * Minimal terminal-style tab bar. Used to fold related pages into one nav entry
+ * Minimal terminal-style tab bar (boxed tabs; the styling lives in refined-theme.css). Used to fold related pages into one nav entry
  * (e.g. Risk = Monitor + Guardrails) without rewriting their internals.
  */
 export interface Tab { key: string; label: string; }
@@ -23,10 +23,7 @@ export default function TabBar({ tabs, active, onChange, label }: {
     buttons[next].click();
   };
   return (
-    <div role="tablist" aria-label={label || "Workspace views"} style={{
-      display: "flex", gap: 0, borderBottom: "1px solid var(--line-dim)",
-      background: "var(--bg-2)", flexWrap: "wrap",
-    }}>
+    <div role="tablist" aria-label={label || "Workspace views"} className="tab-bar">
       {tabs.map((t, index) => {
         const on = t.key === active;
         return (
@@ -38,14 +35,7 @@ export default function TabBar({ tabs, active, onChange, label }: {
             onKeyDown={event => moveFocus(event, index)}
             key={t.key}
             onClick={() => onChange(t.key)}
-            className="mono"
-            style={{
-              padding: "10px 18px", fontSize: 11, letterSpacing: "0.1em",
-              textTransform: "uppercase", cursor: "pointer", background: "transparent",
-              border: "none",
-              borderBottom: on ? "2px solid var(--brand)" : "2px solid transparent",
-              color: on ? "var(--brand)" : "var(--ink-dim)",
-            }}
+            className={`mono tab-bar__tab${on ? " tab-bar__tab--active" : ""}`}
           >
             {t.label}
           </button>
