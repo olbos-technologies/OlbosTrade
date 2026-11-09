@@ -1,0 +1,3 @@
+## Unreleased — Phone: Session and tab rows line up with the Find workspace box
+
+- On a phone, the Trade Desk's Session rail and tab strip ran edge to edge, out of line with the "Find workspace…" box above them. They are now inset 16px like that box and made of the same bordered boxes as on desktop (1px border, 3px radius, state-coloured border on the Session boxes, brand-coloured border on the active tab). The kill-switch control ends where the Find box ends. Tab rows on the other pages (System, Risk, Account, …) start at the same left edge. The strips still scroll sideways; they start aligned at their scroll start. Desktop was already aligned and is unchanged. Frontend-only: needs a frontend rebuild, no backend restart, no migration, no new environment variables.

@@ -22,7 +22,7 @@
 .workspace-frame [role="tab"] { font: 600 11px var(--mono) !important; text-transform: uppercase !important; letter-spacing: .1em !important; min-height: 28px; padding: 3px 10px !important; }
 .workspace-frame [role="tab"][aria-selected="true"] { color: var(--brand) !important; border-color: var(--brand) !important; background: var(--bg-3) !important; }
 @media (max-width: 768px) {
-  .workspace-frame [role="tablist"] { padding: 6px 12px; }
+  .workspace-frame [role="tablist"] { padding: 6px 0; } /* the page gutter already insets it, like the Find box */
   .workspace-frame [role="tab"] { min-height: 40px; padding: 6px 12px !important; }
 }
 .workspace-frame .panel, .workspace-frame .instrument-card, .workspace-frame .instrument-stat-strip { background: #0d1d2d; border: 1px solid var(--line-dim); border-radius: 16px; overflow: hidden; }
@@ -67,7 +67,7 @@
   .workspace-frame--strategy .workspace-frame__heading p { display: none; }
   .workspace-frame__body { flex: none; }
   .workspace-frame__body > div, .workspace-frame .workspace-page { height: auto !important; overflow: visible !important; }
-  .workspace-frame [role="tablist"] { flex-wrap: nowrap !important; overflow-x: auto; padding: 0 12px; }
+  .workspace-frame [role="tablist"] { flex-wrap: nowrap !important; overflow-x: auto; padding: 6px 0; }
   .workspace-frame [role="tab"] { flex-shrink: 0; white-space: nowrap; padding-inline: 12px !important; }
   .workspace-frame input:not([type="checkbox"]):not([type="radio"]), .workspace-frame select, .workspace-frame textarea { font-size: 16px !important; min-height: 44px; box-sizing: border-box; }
   .workspace-frame button { min-height: 44px; }
