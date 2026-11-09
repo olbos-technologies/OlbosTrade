@@ -95,6 +95,7 @@ export const BASE_PAGES: Record<string, React.ComponentType> = {
 
   "strat:cards":     () => <SignalsCenter initialTab="strategies" />,
   "strat:health":    () => <SignalsCenter initialTab="health" />,
+  "strat:readiness": () => <SignalsCenter initialTab="readiness" />,
   "strat:calendar":  SignalCalendar,
   "strat:alpha-edge": () => <SignalsCenter initialTab="alpha-edge" />,
   "strat:signal-history": () => <SignalsCenter initialTab="history" />,
