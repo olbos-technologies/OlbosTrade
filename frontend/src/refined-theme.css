@@ -278,3 +278,15 @@
   min-height:44px;font-size:16px !important; /* avoid iOS focus zoom */
  }
 }
+
+/* Desk header rows share one treatment with the ENV chip row (Session strip, tab row, tools row): flat page background,
+   a single bottom rule, and one left inset (16px box edge, labels 14px in, which is
+   where the tab labels start). Desktop only; the phone has its own collapsed rail. */
+@media (min-width: 769px) {
+ .app-shell .instrument-rail { background: var(--bg-2); border: 0; border-bottom: 1px solid var(--line-dim); border-radius: 0; box-shadow: none; padding-inline: 16px; }
+ .app-shell .instrument-rail .instrument-chip { background: none; box-shadow: none; padding-inline: 14px; }
+ .app-shell .instrument-rail .instrument-chip:last-of-type { border-right: 0; }
+ .app-shell .desk-tablist { background: var(--bg-2); border-bottom: 1px solid var(--line-dim); box-shadow: none; padding-inline: 16px; }
+ .app-shell .desk-auxiliary-tools { background: var(--bg-2); }
+ .app-shell .desk-auxiliary-tools > summary { display: flex; align-items: center; min-height: 36px; padding: 0 30px; font: 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+}

@@ -1,0 +1,3 @@
+## Unreleased — Desk header rows line up with the ENV row
+
+- On the Trade Desk (desktop), the Session strip, the tab row (Overview … Settings) and the "Additional desk tools & execution settings" row now share the ENV chip row's treatment: the same flat background, a single grey bottom rule (the tab row had a gold-tinted one, the Session strip a raised outlined box with a gradient), and one left edge for their labels. The tools row label uses the same mono capitals as the tabs. Phone layout is unchanged. CSS only: needs a frontend rebuild, no backend restart, no migration, no new environment variables.
