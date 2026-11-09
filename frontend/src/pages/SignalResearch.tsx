@@ -67,7 +67,7 @@ function RawRow({ o }: { o: RawOutcome }) {
     <tr>
       <td className="mono" style={{ fontWeight: 600 }}>{o.ticker}</td>
       <td className="mono" style={{ color: o.action === "BUY" ? "var(--green)" : "var(--red)" }}>{o.action}</td>
-      <td className="mono">{(o.confidence * 100).toFixed(0)}%</td>
+      <td className="mono">{(o.confidence * 100).toFixed(0)}</td>
       <td><StatusPill status={o.status} /></td>
       <td className="mono" style={{ color: "var(--ink-dim)" }}>{genDate}</td>
       <td className="mono">{days(o.days_to_resolve)}</td>

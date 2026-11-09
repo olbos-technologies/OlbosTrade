@@ -187,7 +187,7 @@ export default function ExecutionMonitor() {
                     {e.executed_by || e.approved_by || e.rejected_by || "—"}
                     {typeof e.confidence === "number" && (
                       <div style={{ color: "var(--ink-faint)" }}>
-                        {(e.confidence * 100).toFixed(0)}% conf
+                        score {(e.confidence * 100).toFixed(0)}
                       </div>
                     )}
                   </div>

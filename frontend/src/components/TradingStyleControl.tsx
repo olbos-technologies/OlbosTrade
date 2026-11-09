@@ -49,7 +49,7 @@ export default function TradingStyleControl({
     <div
       role="group"
       aria-label="Trading style"
-      title={`Trading style (min confidence ${floorPct}%). Conservative/Balanced 90%, Aggressive 70%, Scalper 60%.`}
+      title={`Trading style (minimum confidence score ${floorPct}). Conservative/Balanced 90, Aggressive 70, Scalper 60.`}
       className="segmented-group"
       style={{ height: 22 }}
     >

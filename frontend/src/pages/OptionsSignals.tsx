@@ -175,7 +175,7 @@ function OptionsSignalCard({ sig }: { sig: OptionsSignal }) {
     ? { prefix: "OPP", value: String(sig.opportunity_score.score), tone: confidenceTone(sig.opportunity_score.score) }
     : net != null
       ? { prefix: isDebit ? "DB" : "CR", value: `$${Math.abs(net).toFixed(2)}`, tone: "var(--green)" }
-      : { prefix: sig.pop != null ? "POP" : "CONF", value: `${popPct}%`, tone: popTone };
+      : { prefix: sig.pop != null ? "POP" : "SCORE", value: sig.pop != null ? `${popPct}%` : String(popPct), tone: popTone };
 
   const subtitle = [
     sig.strategy ? sig.strategy.replace(/_/g, " ") : null,
@@ -201,7 +201,7 @@ function OptionsSignalCard({ sig }: { sig: OptionsSignal }) {
       )}
       subtitle={subtitle || new Date(sig.generated_at).toLocaleTimeString()}
       meta={{
-        label: spread.dte != null ? `${spread.dte}D` : `${confPct}%`,
+        label: spread.dte != null ? `${spread.dte}D` : `score ${confPct}`,
         tone: spread.dte != null ? "var(--cyan)" : popTone,
         icon: "⏳",
       }}

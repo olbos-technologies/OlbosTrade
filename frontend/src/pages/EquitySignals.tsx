@@ -190,7 +190,7 @@ function SignalCard({
   const reward = hasSignalScore
     ? { label: "Signal score", value: `${Math.round(opportunityScore)}/100` }
     : hasConfidence
-      ? { label: "Confidence", value: `${confPct}%` }
+      ? { label: "Confidence score", value: `${confPct}/100` }
       : { label: "Unavailable", value: "—" };
   const factorLabels: Record<string, string> = {
     confidence: "Confidence factor", ev: "Expected-value factor",
@@ -402,7 +402,7 @@ function buildShareText(top: Signal[], label: string): string {
     const pct = Math.round(sig.confidence * 100);
     const move = sig.trade_plan?.target_move_pct;
     const moveStr = move != null ? ` · ${move.toFixed(1)}% target move` : "";
-    return `${emoji} ${sig.ticker} — ${sig.action} · ${pct}% confidence${moveStr}`;
+    return `${emoji} ${sig.ticker} — ${sig.action} · confidence score ${pct}/100${moveStr}`;
   });
   const when = new Date().toLocaleString(undefined, {
     month: "short", day: "numeric", hour: "numeric", minute: "2-digit",

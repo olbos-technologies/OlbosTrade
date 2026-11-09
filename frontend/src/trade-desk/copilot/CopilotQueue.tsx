@@ -216,7 +216,7 @@ export default function CopilotQueue() {
               : ev != null
                 ? { prefix: "EV", value: `$${ev.toFixed(0)}`, tone: ev >= 0 ? "var(--green)" : "var(--red)" }
                 : confidence != null
-                  ? { prefix: "CONF", value: `${Math.round(confidence * 100)}%`, tone: progressTone }
+                  ? { prefix: "SCORE", value: String(Math.round(confidence * 100)), tone: progressTone }
                   : undefined;
 
             const age = signalAge(s.queued_at);

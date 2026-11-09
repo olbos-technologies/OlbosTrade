@@ -9,6 +9,7 @@ import React, { useEffect, useRef } from "react";
 import { Panel, StatTile, Button } from "./ui";
 import BottomSheet from "./BottomSheet";
 import { useIsMobile } from "../hooks/useIsMobile";
+import { confidenceScoreText } from "../utils/confidenceScore";
 import {
   formatWeightedFactor,
   weightedFactorsFromReasonsMap,
@@ -130,7 +131,7 @@ export default function SignalDetailDrawer({
               <Panel>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
                   <StatTile variant="boxed" label="Action" value={signal.action || "HOLD"} tone={signal.action === "BUY" ? "var(--green)" : signal.action === "SELL" ? "var(--red)" : "var(--ink-dim)"} />
-                  <StatTile variant="boxed" label="Confidence" value={signal.confidence != null ? `${Math.round(signal.confidence * 100)}%` : "—"} tone="var(--amber)" />
+                  <StatTile variant="boxed" label="Confidence score" value={confidenceScoreText(signal.confidence)} tone="var(--amber)" />
                   <StatTile variant="boxed" label="Generated" value={fmtDate(signal.generated_at)} />
                 </div>
               </Panel>

@@ -89,7 +89,7 @@ export default function TradingModeSelector() {
                 {typeof info.min_confidence === "number" && (
                   <span className="tnum" style={{ fontSize: 11, padding: "1px 7px", borderRadius: 3,
                     border: "1px solid var(--line-dim)", color: "var(--ink-dim)" }}>
-                    Min conf {(info.min_confidence * 100).toFixed(0)}%
+                    Min score {(info.min_confidence * 100).toFixed(0)}
                   </span>
                 )}
                 {typeof info.hard_max_per_day === "number" && (
