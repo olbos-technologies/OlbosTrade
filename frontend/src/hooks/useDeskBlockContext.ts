@@ -6,13 +6,15 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client";
 import { useTradingStyleFloor } from "./useTradingStyleFloor";
 import type { DeskBlockContext } from "../utils/signalBlockReason";
+import { resolveCapacity } from "../utils/deskCapacity";
 
 const GLOBAL_MAX_FALLBACK = 5;
 
-export function useDeskBlockContext(): DeskBlockContext & { reload: () => void; guardrailAvailable: boolean; killStatusAvailable: boolean } {
+export function useDeskBlockContext(): DeskBlockContext & { reload: () => void; guardrailAvailable: boolean; killStatusAvailable: boolean; capacityAvailable: boolean } {
   const { minConfidence, mode } = useTradingStyleFloor();
   const [guardrailAvailable, setGuardrailAvailable] = useState(false);
   const [killStatusAvailable, setKillStatusAvailable] = useState(false);
+  const [capacityAvailable, setCapacityAvailable] = useState(false);
   const [ctx, setCtx] = useState<Omit<DeskBlockContext, "minConfidence">>({
     killEngaged: false,
     tradingAllowed: true,
@@ -28,12 +30,13 @@ export function useDeskBlockContext(): DeskBlockContext & { reload: () => void; 
 
   const reload = useCallback(async () => {
     try {
-      const [guard, kill, deskKill, positions, modeSummary] = await Promise.all([
+      const [guard, kill, deskKill, positions, modeSummary, capacity] = await Promise.all([
         api.getGuardrailStatus().catch(() => null) as Promise<any>,
         api.getKillSwitchStatus().catch(() => null) as Promise<any>,
         api.getTradeDeskKillSwitch().catch(() => null) as Promise<any>,
         api.getPositions().catch(() => null) as Promise<any>,
         api.getCurrentMode().catch(() => null) as Promise<any>,
+        api.getDeskCapacity().catch(() => null) as Promise<any>,
       ]);
 
       const killEngaged = Boolean(
@@ -61,9 +64,17 @@ export function useDeskBlockContext(): DeskBlockContext & { reload: () => void; 
         typeof modeSummary?.max_concurrent === "number"
           ? modeSummary.max_concurrent
           : null;
-      // Gate uses min(global, mode) — we don't have global settings in the UI,
-      // so use mode cap when present else fallback 5 (config default).
-      const maxConcurrent = modeCap ?? GLOBAL_MAX_FALLBACK;
+      // The gate's own effective cap (global, style and regime) and open count
+      // win when /capacity answered. Otherwise this is the style cap, an
+      // estimate that cannot see the regime tightening, and is flagged as such.
+      const resolved = resolveCapacity({
+        capacity,
+        listedOpenCount: openCount,
+        styleCap: modeCap,
+        fallbackCap: GLOBAL_MAX_FALLBACK,
+      });
+      setCapacityAvailable(resolved.authoritative);
+      const maxConcurrent = resolved.maxConcurrent;
 
       setCtx({
         killEngaged,
@@ -79,12 +90,13 @@ export function useDeskBlockContext(): DeskBlockContext & { reload: () => void; 
         tradesToday: typeof guard?.trades_today === "number" ? guard.trades_today : 0,
         maxTradesPerDay:
           typeof guard?.max_trades_per_day === "number" ? guard.max_trades_per_day : null,
-        openCount,
+        openCount: resolved.openCount,
         maxConcurrent,
       });
     } catch {
       setGuardrailAvailable(false);
       setKillStatusAvailable(false);
+      setCapacityAvailable(false);
     }
   }, []);
 
@@ -94,5 +106,5 @@ export function useDeskBlockContext(): DeskBlockContext & { reload: () => void; 
     return () => clearInterval(id);
   }, [reload, mode]);
 
-  return { ...ctx, minConfidence, reload, guardrailAvailable, killStatusAvailable };
+  return { ...ctx, minConfidence, reload, guardrailAvailable, killStatusAvailable, capacityAvailable };
 }

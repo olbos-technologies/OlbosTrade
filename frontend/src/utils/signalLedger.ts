@@ -26,7 +26,9 @@ export type LedgerStatus =
   | { kind: "unknown" }
   | { kind: "blocked"; reason: SignalBlockReason };
 
-export type DeskReadState = { guardrailAvailable: boolean; killStatusAvailable: boolean };
+/** What the desk read could actually see. `capacityAvailable` is the gate's own cap
+ * and open count; without it the max-positions check is an estimate. */
+export type DeskReadState = { guardrailAvailable: boolean; killStatusAvailable: boolean; capacityAvailable: boolean };
 
 /** The score the row displays: the composite signal score when valid, else the
  * 0-100 confidence score, else null. Mirrors the card, so sort order and the
@@ -56,7 +58,7 @@ export function ledgerStatus(
   const reason = deriveSignalBlockReason(sig, ctx);
   if (reason) return { kind: "blocked", reason };
   // No block found. That only means "clear" if the checks could actually see.
-  if (!desk.guardrailAvailable || !desk.killStatusAvailable) return { kind: "unknown" };
+  if (!desk.guardrailAvailable || !desk.killStatusAvailable || !desk.capacityAvailable) return { kind: "unknown" };
   return { kind: "clear" };
 }
 
