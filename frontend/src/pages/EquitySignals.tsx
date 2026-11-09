@@ -15,10 +15,10 @@ import WhyBlockedChip from "../components/WhyBlockedChip";
 import AlphaEdgeInline, { OpportunityScorePill } from "../components/AlphaEdgeInline";
 
 import BacktestButtons from "../components/BacktestButtons";
-import { StatTile } from "../components/ui";
 import type { SignalAttributionData } from "../types/signal";
 import { useDeskBlockContext } from "../hooks/useDeskBlockContext";
 import { deriveSignalBlockReason } from "../utils/signalBlockReason";
+import { compareLedger, groupLedger, stopDistancePct, type DirectionFilter, type LedgerStatus } from "../utils/signalLedger";
 import OptionsSignals from "./OptionsSignals";
 import { equitySignalRationale } from "../utils/equitySignalRationale";
 
@@ -57,29 +57,6 @@ interface Signal {
     volume_ratio?: number;
   };
   opportunity_score?: { score: number; components: Record<string, number> } | null;
-}
-
-// Signals from the same scan cycle land within a few seconds of each other
-// (the backend scans the whole watchlist concurrently, not one at a time),
-// but cycles themselves are ~15 minutes apart. Bucketing to a coarser
-// interval than that scan spacing groups a whole cycle together instead of
-// having near-simultaneous signals split arbitrarily by their few-second
-// timestamp differences — "recent" should mean "which cycle", not "which
-// second within a cycle".
-const CYCLE_BUCKET_MS = 10 * 60 * 1000;
-
-function cycleBucket(generatedAt: string): number {
-  return Math.floor(new Date(generatedAt).getTime() / CYCLE_BUCKET_MS);
-}
-
-/** Newest scan cycle first; within the same cycle, highest confidence first.
- * Recency wins the primary sort — a high-confidence signal from three cycles
- * ago is more likely stale than useful, so it shouldn't outrank a fresh one
- * just because its own number was higher when it was generated. */
-function sortRecentThenConfident(a: Signal, b: Signal): number {
-  const cycleDiff = cycleBucket(b.generated_at) - cycleBucket(a.generated_at);
-  if (cycleDiff !== 0) return cycleDiff;
-  return b.confidence - a.confidence;
 }
 
 /** Deterministic color from the ticker string — used for the fallback
@@ -167,20 +144,48 @@ function confidenceTone(pct: number): string {
   return pct >= 75 ? "var(--green)" : pct >= 62 ? "var(--cyan)" : "var(--amber)";
 }
 
+/** The one-word read on a row: could Autopilot take this now. Always a word plus
+ * a mark, never colour alone. "Unknown" means the desk state could not be read,
+ * which is not the same as clear. */
+function StatusCell({ status }: { status: LedgerStatus }) {
+  if (status.kind === "blocked") {
+    return (
+      <span className="signal-status signal-status--blocked" title={`Likely Autopilot block: ${status.reason.code}. Run Evaluate for the authoritative gate list.`}>
+        <span aria-hidden="true">⊘ </span>Blocked · {status.reason.label}
+      </span>
+    );
+  }
+  if (status.kind === "unknown") {
+    return (
+      <span className="signal-status signal-status--unknown" title="The desk state could not be read, so blocks cannot be checked. Not the same as clear.">
+        <span aria-hidden="true">? </span>Not checked
+      </span>
+    );
+  }
+  return (
+    <span className="signal-status signal-status--clear" title="No block found by the preview check. Evaluate is authoritative.">
+      <span aria-hidden="true">✓ </span>Clear
+    </span>
+  );
+}
+
 function SignalCard({
   sig,
   minConfidence,
   blockCtx,
+  status,
 }: {
   sig: Signal;
   minConfidence: number;
   blockCtx: ReturnType<typeof useDeskBlockContext>;
+  status: LedgerStatus;
 }) {
   const [reviewing, setReviewing] = useState(false);
   const tp = sig.trade_plan || {};
   const ind = sig.indicators || {};
   const block = deriveSignalBlockReason(sig, blockCtx);
   const confPct = Math.round(sig.confidence * 100);
+  const stopPct = stopDistancePct(tp);
   const directionClass = sig.action === "BUY" ? "mission-card--buy" : sig.action === "SELL" ? "mission-card--sell" : "";
   const opportunityScore = sig.opportunity_score?.score;
   const hasSignalScore = typeof opportunityScore === "number" && Number.isFinite(opportunityScore) && opportunityScore >= 0 && opportunityScore <= 100;
@@ -207,6 +212,15 @@ function SignalCard({
           <strong className="mission-card__reward-value">{reward.value}</strong>
         </span>
         <SignalDirectionBadge action={sig.action} size="sm" />
+        <span className="signal-ledger-move tnum" title="Distance from entry to target">
+          <small>Move</small>{tp.target_move_pct != null ? `+${tp.target_move_pct.toFixed(1)}%` : "—"}
+        </span>
+        <span className="signal-ledger-stop tnum" title="Distance from entry to stop">
+          <small>Stop</small>{stopPct != null ? `−${stopPct.toFixed(1)}%` : "—"}
+        </span>
+        {sig.action === "HOLD" || sig.earnings_gated
+          ? <span className="signal-status signal-status--parked">{sig.earnings_gated ? "Earnings gate" : "Hold"}</span>
+          : <StatusCell status={status} />}
         <span className="signal-ledger-chevron" aria-hidden="true">⌄</span>
       </summary>
       <div className="signal-ledger-content">
@@ -350,49 +364,49 @@ export function AssetToggle({ tab, onChange }: { tab: AssetTab; onChange: (t: As
   );
 }
 
-const ACTION_GROUP_COLOR: Record<Signal["action"], string> = {
-  BUY: "var(--green)",
-  SELL: "var(--red)",
-  HOLD: "var(--ink-dim)",
-};
-
-function SignalGroup({
-  action,
-  signals,
+function SignalTable({
+  title,
+  rows,
   minConfidence,
   blockCtx,
+  collapsible,
+  defaultOpen,
+  hint,
 }: {
-  action: Signal["action"];
-  signals: Signal[];
+  title: string;
+  rows: Array<{ sig: Signal; status: LedgerStatus }>;
   minConfidence: number;
   blockCtx: ReturnType<typeof useDeskBlockContext>;
+  collapsible?: boolean;
+  /** Folded groups open by themselves when there is nothing above them to read. */
+  defaultOpen?: boolean;
+  hint?: string;
 }) {
-  if (signals.length === 0) return null;
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <span style={{
-          color: ACTION_GROUP_COLOR[action], fontFamily: "var(--mono)", fontSize: 12,
-          fontWeight: 700, letterSpacing: "0.1em",
-        }}>
-          {action}
-        </span>
-        <span style={{ color: "var(--ink-faint)", fontFamily: "var(--mono)", fontSize: 11 }}>
-          ({signals.length})
-        </span>
-        <div style={{ flex: 1, height: 1, background: "var(--line-dim)" }} />
+  if (rows.length === 0) return null;
+  const body = (
+    <>
+      {hint && <p className="signal-group-hint">{hint}</p>}
+      <div className="signal-ledger-columns" aria-hidden="true">
+        <span>Symbol</span><span>Score</span><span>Direction</span><span>Move</span><span>Stop</span><span>Status</span>
       </div>
       <div className="mission-list signal-ledger">
-        {signals.map(sig => (
-          <SignalCard
-            key={sig.id}
-            sig={sig}
-            minConfidence={minConfidence}
-            blockCtx={blockCtx}
-          />
+        {rows.map(({ sig, status }) => (
+          <SignalCard key={sig.id} sig={sig} status={status} minConfidence={minConfidence} blockCtx={blockCtx} />
         ))}
       </div>
-    </div>
+    </>
+  );
+  const heading = <><span className="signal-group-title">{title}</span><span className="signal-group-count">({rows.length})</span></>;
+  return collapsible ? (
+    <details className="signal-group signal-group--collapsed" open={defaultOpen || undefined}>
+      <summary className="signal-group-head">{heading}</summary>
+      {body}
+    </details>
+  ) : (
+    <section className="signal-group" aria-label={title}>
+      <div className="signal-group-head">{heading}</div>
+      {body}
+    </section>
   );
 }
 
@@ -510,6 +524,7 @@ function EquitySignalsGrid({ onTabChange }: { onTabChange: (tab: AssetTab) => vo
   const [error, setError] = useState<string | null>(null);
   const [minMovePct, setMinMovePct] = useState(0);
   const [query, setQuery] = useState("");
+  const [direction, setDirection] = useState<DirectionFilter>("all");
   const [loading, setLoading] = useState(true);
   const blockCtx = useDeskBlockContext();
   const { minConfidence } = blockCtx;
@@ -547,27 +562,34 @@ function EquitySignalsGrid({ onTabChange }: { onTabChange: (tab: AssetTab) => vo
     }
   };
 
-  // Min move % only makes sense for BUY/SELL — a HOLD has no trade_plan
-  // (no target price to measure a move against), so it's left out of that
-  // filter entirely rather than being silently dropped by an ?? 0 default.
+  // Min move % only makes sense for BUY/SELL: HOLD has no trade_plan to measure.
+  // The split into candidates / blocked / parked lives in utils/signalLedger.
   const filteredSignals = signals.filter(s => `${s.ticker} ${equitySignalRationale(s)}`.toLowerCase().includes(query.toLowerCase()));
-  const buySignals = filteredSignals
-    .filter(s => s.action === "BUY" && !s.earnings_gated)
-    .filter(s => (s.trade_plan?.target_move_pct ?? 0) >= minMovePct)
-    .sort(sortRecentThenConfident);
-  const sellSignals = filteredSignals
-    .filter(s => s.action === "SELL" && !s.earnings_gated)
-    .filter(s => (s.trade_plan?.target_move_pct ?? 0) >= minMovePct)
-    .sort(sortRecentThenConfident);
-  const holdSignals = filteredSignals
-    .filter(s => s.action === "HOLD" || s.earnings_gated)
-    .sort(sortRecentThenConfident);
+  const desk = { guardrailAvailable: blockCtx.guardrailAvailable, killStatusAvailable: blockCtx.killStatusAvailable };
+  const groups = groupLedger(filteredSignals, blockCtx, desk, { direction, minMovePct });
+  const buySignals = filteredSignals.filter(s => s.action === "BUY" && !s.earnings_gated && (s.trade_plan?.target_move_pct ?? 0) >= minMovePct).sort(compareLedger);
+  const sellSignals = filteredSignals.filter(s => s.action === "SELL" && !s.earnings_gated && (s.trade_plan?.target_move_pct ?? 0) >= minMovePct).sort(compareLedger);
   const actionableCount = buySignals.length + sellSignals.length;
   // Split rather than merged: a mixed top-3 can get crowded out entirely by
   // one side (e.g. three high-confidence BUYs hiding a strong SELL), so BUY
   // and SELL each get their own top-3-by-confidence ranking.
   const topBuySignals = buySignals.slice(0, 3);
   const topSellSignals = sellSignals.slice(0, 3);
+
+  const unavailable = Boolean(error) || loading;
+  const latest = signals.length ? new Date(Math.max(...signals.map(x => new Date(x.generated_at).getTime()))) : null;
+  const latestText = latest ? latest.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false }) : null;
+  const dirButton = (id: DirectionFilter, label: string, count: number | null) => (
+    <button
+      type="button"
+      key={id}
+      className={`signal-dir-filter__btn${direction === id ? " signal-dir-filter__btn--active" : ""}`}
+      aria-pressed={direction === id}
+      onClick={() => setDirection(id)}
+    >
+      {label}{count != null && <span className="tnum"> {count}</span>}
+    </button>
+  );
 
   return (
     <div className="design-signal-feed signals-ledger-page" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -577,8 +599,16 @@ function EquitySignalsGrid({ onTabChange }: { onTabChange: (tab: AssetTab) => vo
           <p className="page-header__sub">
             Research ideas for your review · no orders submitted here
           </p>
+          <p className="signals-summary tnum" aria-live="polite">
+            {unavailable
+              ? "—"
+              : <>
+                  <b>{actionableCount}</b> ideas · <b>{groups.candidates.length}</b> candidates
+                  · <b>{groups.blocked.length}</b> blocked
+                  {latestText && <span title="Latest signal generation time, in your local timezone"> · latest {latestText}</span>}
+                </>}
+          </p>
         </div>
-
       </div>
 
       <AssetToggle tab="equities" onChange={onTabChange} />
@@ -605,11 +635,10 @@ function EquitySignalsGrid({ onTabChange }: { onTabChange: (tab: AssetTab) => vo
         </button>
         </div></details>
       </div>
-      <div className="instrument-stat-strip signal-ledger-stats" style={{ gridTemplateColumns: "repeat(4, minmax(0, 1fr))" }}>
-        <StatTile variant="divider" size="sm" label="Candidates" value={error || loading ? "—" : actionableCount} tone="var(--accent)" />
-        <StatTile variant="divider" size="sm" label="Buy" value={error || loading ? "—" : buySignals.length} tone="var(--green)" />
-        <StatTile variant="divider" size="sm" label="Sell" value={error || loading ? "—" : sellSignals.length} tone="var(--red)" />
-        <StatTile variant="divider" size="sm" label="Latest" hint={<span title="Latest signal generation time, in your local timezone">Latest</span>} value={error || loading || !signals.length ? "—" : new Date(Math.max(...signals.map(s => new Date(s.generated_at).getTime()))).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit", hour12: false})} sub={signals.length && !error ? new Date(Math.max(...signals.map(s => new Date(s.generated_at).getTime()))).toLocaleDateString([], {month: "short", day: "numeric"}) : undefined} />
+      <div className="signal-dir-filter" role="group" aria-label="Direction">
+        {dirButton("all", "All", unavailable ? null : actionableCount)}
+        {dirButton("buy", "Buy", unavailable ? null : buySignals.length)}
+        {dirButton("sell", "Sell", unavailable ? null : sellSignals.length)}
       </div>
 
       {error && (
@@ -622,7 +651,12 @@ function EquitySignalsGrid({ onTabChange }: { onTabChange: (tab: AssetTab) => vo
         </div>
       )}
 
-      <div className="signal-ledger-columns" aria-hidden="true"><span>Symbol</span><span>Score</span><span>Direction</span></div>
+      {!blockCtx.guardrailAvailable || !blockCtx.killStatusAvailable ? (
+        <p className="signal-desk-note" role="status">
+          Desk state could not be read, so blocks cannot be checked. Ideas show “Not checked”, which is not the same as clear.
+        </p>
+      ) : null}
+
       {loading ? <p role="status">Loading signals…</p> : error ? null : filteredSignals.length === 0 ? (
         <div className="instrument-card instrument-card--flat empty-chassis">
           <p className="empty-chassis__title">{query ? "No signals match your search" : "No equity signals yet"}</p>
@@ -630,10 +664,21 @@ function EquitySignalsGrid({ onTabChange }: { onTabChange: (tab: AssetTab) => vo
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-
-          <SignalGroup action="BUY" signals={buySignals} minConfidence={minConfidence} blockCtx={blockCtx} />
-          <SignalGroup action="SELL" signals={sellSignals} minConfidence={minConfidence} blockCtx={blockCtx} />
-          <SignalGroup action="HOLD" signals={holdSignals} minConfidence={minConfidence} blockCtx={blockCtx} />
+          {groups.candidates.length === 0 && groups.blocked.length > 0 && (
+            <p className="signal-desk-note" role="status">
+              None of the {groups.blocked.length} ideas can be taken right now. They are listed under Blocked, with the reason.
+            </p>
+          )}
+          <SignalTable title="Candidates" rows={groups.candidates} minConfidence={minConfidence} blockCtx={blockCtx} />
+          <SignalTable
+            title="Blocked" collapsible defaultOpen={groups.candidates.length === 0} rows={groups.blocked} minConfidence={minConfidence} blockCtx={blockCtx}
+            hint="Preview of what Autopilot would refuse right now. Evaluate is authoritative."
+          />
+          <SignalTable
+            title="Not actionable" collapsible minConfidence={minConfidence} blockCtx={blockCtx}
+            rows={groups.parked.map(sig => ({ sig, status: { kind: "unknown" as const } }))}
+            hint="HOLD ideas and ideas held back by an earnings gate."
+          />
           <details className="signal-ranking"><summary>Ranked scanner summary</summary><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 12 }}>
             <TopSignals top={topBuySignals} label="BUY" minConfidence={minConfidence} blockCtx={blockCtx} />
             <TopSignals top={topSellSignals} label="SELL" minConfidence={minConfidence} blockCtx={blockCtx} />
@@ -653,7 +698,7 @@ export default function EquitySignals() {
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         {tab === "options" && <AssetToggle tab={tab} onChange={setTab} />}
         <div className="signal-feed-context" style={{ flex: 1, minWidth: 220 }}><BrokerStatus /></div>
-        <div className="signal-feed-context" style={{ flex: 1, minWidth: 220 }}><PortfolioGreeks /></div>
+        <div className="signal-feed-context" style={{ flex: 1, minWidth: 220 }}><PortfolioGreeks compact /></div>
       </div>
 
       {tab === "equities" ? <EquitySignalsGrid onTabChange={setTab} /> : <OptionsSignals />}

@@ -31,7 +31,7 @@ function GreekCell({ label, value, warn }: { label: string; value: number; warn?
   );
 }
 
-export default function PortfolioGreeks() {
+export default function PortfolioGreeks({ compact = false }: { compact?: boolean } = {}) {
   const [unavailable, setUnavailable] = useState(false);
   const [greeks, setGreeks] = useState<Greeks | null>(null);
 
@@ -57,7 +57,7 @@ export default function PortfolioGreeks() {
     );
   }
 
-  return (
+  const panel = (
     <div
       className="instrument-card"
       style={{
@@ -98,5 +98,21 @@ export default function PortfolioGreeks() {
         <span>TOTAL: {greeks.total_position_count}</span>
       </div>
     </div>
+  );
+
+  if (!compact) return panel;
+
+  // One slim line that still says the thing that matters (net delta, and a hedge
+  // warning in words), with the full panel a click away.
+  return (
+    <details className="greeks-chip">
+      <summary>
+        <span className="greeks-chip__label">Greeks</span>
+        <span className="tnum">Δ {greeks.net_delta >= 0 ? "+" : ""}{greeks.net_delta.toFixed(2)}</span>
+        {greeks.needs_hedge && <span className="greeks-chip__warn">⚠ Hedge needed</span>}
+        {greeks.is_delta_neutral && <span className="greeks-chip__ok">✓ Delta neutral</span>}
+      </summary>
+      {panel}
+    </details>
   );
 }
