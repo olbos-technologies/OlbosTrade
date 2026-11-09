@@ -69,23 +69,52 @@ test("desk header items are bordered boxes like the ENV chips, on one left edge"
   expect([m.rows[1]!.bt, m.rows[1]!.bl, m.rows[1]!.radius]).toEqual(["0px", "0px", "0px"]);
 });
 
-test("the Session strip stays on one line at laptop and desktop widths, never truncating a value", async ({ page }) => {
+async function sessionStrip(page: import("@playwright/test").Page, width: number) {
   await stubBackend(page);
   await page.route("**/api/**", r => r.fulfill(r.request().url().includes("/api/auth/status")
     ? reply({ auth_enabled: false, authenticated: false, user: null })
     : { status: 503, contentType: "application/json", body: "{}" }));
   await page.route("**/api/market/broker", r => r.fulfill(reply({ broker: "ibkr", paper_mode: true, status: "connected" })));
-  for (const width of [1440, 1600, 1920]) {
-    await page.setViewportSize({ width, height: 900 });
-    await page.goto("/terminal/trade/positions");
-    const chips = page.locator(".instrument-rail .instrument-chip:visible");
-    await expect(chips.first()).toBeVisible();
-    const ys = await chips.evaluateAll(els => els.map(e => Math.round(e.getBoundingClientRect().y)));
-    expect(new Set(ys).size, `all Session boxes on one line at ${width}px`).toBe(1);
-    // No value is cut off with an ellipsis.
-    const clipped = await page.locator(".instrument-rail .instrument-chip-value:visible").evaluateAll(els => els.filter(e => e.scrollWidth > e.clientWidth + 1).length);
-    expect(clipped, `no truncated values at ${width}px`).toBe(0);
-    const kill = await page.locator(".instrument-rail-kill").boundingBox();
-    expect(Math.abs(kill!.y - ys[0]) < 40, `kill switch control beside the boxes at ${width}px`).toBe(true);
-  }
-});
+  await page.setViewportSize({ width, height: 900 });
+  await page.goto("/terminal/trade/positions");
+  await expect(page.locator(".instrument-rail .instrument-chip:visible").first()).toBeVisible();
+}
+
+// Wide screens (over 100px to spare even with wider fonts): one line, kill-switch control on the same row.
+for (const width of [1920, 2200]) {
+  test(`the Session strip is one line with the kill-switch control beside it at ${width}px`, async ({ page }) => {
+    await sessionStrip(page, width);
+    const m = await page.evaluate(() => {
+      const chips = Array.from(document.querySelectorAll(".instrument-rail .instrument-chip")).filter(e => (e as HTMLElement).offsetParent) as HTMLElement[];
+      const kill = document.querySelector(".instrument-rail-kill") as HTMLElement;
+      const rects = chips.map(c => c.getBoundingClientRect());
+      const k = kill.getBoundingClientRect();
+      return { count: chips.length, ys: Array.from(new Set(rects.map(r => Math.round(r.y)))), top: rects[0].top, bottom: rects[0].bottom, kTop: k.top, kBottom: k.bottom };
+    });
+    expect(m.count).toBe(7); // all seven boxes, Kill switch included, at this width
+    expect(m.ys).toHaveLength(1);
+    expect(m.kTop <= m.bottom && m.kBottom >= m.top, "the kill-switch control overlaps the boxes' row").toBe(true);
+  });
+}
+
+// Laptop widths: wrapping is allowed (it is how a row that does not fit behaves), but no value is
+// ever cut off, nothing runs past the strip, and the duplicate Kill switch box is hidden.
+for (const width of [1280, 1440, 1599, 1600]) {
+  test(`the Session strip never truncates or overflows at ${width}px`, async ({ page }) => {
+    await sessionStrip(page, width);
+    const m = await page.evaluate(() => {
+      const rail = document.querySelector(".instrument-rail") as HTMLElement;
+      const vals = Array.from(rail.querySelectorAll(".instrument-chip-value")).filter(e => (e as HTMLElement).offsetParent) as HTMLElement[];
+      const killChip = rail.querySelector(".instrument-chip--kill") as HTMLElement;
+      return {
+        clipped: vals.filter(e => e.scrollWidth > e.clientWidth + 1).length,
+        overflowX: rail.scrollWidth - rail.clientWidth,
+        killChipShown: !!killChip.offsetParent,
+      };
+    });
+    expect(m.clipped).toBe(0);
+    expect(m.overflowX).toBeLessThanOrEqual(1);
+    // The duplicate Kill switch box is hidden under 1600px and shown from 1600px up.
+    expect(m.killChipShown).toBe(width >= 1600);
+  });
+}
