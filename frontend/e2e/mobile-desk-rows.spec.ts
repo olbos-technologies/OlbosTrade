@@ -100,3 +100,36 @@ test("on a phone the Overview tab starts at the left margin", async ({ page }) =
   expect(m.text).toMatch(/overview/i);
   expect(m.tab).toBe(m.find);
 });
+
+// Auto size: the boxes are sized to their content, not fixed shares, and the kill-switch control no
+// longer takes a wide block. Day P&L's label stays on one line; the toggle stays tappable; nothing wraps.
+for (const width of [390, 360]) {
+  test(`on a phone the Session rail sizes its boxes to their content at ${width}px`, async ({ page }) => {
+    await open(page, "/terminal/trade/positions", width);
+    await expect(page.locator(".instrument-rail .instrument-chip:visible").first()).toBeVisible();
+    const m = await page.evaluate(() => {
+      const rail = document.querySelector(".instrument-rail") as HTMLElement;
+      const items = (Array.from(rail.children) as HTMLElement[]).filter(e => e.offsetParent);
+      const rects = items.map(e => e.getBoundingClientRect());
+      const chips = Array.from(rail.querySelectorAll(".instrument-chip")).filter(e => (e as HTMLElement).offsetParent) as HTMLElement[];
+      const day = chips.find(c => /day p&l/i.test(c.textContent || ""))!;
+      const label = day.querySelector(".instrument-chip-label") as HTMLElement;
+      const toggle = rail.querySelector(".instrument-rail-toggle") as HTMLElement;
+      const kill = rail.querySelector(".instrument-rail-kill") as HTMLElement;
+      return {
+        oneRow: new Set(rects.map(r => Math.round(r.top))).size === 1,
+        labelLines: Math.round(label.getBoundingClientRect().height / parseFloat(getComputedStyle(label).lineHeight === "normal" ? String(parseFloat(getComputedStyle(label).fontSize) * 1.2) : getComputedStyle(label).lineHeight)),
+        toggleW: Math.round(toggle.getBoundingClientRect().width),
+        killW: Math.round(kill.getBoundingClientRect().width),
+        overflow: rail.scrollWidth - rail.clientWidth,
+        dayW: Math.round(day.getBoundingClientRect().width),
+      };
+    });
+    expect(m.oneRow, "the strip does not wrap").toBe(true);
+    expect(m.labelLines, "DAY P&L stays on one line").toBe(1);
+    expect(m.toggleW, "the toggle keeps a 44px touch width").toBeGreaterThanOrEqual(44);
+    expect(m.killW, "the kill-switch control stays compact").toBeLessThanOrEqual(100);
+    expect(m.overflow).toBeLessThanOrEqual(1);
+    expect(m.dayW, "Day P&L is not squeezed to a sliver").toBeGreaterThanOrEqual(70);
+  });
+}

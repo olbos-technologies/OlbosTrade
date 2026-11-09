@@ -311,9 +311,19 @@
    stacked label-over-value boxes and the kill-switch control at its right edge. */
 @media (max-width: 768px) {
  .app-shell .instrument-rail { background: var(--bg-2); border: 0; border-bottom: 1px solid var(--line-dim); box-shadow: none; border-radius: 0; padding: 6px 16px; gap: 6px; }
- .app-shell .instrument-rail .instrument-chip { background: var(--bg-3); box-shadow: none; border: 1px solid var(--chip-border, var(--line-dim)); border-radius: 3px; padding: 5px 10px; }
- .app-shell .instrument-rail .instrument-rail-toggle { align-self: stretch; border: 1px solid var(--line-dim); border-radius: 3px; background: var(--bg-3); }
- .app-shell .instrument-rail-kill { padding: 0; }
+ .app-shell .instrument-rail .instrument-chip { background: var(--bg-3); box-shadow: none; border: 1px solid var(--chip-border, var(--line-dim)); border-radius: 3px; padding: 5px 8px; }
+ .app-shell .instrument-rail .instrument-rail-toggle { flex: 0 0 44px; align-self: stretch; border: 1px solid var(--line-dim); border-radius: 3px; background: var(--bg-3); }
+ .app-shell .instrument-rail > div:empty { display: none; } /* the desktop spacer */
+ /* Auto size: each box takes its content's width (the label on one line, so "DAY P&L" is not split) and
+    shares what is left in proportion, instead of the fixed 2:1 / 1:1 shares. The strip never wraps. */
+ .app-shell .instrument-rail { flex-wrap: nowrap !important; }
+ .app-shell .instrument-rail .instrument-chip { flex: 1 1 auto !important; min-width: 0; }
+ .app-shell .instrument-rail .instrument-chip-label { white-space: nowrap; }
+ /* The kill-switch control is the button plus a caption; the caption was setting its width. Cap the block
+    and let the caption wrap under the button, so the boxes beside it get the room. The caption stays (an
+    unreadable kill switch must say so). */
+ .app-shell .instrument-rail-kill { padding: 0; flex: 0 0 auto; width: auto; max-width: 92px; }
+ .app-shell .instrument-rail-kill > div { font-size: 10px !important; line-height: 1.25 !important; overflow-wrap: anywhere; }
  /* Inset by margin (not padding), so tabs scrolled past the start are clipped at the page margin
     instead of showing as a cut-off sliver in the gutter. The wrapper supplies the row background and rule. */
  .app-shell .desk-tablist { display: flex; align-items: center; gap: 6px; margin-inline: 16px; padding: 6px 0; scroll-padding-inline: 0; background: transparent; border-bottom: 0; box-shadow: none; }
