@@ -195,6 +195,20 @@ _signal_scorer: Optional[object] = None    # SignalScorer (lazy — loads model 
 # wait for execution data before booking an exit instead of fabricating $0 P&L.
 _close_pending: dict[str, datetime] = {}
 CLOSE_GRACE_SECONDS = 300   # wait up to 5 min for a real exit price, then book unknown
+#: Trades already reported as "missing but not confirmed flat", so the error is
+#: logged once per episode rather than every poll cycle.
+_close_held_logged: set[str] = set()
+
+
+async def _broker_confirms_flat(broker, symbol: str) -> Optional[bool]:
+    """True only on the broker's own affirmative answer that it holds no position
+    or working order in `symbol`. Any failure, or a broker with no way to answer,
+    is None - never read as flat."""
+    try:
+        return await broker.confirm_symbol_flat(symbol)
+    except Exception as exc:  # noqa: BLE001 - an unanswerable question is not "flat"
+        logger.warning("confirm_symbol_flat(%s) raised: %s", symbol, exc)
+        return None
 
 # Entry-side reconciliation: when a `pending` trade's order is still working we
 # wait this long (measured from trade.entry_date, not process uptime -- a
@@ -2562,6 +2576,30 @@ async def _poll_fills_for_scope(scoped) -> None:
                 )
                 continue
 
+            # Booking a close with UNKNOWN P&L is the one destructive thing this
+            # loop does, and the evidence for it so far is only "the local
+            # position cache did not list this symbol" - the same signal a hollow
+            # cache gives. Ask the broker over the network before acting. Only an
+            # affirmative flat closes the row; a position (False) or an answer
+            # that could not be established (None, which includes brokers that
+            # cannot answer) keeps it open and visible. 2026-11-07: AMZN, FER and
+            # SPCX were all booked closed 23ms apart while still held at IBKR.
+            if await _broker_confirms_flat(broker, underlying) is not True:
+                if tid not in _close_held_logged:
+                    _close_held_logged.add(tid)
+                    from app.services.observability import observability as _obs
+                    _obs.incr("poll_fills.close_held_unconfirmed")
+                    logger.error(
+                        "Trade %s (%s) is missing from the position list and has no "
+                        "execution price, but the broker did not confirm it is flat. "
+                        "Holding the row OPEN rather than booking closed_price_unavailable; "
+                        "it is re-checked every cycle. If the position really is gone, "
+                        "close the row manually.",
+                        tid, underlying,
+                    )
+                continue
+
+            _close_held_logged.discard(tid)
             await trade_recorder.record_close_unknown(
                 trade_id=tid,
                 exit_reason="closed_price_unavailable",
@@ -2572,6 +2610,7 @@ async def _poll_fills_for_scope(scoped) -> None:
         for tid in list(_close_pending.keys()):
             if tid not in still_missing:
                 _close_pending.pop(tid, None)
+        _close_held_logged.intersection_update(still_missing)
 
         # ── Cancel the resting bracket of anything booked closed above ──────────
         # Booking the Trade row closed does nothing to the protective children
