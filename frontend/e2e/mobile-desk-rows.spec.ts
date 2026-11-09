@@ -28,7 +28,8 @@ const boxInfo = (page: Page, sel: string) => page.evaluate((s) => {
 
 for (const width of [390, 1280]) {
   test(`Session and tab rows share the Find workspace box's left edge at ${width}px`, async ({ page }) => {
-    await open(page, "/terminal/trade/positions", width);
+    // Overview is the first tab, so the strip rests at its start and nothing re-scrolls it.
+    await open(page, "/terminal/trade/overview", width);
     await page.evaluate(() => document.querySelectorAll(".desk-tablist").forEach(el => { (el as HTMLElement).scrollLeft = 0; }));
     const find = await boxInfo(page, ".workspace-command-search input");
     const session = await boxInfo(page, ".instrument-rail .instrument-chip");
@@ -63,6 +64,7 @@ test("tab rows on other pages also start at the Find workspace box's left edge o
 test("on a phone the selected Positions tab is brought to the left margin, with no half-cut neighbour", async ({ page }) => {
   await open(page, "/terminal/trade/positions", 390);
   await expect(page.locator('.desk-tablist [role="tab"][aria-selected="true"]')).toBeVisible();
+  await page.evaluate(() => (document as unknown as { fonts: { ready: Promise<unknown> } }).fonts.ready);
   await page.waitForTimeout(300);
   const m = await page.evaluate(() => {
     const tabs = Array.from(document.querySelectorAll('.desk-tablist [role="tab"]')) as HTMLElement[];
@@ -133,3 +135,21 @@ for (const width of [390, 360]) {
     expect(m.dayW, "Day P&L is not squeezed to a sliver").toBeGreaterThanOrEqual(70);
   });
 }
+
+// The race behind a CI flake: aligning once at mount is not enough, because the tabs' widths change when
+// the web fonts finish loading. Widening the tabs after load (as a late font swap does) must not leave the
+// selected tab off the margin.
+test("the selected tab stays on the margin when the tab widths change after load", async ({ page }) => {
+  await open(page, "/terminal/trade/positions", 390);
+  await expect(page.locator('.desk-tablist [role="tab"][aria-selected="true"]')).toBeVisible();
+  await page.waitForTimeout(300);
+  await page.addStyleTag({ content: ".desk-tablist .desk-tab { padding-left: 22px !important; padding-right: 22px !important; }" });
+  await page.waitForTimeout(500);
+  const m = await page.evaluate(() => {
+    const tabs = Array.from(document.querySelectorAll('.desk-tablist [role="tab"]')) as HTMLElement[];
+    const i = tabs.findIndex(t => t.getAttribute("aria-selected") === "true");
+    const find = document.querySelector(".workspace-command-search input")!.getBoundingClientRect();
+    return { findX: find.x, activeX: tabs[i].getBoundingClientRect().x };
+  });
+  expect(Math.abs(m.activeX - m.findX)).toBeLessThanOrEqual(1);
+});

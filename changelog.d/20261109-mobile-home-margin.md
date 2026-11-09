@@ -1,0 +1,3 @@
+## Unreleased — Phone Home: Overview and its cards line up with the ENV row and Find box
+
+- On a phone, the Home page's "Overview" heading, refresh button and every card below it started 16px further in than the ENV chip and the "Find workspace…" box (the page gutter and the Home container each added 16px). They now start and end on the same left and right edges as the Find box. Vertical spacing is unchanged. Other pages with the same extra inset (Risk, System, Scan, Backtest, Journal, Account, Research) are not changed here. Frontend-only: needs a frontend rebuild, no backend restart, no migration, no new environment variables.

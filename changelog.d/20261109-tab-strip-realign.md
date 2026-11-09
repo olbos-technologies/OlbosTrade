@@ -1,0 +1,3 @@
+## Unreleased — Phone tab strip stays aligned when the fonts finish loading
+
+- The phone tab strips scroll the selected tab to the left margin, but did so once, when the page mounted. The tabs change width when the web fonts finish loading, which moved the selected tab after it had been aligned (it could end up about 12px off the margin, and caused an intermittent CI failure in `mobile-desk-rows`). The alignment now re-runs when the fonts are ready and whenever a tab's size changes, using a resize observer on the tabs' outer size. It never fires on the user's own scrolling, so a swipe is not fought. Frontend-only: needs a frontend rebuild, no backend restart, no migration, no new environment variables.
