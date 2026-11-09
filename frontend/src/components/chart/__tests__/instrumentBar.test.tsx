@@ -9,8 +9,7 @@ const make = (over: Record<string, unknown> = {}) => ({
   price: 342.36 as number | null, changePct: -0.52 as number | undefined,
   bar: { open: 343.1, high: 344.4, low: 340.9, close: 342.36, volume: 12_100_000 } as null | { open: number; high: number; low: number; close: number; volume: number },
   freshness: "Last close snapshot · Chart bar: 11/6/2026",
-  timeframes: [{ key: "5m", label: "5M" }, { key: "15m", label: "15M" }],
-  timeframe: "15m", onTimeframe: vi.fn(), signalBadge: <span>badge</span>, onSignalDetail: vi.fn(),
+  signalBadge: <span>badge</span>, onSignalDetail: vi.fn(),
   ...over,
 });
 
@@ -31,11 +30,10 @@ describe("InstrumentBar", () => {
     expect(screen.queryByRole("button", { name: /focus chart|show research/i })).toBeNull();
   });
 
-  it("drives the timeframe, signal detail and symbol controls", () => {
+  it("drives the signal detail and symbol controls, and no longer carries the timeframes", () => {
     const p = make();
     render(<InstrumentBar {...p} />);
-    fireEvent.click(screen.getByRole("button", { name: "5M" }));
-    expect(p.onTimeframe).toHaveBeenCalledWith("5m");
+    expect(screen.queryByRole("group", { name: "Chart timeframe" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Signal detail" }));
     expect(p.onSignalDetail).toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "MSFT" }));

@@ -8,7 +8,10 @@ import { chartLevelColors, toChartSignalAttribution } from "../utils/chartWorkst
 import MetricHint, { resolveMetricHint } from "../components/MetricHint";
 import { Panel, StatTile, Button } from "../components/ui";
 import CandlestickChart from "../components/CandlestickChart";
-import ChartDock from "../components/chart/ChartDock";
+import IntervalStrip from "../components/chart/IntervalStrip";
+import RangeBar from "../components/chart/RangeBar";
+import SidePanel from "../components/chart/SidePanel";
+import { DEFAULT_INTERVAL, DEFAULT_RANGE, INTERVAL_OPTIONS, RANGE_DEFAULT_INTERVAL, clampNote, type IntervalKey, type RangeKey } from "../components/chart/timeframes";
 import InstrumentBar from "../components/chart/InstrumentBar";
 import PositionsTable from "../components/chart/PositionsTable";
 import WatchlistTable from "../components/chart/WatchlistTable";
@@ -196,7 +199,11 @@ export default function ChartWorkstation({
     }
   }, [controlledSymbol]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const [timeframe, setTimeframe] = useState<Timeframe>("15m");
+  // Non-compact charts have two controls, like TradingView: the bar interval and
+  // the range of history. The compact desk charts keep the original four buttons.
+  const [timeframe, setTimeframe] = useState<Timeframe | IntervalKey>(compact ? "15m" : DEFAULT_INTERVAL);
+  const [range, setRange] = useState<RangeKey | null>(compact ? null : DEFAULT_RANGE);
+  const [rangeNote, setRangeNote] = useState<string | null>(null);
   const [watchSnapshots, setWatchSnapshots] = useState<Record<string, WatchSnapshot>>({});
   const [signals, setSignals] = useState<Signal[]>([]);
   const [ivRank, setIvRank] = useState<any>(null);
@@ -211,7 +218,6 @@ export default function ChartWorkstation({
   const [viewportH, setViewportH] = useState(() => window.innerHeight);
   // The chart takes the left two thirds of the page and the panel the right third,
   // so the chart is sized from the space it was actually given, not from a guess.
-  const [bottomTab, setBottomTab] = useState<"positions" | "watchlist">("positions");
   const [chartWrap, setChartWrap] = useState<HTMLDivElement | null>(null);
   const [wrapH, setWrapH] = useState(0);
   useEffect(() => {
@@ -294,14 +300,26 @@ export default function ChartWorkstation({
     const config = TIMEFRAMES.find((item) => item.key === timeframe) || TIMEFRAMES[1];
     setChartLoading(true);
     setChartError(null);
-    (api.getEquityChart(symbol, { timeframe, limit: config.limit }) as Promise<any>)
-      .then((res) => setChartBars(res.bars || []))
+    const params = compact || range === null
+      ? { timeframe, limit: config.limit }
+      : { timeframe, range, limit: 5000 };
+    let live = true;   // a slower, older answer must not overwrite the newest pick
+    (api.getEquityChart(symbol, params) as Promise<any>)
+      .then((res) => {
+        if (!live) return;
+        setChartBars(res.bars || []);
+        const title = INTERVAL_OPTIONS.find((o) => o.key === timeframe)?.title ?? String(timeframe);
+        setRangeNote(res.range_clamped ? clampNote(title, res.period) : null);
+      })
       .catch((err: Error) => {
+        if (!live) return;
         setChartBars([]);
+        setRangeNote(null);
         setChartError(err.message);
       })
-      .finally(() => setChartLoading(false));
-  }, [symbol, timeframe]);
+      .finally(() => { if (live) setChartLoading(false); });
+    return () => { live = false; };
+  }, [symbol, timeframe, range, compact]);
 
   // No fallback to signals[0] — a symbol with no signal of its own must show
   // an explicit "no signal" state, not another ticker's trade plan.
@@ -350,7 +368,7 @@ export default function ChartWorkstation({
   if (!compact) {
     const chipsH = catalystEvents.length && !chartLoading ? 30 : 0;
     const chartH = isMobile
-      ? Math.max(300, Math.min(720, viewportH - 330))
+      ? Math.max(300, Math.min(720, viewportH - 400))
       : Math.max(260, (wrapH || viewportH - 430) - chipsH);
     const goTo = (raw: string) => {
       const next = raw.trim().toUpperCase();
@@ -372,39 +390,37 @@ export default function ChartWorkstation({
             changePct={selectedSnapshot?.change_pct}
             bar={latestBar}
             freshness={latestBar ? `Last close snapshot · Chart bar: ${new Date(latestBar.timestamp).toLocaleString()}` : "Chart data unavailable"}
-            timeframes={TIMEFRAMES}
-            timeframe={timeframe}
-            onTimeframe={(k) => setTimeframe(k as Timeframe)}
+            freshnessShort={latestBar ? `Last bar ${new Date(latestBar.timestamp).toLocaleString(undefined, { month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit" })}` : undefined}
             signalBadge={selectedSignal
               ? <SignalAttribution data={toChartSignalAttribution(selectedSignal)} size="sm" />
               : <span className="dock-nosignal">No signal</span>}
             onSignalDetail={() => setSignalDrawerOpen(true)}
           />
           <div className="chart-split">
-          <div ref={setChartWrap} className="dock-chart instrument-card--flat chart-canvas-wrap" style={{ position: "relative" }}>
-            {!chartLoading && <UpcomingCatalysts events={catalystEvents} />}
-            {chartLoading ? (
-              <div className="skeleton-block" style={{ height: chartH }} aria-busy="true" aria-label="Loading chart">
-                <div className="skeleton-shimmer" />
+            <SidePanel title="Positions" count={positionsError ? "—" : positions.length} label="Open positions panel">
+              <PositionsTable narrow positions={positions as never[]} error={Boolean(positionsError)} />
+            </SidePanel>
+            <div className="chart-col">
+              <div className="chart-toolbar">
+                <IntervalStrip value={timeframe as IntervalKey} onChange={setTimeframe} />
               </div>
-            ) : (
-              <CandlestickChart bars={chartBars} levels={levels} height={chartH} />
-            )}
-            {chartError && <div className="dock-chart__error" role="status">{chartError}</div>}
-          </div>
-          <ChartDock
-            tabs={[
-              { key: "positions", label: "Positions", count: positionsError ? "—" : positions.length },
-              { key: "watchlist", label: "Watchlist", count: watchlist.length },
-            ]}
-            active={bottomTab}
-            onChange={(k) => setBottomTab(k as "positions" | "watchlist")}
-          >
-            {bottomTab === "positions"
-              ? <PositionsTable positions={positions as never[]} error={Boolean(positionsError)} />
-              : <WatchlistTable watchlist={watchlist} snapshots={watchSnapshots} symbol={symbol}
-                  onSelect={setSymbol} onRemove={(t) => { removeTicker(t); if (t === symbol) setSymbol(watchlist.find((w) => w !== t) ?? symbol); }} />}
-          </ChartDock>
+              <div ref={setChartWrap} className="dock-chart instrument-card--flat chart-canvas-wrap" style={{ position: "relative" }}>
+                {!chartLoading && <UpcomingCatalysts events={catalystEvents} />}
+                {chartLoading ? (
+                  <div className="skeleton-block" style={{ height: chartH }} aria-busy="true" aria-label="Loading chart">
+                    <div className="skeleton-shimmer" />
+                  </div>
+                ) : (
+                  <CandlestickChart bars={chartBars} levels={levels} height={chartH} />
+                )}
+                {chartError && <div className="dock-chart__error" role="status">{chartError}</div>}
+              </div>
+              <RangeBar value={range} note={rangeNote} onChange={(r) => { setRange(r); setTimeframe(RANGE_DEFAULT_INTERVAL[r]); }} />
+            </div>
+            <SidePanel title="Watchlist" count={watchlist.length} label="Watchlist panel">
+              <WatchlistTable watchlist={watchlist} snapshots={watchSnapshots} symbol={symbol}
+                onSelect={setSymbol} onRemove={(t) => { removeTicker(t); if (t === symbol) setSymbol(watchlist.find((w) => w !== t) ?? symbol); }} />
+            </SidePanel>
           </div>
         </div>
         <SignalDetailDrawer

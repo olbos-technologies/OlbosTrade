@@ -1,46 +1,9 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import ChartDock from "../ChartDock";
 import PositionsTable from "../PositionsTable";
 import WatchlistTable from "../WatchlistTable";
 
 afterEach(cleanup);
-
-describe("ChartDock", () => {
-  const tabs = [{ key: "a", label: "Alpha" }, { key: "b", label: "Beta", count: 3 }, { key: "c", label: "Gamma" }];
-
-  it("marks the selected tab and puts only it in the tab order", () => {
-    render(<ChartDock tabs={tabs} active="b" onChange={() => {}}>body</ChartDock>);
-    expect(screen.getByRole("tab", { name: /Beta/ })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("tab", { name: /Beta/ })).toHaveAttribute("tabindex", "0");
-    expect(screen.getByRole("tab", { name: "Alpha" })).toHaveAttribute("tabindex", "-1");
-    expect(screen.getByRole("tabpanel")).toHaveTextContent("body");
-    expect(screen.getByRole("tab", { name: /Beta/ })).toHaveTextContent("3");
-  });
-
-  it("moves with the arrow keys, wrapping, and Home / End", () => {
-    const onChange = vi.fn();
-    render(<ChartDock tabs={tabs} active="c" onChange={onChange}>x</ChartDock>);
-    const gamma = screen.getByRole("tab", { name: "Gamma" });
-    fireEvent.keyDown(gamma, { key: "ArrowRight" });
-    expect(onChange).toHaveBeenLastCalledWith("a");           // wraps
-    fireEvent.keyDown(gamma, { key: "ArrowLeft" });
-    expect(onChange).toHaveBeenLastCalledWith("b");
-    fireEvent.keyDown(gamma, { key: "Home" });
-    expect(onChange).toHaveBeenLastCalledWith("a");
-    fireEvent.keyDown(screen.getByRole("tab", { name: "Alpha" }), { key: "End" });
-    expect(onChange).toHaveBeenLastCalledWith("c");
-    fireEvent.keyDown(gamma, { key: "x" });
-    expect(onChange).toHaveBeenCalledTimes(4);               // other keys ignored
-  });
-
-  it("selects on click", () => {
-    const onChange = vi.fn();
-    render(<ChartDock tabs={tabs} active="a" onChange={onChange}>x</ChartDock>);
-    fireEvent.click(screen.getByRole("tab", { name: "Gamma" }));
-    expect(onChange).toHaveBeenCalledWith("c");
-  });
-});
 
 describe("WatchlistTable", () => {
   const base = {
@@ -99,3 +62,13 @@ describe("PositionsTable", () => {
   });
 });
 
+describe("PositionsTable narrow", () => {
+  it("drops the secondary columns in a narrow panel but keeps symbol, quantity and P&L", () => {
+    render(<PositionsTable narrow error={false} positions={[{ symbol: "FER", quantity: -337, avg_cost: 58.57, unrealized_pnl: -46, hold_days: 2 }]} />);
+    const head = screen.getAllByRole("columnheader").map((h) => h.textContent);
+    expect(head).toEqual(["Symbol", "Qty", "P&L"]);
+    const row = screen.getByText("FER").closest("tr")!;
+    expect(row.textContent).toContain("−$46.00");
+    expect(row.textContent).not.toContain("58.57");
+  });
+});

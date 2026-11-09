@@ -79,7 +79,14 @@ test("phone chart keeps the legend collapsed until asked for",async({page})=>{
   await page.goto("/terminal/markets/chart?symbol=AAPL");
   await expect(page.getByRole("heading",{name:"Market workspace"})).toBeVisible();
   const panel = page.locator(".chart-workspace");
-  for (const button of await page.locator(".instrument-bar .chart-timeframes button").all()) {
+  const intervalButtons = await page.locator(".interval-strip button").all();
+  expect(intervalButtons.length, "the check must read real buttons").toBe(9);
+  for (const button of intervalButtons) {
+    expect((await button.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  }
+  const rangeButtons = await page.locator(".range-bar__buttons button").all();
+  expect(rangeButtons.length).toBe(9);
+  for (const button of rangeButtons) {
     expect((await button.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   }
   for (const button of await page.locator(".instrument-bar .chart-symbol-picker button").all()) {

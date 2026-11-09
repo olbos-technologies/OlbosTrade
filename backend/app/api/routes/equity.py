@@ -150,30 +150,34 @@ async def get_equity_positions():
 @router.get("/chart/{ticker}")
 async def get_equity_chart(
     ticker: str,
-    timeframe: str = Query("15m", pattern="^(5m|15m|1h|1d)$"),
-    limit: int = Query(96, ge=20, le=240),
+    timeframe: str = Query("15m", pattern="^(1m|5m|15m|30m|1h|4h|1d|1w|1M)$"),
+    limit: int = Query(96, ge=20, le=5000),
+    range_: str | None = Query(None, alias="range", pattern="^(1d|5d|1m|3m|6m|ytd|1y|5y|all)$"),
 ):
     """
     Return recent OHLCV bars for the chart workstation UI.
 
-    Uses yfinance so the chart remains available even when IBKR is offline.
+    `timeframe` is the bar interval and `range` (optional) how much history to
+    show, like TradingView's two controls. A range wider than Yahoo keeps for that
+    interval is clamped and the response says so (`range_clamped`). Without
+    `range` the older behaviour is unchanged. Uses yfinance so the chart remains
+    available even when IBKR is offline.
     """
     import asyncio
+    from datetime import date
+
     import yfinance as yf
+
+    from app.services.chart_request import plan_chart_request, resample_4h
 
     ticker = ticker.upper().strip()
     loop = asyncio.get_running_loop()
-
-    interval_map = {
-        "5m":  ("5d", "5m"),
-        "15m": ("10d", "15m"),
-        "1h":  ("60d", "60m"),
-        "1d":  ("1y", "1d"),
-    }
-    period, interval = interval_map[timeframe]
+    plan = plan_chart_request(timeframe, range_, date.today())
 
     def _fetch():
-        hist = yf.Ticker(ticker).history(period=period, interval=interval, auto_adjust=True)
+        hist = yf.Ticker(ticker).history(period=plan.period, interval=plan.interval, auto_adjust=True)
+        if plan.resample_4h and len(hist):
+            hist = resample_4h(hist)
         hist = hist.tail(limit)
         bars: list[dict] = []
         for ts, row in hist.iterrows():
@@ -202,6 +206,9 @@ async def get_equity_chart(
     return {
         "ticker": ticker,
         "timeframe": timeframe,
+        "range": plan.range,
+        "range_clamped": plan.clamped,
+        "period": plan.period,
         "bars": bars,
         "summary": {
             "last": closes[-1],
