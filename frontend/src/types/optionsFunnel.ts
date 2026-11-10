@@ -9,7 +9,17 @@ export interface FunnelStage {
 
 export type FunnelVerdictCode =
   | "trading" | "no_data" | "nothing_qualifies" | "mode_manual"
-  | "waiting_for_approval" | "qualified_but_never_dispatched" | "blocked_at_execution";
+  | "waiting_for_approval" | "qualified_but_never_dispatched" | "blocked_at_execution" | "market_closed_only";
+
+/** Why candidates are sized to zero contracts: the risk budget of one trade against what one spread can lose. */
+export interface FunnelSizing {
+  attempts: number;
+  max_loss_median: number | null;
+  max_loss_min: number | null;
+  /** Null when the rejections predate the budget being recorded. */
+  risk_budget: number | null;
+  cheapest_fits_one_contract?: boolean;
+}
 
 export interface OptionsFunnel {
   window_days: number;
@@ -23,6 +33,7 @@ export interface OptionsFunnel {
   } | null;
   scanned: number;
   stages: FunnelStage[];
+  sizing?: FunnelSizing | null;
   verdict: { code: FunnelVerdictCode | string; text: string };
   notes: string[];
 }

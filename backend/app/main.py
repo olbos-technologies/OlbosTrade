@@ -1909,8 +1909,11 @@ async def _run_options_scan(symbol: str = "SPY", execute: bool = True) -> Option
                 "(sizing capital=$%.0f max_loss=$%.0f risk_pct=%.3f mult=%.2f)",
                 sizing_capital, max_loss_dollars, risk_pct, size_mult,
             )
+            # The budget is recorded with the max loss so the funnel can show how far apart they are.
+            _risk_budget = sizing_capital * risk_pct * size_mult
             await _record_options_rejection(
-                symbol, f"sized to 0 contracts (max loss ${max_loss_dollars:.0f})", strategy_name,
+                symbol, f"sized to 0 contracts (max loss ${max_loss_dollars:.0f}; risk budget ${_risk_budget:.0f})",
+                strategy_name,
             )
             return None
 

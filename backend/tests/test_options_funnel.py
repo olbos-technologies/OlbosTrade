@@ -173,3 +173,54 @@ def test_the_verdict_names_the_biggest_reason_and_its_count():
 def test_copilot_with_an_approval_is_not_reported_as_waiting():
     v = f.verdict(**{**BASE, "mode": "copilot", "queued_approved": 1, "queued_pending": 9})
     assert v["code"] == "blocked_at_execution"
+
+
+# ── market-closed attempts are not refusals ──────────────────────────────────
+
+def test_attempts_made_while_the_market_was_closed_alone_say_so_not_blocked():
+    v = f.verdict(**{**BASE, "dispatched": 390, "closed_attempts": 390, "real_blocked": 0, "top_block": None})
+    assert v["code"] == "market_closed_only"
+    assert "closed" in v["text"] and "Nothing was refused" in v["text"]
+
+
+def test_a_real_refusal_is_the_biggest_reason_even_when_closed_attempts_outnumber_it():
+    v = f.verdict(**{**BASE, "dispatched": 390, "closed_attempts": 294, "real_blocked": 96})
+    assert v["code"] == "blocked_at_execution"
+    assert "frequency_controller: below_min_confidence (9)" in v["text"]
+    assert "294" in v["text"] and "not a refusal" in v["text"]
+
+
+def test_a_submitted_order_still_beats_closed_attempts():
+    assert f.verdict(**{**BASE, "submitted": 1, "closed_attempts": 50})["code"] == "trading"
+
+
+# ── sizing summary ───────────────────────────────────────────────────────────
+
+def test_sizing_is_none_when_nothing_was_sized_to_zero():
+    assert f.summarize_sizing([("insufficient price history", 4)]) is None
+    assert f.summarize_sizing([]) is None
+
+
+def test_sizing_reports_budget_against_max_loss():
+    s = f.summarize_sizing([
+        ("sized to 0 contracts (max loss $812; risk budget $400)", 3),
+        ("sized to 0 contracts (max loss $360; risk budget $400)", 2),
+        ("something else", 9),
+    ])
+    assert s["attempts"] == 5
+    assert s["risk_budget"] == 400.0
+    assert s["max_loss_min"] == 360.0
+    assert s["max_loss_median"] == 812.0
+    # Even the cheapest spread seen fits one contract: zero here points at the multiplier, not the account size.
+    assert s["cheapest_fits_one_contract"] is True
+
+
+def test_sizing_says_when_even_the_cheapest_spread_is_over_budget():
+    s = f.summarize_sizing([("sized to 0 contracts (max loss $812; risk budget $400)", 1)])
+    assert s["cheapest_fits_one_contract"] is False
+
+
+def test_rows_written_before_the_budget_was_recorded_leave_the_budget_unknown_not_guessed():
+    s = f.summarize_sizing([("sized to 0 contracts (max loss $812)", 7)])
+    assert s["attempts"] == 7 and s["max_loss_median"] == 812.0
+    assert s["risk_budget"] is None and "cheapest_fits_one_contract" not in s

@@ -275,3 +275,44 @@ async def test_the_context_helper_reports_the_active_trading_modes_floors():
     mode, regime, rule = _funnel_context()
     assert mode in {"manual", "copilot", "autopilot"}
     assert rule and {"min_confidence", "min_pop", "max_risk_score", "credit_spread_min_pop"} <= set(rule)
+
+
+async def test_closed_market_attempts_are_their_own_stage_and_not_the_biggest_reason(factory):
+    """The reporter's screen: 390 attempts, 294 of them pre-market/after-hours, 96 a real refusal."""
+    r = await _funnel(
+        factory,
+        _hist(),
+        *[_ev(reason="market_closed: pre_market") for _ in range(192)],
+        *[_ev(reason="market_closed: after_hours") for _ in range(102)],
+        *[_ev(reason="frequency_controller: below_min_confidence: 0.6 < 0.70 (aggressive)") for _ in range(96)],
+    )
+    assert _stage(r, "outside_market_hours")["count"] == 294
+    assert _stage(r, "execution_blocked")["count"] == 96
+    assert _stage(r, "execution_blocked")["reasons"][0]["reason"] == "frequency_controller: below_min_confidence"
+    assert r["verdict"]["code"] == "blocked_at_execution"
+    assert "Biggest reason: frequency_controller: below_min_confidence (96)" in r["verdict"]["text"]
+
+
+async def test_only_closed_market_attempts_say_so(factory):
+    r = await _funnel(factory, _hist(), *[_ev(reason="market_closed: weekend") for _ in range(5)])
+    assert r["verdict"]["code"] == "market_closed_only"
+    assert _stage(r, "execution_blocked")["count"] == 0
+
+
+async def test_no_closed_stage_appears_when_nothing_was_attempted_while_closed(factory):
+    r = await _funnel(factory, _hist(), _ev(reason="guardrail: daily cap"))
+    assert all(s["key"] != "outside_market_hours" for s in r["stages"])
+
+
+async def test_the_funnel_carries_the_sizing_summary(factory):
+    r = await _funnel(
+        factory,
+        _rej("sized to 0 contracts (max loss $812; risk budget $400)", occurrences=4),
+        _rej("sized to 0 contracts (max loss $360; risk budget $400)", occurrences=2, ticker="MSFT"),
+    )
+    assert r["sizing"]["attempts"] == 6 and r["sizing"]["risk_budget"] == 400.0
+    assert r["sizing"]["cheapest_fits_one_contract"] is True
+
+
+async def test_sizing_is_none_when_nothing_was_sized_to_zero(factory):
+    assert (await _funnel(factory, _rej("insufficient price history")))["sizing"] is None
