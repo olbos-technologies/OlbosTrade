@@ -2157,7 +2157,19 @@ async def _run_options_scan_watchlist() -> None:
     # timeout instead of risking losing the entire cycle's scan.
     semaphore = asyncio.Semaphore(max(1, settings.equity_scan_concurrency))
 
+    # Progress and timing only — nothing below changes what is scanned or dispatched.
+    # The scheduler's 240s limit cancels this whole coroutine, and without a note of
+    # where it had got to the timeout line said "last progress: unknown". The note is
+    # what tells a slow scan (still scanning) from a stuck dispatch.
+    import time as _t
+    started = _t.monotonic()
+    total = len(watchlist)
+    scanned = 0
+    failed = 0
+    _note_progress("options_scan", f"scanning 0/{total} symbols")
+
     async def _scan_one(symbol: str) -> Optional[dict]:
+        nonlocal scanned, failed
         async with semaphore:
             try:
                 from app.broker.ibkr_coordinator import Priority, ibkr_coordinator
@@ -2166,23 +2178,35 @@ async def _run_options_scan_watchlist() -> None:
                     timeout=60.0, req_type="OPTIONS_SCAN", symbol=symbol,
                 )
             except Exception as exc:
+                failed += 1
                 logger.warning("Options scan failed for %s: %s", symbol, exc)
                 return None
+            finally:
+                scanned += 1
+                _note_progress("options_scan", f"scanned {scanned}/{total} symbols ({failed} failed), "
+                                               f"{_t.monotonic() - started:.0f}s in")
 
     results = await asyncio.gather(*[_scan_one(s) for s in watchlist])
     candidates: list[dict] = [sig for sig in results if sig is not None]
+    logger.info("Options scan: %d symbol(s) scanned in %.0fs (%d failed), %d candidate(s) to dispatch",
+                total, _t.monotonic() - started, failed, len(candidates))
 
     if not candidates:
         return
 
     from app.services.trade_frequency_controller import trade_frequency_controller
     from app.services.entry_dispatch import dispatch_entry
-    for sig in trade_frequency_controller.rank(candidates):
+    ranked = trade_frequency_controller.rank(candidates)
+    for i, sig in enumerate(ranked, 1):
+        _note_progress("options_scan", f"dispatching {i}/{len(ranked)} ({sig.get('ticker')}), "
+                                       f"{_t.monotonic() - started:.0f}s in")
         try:
             await dispatch_entry(sig)
         except Exception as exec_exc:
             logger.warning("Options execution handler failed for %s: %s",
                            sig.get("ticker"), exec_exc)
+    logger.info("Options dispatch: %d candidate(s) dispatched, cycle took %.0fs",
+                len(ranked), _t.monotonic() - started)
 
 
 def _fill_after_entry(fill_time, entry_dt) -> bool:
