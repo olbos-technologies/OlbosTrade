@@ -240,7 +240,7 @@ export default function Strategy() {
           subtitle="Strategy Details"
           labelledBy="strategy-detail-title"
         >
-          <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 20 }}>
+          <div className="workspace-page-root" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 20 }}>
             {detailBody}
           </div>
         </BottomSheet>

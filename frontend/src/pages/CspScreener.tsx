@@ -136,7 +136,7 @@ export default function CspScreener() {
   }, [ctx, data]);
 
   return (
-    <div style={{ padding: 16, fontFamily: "var(--sans)" }}>
+    <div className="workspace-page-root" style={{ padding: 16, fontFamily: "var(--sans)" }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 4 }}>
         <h1 style={{ fontSize: 18, letterSpacing: "0.04em", margin: 0 }}>CSP Screener</h1>
         <span style={{ color: "var(--ink-dim)", fontSize: 12 }}>Wheel &amp; Income Lab</span>

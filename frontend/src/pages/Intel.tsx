@@ -262,7 +262,7 @@ const TABS: { key: Tab; label: string }[] = [
 export default function Intel() {
   const [tab, setTab] = useState<Tab>("calendar");
   return (
-    <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 12, maxWidth: 1180 }}>
+    <div className="workspace-page-root" style={{ padding: 14, display: "flex", flexDirection: "column", gap: 12, maxWidth: 1180 }}>
       <div>
         <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: "var(--ink)" }}>Intel</h2>
         <p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--ink-dim)" }}>News &amp; catalyst intelligence · research context, not trade signals</p>

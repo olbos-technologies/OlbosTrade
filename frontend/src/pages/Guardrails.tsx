@@ -193,7 +193,7 @@ export default function Guardrails() {
         ))}
       </div>
 
-      <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
+      <div className="workspace-page-root" style={{ flex: 1, overflow: "auto", padding: 16 }}>
         {tab === "status" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
 

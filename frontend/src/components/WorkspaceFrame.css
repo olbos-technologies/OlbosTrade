@@ -96,3 +96,27 @@
   .workspace-frame__heading { padding: 18px 16px 14px; }
   .workspace-frame__heading h1 { font-size: 24px; }
 }
+
+/* Phone margins: the frame's own 16px gutter already puts content on the Find workspace box's edges
+   (16px each side). Several layers inside it added another 16-20px, so headings and cards started at
+   32px. Drop the inner insets, leaving the gutter as the only one. Panels and cards keep their own
+   inner padding; only the page-level wrappers lose theirs. */
+@media (max-width: 768px) {
+  .app-shell .workspace-frame__heading { padding-inline: 0 !important; }
+  /* Pages whose root is `style={{ padding: 16, height: "100%", overflowY: "auto" }}`. */
+  .workspace-frame__body div[style*="padding: 16px"][style*="height: 100%"][style*="overflow-y: auto"] { padding-inline: 0 !important; }
+  .workspace-frame .workspace-page-root { padding-inline: 0 !important; }
+  .workspace-frame .page-shell,
+  .workspace-frame .workspace-backtest-layout,
+  .workspace-frame .workspace-toolbar { padding-inline: 0 !important; }
+}
+
+@media (max-width: 768px) {
+  .workspace-frame .scenario-lab, .workspace-frame .forecast-controls { padding-inline: 0 !important; }
+}
+
+@media (max-width: 768px) {
+  .app-shell .markets-page { padding-inline: 16px; }
+  .app-shell .instrument-bar { padding-inline: 0 !important; }
+  .app-shell .page-shell { padding-inline: 16px; }
+}

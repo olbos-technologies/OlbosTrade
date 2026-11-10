@@ -95,7 +95,7 @@ export default function OptionsSignalHistory() {
   );
 
   if (error) return (
-    <div style={{ padding: 16 }}>
+    <div className="workspace-page-root" style={{ padding: 16 }}>
       <div style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)",
         padding: "10px 14px", fontFamily: "var(--mono)", fontSize: 11, color: "var(--red)" }}>
         {error}
