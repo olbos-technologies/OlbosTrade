@@ -24,14 +24,14 @@ const group = (page: Page, heading: RegExp) =>
 
 type Capacity = { effective_cap: number | null; open_positions: number | null } | "down";
 
-async function open(page: Page, { desk, width = 1280, openPositions = 0, styleCap = 3, capacity }: {
-  desk: boolean; width?: number; openPositions?: number; styleCap?: number; capacity?: Capacity;
+async function open(page: Page, { desk, width = 1280, openPositions = 0, styleCap = 3, capacity, signals = SIGNALS }: {
+  desk: boolean; width?: number; openPositions?: number; styleCap?: number; capacity?: Capacity; signals?: unknown[];
 }) {
   await stubBackend(page);
   await page.route("**/api/**", r => r.fulfill(r.request().url().includes("/api/auth/status")
     ? reply({ auth_enabled: false, authenticated: false, user: null })
     : { status: 503, contentType: "application/json", body: "{}" }));
-  await page.route("**/api/equity/signals?**", r => r.fulfill(reply({ signals: SIGNALS })));
+  await page.route("**/api/equity/signals?**", r => r.fulfill(reply({ signals })));
   if (desk) {
     await page.route("**/api/mode/current", r => r.fulfill(reply({ mode: "aggressive", max_concurrent: styleCap })));
     await page.route("**/api/mode/all", r => r.fulfill(reply({ aggressive: { min_confidence: 0.7, is_active: true } })));
@@ -85,7 +85,9 @@ test("a full book moves every idea to Blocked, which opens itself and says so", 
   const blocked = group(page, /^Blocked/);
   await expect(blocked).toHaveAttribute("open", "");
   await expect(blocked.locator(".signal-status--blocked").first()).toContainText("max positions 3/3");
-  await expect(page.getByText(/None of the 3 ideas can be taken right now/)).toBeVisible();
+  // Said once, in the summary line - not again in a banner and a group hint.
+  await expect(page.locator(".signals-summary")).toContainText("none can be taken now");
+  await expect(page.getByText(/None of the 3 ideas can be taken right now/)).toHaveCount(0);
 });
 
 test("direction filter narrows the candidates", async ({ page }) => {
@@ -147,4 +149,36 @@ test("when the gate's capacity cannot be read, rows say 'Not checked', never 'Cl
   await expect(page.locator(".signal-status--clear")).toHaveCount(0);
   await expect(page.locator(".signal-status--unknown").first()).toContainText("Not checked");
   await expect(page.getByText(/Desk state could not be read/)).toBeVisible();
+});
+
+test("blocked ideas are counted by reason once, and a shared reason leaves the rows on a phone", async ({ page }) => {
+  await open(page, { desk: true, width: 390, openPositions: 3, signals: [sig("AAA", "BUY", 0.9), sig("BBB", "SELL", 0.85), sig("DDD", "BUY", 0.8)] });
+  const blocked = group(page, /^Blocked/);
+  const summary = blocked.locator(".signal-reason-summary li");
+  await expect(summary).toHaveCount(1);
+  await expect(summary.first()).toContainText("max positions 3/3");
+  await expect(summary.first().locator("b")).toHaveText("3");
+  await expect(blocked.locator(".signal-ledger-row")).toHaveCount(3);
+  // Every row shares that reason, so the rows only say "Blocked" on a phone.
+  await expect(blocked.locator(".signal-status__reason").first()).toBeHidden();
+  await expect(blocked.locator(".signal-status--blocked").first()).toContainText("Blocked");
+  // ...but desktop still shows the reason on each row.
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await expect(blocked.locator(".signal-status__reason").first()).toBeVisible();
+});
+
+test("on a phone the search, refresh and both toggles share one control height and square corners", async ({ page }) => {
+  await open(page, { desk: true, width: 390 });
+  const probes = [
+    page.getByRole("textbox", { name: "Search signals" }),
+    page.getByRole("button", { name: "Refresh signals" }),
+    page.getByRole("button", { name: "OPTIONS", exact: true }),
+    page.getByRole("button", { name: /^All/ }),
+  ];
+  for (const el of probes) {
+    const box = await el.boundingBox();
+    expect(box!.height).toBeGreaterThanOrEqual(43.5);
+    expect(await el.evaluate(n => getComputedStyle(n).borderTopLeftRadius)).toBe("3px");
+  }
+  await expectNoHorizontalOverflow(page, 390);
 });

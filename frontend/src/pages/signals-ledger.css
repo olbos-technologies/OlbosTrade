@@ -110,3 +110,32 @@
  .app-shell .signal-ledger-summary .signal-ledger-chevron { grid-column: 4; grid-row: 1; }
 }
 .app-shell .signal-status > span[aria-hidden="true"] { margin-right: 3px; }
+
+/* Blocked heading reads as a section: a rule above it and the count as a badge. */
+.app-shell .signals-ledger-page .signal-group-head { border-top: 1px solid var(--line); padding-top: 12px; }
+.app-shell .signals-ledger-page .signal-group-count {
+  display: inline-block; margin-left: 8px; padding: 1px 7px; border: 1px solid var(--line);
+  border-radius: 3px; font-size: 11px; color: var(--ink-dim);
+}
+/* One line per distinct reason, with how many ideas it covers. */
+.signal-reason-summary { list-style: none; display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; padding: 0; }
+.signal-reason-summary li {
+  display: inline-flex; gap: 8px; align-items: baseline; padding: 4px 8px;
+  border: 1px solid var(--line); border-radius: 3px; background: var(--bg-2); font-size: 11px; color: var(--ink-dim);
+}
+.signal-reason-summary b { color: var(--ink); }
+
+@media (max-width: 768px) {
+  .app-shell .signals-ledger-page { gap: 10px !important; }
+  .app-shell .signals-ledger-page .page-header__sub,
+  .app-shell .signals-ledger-page .signals-summary { font-size: 12px; line-height: 1.45; }
+  /* The shared reason is stated once in the summary above the rows. */
+  .signal-group[data-single-reason] .signal-status__reason { display: none; }
+  /* One control height and one corner style across the search row and both toggles. */
+  .app-shell .signals-ledger-page .design-search-row { gap: 8px; margin-bottom: 0; align-items: stretch; }
+  .app-shell .signals-ledger-page .design-search-row input { border-radius: 3px; min-height: 44px; }
+  .app-shell .signals-ledger-page .signal-refresh { display: inline-flex; align-items: center; justify-content: center; font-size: 16px; line-height: 1; }
+  .app-shell .signals-ledger-page .asset-toggle__btn,
+  .app-shell .signals-ledger-page .signal-dir-filter__btn,
+  .app-shell .signals-ledger-page .signal-filter-panel > summary { min-height: 44px; display: inline-flex; align-items: center; }
+}
