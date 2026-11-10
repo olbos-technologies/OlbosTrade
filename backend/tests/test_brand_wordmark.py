@@ -55,6 +55,9 @@ def test_old_pearl_mark_is_not_referenced_by_the_ui():
 
 def test_no_webfont_is_loaded_just_for_the_wordmark():
     css = (FRONTEND / "src" / "index.css").read_text()
+    # 2026-11: the Google Fonts @import is gone (fonts are self-hosted), so there
+    # may legitimately be no @import. The scan must still prove it read the file.
+    assert "--mono" in css, "index.css did not load — this scan is reading nothing"
     imports = [line for line in css.splitlines() if line.startswith("@import")]
-    assert imports, "the font @import vanished — this scan is reading nothing"
-    assert "Manrope" not in imports[0]
+    assert all("Manrope" not in line for line in imports)
+    assert "Manrope" not in css
