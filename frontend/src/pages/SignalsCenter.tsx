@@ -29,7 +29,7 @@ function SignalsHistory() {
   const [asset, setAsset] = useState<AssetTab>("equities");
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      <div style={{ padding: "12px 16px 0" }}>
+      <div className="workspace-page-root" style={{ padding: "12px 16px 0" }}>
         <AssetToggle tab={asset} onChange={setAsset} />
       </div>
       <div style={{ flex: 1, overflow: asset === "equities" ? "hidden" : "auto", padding: asset === "options" ? 16 : 0 }}>

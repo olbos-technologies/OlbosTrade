@@ -172,7 +172,7 @@ function AlphaEdgeDetail({ data }: { data: AlphaEdgeResponse }) {
         <span className="mono" style={{ fontWeight: 700 }}>{data.ticker}</span>
       </span>
     }>
-      <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 16 }}>
+      <div className="workspace-page-root" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <span className="pill" style={{
             color: LIFECYCLE_COLOR[data.lifecycle_state],
@@ -470,7 +470,7 @@ export default function AlphaEdgePanel() {
   ) : null;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16, padding: 16 }}>
+    <div className="workspace-page-root" style={{ display: "flex", flexDirection: "column", gap: 16, padding: 16 }}>
       <div className="instrument-card" style={{
         padding: "12px 16px",
         borderLeft: "2px solid var(--accent)",

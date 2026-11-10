@@ -77,7 +77,7 @@ export default function Backtest() {
       </div>
 
       {/* Right: results */}
-      <div style={{ overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 16 }}>
+      <div className="workspace-page-root" style={{ overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 16 }}>
         {/* Metrics ribbon — tight single row to maximise chart space below. */}
         <div className="instrument-stat-strip workspace-stat-grid" style={{
           display: "grid", gridTemplateColumns: "repeat(6, 1fr)",

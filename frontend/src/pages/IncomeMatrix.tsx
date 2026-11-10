@@ -36,7 +36,7 @@ export default function IncomeMatrix({ initialFilter = "all" }: { initialFilter?
     filter === "all" ? true : filter === "csp" ? r.strategy === "cash_secured_put" : r.strategy === "covered_call");
 
   return (
-    <div style={{ padding: 16, height: "100%", overflowY: "auto" }}>
+    <div className="workspace-page-root" style={{ padding: 16, height: "100%", overflowY: "auto" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 14, flexWrap: "wrap" }}>
         <span className="panel-title">Income Matrix</span>
         <span style={{ fontFamily: "var(--mono)", fontSize: 10, color: "var(--ink-faint)" }}>
