@@ -269,7 +269,10 @@ class Settings(BaseSettings):
     # below) means wall-clock time scales with ticker-count/concurrency, not
     # ticker count alone — a live production options scan of 50 symbols
     # completed in ~47s, well under the 240s scan-cycle guard, so ~102
-    # comfortably fits. Going all the way to the full S&P 500 was considered
+    # was expected to fit. It no longer does (2026-11-10: option-chain
+    # requests averaged ~27s each, a full pass needs ~3x the 240s guard), so
+    # the options scan now time-boxes itself and rotates through the list —
+    # see the OPTIONS_SCAN_* budgets in app/main.py. Going all the way to the full S&P 500 was considered
     # separately and rejected: that needs a genuinely different bulk-data
     # architecture, not a config change.
     equity_watchlist: str = Field(

@@ -108,3 +108,76 @@ async def test_one_symbol_failing_does_not_block_others():
 
     mock_handle.assert_awaited_once()
     assert mock_handle.await_args.args[0]["ticker"] == ok_symbol
+
+
+# ── progress notes (observability only; behavior is covered by the tests above) ──
+
+@pytest.mark.asyncio
+async def test_the_scan_records_how_far_it_got_so_a_timeout_can_say_where():
+    import app.main as m
+    from app.core.config import settings
+
+    watchlist = settings.get_equity_watchlist()
+    seen_during_dispatch = []
+
+    async def _fake_scan(symbol, execute=True):
+        return _signal(symbol, 0.9) if symbol == watchlist[0] else None
+
+    async def _fake_dispatch(sig):
+        seen_during_dispatch.append(m._scan_progress.get("options_scan"))
+
+    m._scan_progress.pop("options_scan", None)
+    with patch("app.main._run_options_scan", new=AsyncMock(side_effect=_fake_scan)), \
+         patch("app.services.entry_dispatch.dispatch_entry", new=_fake_dispatch):
+        await m._run_options_scan_watchlist()
+
+    # While dispatching, the note names the stage, the position and the ticker...
+    assert seen_during_dispatch and seen_during_dispatch[0].startswith(f"dispatching 1/1 ({watchlist[0]})")
+    # ...and it is still there afterwards, so a timeout during dispatch is attributed to dispatch.
+    assert m._scan_progress["options_scan"].startswith("dispatching 1/1")
+
+
+@pytest.mark.asyncio
+async def test_a_scan_with_no_candidates_leaves_a_note_that_it_finished_scanning():
+    import app.main as m
+    from app.core.config import settings
+
+    total = len(settings.get_equity_watchlist())
+    m._scan_progress.pop("options_scan", None)
+    with patch("app.main._run_options_scan", new=AsyncMock(return_value=None)):
+        await m._run_options_scan_watchlist()
+    assert m._scan_progress["options_scan"].startswith(f"{total} started, {total} returned, 0 failed")
+
+
+@pytest.mark.asyncio
+async def test_failures_are_counted_in_the_note_and_the_scan_still_completes():
+    import app.main as m
+    from app.core.config import settings
+
+    watchlist = settings.get_equity_watchlist()
+
+    async def _fake_scan(symbol, execute=True):
+        if symbol in watchlist[:3]:
+            raise RuntimeError("chain fetch failed")
+        return None
+
+    m._scan_progress.pop("options_scan", None)
+    with patch("app.main._run_options_scan", new=AsyncMock(side_effect=_fake_scan)):
+        await m._run_options_scan_watchlist()
+    assert f"{len(watchlist)} started, {len(watchlist) - 3} returned, 3 failed" in m._scan_progress["options_scan"]
+
+
+@pytest.mark.asyncio
+async def test_the_scheduler_timeout_message_now_names_where_the_options_scan_was():
+    """The reported line was 'timed out after 240s - skipped (last progress: unknown)'."""
+    import asyncio
+    import app.main as m
+
+    async def _slow_scan():
+        m._note_progress("options_scan", "scanned 40/102 symbols (2 failed), 200s in")
+        await asyncio.sleep(10)
+
+    with patch("app.main.logger") as log:
+        await m._guarded(_slow_scan(), "options_scan", 0.05)
+    args = log.error.call_args.args
+    assert "timed out" in args[0] and "scanned 40/102 symbols (2 failed), 200s in" in args

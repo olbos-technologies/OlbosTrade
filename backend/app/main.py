@@ -1573,6 +1573,7 @@ async def _run_options_scan(symbol: str = "SPY", execute: bool = True) -> Option
         # limit=60 (not 30) so compute_indicators' own >=30-bar floor still
         # leaves headroom for the leading NaN run its rolling windows produce.
         underlying_bars = await _yf_bars(symbol, limit=60)
+        _options_step(symbol, "price_bars")
         if len(underlying_bars) < 30:
             await _record_options_rejection(symbol, "insufficient price history")
             return None
@@ -1619,6 +1620,7 @@ async def _run_options_scan(symbol: str = "SPY", execute: bool = True) -> Option
         # check needs this; skip the cycle rather than trade on stale/unknown risk.
         try:
             portfolio_state = await _fetch_portfolio_state()
+            _options_step(symbol, "portfolio_state")
         except RiskGateError as exc:
             logger.warning("Options scan: risk gate unavailable — skipping cycle: %s", exc)
             return None
@@ -1777,6 +1779,7 @@ async def _run_options_scan(symbol: str = "SPY", execute: bool = True) -> Option
             live = await _live_spread_quote(
                 broker, symbol, target_exp.isoformat(), short_strike, long_strike, opt_type,
             )
+            _options_step(symbol, "live_chain_quote")
             if live and live["net_credit"] > 0:
                 short_strike = live["short_strike"]
                 long_strike  = live["long_strike"]
@@ -1790,6 +1793,7 @@ async def _run_options_scan(symbol: str = "SPY", execute: bool = True) -> Option
                 yq = await _yf_options_quote(
                     symbol, target_exp.isoformat(), short_strike, long_strike, opt_type,
                 )
+                _options_step(symbol, "yfinance_quote")
                 if yq and yq["net_credit"] > 0:
                     short_strike = yq["short_strike"]
                     long_strike  = yq["long_strike"]
@@ -1852,6 +1856,7 @@ async def _run_options_scan(symbol: str = "SPY", execute: bool = True) -> Option
             iv_minus_rv=float(vix_est - sigma),
         )
         score_result = await _signal_scorer.score_async(features)
+        _options_step(symbol, "ai_scorer")
         signal_score = float(score_result.score)
         # SHAP feature attribution — cheap (feature_impacts is already computed
         # as part of score_async() above, this just formats it), attached to
@@ -1888,6 +1893,7 @@ async def _run_options_scan(symbol: str = "SPY", execute: bool = True) -> Option
         # What this trade is SIZED off: the options pool's share of it when
         # per-asset-class pools are configured, the whole desk otherwise.
         sizing_capital = portfolio_value * settings.capital_pool_share("options")
+        _options_step(symbol, "account_value")
         risk_pct    = trading_mode_manager.config.risk_per_trade_pct
         regime_mult = float(getattr(_current_regime, "options_size_multiplier", 1.0))
         # Volatility-based sizing: scale the regime budget inversely with vol so
@@ -1932,6 +1938,7 @@ async def _run_options_scan(symbol: str = "SPY", execute: bool = True) -> Option
         # logic is reused; net_position_delta/vega stay unused for now.
         from app.services.portfolio_engine import is_cappable_sector, sector_for
         portfolio_risk = await _build_portfolio_risk_state(portfolio_value)
+        _options_step(symbol, "portfolio_risk_state")
         trade_sector = sector_for(symbol)
         total_new_risk = max_loss_dollars * quantity
         if portfolio_risk.portfolio_value > 0:
@@ -2130,6 +2137,86 @@ async def _run_options_scan(symbol: str = "SPY", execute: bool = True) -> Option
         return None
 
 
+# ── Options watchlist scan: time budget, admission control, rotation ────────────────
+# Measured 2026-11-10: option-chain requests took ~27s each (20-70s for liquid names)
+# against a 60s per-request timeout and a 240s scheduler limit, and only 4 of the IBKR
+# coordinator's 6 workers serve P2 (background) work. A full 102-symbol pass needs about
+# three times the time it gets, so every pass was cancelled at 240s and the candidates it
+# had found were lost before dispatch. Requests also kept running after their caller gave
+# up, so work piled up behind work nobody was waiting for, and the scheduler loop (which
+# awaits this scan inline) could not poll fills for the whole four minutes.
+OPTIONS_SCAN_START_BUDGET_S = 150.0      # stop STARTING new symbols after this many seconds
+OPTIONS_SCAN_COLLECT_BUDGET_S = 200.0    # stop WAITING for results after this
+OPTIONS_SCAN_DISPATCH_BUDGET_S = 232.0   # stop dispatching entries after this (the guard is 240s)
+OPTIONS_SCAN_MAX_OUTSTANDING = 4         # P2 workers: NUM_WORKERS 6 minus NUM_RESERVED_WORKERS 2
+OPTIONS_SCAN_REQUEST_TIMEOUT_S = 60.0
+OPTIONS_SCAN_STALE_TOKEN_S = 900.0       # a job outstanding this long is treated as lost
+_OPTIONS_ADMISSION_POLL_S = 0.02
+
+#: token -> monotonic submit time, for scan jobs submitted and not yet finished (or skipped)
+#: by a worker. Counted until the WORKER finishes, not until the caller stops waiting: a job
+#: whose caller timed out still occupies a worker.
+_options_outstanding: dict[int, float] = {}
+_options_token_counter = 0
+#: Watchlist index the next cycle starts at, so a cycle that cannot cover everything does
+#: not always skip the same tickers (the list is alphabetical).
+_options_scan_cursor = 0
+#: symbol -> per-step timings for the scan job currently running on a worker.
+_OPTIONS_STEP_TIMES: dict[str, dict] = {}
+_OPTIONS_SKIPPED = object()
+
+
+def _options_in_flight() -> int:
+    """How many scan jobs are still outstanding. A job outstanding for longer than any real
+    one could be (a worker that never reported back) is dropped with a warning rather than
+    holding a slot forever."""
+    import time as _t
+    now = _t.monotonic()
+    for token, since in list(_options_outstanding.items()):
+        if now - since > OPTIONS_SCAN_STALE_TOKEN_S:
+            _options_outstanding.pop(token, None)
+            logger.warning("Options scan: a job outstanding for over %.0fs was treated as lost",
+                           OPTIONS_SCAN_STALE_TOKEN_S)
+    return len(_options_outstanding)
+
+
+def _options_acquire() -> int:
+    import time as _t
+    global _options_token_counter
+    _options_token_counter += 1
+    _options_outstanding[_options_token_counter] = _t.monotonic()
+    return _options_token_counter
+
+
+def _options_release(token: int) -> None:
+    _options_outstanding.pop(token, None)
+
+
+def _options_step(symbol: str, step: str) -> None:
+    """Record how long the step that just finished took (seconds since the previous mark).
+    A no-op unless the watchlist scan started timing this symbol, so on-demand scans and
+    tests that call _run_options_scan directly are unaffected."""
+    import time as _t
+    rec = _OPTIONS_STEP_TIMES.get(symbol)
+    if rec is None:
+        return
+    now = _t.monotonic()
+    rec["steps"][step] = rec["steps"].get(step, 0.0) + (now - rec["last"])
+    rec["last"] = now
+
+
+def _log_options_step_times(symbol: str) -> None:
+    import time as _t
+    rec = _OPTIONS_STEP_TIMES.pop(symbol, None)
+    if rec is None:
+        return
+    total = _t.monotonic() - rec["start"]
+    steps = ", ".join(f"{k}={v:.1f}s" for k, v in rec["steps"].items()) or "no step recorded"
+    # One line per slow symbol at INFO, the rest at DEBUG: the point is to see why a name such
+    # as AMD takes 70s, not to add a line per symbol per cycle.
+    (logger.info if total >= 10.0 else logger.debug)("Options scan %s took %.1fs: %s", symbol, total, steps)
+
+
 async def _run_options_scan_watchlist() -> None:
     """
     Background options scan across the full equity watchlist, not just
@@ -2145,44 +2232,137 @@ async def _run_options_scan_watchlist() -> None:
     execution once capacity is reached, so scanning more symbols can't itself
     over-trade — it only gives the frequency controller more, better
     candidates to choose from each cycle.
+
+    TIME-BOXED. The scheduler awaits this scan inline under a 240s limit that cancels it
+    wholesale, taking every candidate found so far with it. So the scan keeps its own
+    budget: it stops STARTING new symbols after OPTIONS_SCAN_START_BUDGET_S, stops WAITING
+    after OPTIONS_SCAN_COLLECT_BUDGET_S, and dispatches whatever qualified before
+    OPTIONS_SCAN_DISPATCH_BUDGET_S. Symbols it did not reach are deferred, and the next cycle
+    starts where this one stopped. At most OPTIONS_SCAN_MAX_OUTSTANDING jobs are outstanding,
+    counted until the worker finishes (not until the caller gives up), and a job whose caller
+    has already given up is skipped when a worker reaches it instead of running for nobody.
+    Every dispatched candidate still passes exactly the same gates as before.
     """
+    global _options_scan_cursor
+    import time as _t
     watchlist = settings.get_equity_watchlist()
-    # Bounded concurrency — same rationale as _run_equity_scan: the watchlist
-    # widened from 13 to ~59 symbols, and this call is wrapped in a 240s hard
-    # timeout (_guarded, in the scheduler). A sequential loop over 59 symbols
-    # (each doing a full options-chain fetch, heavier than an equity bars
-    # fetch) could plausibly exceed 240s — and asyncio.wait_for cancels the
-    # whole coroutine on timeout, discarding every candidate found so far,
-    # not just the tail of the list. A semaphore keeps this well under the
-    # timeout instead of risking losing the entire cycle's scan.
-    semaphore = asyncio.Semaphore(max(1, settings.equity_scan_concurrency))
+    total = len(watchlist)
+    if total == 0:
+        return
+    started = _t.monotonic()
+    start_at = _options_scan_cursor % total
+    order = watchlist[start_at:] + watchlist[:start_at]
+    cycle = {"over": False}
+    results: dict[str, Optional[dict]] = {}   # symbol -> signal, or None when nothing qualified
+    stats = {"failed": 0, "skipped": 0, "started": 0}
+    _note_progress("options_scan", f"starting at {order[0]} ({total} symbols)")
 
-    async def _scan_one(symbol: str) -> Optional[dict]:
-        async with semaphore:
+    async def _scan_one(symbol: str, token: int) -> None:
+        from app.broker.ibkr_coordinator import Priority, ibkr_coordinator
+        abandoned = {"v": False}
+        submitted = False
+
+        async def _job():
+            # Runs on a coordinator worker, possibly long after the caller stopped waiting.
             try:
-                from app.broker.ibkr_coordinator import Priority, ibkr_coordinator
-                return await ibkr_coordinator.submit(
-                    Priority.P2, lambda s=symbol: _run_options_scan(s, execute=False),
-                    timeout=60.0, req_type="OPTIONS_SCAN", symbol=symbol,
-                )
-            except Exception as exc:
-                logger.warning("Options scan failed for %s: %s", symbol, exc)
-                return None
+                if cycle["over"] or abandoned["v"]:
+                    stats["skipped"] += 1
+                    return _OPTIONS_SKIPPED
+                now = _t.monotonic()
+                _OPTIONS_STEP_TIMES[symbol] = {"start": now, "last": now, "steps": {}}
+                try:
+                    return await _run_options_scan(symbol, execute=False)
+                finally:
+                    _log_options_step_times(symbol)
+            finally:
+                _options_release(token)
 
-    results = await asyncio.gather(*[_scan_one(s) for s in watchlist])
-    candidates: list[dict] = [sig for sig in results if sig is not None]
+        try:
+            submitted = True
+            left = started + OPTIONS_SCAN_COLLECT_BUDGET_S - _t.monotonic()
+            sig = await ibkr_coordinator.submit(
+                Priority.P2, _job, timeout=min(OPTIONS_SCAN_REQUEST_TIMEOUT_S, max(1.0, left)),
+                req_type="OPTIONS_SCAN", symbol=symbol,
+            )
+            if sig is not _OPTIONS_SKIPPED:
+                results[symbol] = sig
+        except asyncio.CancelledError:
+            abandoned["v"] = True
+            raise
+        except Exception as exc:
+            abandoned["v"] = True
+            stats["failed"] += 1
+            logger.warning("Options scan failed for %s: %s", symbol, exc)
+        finally:
+            if not submitted:
+                _options_release(token)   # cancelled before it ever reached the coordinator
+            _note_progress("options_scan", f"{stats['started']} started, {len(results)} returned, "
+                                           f"{stats['failed']} failed, {_t.monotonic() - started:.0f}s in")
+
+    # Admission control: start the next symbol only when fewer than the limit are outstanding,
+    # and only while the start budget lasts.
+    tasks: list[asyncio.Task] = []
+    next_index = 0
+    for symbol in order:
+        while _options_in_flight() >= OPTIONS_SCAN_MAX_OUTSTANDING and \
+                _t.monotonic() - started < OPTIONS_SCAN_START_BUDGET_S:
+            await asyncio.sleep(_OPTIONS_ADMISSION_POLL_S)
+        if _t.monotonic() - started >= OPTIONS_SCAN_START_BUDGET_S:
+            break
+        token = _options_acquire()
+        stats["started"] += 1
+        tasks.append(asyncio.ensure_future(_scan_one(symbol, token)))
+        next_index += 1
+        await asyncio.sleep(0)   # let the task reach the coordinator before the next admission check
+
+    deferred = total - next_index
+    _options_scan_cursor = (start_at + next_index) % total
+    if next_index == 0:
+        logger.warning("Options scan: no symbol could be started in %.0fs; %d job(s) from earlier "
+                       "cycles are still outstanding", _t.monotonic() - started, _options_in_flight())
+
+    # Collect what came back, within the collect budget. Whatever has not returned by then is
+    # abandoned: its job, if it has not started, will be skipped when a worker reaches it.
+    if tasks:
+        left = max(0.0, started + OPTIONS_SCAN_COLLECT_BUDGET_S - _t.monotonic())
+        _done, pending = await asyncio.wait(tasks, timeout=left)
+        cycle["over"] = True
+        for task in pending:
+            task.cancel()
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+    cycle["over"] = True
+
+    candidates: list[dict] = [sig for sig in results.values() if sig is not None]
+    logger.info(
+        "Options scan: %d of %d symbol(s) returned a result in %.0fs (%d failed, %d skipped before "
+        "start, %d not reached; next cycle starts at %s), %d candidate(s) to dispatch",
+        len(results), total, _t.monotonic() - started, stats["failed"], stats["skipped"], deferred,
+        watchlist[_options_scan_cursor], len(candidates),
+    )
 
     if not candidates:
         return
 
     from app.services.trade_frequency_controller import trade_frequency_controller
     from app.services.entry_dispatch import dispatch_entry
-    for sig in trade_frequency_controller.rank(candidates):
+    ranked = trade_frequency_controller.rank(candidates)
+    dispatched = 0
+    for i, sig in enumerate(ranked, 1):
+        if _t.monotonic() - started >= OPTIONS_SCAN_DISPATCH_BUDGET_S:
+            logger.warning("Options dispatch: budget used up; %d of %d candidate(s) not dispatched "
+                           "this cycle", len(ranked) - dispatched, len(ranked))
+            break
+        _note_progress("options_scan", f"dispatching {i}/{len(ranked)} ({sig.get('ticker')}), "
+                                       f"{_t.monotonic() - started:.0f}s in")
         try:
             await dispatch_entry(sig)
         except Exception as exec_exc:
             logger.warning("Options execution handler failed for %s: %s",
                            sig.get("ticker"), exec_exc)
+        dispatched += 1
+    logger.info("Options dispatch: %d candidate(s) dispatched, cycle took %.0fs",
+                dispatched, _t.monotonic() - started)
 
 
 def _fill_after_entry(fill_time, entry_dt) -> bool:
