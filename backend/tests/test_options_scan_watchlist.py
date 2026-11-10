@@ -146,7 +146,7 @@ async def test_a_scan_with_no_candidates_leaves_a_note_that_it_finished_scanning
     m._scan_progress.pop("options_scan", None)
     with patch("app.main._run_options_scan", new=AsyncMock(return_value=None)):
         await m._run_options_scan_watchlist()
-    assert m._scan_progress["options_scan"].startswith(f"scanned {total}/{total} symbols (0 failed)")
+    assert m._scan_progress["options_scan"].startswith(f"{total} started, {total} returned, 0 failed")
 
 
 @pytest.mark.asyncio
@@ -164,7 +164,7 @@ async def test_failures_are_counted_in_the_note_and_the_scan_still_completes():
     m._scan_progress.pop("options_scan", None)
     with patch("app.main._run_options_scan", new=AsyncMock(side_effect=_fake_scan)):
         await m._run_options_scan_watchlist()
-    assert f"scanned {len(watchlist)}/{len(watchlist)} symbols (3 failed)" in m._scan_progress["options_scan"]
+    assert f"{len(watchlist)} started, {len(watchlist) - 3} returned, 3 failed" in m._scan_progress["options_scan"]
 
 
 @pytest.mark.asyncio
