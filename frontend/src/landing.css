@@ -106,10 +106,11 @@ a.landing-signin:hover { color: var(--ink); }
 }
 .landing-h1 {
   font-family: var(--display);
-  font-size: 44px;
+  font-size: 36px;
   font-weight: 600;
-  line-height: 1.15;
-  letter-spacing: -0.01em;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
   max-width: 720px;
   margin-bottom: 20px;
 }
@@ -126,9 +127,10 @@ a.landing-signin:hover { color: var(--ink); }
 }
 .landing-h2 {
   font-family: var(--display);
-  font-size: 28px;
+  font-size: 22px;
   font-weight: 600;
-  letter-spacing: -0.01em;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
   margin-bottom: 12px;
 }
 .landing-lede {

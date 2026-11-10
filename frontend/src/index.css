@@ -1,4 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Playfair+Display:wght@600&display=swap');
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -28,16 +27,13 @@
   --green:     #22c55e;
   --blue:      #3b82f6;
   --orange:    #f97316;
-  --mono:      "JetBrains Mono", monospace;
-  --sans:      "IBM Plex Sans", system-ui, sans-serif;
+  --mono:      "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --sans:      var(--mono);
 
-  /* Editorial display face, MARKETING SURFACES ONLY — landing, login,
-     request-access, claim. Deliberately not used anywhere in the terminal:
-     its numerals do not tabulate (the .tnum rule below exists because data
-     columns must align), and a high-contrast serif is built on hairline
-     strokes that disappear at the 9-11px the terminal renders data at. One
-     weight is loaded because headings are the only thing that use it. */
-  --display:   "Playfair Display", Georgia, serif;
+  /* Display face, MARKETING SURFACES ONLY (landing, login, request-access,
+     claim). Now the same IBM Plex Mono as the rest of the app; kept as its own
+     token so marketing headings can diverge again without touching the terminal. */
+  --display:   "IBM Plex Mono", ui-monospace, monospace;
 
   /* Instrument console (skeuomorphic-lite) — crisp bezels, not soft/glass UI.
      Highlight = top edge catching light; shade = bottom/right recess. */
