@@ -151,7 +151,7 @@ function StatusCell({ status }: { status: LedgerStatus }) {
   if (status.kind === "blocked") {
     return (
       <span className="signal-status signal-status--blocked" title={`Likely Autopilot block: ${status.reason.code}. Run Evaluate for the authoritative gate list.`}>
-        <span aria-hidden="true">⊘ </span>Blocked · {status.reason.label}
+        <span aria-hidden="true">⊘ </span>Blocked<span className="signal-status__reason"> · {status.reason.label}</span>
       </span>
     );
   }
@@ -383,9 +383,22 @@ function SignalTable({
   hint?: string;
 }) {
   if (rows.length === 0) return null;
+  // Why each blocked idea is blocked, counted once, so 84 rows that share one reason
+  // read as one reason instead of 84 repeats.
+  const reasons = new Map<string, number>();
+  for (const { status } of rows) {
+    if (status.kind === "blocked") reasons.set(status.reason.label, (reasons.get(status.reason.label) ?? 0) + 1);
+  }
+  const reasonList = [...reasons.entries()].sort((a, b) => b[1] - a[1]);
+  const singleReason = reasonList.length === 1 && rows.length > 1;
   const body = (
     <>
       {hint && <p className="signal-group-hint">{hint}</p>}
+      {reasonList.length > 0 && (
+        <ul className="signal-reason-summary" aria-label="Why these are blocked">
+          {reasonList.map(([label, n]) => <li key={label}><span>{label}</span><b className="tnum">{n}</b></li>)}
+        </ul>
+      )}
       <div className="signal-ledger-columns" aria-hidden="true">
         <span>Symbol</span><span>Score</span><span>Direction</span><span>Move</span><span>Stop</span><span>Status</span>
       </div>
@@ -396,14 +409,14 @@ function SignalTable({
       </div>
     </>
   );
-  const heading = <><span className="signal-group-title">{title}</span><span className="signal-group-count">({rows.length})</span></>;
+  const heading = <><span className="signal-group-title">{title}</span><span className="signal-group-count tnum" aria-label={`${rows.length} ideas`}>{rows.length}</span></>;
   return collapsible ? (
-    <details className="signal-group signal-group--collapsed" open={defaultOpen || undefined}>
+    <details className="signal-group signal-group--collapsed" open={defaultOpen || undefined} data-single-reason={singleReason || undefined}>
       <summary className="signal-group-head">{heading}</summary>
       {body}
     </details>
   ) : (
-    <section className="signal-group" aria-label={title}>
+    <section className="signal-group" aria-label={title} data-single-reason={singleReason || undefined}>
       <div className="signal-group-head">{heading}</div>
       {body}
     </section>
@@ -597,7 +610,7 @@ function EquitySignalsGrid({ onTabChange }: { onTabChange: (tab: AssetTab) => vo
         <div>
           <h1 className="page-header__title">Signals</h1>
           <p className="page-header__sub">
-            Research ideas for your review · no orders submitted here
+            Research ideas · no orders placed here
           </p>
           <p className="signals-summary tnum" aria-live="polite">
             {unavailable
@@ -605,6 +618,7 @@ function EquitySignalsGrid({ onTabChange }: { onTabChange: (tab: AssetTab) => vo
               : <>
                   <b>{actionableCount}</b> ideas · <b>{groups.candidates.length}</b> candidates
                   · <b>{groups.blocked.length}</b> blocked
+                  {groups.candidates.length === 0 && groups.blocked.length > 0 && <strong className="signals-summary__none"> · none can be taken now</strong>}
                   {latestText && <span title="Latest signal generation time, in your local timezone"> · latest {latestText}</span>}
                 </>}
           </p>
@@ -664,15 +678,10 @@ function EquitySignalsGrid({ onTabChange }: { onTabChange: (tab: AssetTab) => vo
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-          {groups.candidates.length === 0 && groups.blocked.length > 0 && (
-            <p className="signal-desk-note" role="status">
-              None of the {groups.blocked.length} ideas can be taken right now. They are listed under Blocked, with the reason.
-            </p>
-          )}
           <SignalTable title="Candidates" rows={groups.candidates} minConfidence={minConfidence} blockCtx={blockCtx} />
           <SignalTable
             title="Blocked" collapsible defaultOpen={groups.candidates.length === 0} rows={groups.blocked} minConfidence={minConfidence} blockCtx={blockCtx}
-            hint="Preview of what Autopilot would refuse right now. Evaluate is authoritative."
+            hint="Preview only · Evaluate is authoritative."
           />
           <SignalTable
             title="Not actionable" collapsible minConfidence={minConfidence} blockCtx={blockCtx}
