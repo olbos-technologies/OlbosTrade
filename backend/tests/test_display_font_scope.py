@@ -1,5 +1,9 @@
 """
-The editorial display face is for marketing surfaces only.
+The display face token is for marketing surfaces only.
+
+(2026-11: the whole app moved to IBM Plex Mono, so --display no longer names a
+serif. The scope rule stays so marketing headings can diverge again without
+reaching the terminal. The historical reasons below describe the old serif.)
 
 Playfair Display remains on landing headings because those are prose at
 28-44px. Credential headings now match the terminal's sans face. The serif

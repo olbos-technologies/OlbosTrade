@@ -1,0 +1,36 @@
+/*
+ * Bloomberg-terminal typography, one face everywhere.
+ *
+ * IBM Plex Mono (self-hosted in figma-fonts.css) replaces Inter, IBM Plex Sans,
+ * JetBrains Mono and the old serif display face. Monospaced digits are tabular by
+ * nature, so data columns still align (`.tnum` keeps tabular-nums on top).
+ * Labels, tabs, table headers and buttons read as uppercase, letter-spaced
+ * terminal chrome with hairline rules.
+ *
+ * Colour is deliberately untouched: gold stays brand/navigation, and
+ * green/red/amber keep their meaning.
+ */
+:root,
+.app-shell {
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --sans: var(--mono);
+  --display: var(--mono);
+}
+
+body, .app-shell { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.app-shell :is(button, input, select, textarea) { font-family: var(--mono); }
+
+/* Terminal chrome: uppercase, tracked labels. */
+.app-shell :is(
+  th, .kicker, .panel-title, .tab-bar button, [role="tab"],
+  .instrument-bar__title, .workspace-frame__tab, label
+) {
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+.app-shell :is(button, .btn) { text-transform: uppercase; letter-spacing: .05em; }
+.app-shell :is(input, textarea) { text-transform: none; letter-spacing: 0; }
+
+/* Hairline rules (corner radius stays with the boxed-row style, 3px). */
+.app-shell .workspace-frame__heading { border-bottom: 1px solid var(--line); }
+.app-shell th { border-bottom: 1px solid var(--line); }

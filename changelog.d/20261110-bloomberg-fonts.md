@@ -1,0 +1,3 @@
+## Unreleased — Bloomberg-terminal typography across the app and landing page
+
+- The whole app, including the landing, login and request-access pages, now uses one monospace face (IBM Plex Mono, already self-hosted) instead of Inter, IBM Plex Sans, JetBrains Mono and the Playfair serif. Table headers, labels, tabs, buttons and landing headlines are uppercase and letter-spaced, with hairline rules under page headings and table headers. Colours are unchanged: gold stays brand and navigation, green/red/amber keep their meaning. Numbers stay tabular so columns still align. The Google Fonts import is gone, so pages no longer make a third-party font request. Frontend-only: needs a frontend rebuild, no backend restart, no migration, no new environment variables.
