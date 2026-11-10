@@ -170,6 +170,60 @@ def match_attempts(
     return out
 
 
+def outcome_rows(
+    signals: Sequence[tuple[str, datetime]],
+    events: Sequence[tuple[str, datetime, Optional[str], Optional[str]]],
+    approvals: Sequence[tuple[str, datetime, Optional[str]]] = (),
+    is_open: Optional[Callable[[datetime], bool]] = None,
+    window_minutes: int = MATCH_MINUTES,
+) -> list[dict]:
+    """What happened to each signal, split by whether it was generated in regular hours.
+
+    `events` are execution attempts (ticker, created_at, status, reason); `approvals` are Copilot
+    queue entries (ticker, created_at, status). An execution attempt wins; otherwise a queue entry
+    is reported as 'queued for approval (copilot): <status>'; otherwise 'no attempt or approval
+    recorded'. Each row carries the last time that outcome was seen, so an old problem can be told
+    from a current one. Returns [{hours: 'in'|'out', label, count, last_seen}], most common first
+    within each half."""
+    from app.services.options_funnel import bucket_execution_reason
+
+    is_open = is_open or _default_is_open()
+    window = timedelta(minutes=window_minutes)
+
+    def index(rows):
+        by: dict[str, list[tuple]] = {}
+        for row in rows:
+            by.setdefault(row[0], []).append(row)
+        for v in by.values():
+            v.sort(key=lambda e: e[1])
+        return by
+
+    ev_by, ap_by = index(events), index(approvals)
+
+    def first(by, ticker, gen):
+        return next((e for e in by.get(ticker, []) if gen <= e[1] <= gen + window), None)
+
+    acc: dict[tuple[str, str], dict] = {}
+    for ticker, gen in signals:
+        half = "in" if is_open(gen) else "out"
+        hit = first(ev_by, ticker, gen)
+        if hit is not None:
+            _, at, status, reason = hit
+            status = status or "unknown"
+            label = f"{status}: {bucket_execution_reason(reason)}" if status in ("blocked", "skipped") else status
+        else:
+            ap = first(ap_by, ticker, gen)
+            if ap is not None:
+                _, at, ap_status = ap
+                label = f"queued for approval (copilot): {ap_status or 'unknown'}"
+            else:
+                at, label = gen, "no attempt or approval recorded"
+        slot = acc.setdefault((half, label), {"hours": half, "label": label, "count": 0, "last_seen": at})
+        slot["count"] += 1
+        slot["last_seen"] = max(slot["last_seen"], at)
+    return sorted(acc.values(), key=lambda r: (r["hours"] != "in", -r["count"], r["label"]))
+
+
 def _pct(x: Optional[float]) -> str:
     return "   -" if x is None else f"{x:4.0%}"
 
@@ -192,6 +246,11 @@ async def main(days: int) -> None:
             select(ExecutionEvent.ticker, ExecutionEvent.created_at, ExecutionEvent.status,
                    ExecutionEvent.payload["reason"].as_string())
             .where(ExecutionEvent.kind == "execution", ExecutionEvent.asset_type == "options",
+                   ExecutionEvent.created_at >= since)
+        )).all()
+        ap_rows = (await session.execute(
+            select(ExecutionEvent.ticker, ExecutionEvent.created_at, ExecutionEvent.status)
+            .where(ExecutionEvent.kind == "pending_approval", ExecutionEvent.asset_type == "options",
                    ExecutionEvent.created_at >= since)
         )).all()
 
@@ -223,14 +282,19 @@ async def main(days: int) -> None:
 
     top_signals = [(t, g) for t, s, g in sig_rows if band_of(float(s)) == len(EDGES) - 2]
     ev = [(t, c, s, r) for t, c, s, r in ev_rows]
-    outcomes = match_attempts(top_signals, ev)
+    ap = [(t, c, s) for t, c, s in ap_rows]
+    rows = outcome_rows(top_signals, ev, ap)
     print("\n" + "-" * 76)
-    print(f"WHAT HAPPENED TO THE {top['band']} SIGNALS (first attempt for the same ticker within {MATCH_MINUTES} min)")
+    print(f"WHAT HAPPENED TO THE {top['band']} SIGNALS (first attempt or approval for the same ticker within {MATCH_MINUTES} min)")
     print("-" * 76)
+    print(f"Copilot approval requests recorded for options in this window: {len(ap_rows):,}")
     if not top_signals:
         print("  (no signals in this band)")
-    for label, n in outcomes.most_common():
-        print(f"  {n:6,}  {label}")
+    for half, title in (("in", "GENERATED IN regular trading hours"), ("out", "GENERATED OUTSIDE regular trading hours")):
+        part = [r for r in rows if r["hours"] == half]
+        print(f"\n  {title}: {sum(r['count'] for r in part):,}")
+        for r in part:
+            print(f"    {r['count']:6,}  {r['label']}   (last seen {r['last_seen'].date().isoformat()})")
 
     print("\n" + "-" * 76)
     print("READ THIS")

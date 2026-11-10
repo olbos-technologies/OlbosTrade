@@ -108,6 +108,53 @@ def test_a_submitted_attempt_is_reported_as_submitted_and_reasons_collapse_to_bu
     assert got["blocked: frequency_controller: below_min_confidence"] == 2     # numbers do not split the reason
 
 
+def _row(rows, half, label):
+    return next(x for x in rows if x["hours"] == half and x["label"] == label)
+
+
+def test_outcomes_are_split_by_whether_the_signal_was_generated_in_regular_hours():
+    signals = [("A", OPEN), ("B", OPEN), ("C", AFTER_HOURS), ("D", AFTER_HOURS)]
+    events = [("A", OPEN + timedelta(minutes=1), "blocked", "owner_ambiguous: no operator organisation designated"),
+              ("C", AFTER_HOURS + timedelta(minutes=1), "blocked", "market_closed: after_hours")]
+    rows = r.outcome_rows(signals, events)
+    assert _row(rows, "in", "blocked: owner_ambiguous")["count"] == 1
+    assert _row(rows, "in", "no attempt or approval recorded")["count"] == 1      # B
+    assert _row(rows, "out", "blocked: market_closed: after_hours")["count"] == 1
+    assert _row(rows, "out", "no attempt or approval recorded")["count"] == 1     # D
+    assert sum(x["count"] for x in rows) == 4
+
+
+def test_a_copilot_queue_entry_explains_a_signal_with_no_execution_attempt():
+    signals = [("A", OPEN), ("B", OPEN)]
+    approvals = [("A", OPEN + timedelta(minutes=2), "expired")]
+    rows = r.outcome_rows(signals, [], approvals)
+    assert _row(rows, "in", "queued for approval (copilot): expired")["count"] == 1
+    assert _row(rows, "in", "no attempt or approval recorded")["count"] == 1
+
+
+def test_an_execution_attempt_wins_over_a_queue_entry_for_the_same_signal():
+    rows = r.outcome_rows([("A", OPEN)], [("A", OPEN + timedelta(minutes=1), "submitted", None)],
+                          [("A", OPEN + timedelta(minutes=2), "approved")])
+    assert [x["label"] for x in rows] == ["submitted"]
+
+
+def test_each_outcome_carries_when_it_was_last_seen_so_old_problems_look_old():
+    old, new = OPEN - timedelta(days=60), OPEN
+    events = [("A", old + timedelta(minutes=1), "blocked", "owner_ambiguous: x"),
+              ("B", new + timedelta(minutes=1), "blocked", "owner_ambiguous: x")]
+    rows = r.outcome_rows([("A", old), ("B", new)], events)
+    row = _row(rows, "in", "blocked: owner_ambiguous")
+    assert row["count"] == 2 and row["last_seen"] == new + timedelta(minutes=1)
+
+
+def test_outcome_rows_list_in_hours_first_and_most_common_first():
+    signals = [("A", OPEN), ("B", AFTER_HOURS), ("C", AFTER_HOURS), ("D", AFTER_HOURS)]
+    rows = r.outcome_rows(signals, [])
+    assert [x["hours"] for x in rows] == ["in", "out"]
+    assert rows[0]["count"] == 1 and rows[1]["count"] == 3
+    assert r.outcome_rows([], []) == []
+
+
 def test_the_script_only_reads():
     src = SCRIPT.read_text()
     for forbidden in ("session.add", ".commit(", "session.delete", "import insert", "import update",
