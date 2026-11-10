@@ -224,6 +224,28 @@ def outcome_rows(
     return sorted(acc.values(), key=lambda r: (r["hours"] != "in", -r["count"], r["label"]))
 
 
+def attempts_by_reason(
+    events: Sequence[tuple[str, datetime, Optional[str], Optional[str]]],
+    is_open: Optional[Callable[[datetime], bool]] = None,
+) -> list[dict]:
+    """Every options execution attempt, counted by outcome and by whether it was made in regular
+    hours. This needs no matching to a signal: the signal log keeps only the FIRST row per
+    (ticker, strategy, day), while the scan re-dispatches the same setup every 30 minutes, so
+    attempts outnumber recorded signals and cannot be paired with them one to one."""
+    from app.services.options_funnel import bucket_execution_reason
+
+    is_open = is_open or _default_is_open()
+    acc: dict[tuple[str, str], dict] = {}
+    for _ticker, at, status, reason in events:
+        status = status or "unknown"
+        label = f"{status}: {bucket_execution_reason(reason)}" if status in ("blocked", "skipped") else status
+        half = "in" if is_open(at) else "out"
+        slot = acc.setdefault((half, label), {"hours": half, "label": label, "count": 0, "last_seen": at})
+        slot["count"] += 1
+        slot["last_seen"] = max(slot["last_seen"], at)
+    return sorted(acc.values(), key=lambda r: (r["hours"] != "in", -r["count"], r["label"]))
+
+
 UNKNOWN_MODE = "unknown (before the first mode record)"
 
 
@@ -356,13 +378,27 @@ async def main(days: int) -> None:
         print(f"  ... {len(changes) - 20} earlier change(s) not shown")
 
     by_mode = outcomes_by_mode(top_signals, ev, ap, changes)
+    by_mode_day = {r["mode"]: r for r in outcomes_by_mode(top_signals, ev, ap, changes, window_minutes=24 * 60)}
     print("\n" + "-" * 76)
     print(f"THE {top['band']} SIGNALS BY EXECUTION MODE AT THE TIME")
     print("-" * 76)
-    print(f"{'mode':<44}{'signals':>8}{'attempted':>11}{'queued':>8}{'neither':>9}")
+    print(f"{'mode':<44}{'signals':>8}{'attempted':>11}{'queued':>8}{'neither':>9}{'attempted <=24h':>17}")
     for r in by_mode:
-        print(f"{r['mode']:<44}{r['signals']:>8,}{r['attempted']:>11,}{r['queued']:>8,}{r['neither']:>9,}")
+        d = by_mode_day.get(r["mode"], {"attempted": 0})
+        print(f"{r['mode']:<44}{r['signals']:>8,}{r['attempted']:>11,}{r['queued']:>8,}{r['neither']:>9,}{d['attempted']:>17,}")
+    print("  attempted = an attempt for the same ticker within 30 min; '<=24h' widens that to a day, because the")
+    print("  signal log keeps only the FIRST row per ticker/strategy/day while the scan re-dispatches every 30 min.")
     print("  (MANUAL records a signal and does nothing else, so 'neither' is expected there.)")
+
+    print("\n" + "-" * 76)
+    print("ALL OPTIONS EXECUTION ATTEMPTS BY OUTCOME (no matching to signals needed)")
+    print("-" * 76)
+    all_rows = attempts_by_reason(ev)
+    for half, title in (("in", "MADE IN regular trading hours"), ("out", "MADE OUTSIDE regular trading hours")):
+        part = [r for r in all_rows if r["hours"] == half]
+        print(f"\n  {title}: {sum(r['count'] for r in part):,}")
+        for r in part[:12]:
+            print(f"    {r['count']:6,}  {r['label']}   (last seen {r['last_seen'].date().isoformat()})")
 
     print("\n" + "-" * 76)
     print("READ THIS")

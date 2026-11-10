@@ -186,6 +186,33 @@ def test_a_copilot_queue_entry_counts_as_queued_and_an_attempt_beats_it():
     assert got["queued"] == 1 and got["attempted"] == 1 and got["neither"] == 0
 
 
+def test_all_attempts_are_counted_by_outcome_and_hours_without_pairing_them_to_signals():
+    events = [
+        ("A", OPEN, "blocked", "frequency_controller: below_min_confidence: 0.61 < 0.70 (aggressive)"),
+        ("B", OPEN + timedelta(minutes=30), "blocked", "frequency_controller: below_min_confidence: 0.64 < 0.70 (aggressive)"),
+        ("A", AFTER_HOURS, "blocked", "market_closed: after_hours"),
+        ("C", AFTER_HOURS, "blocked", "market_closed: after_hours"),
+        ("D", OPEN, "submitted", None),
+    ]
+    rows = r.attempts_by_reason(events)
+    assert _row(rows, "in", "blocked: frequency_controller: below_min_confidence")["count"] == 2   # numbers do not split it
+    assert _row(rows, "in", "submitted")["count"] == 1
+    assert _row(rows, "out", "blocked: market_closed: after_hours")["count"] == 2
+    assert sum(x["count"] for x in rows) == 5
+    assert r.attempts_by_reason([]) == []
+
+
+def test_a_wider_window_pairs_a_later_rescan_attempt_with_the_days_first_recorded_signal():
+    # The signal log keeps the first row of the day; the same setup is re-dispatched every 30 minutes.
+    changes = [(OPEN - timedelta(days=1), "autopilot")]
+    signals = [("AAPL", OPEN)]
+    events = [("AAPL", OPEN + timedelta(hours=3), "blocked", "market_closed: after_hours")]
+    narrow = r.outcomes_by_mode(signals, events, [], changes, window_minutes=30)[0]
+    wide = r.outcomes_by_mode(signals, events, [], changes, window_minutes=24 * 60)[0]
+    assert narrow["attempted"] == 0 and narrow["neither"] == 1
+    assert wide["attempted"] == 1 and wide["neither"] == 0
+
+
 def test_the_script_only_reads():
     src = SCRIPT.read_text()
     for forbidden in ("session.add", ".commit(", "session.delete", "import insert", "import update",
