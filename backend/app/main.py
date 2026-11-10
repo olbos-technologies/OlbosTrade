@@ -1890,10 +1890,10 @@ async def _run_options_scan(symbol: str = "SPY", execute: bool = True) -> Option
         # The whole desk's capital: what the concentration and exposure checks below
         # divide by, because those count every open position, equity included.
         portfolio_value = await get_account_value()
-        _options_step(symbol, "account_value")
         # What this trade is SIZED off: the options pool's share of it when
         # per-asset-class pools are configured, the whole desk otherwise.
         sizing_capital = portfolio_value * settings.capital_pool_share("options")
+        _options_step(symbol, "account_value")
         risk_pct    = trading_mode_manager.config.risk_per_trade_pct
         regime_mult = float(getattr(_current_regime, "options_size_multiplier", 1.0))
         # Volatility-based sizing: scale the regime budget inversely with vol so
