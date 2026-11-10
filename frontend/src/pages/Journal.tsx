@@ -3,6 +3,8 @@ import { pnlColor, gainSign } from "../utils/pnlTone";
 import { adoptedLabel } from "../utils/positionLabels";
 import { api } from "../api/client";
 import { Panel, StatTile, Badge, Button } from "../components/ui";
+import JournalCalendar from "../components/JournalCalendar";
+import type { DayPnl } from "../utils/journalCalendar";
 
 interface Entry {
   id: string;
@@ -51,6 +53,7 @@ interface MonthlyReviewData {
   top_mistakes: string[];
   mistake_frequency: Record<string, number>;
   recommendation: string;
+  daily_pnl?: DayPnl[];
 }
 
 const fmt = (n: number | null | undefined) =>
@@ -209,6 +212,7 @@ export default function Journal() {
   const [month, setMonth]               = useState(currentMonth());
   const [review, setReview]             = useState<MonthlyReviewData | null>(null);
   const [reviewLoading, setReviewLoading] = useState(false);
+  const [reviewError, setReviewError]   = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -247,9 +251,10 @@ export default function Journal() {
   useEffect(() => {
     if (tab !== "review") return;
     setReviewLoading(true);
+    setReviewError(false);
     (api as any).getMonthlyReview(month)
       .then((r: any) => setReview(r.review || null))
-      .catch(() => setReview(null))
+      .catch(() => { setReview(null); setReviewError(true); })
       .finally(() => setReviewLoading(false));
   }, [tab, month]);
 
@@ -465,15 +470,18 @@ export default function Journal() {
 
         {/* ── Monthly Review tab ── */}
         {tab === "review" && (
-          <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 16 }}>
+          <div className="workspace-page-root" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 16 }}>
             <Panel padding={0} title={`Monthly Review — ${month}`}>
               {reviewLoading ? (
                 <EmptyState title="LOADING..." sub="" />
-              ) : !review || review.total_trades === 0 ? (
+              ) : reviewError ? (
+                <EmptyState title="MONTHLY REVIEW UNAVAILABLE" sub="The review could not be loaded. This is not the same as no trades; try again." />
+              ) : !review || (review.total_trades === 0 && !(review.daily_pnl?.length)) ? (
                 <EmptyState title="NO TRADES THIS MONTH" sub="Pick a different month, or check back once trades have closed this month." />
               ) : (
                 <>
-                  <div className="workspace-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)" }}>
+                  <JournalCalendar month={month} days={review.daily_pnl ?? []} onMonthChange={setMonth} />
+                  <div className="workspace-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", borderTop: "1px solid var(--line-dim)" }}>
                     <StatTile variant="divider" size="default" label="Total Trades"     value={String(review.total_trades)} />
                     <StatTile variant="divider" size="default" label="Win Rate"         value={pct(review.win_rate)}                           tone={review.win_rate >= 0.5 ? "var(--green)" : "var(--amber)"} />
                     <StatTile variant="divider" size="default" label="Total P&L"        value={fmt(review.total_pnl)}                          tone={pnlColor(review.total_pnl)} />

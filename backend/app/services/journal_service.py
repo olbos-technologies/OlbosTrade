@@ -4,7 +4,7 @@ Auto-populates trade fields from the trades table on entry creation.
 """
 
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from typing import Optional
 
@@ -95,6 +95,9 @@ class MonthlyReview:
     mistake_frequency: dict[str, int]
     confidence_vs_outcome: list[dict]
     recommendation: str
+    # Realized P&L per calendar day, by the day the trade CLOSED: [{date, pnl, trades}].
+    # Separate from total_pnl above, which groups by entry month.
+    daily_pnl: list[dict] = field(default_factory=list)
 
 
 class JournalAnalytics:
@@ -184,6 +187,24 @@ class JournalAnalytics:
             if e.confidence_level is not None and e.pnl is not None
         ]
 
+    def daily_pnl(self, entries: list[JournalEntryOut], month: str) -> list[dict]:
+        """Realized P&L per day for `month` ("YYYY-MM"), by close date.
+
+        Only closed trades with a known P&L count; a trade with unknown P&L is left
+        out rather than counted as zero, so a day never shows a made-up figure.
+        """
+        days: dict[str, list[float]] = {}
+        for e in entries:
+            if e.exit_date is None or e.pnl is None:
+                continue
+            if e.exit_date.strftime("%Y-%m") != month:
+                continue
+            days.setdefault(e.exit_date.isoformat(), []).append(e.pnl)
+        return [
+            {"date": d, "pnl": round(sum(p), 2), "trades": len(p)}
+            for d, p in sorted(days.items())
+        ]
+
     def generate_monthly_review(
         self, entries: list[JournalEntryOut], month: str
     ) -> MonthlyReview:
@@ -232,4 +253,5 @@ class JournalAnalytics:
             mistake_frequency=mistakes,
             confidence_vs_outcome=self.confidence_vs_outcome(month_entries),
             recommendation=rec,
+            daily_pnl=self.daily_pnl(entries, month),
         )
