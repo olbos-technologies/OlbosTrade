@@ -417,6 +417,7 @@ export default function CandlestickChart({
           Hist {fmtNum(readout.hist, 3)}
         </span>
       </div>
+      <div className="candlestick-chart__stage">
       <div className="candlestick-chart__legend-chrome">
         <button
           type="button"
@@ -451,6 +452,7 @@ export default function CandlestickChart({
         )}
       </div>
       <div ref={containerRef} className="candlestick-chart__canvas" aria-label="Price chart" />
+      </div>
     </div>
   );
 }

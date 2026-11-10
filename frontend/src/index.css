@@ -2079,7 +2079,10 @@ summary span[aria-hidden="true"] { display: inline-block; transition: transform 
   .app-shell .instrument-bar .chart-symbol-picker::-webkit-scrollbar { display: none; }
   .app-shell .instrument-bar .chart-symbol-picker button { min-height: 44px; flex: 0 0 auto; }
   .instrument-bar__unpin { min-width: 44px; min-height: 44px; }
-  .instrument-bar__quote { order: 2; flex: 1 1 0; min-width: 0; }
+  /* Price on the left at its natural width; the symbol box takes the rest. A wider
+     face must push the box, never sit under it. */
+  .instrument-bar__quote { order: 2; flex: 1 1 auto; min-width: 0; }
+  .instrument-bar__price { flex-wrap: wrap; gap: 0 8px; }
   .instrument-bar__fresh--long { display: none; }
   .instrument-bar__fresh--short { display: inline; }
   .instrument-bar__goto { order: 3; }
@@ -2087,7 +2090,8 @@ summary span[aria-hidden="true"] { display: inline-block; transition: transform 
   .instrument-bar__signal { display: none; }
   .instrument-bar__controls { order: 4; flex: 0 0 auto; margin-left: 0; gap: 6px; flex-wrap: nowrap; }
   .instrument-bar__controls .btn-t { min-height: 44px; flex: 0 0 auto; padding-inline: 10px; font-size: 10px; }
-  .instrument-bar__ohlc { order: 4; flex: 1 1 0; min-width: 0; white-space: normal; font-size: 10px; padding-top: 2px; align-self: center; }
+  /* The last bar gets a full-width row of its own, under the timeframes/controls. */
+  .instrument-bar__ohlc { order: 5; flex: 1 1 100%; min-width: 0; white-space: normal; font-size: 10px; padding-top: 4px; }
 }
 
 .dock-table-wrap { min-width: 0; }

@@ -26,10 +26,22 @@
   min-height: 0;
 }
 
+/* The chart area under the readout. The legend button is positioned against this,
+   not the whole chart, so it can never land on the readout however many lines
+   the readout wraps to (a wider face wraps it to three on a phone). */
+.candlestick-chart__stage {
+  position: relative;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  width: 100%;
+}
+
 .candlestick-chart__legend-chrome {
   position: absolute;
   left: 10px;
-  top: 34px;
+  top: 8px;
   /* Above lightweight-charts canvases (DOM siblings after this chrome). */
   z-index: 5;
   display: flex;

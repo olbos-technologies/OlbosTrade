@@ -1,0 +1,3 @@
+## Unreleased — Chart on a phone: price, last bar and legend no longer collide
+
+- After the switch to one monospace face, the phone chart header broke: the price was cut off behind the symbol box, the last bar (open/high/low/close/volume) wrapped to one value per line, and the Legend button sat on top of the indicator readout. The price now keeps its own space, the last bar has a full-width row of its own, and the Legend button is anchored to the chart area under the readout, so it stays clear however many lines the readout wraps to. Frontend-only: needs a frontend rebuild, no backend restart, no migration, no new environment variables.
