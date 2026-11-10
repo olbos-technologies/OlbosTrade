@@ -155,6 +155,37 @@ def test_outcome_rows_list_in_hours_first_and_most_common_first():
     assert r.outcome_rows([], []) == []
 
 
+def test_the_mode_in_force_is_the_last_change_at_or_before_the_moment():
+    d = timedelta(days=1)
+    changes = [(OPEN - 5 * d, "manual"), (OPEN - 2 * d, "autopilot"), (OPEN + d, "copilot")]
+    assert r.mode_at(changes, OPEN - 6 * d) == r.UNKNOWN_MODE          # before any record: unknown, not guessed
+    assert r.mode_at(changes, OPEN - 5 * d) == "manual"                # a change takes effect at its own moment
+    assert r.mode_at(changes, OPEN - d) == "autopilot"
+    assert r.mode_at(changes, OPEN + 2 * d) == "copilot"
+    assert r.mode_at([], OPEN) == r.UNKNOWN_MODE
+    assert r.mode_at(list(reversed(changes)), OPEN - d) == "autopilot"  # input order does not matter
+
+
+def test_signals_are_tallied_by_the_mode_they_were_generated_under():
+    d = timedelta(days=1)
+    changes = [(OPEN - 10 * d, "manual"), (OPEN - 5 * d, "autopilot")]
+    signals = [("A", OPEN - 8 * d), ("B", OPEN - 8 * d),          # manual: nothing recorded
+               ("C", OPEN - 3 * d), ("D", OPEN - 3 * d)]          # autopilot: C attempted, D not
+    events = [("C", OPEN - 3 * d + timedelta(minutes=1), "blocked", "market_closed: pre_market")]
+    by = {x["mode"]: x for x in r.outcomes_by_mode(signals, events, [], changes)}
+    assert by["manual"] == {"mode": "manual", "signals": 2, "attempted": 0, "queued": 0, "neither": 2}
+    assert by["autopilot"]["attempted"] == 1 and by["autopilot"]["neither"] == 1
+
+
+def test_a_copilot_queue_entry_counts_as_queued_and_an_attempt_beats_it():
+    changes = [(OPEN - timedelta(days=1), "copilot")]
+    signals = [("A", OPEN), ("B", OPEN)]
+    approvals = [("A", OPEN + timedelta(minutes=3), "expired"), ("B", OPEN + timedelta(minutes=3), "expired")]
+    events = [("B", OPEN + timedelta(minutes=2), "submitted", None)]
+    got = r.outcomes_by_mode(signals, events, approvals, changes)[0]
+    assert got["queued"] == 1 and got["attempted"] == 1 and got["neither"] == 0
+
+
 def test_the_script_only_reads():
     src = SCRIPT.read_text()
     for forbidden in ("session.add", ".commit(", "session.delete", "import insert", "import update",

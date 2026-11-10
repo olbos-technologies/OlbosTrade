@@ -224,6 +224,50 @@ def outcome_rows(
     return sorted(acc.values(), key=lambda r: (r["hours"] != "in", -r["count"], r["label"]))
 
 
+UNKNOWN_MODE = "unknown (before the first mode record)"
+
+
+def mode_at(changes: Sequence[tuple[datetime, str]], at: datetime) -> str:
+    """The execution mode in force at `at`: the last recorded change at or before it.
+    `changes` are (changed_at, mode). Before the first record the mode is unknown, and says so."""
+    current = UNKNOWN_MODE
+    for when, mode in sorted(changes, key=lambda c: c[0]):
+        if when <= at:
+            current = mode
+        else:
+            break
+    return current
+
+
+def outcomes_by_mode(
+    signals: Sequence[tuple[str, datetime]],
+    events: Sequence[tuple[str, datetime, Optional[str], Optional[str]]],
+    approvals: Sequence[tuple[str, datetime, Optional[str]]],
+    changes: Sequence[tuple[datetime, str]],
+    window_minutes: int = MATCH_MINUTES,
+) -> list[dict]:
+    """Per execution mode: how many signals, and how many led to an execution attempt, a Copilot
+    approval request, or neither. In MANUAL mode a signal is recorded and nothing else happens, so
+    'neither' is the expected result there and not a fault."""
+    window = timedelta(minutes=window_minutes)
+
+    def has(rows, ticker, gen):
+        return any(r[0] == ticker and gen <= r[1] <= gen + window for r in rows)
+
+    acc: dict[str, dict] = {}
+    for ticker, gen in signals:
+        mode = mode_at(changes, gen)
+        slot = acc.setdefault(mode, {"mode": mode, "signals": 0, "attempted": 0, "queued": 0, "neither": 0})
+        slot["signals"] += 1
+        if has(events, ticker, gen):
+            slot["attempted"] += 1
+        elif has(approvals, ticker, gen):
+            slot["queued"] += 1
+        else:
+            slot["neither"] += 1
+    return sorted(acc.values(), key=lambda r: -r["signals"])
+
+
 def _pct(x: Optional[float]) -> str:
     return "   -" if x is None else f"{x:4.0%}"
 
@@ -247,6 +291,10 @@ async def main(days: int) -> None:
                    ExecutionEvent.payload["reason"].as_string())
             .where(ExecutionEvent.kind == "execution", ExecutionEvent.asset_type == "options",
                    ExecutionEvent.created_at >= since)
+        )).all()
+        mode_rows = (await session.execute(
+            select(ExecutionEvent.created_at, ExecutionEvent.status)
+            .where(ExecutionEvent.kind == "mode_change").order_by(ExecutionEvent.created_at)
         )).all()
         ap_rows = (await session.execute(
             select(ExecutionEvent.ticker, ExecutionEvent.created_at, ExecutionEvent.status)
@@ -295,6 +343,26 @@ async def main(days: int) -> None:
         print(f"\n  {title}: {sum(r['count'] for r in part):,}")
         for r in part:
             print(f"    {r['count']:6,}  {r['label']}   (last seen {r['last_seen'].date().isoformat()})")
+
+    changes = [(c, m) for c, m in mode_rows]
+    print("\n" + "-" * 76)
+    print("EXECUTION MODE CHANGES ON RECORD (all time)")
+    print("-" * 76)
+    if not changes:
+        print("  (none recorded)")
+    for c, m in changes[-20:]:
+        print(f"  {c.strftime('%Y-%m-%d %H:%M')} UTC  -> {m}")
+    if len(changes) > 20:
+        print(f"  ... {len(changes) - 20} earlier change(s) not shown")
+
+    by_mode = outcomes_by_mode(top_signals, ev, ap, changes)
+    print("\n" + "-" * 76)
+    print(f"THE {top['band']} SIGNALS BY EXECUTION MODE AT THE TIME")
+    print("-" * 76)
+    print(f"{'mode':<44}{'signals':>8}{'attempted':>11}{'queued':>8}{'neither':>9}")
+    for r in by_mode:
+        print(f"{r['mode']:<44}{r['signals']:>8,}{r['attempted']:>11,}{r['queued']:>8,}{r['neither']:>9,}")
+    print("  (MANUAL records a signal and does nothing else, so 'neither' is expected there.)")
 
     print("\n" + "-" * 76)
     print("READ THIS")
