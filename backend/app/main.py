@@ -1292,9 +1292,15 @@ async def _run_equity_scan() -> None:
 async def _live_spread_quote(
     broker, symbol: str, expiry_iso: str,
     short_strike: float, long_strike: float, opt_type: str,
+    fit_budget: Optional[float] = None,
 ) -> Optional[dict]:
     """
     Price a vertical spread off the LIVE options chain (real NBBO mids).
+
+    `fit_budget` (dollars one trade may risk) turns on size-aware wing width, see
+    app.services.options_wing_fit: when the requested wing would size to zero contracts
+    under that budget, a narrower wing on the same short strike is taken from the SAME
+    chain (no extra broker request). None, the default, leaves the quote exactly as before.
 
     Returns a dict with per-contract ``net_credit`` (dollars), the actual
     available strikes nearest the requested ones, and the short-leg delta — or
@@ -1340,6 +1346,20 @@ async def _live_spread_quote(
     if net_credit_ps <= 0:
         return None  # not a credit at these strikes — let BS / strike selection handle it
 
+    width_fitted = False
+    if fit_budget is not None:
+        from app.services.options_wing_fit import choose_wing, fits_budget
+        default_width = abs(float(short_c.strike) - float(long_c.strike))
+        if not fits_budget(round((default_width - net_credit_ps) * 100, 2), fit_budget):
+            choice = choose_wing(
+                legs, float(short_c.strike), opt_type, fit_budget,
+                default_width=default_width, short_mid=short_mid,
+            )
+            if choice is not None:
+                long_c = choice.long_leg
+                net_credit_ps = choice.net_credit_ps
+                width_fitted = True
+
     short_delta = abs(float(short_c.greeks.delta)) if short_c.greeks and short_c.greeks.delta else None
     short_gamma = float(short_c.greeks.gamma) if short_c.greeks and short_c.greeks.gamma is not None else None
     return {
@@ -1358,6 +1378,8 @@ async def _live_spread_quote(
         "short_open_interest":  int(short_c.open_interest),
         "long_open_interest":   int(long_c.open_interest),
         "short_gamma":          short_gamma,
+        # True when the wing was narrowed to fit the per-trade risk budget.
+        "width_fitted":         width_fitted,
     }
 
 
@@ -1475,6 +1497,33 @@ async def _build_portfolio_risk_state(portfolio_value: float):
         open_position_count=open_count, portfolio_value=portfolio_value,
         positions_by_underlying=by_underlying, positions_by_sector=by_sector,
     )
+
+
+#: Credit-spread strategies whose wing may be narrowed to fit the risk budget. Iron condors
+#: (two wings) and debit spreads (priced as a debit) are deliberately out of scope.
+WING_FIT_STRATEGIES = ("bull_put_spread", "bear_call_spread")
+
+
+async def _options_risk_budget(iv_rank: float, vix_pct: float) -> Optional[float]:
+    """Dollars one options trade may risk right now, or None when it cannot be worked out.
+
+    The same product the sizing step uses further down the scan (options pool capital x the
+    active mode's risk per trade x the regime/volatility size multiplier), computed here so
+    the wing can be chosen BEFORE the AI scorer sees the spread. None means "do not fit", so
+    a failure here leaves the scan behaving exactly as it did."""
+    try:
+        from app.services.account_state import get_account_value
+        from app.services.trading_mode import trading_mode_manager
+        from app.services.volatility_sizing import vol_adjusted_multiplier
+        portfolio_value = await get_account_value()
+        sizing_capital = portfolio_value * settings.capital_pool_share("options")
+        risk_pct = trading_mode_manager.config.risk_per_trade_pct
+        regime_mult = float(getattr(_current_regime, "options_size_multiplier", 1.0))
+        size_mult = vol_adjusted_multiplier(regime_mult, iv_rank, vix_pct)
+        return float(sizing_capital) * risk_pct * size_mult
+    except Exception as exc:
+        logger.warning("Options wing fit: risk budget unavailable, keeping the usual wing: %s", exc)
+        return None
 
 
 async def _run_options_scan(symbol: str = "SPY", execute: bool = True) -> Optional[dict]:
@@ -1774,13 +1823,27 @@ async def _run_options_scan(symbol: str = "SPY", execute: bool = True) -> Option
         # path (below) — the liquidity/gamma gates in _execute_signal() must
         # see None on every other path rather than a fabricated value.
         liquidity_data: Optional[dict] = None
+        width_fitted = False
         broker = get_broker()
         if not is_debit:
+            # Size-aware wing width, paper only and credit spreads only: when the usual
+            # wing would size to zero contracts, take a narrower one from the same chain.
+            fit_budget: Optional[float] = None
+            if strategy_name in WING_FIT_STRATEGIES and settings.is_paper_trading:
+                fit_budget = await _options_risk_budget(iv_rank, vix_pct)
             live = await _live_spread_quote(
                 broker, symbol, target_exp.isoformat(), short_strike, long_strike, opt_type,
+                fit_budget=fit_budget,
             )
             _options_step(symbol, "live_chain_quote")
             if live and live["net_credit"] > 0:
+                if live.get("width_fitted"):
+                    width_fitted = True
+                    logger.info(
+                        "Options scan %s: %s wing narrowed from $%.1f to $%.1f to fit the $%.0f risk budget",
+                        symbol, strategy_name, abs(short_strike - long_strike),
+                        abs(live["short_strike"] - live["long_strike"]), fit_budget or 0.0,
+                    )
                 short_strike = live["short_strike"]
                 long_strike  = live["long_strike"]
                 spread_width = abs(short_strike - long_strike)
@@ -2073,6 +2136,8 @@ async def _run_options_scan(symbol: str = "SPY", execute: bool = True) -> Option
                 "open_interest":     spread_open_interest,
                 "gamma":             spread_gamma,
                 "quote_source":      credit_source,
+                # True when the wing was narrowed to fit the per-trade risk budget.
+                "width_fitted":      width_fitted,
             },
             "sigma":         round(sigma, 4),
             "vix_used":      round(vix_est * 100, 1),
