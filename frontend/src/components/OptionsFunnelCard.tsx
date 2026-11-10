@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client";
-import type { FunnelStage, OptionsFunnel } from "../types/optionsFunnel";
+import type { FunnelSizing, FunnelStage, OptionsFunnel } from "../types/optionsFunnel";
 
 const WINDOWS = [1, 7, 30] as const;
 
@@ -13,9 +13,25 @@ const VERDICT_LABEL: Record<string, string> = {
   waiting_for_approval: "WAITING FOR APPROVAL",
   qualified_but_never_dispatched: "NOT DISPATCHED",
   blocked_at_execution: "BLOCKED AT EXECUTION",
+  market_closed_only: "MARKET CLOSED",
 };
 
 const pretty = (s: string) => s.replace(/_/g, " ");
+const usd = (n: number) => `$${Math.round(n).toLocaleString("en-US")}`;
+
+/** One plain sentence on why candidates size to zero: the budget one trade may risk against what one spread can lose. */
+function sizingSentence(z: FunnelSizing): string {
+  if (z.max_loss_median == null) return `${z.attempts.toLocaleString()} candidate(s) sized to zero contracts; the spread max loss was not recorded.`;
+  if (z.risk_budget == null) {
+    return `${z.attempts.toLocaleString()} candidate(s) sized to zero contracts. A typical spread can lose ${usd(z.max_loss_median)}; ` +
+      "the risk budget per trade is recorded from the next scan onward.";
+  }
+  const ratio = z.max_loss_median / Math.max(z.risk_budget, 1);
+  const tail = z.cheapest_fits_one_contract
+    ? `The cheapest spread seen (${usd(z.max_loss_min ?? 0)}) would fit one contract; the typical one does not.`
+    : `Even the cheapest spread seen (${usd(z.max_loss_min ?? 0)}) costs more than the budget.`;
+  return `One trade may risk about ${usd(z.risk_budget)}; a typical spread can lose ${usd(z.max_loss_median)} (${ratio.toFixed(1)}× the budget). ${tail}`;
+}
 
 function verdictTone(code: string): string {
   if (code === "trading") return "var(--green)";
@@ -25,7 +41,9 @@ function verdictTone(code: string): string {
 
 function StageRow({ stage, max }: { stage: FunnelStage; max: number }) {
   const width = max > 0 ? Math.max(stage.count > 0 ? 2 : 0, (stage.count / max) * 100) : 0;
-  const tone = stage.key === "submitted" ? "var(--green)" : stage.key === "qualified" ? "var(--accent)" : "var(--amber)";
+  // Attempts made while the market was closed are expected, not a problem: neutral, never amber.
+  const tone = stage.key === "submitted" ? "var(--green)" : stage.key === "qualified" ? "var(--accent)"
+    : stage.key === "outside_market_hours" ? "var(--ink-faint)" : "var(--amber)";
   return (
     <div data-testid={`funnel-stage-${stage.key}`} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
       <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
@@ -131,6 +149,12 @@ export default function OptionsFunnelCard() {
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {data.stages.map(s => <StageRow key={s.key} stage={s} max={max} />)}
           </div>
+
+          {data.sizing && (
+            <div data-testid="funnel-sizing" style={{ fontSize: 11, color: "var(--ink-dim)", borderTop: "1px solid var(--line-dim)", paddingTop: 8 }}>
+              <strong style={{ color: "var(--ink)" }}>Sized to zero: </strong>{sizingSentence(data.sizing)}
+            </div>
+          )}
 
           <ul style={{ margin: 0, paddingLeft: 16, fontSize: 10, color: "var(--ink-faint)", display: "flex", flexDirection: "column", gap: 2 }}>
             {data.notes.map(n => <li key={n}>{n}</li>)}

@@ -131,7 +131,8 @@ def bucket_scan_reason(reason: Optional[str]) -> list[str]:
 
 def verdict(*, mode: str, scanned: int, qualified: int, dispatched: int, submitted: int,
             queued_pending: int, queued_approved: int, top_scan: Optional[dict],
-            top_block: Optional[dict]) -> dict[str, str]:
+            top_block: Optional[dict], closed_attempts: int = 0,
+            real_blocked: Optional[int] = None) -> dict[str, str]:
     """One sentence saying where options are dying. `mode` is the CURRENT execution mode."""
     if submitted > 0:
         return {"code": "trading", "text": f"{submitted} options order(s) were submitted in this window."}
@@ -154,9 +155,68 @@ def verdict(*, mode: str, scanned: int, qualified: int, dispatched: int, submitt
         return {"code": "qualified_but_never_dispatched", "text": (
             f"{qualified} candidate(s) qualified but no execution attempt was recorded. Execution mode is {mode.upper()}: "
             "check the backend log for 'Options execution handler failed'.")}
+    # An attempt made while the market was closed is the system working as designed (execution
+    # pauses outside regular hours and the next scan retries), not a refusal. Count it apart so
+    # it cannot be called "the biggest reason" when real refusals are hiding behind it.
+    if real_blocked is None:
+        real_blocked = dispatched - closed_attempts
+    if closed_attempts > 0 and real_blocked <= 0:
+        return {"code": "market_closed_only", "text": (
+            f"{qualified} candidate(s) qualified and all {dispatched} execution attempt(s) were made while the market was "
+            "closed, so none was submitted. Nothing was refused for any other reason; orders resume at the next open.")}
     why = f" Biggest reason: {top_block['reason']} ({top_block['count']})." if top_block else ""
+    closed = (f" A further {closed_attempts} attempt(s) were made while the market was closed (not a refusal)."
+              if closed_attempts else "")
     return {"code": "blocked_at_execution", "text": (
-        f"{qualified} candidate(s) qualified and {dispatched} execution attempt(s) were made, but none was submitted.{why}")}
+        f"{qualified} candidate(s) qualified and {dispatched} execution attempt(s) were made, but none was submitted.{why}{closed}")}
+
+
+# ── Sizing ───────────────────────────────────────────────────────────────────
+
+_MAX_LOSS = re.compile(r"max loss \$([\d,]+(?:\.\d+)?)")
+_BUDGET = re.compile(r"risk budget \$([\d,]+(?:\.\d+)?)")
+
+
+def _median(xs: list[float]) -> float:
+    xs = sorted(xs)
+    mid = len(xs) // 2
+    return xs[mid] if len(xs) % 2 else (xs[mid - 1] + xs[mid]) / 2
+
+
+def summarize_sizing(rows: list[tuple[Optional[str], int]]) -> Optional[dict[str, Any]]:
+    """Why 'sized to 0 contracts': the risk budget one trade is given against what one spread can lose.
+
+    `rows` are (stored reason, occurrences). The reason carries `max loss $X` and, since the
+    budget was added to the message, `risk budget $Y`; rows written before that carry only the
+    max loss, so the budget is reported as unknown rather than guessed. None when no row was
+    sized to zero.
+    """
+    losses: list[float] = []
+    budgets: list[float] = []
+    attempts = 0
+    for reason, occ in rows:
+        if not reason or not reason.lower().startswith("sized to 0 contracts"):
+            continue
+        n = int(occ or 1)
+        attempts += n
+        m = _MAX_LOSS.search(reason)
+        if m:
+            losses.extend([float(m.group(1).replace(",", ""))] * min(n, 50))
+        b = _BUDGET.search(reason)
+        if b:
+            budgets.extend([float(b.group(1).replace(",", ""))] * min(n, 50))
+    if attempts == 0:
+        return None
+    out: dict[str, Any] = {
+        "attempts": attempts,
+        "max_loss_median": round(_median(losses), 2) if losses else None,
+        "max_loss_min": round(min(losses), 2) if losses else None,
+        "risk_budget": round(_median(budgets), 2) if budgets else None,
+    }
+    if out["risk_budget"] is not None and out["max_loss_min"] is not None:
+        # Whether even the cheapest spread seen would fit one contract inside the budget.
+        out["cheapest_fits_one_contract"] = out["risk_budget"] >= out["max_loss_min"]
+    return out
 
 
 # ── Assembly ─────────────────────────────────────────────────────────────────
@@ -182,6 +242,7 @@ async def build_funnel(session: AsyncSession, *, days: int, now: Optional[dateti
     )).all()
     scan_reasons: Counter = Counter()
     rejected = 0
+    sizing = summarize_sizing([(r, int(o or 1)) for r, o in rej_rows])
     for reason, occurrences in rej_rows:
         n = int(occurrences or 1)
         rejected += n
@@ -221,7 +282,12 @@ async def build_funnel(session: AsyncSession, *, days: int, now: Optional[dateti
     dispatched = sum(by_status.values())
     submitted = by_status.get("submitted", 0)
     top_scan = _top(scan_reasons, 1)[0] if scan_reasons else None
-    top_block = _top(block_reasons, 1)[0] if block_reasons else None
+    # Attempts made while the market was closed are reported apart from real refusals.
+    closed_reasons = Counter({k: v for k, v in block_reasons.items() if k.startswith("market_closed")})
+    real_reasons = Counter({k: v for k, v in block_reasons.items() if not k.startswith("market_closed")})
+    closed_attempts = sum(closed_reasons.values())
+    real_blocked = sum(real_reasons.values())
+    top_block = _top(real_reasons, 1)[0] if real_reasons else None
 
     stages = [
         {"key": "scan_rejected", "label": "Rejected at the scan", "count": rejected, "reasons": _top(scan_reasons)},
@@ -230,8 +296,11 @@ async def build_funnel(session: AsyncSession, *, days: int, now: Optional[dateti
     if queue:
         stages.append({"key": "copilot_queue", "label": "Queued for approval (copilot)", "count": sum(queue.values()),
                        "reasons": [{"reason": k, "count": v} for k, v in queue.most_common()]})
+    if closed_attempts:
+        stages.append({"key": "outside_market_hours", "label": "Attempted while the market was closed (not a refusal)",
+                       "count": closed_attempts, "reasons": _top(closed_reasons)})
     stages += [
-        {"key": "execution_blocked", "label": "Blocked at execution", "count": by_status.get("blocked", 0), "reasons": _top(block_reasons)},
+        {"key": "execution_blocked", "label": "Refused at execution", "count": real_blocked, "reasons": _top(real_reasons)},
         {"key": "execution_skipped", "label": "Skipped at execution", "count": by_status.get("skipped", 0), "reasons": _top(skip_reasons)},
         {"key": "execution_error", "label": "Errored at execution", "count": by_status.get("error", 0), "reasons": []},
         {"key": "submitted", "label": "Orders submitted", "count": submitted, "reasons": []},
@@ -248,7 +317,9 @@ async def build_funnel(session: AsyncSession, *, days: int, now: Optional[dateti
         "stages": stages,
         "verdict": verdict(mode=mode, scanned=rejected + qualified, qualified=qualified, dispatched=dispatched,
                            submitted=submitted, queued_pending=queue.get("pending", 0),
-                           queued_approved=queue.get("approved", 0), top_scan=top_scan, top_block=top_block),
+                           queued_approved=queue.get("approved", 0), top_scan=top_scan, top_block=top_block,
+                           closed_attempts=closed_attempts, real_blocked=real_blocked),
+        "sizing": sizing,
         "notes": [
             "Counts are attempts, not distinct trades: the scan re-evaluates every symbol each 30 minutes.",
             "Scan rejections are stored per day, so the window edge is day-granular.",
