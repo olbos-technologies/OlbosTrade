@@ -30,6 +30,10 @@ release gate, not an automatic consequence of technical readiness.
 
 ## Paper-pilot procedure
 
+Use a private copy of `PAPER_PILOT_EVIDENCE_WORKSHEET.md` to record the scoped
+preflight, each lifecycle/fault result, reconciliation, restore and two-person
+decision. The checked-in worksheet is blank; do not commit a filled copy.
+
 1. Record the git commit, migration head, broker account/environment, policy
    version, operator, and date. Confirm **paper** at the broker itself; a UI
    label alone is insufficient. Check the kill-switch state and that no
