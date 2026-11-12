@@ -2,6 +2,7 @@
 
 **Version:** 1.0 draft  
 **Date:** 2026-09-26  
+**Amended:** 2026-11-12 (professional research-workspace contract)
 **Status:** Target architecture and controlled migration plan  
 **Implementation baseline:** `origin/main` at `2b3d55b`  
 **Audience:** Product, engineering, security, operations, compliance, and broker-integration reviewers
@@ -264,6 +265,26 @@ Responsibilities:
 - promotion status: research, paper, limited live, live, suspended, retired.
 
 Research results are evidence, not execution authority.
+
+#### Professional research-workspace contract
+
+The target Pro workspace may combine a chart, watchlist, scanner result, signal,
+scenario, position, and portfolio-risk view. These are projections of existing
+domain services, not new order paths. A selected instrument SHOULD propagate
+between panels with a stable instrument identifier; each panel MUST retain its
+own source, observation time, freshness, account/environment scope, and
+unavailable state. A selection change MUST NOT submit, approve, or alter an
+order. Beginner and Intermediate presentations consume the same authoritative
+data and cannot change execution permissions.
+
+Research features MUST be described at their demonstrated depth. A chart
+indicator is not a validated pattern detector; news and catalysts are not
+comprehensive fundamental analysis; a model artifact is not proof of
+predictive skill. Backtests MUST disclose history source, point-in-time
+assumptions, corporate actions, spread/slippage, commissions, survivorship,
+sample size, and out-of-sample period where applicable. AI assistance remains
+read-only or drafts an intent for the existing approval path; no LLM or agent
+may call a broker adapter or promote its own evidence to execution authority.
 
 ### 6.6 Trade intent and eligibility
 
