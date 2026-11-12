@@ -102,6 +102,8 @@ without creating an approval, trade intent, or order. Follow with options
 scenario and backtest-evidence PRs only after their data contracts are verified.
 AI agents and automated pattern recognition are separate research proposals;
 they are not prerequisites for the Pro shell and cannot bypass R1/R2 gates.
+The inspected component map and first PR contract are in
+`docs/PRO_WORKSPACE_IMPLEMENTATION_MAP.md`.
 
 ### ML-1 — Signal science
 Validate point-in-time features, train/serve parity, data leakage, VIX-term-slope history, walk-forward net expectancy, baselines, costs, calibration and drawdown. Keep ML separate from hard risk controls; only expand automation after demonstrated paper evidence.
