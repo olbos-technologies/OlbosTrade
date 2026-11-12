@@ -74,7 +74,7 @@ export default function DesktopCommandCenter() {
     {(halted||warnings.length>0)&&<div className="dc-warning" role="status">{halted&&<strong>Kill switch engaged. Verify broker exposure. </strong>}{warnings.join(" · ")} <button onClick={()=>nav("risk")}>Review risk →</button></div>}
     <section className="dc-metrics" aria-label="Account overview">
       <Metric label={broker.value?.paper_mode===true?"Paper account value":broker.value?.paper_mode===false?"Live account value":"Broker account value"} value={money(summary.value?.total_equity)} note={checked(summary.at,summary.fresh)}/>
-      <Metric label="Olbos day P&L" value={money(summary.value?.day_pnl,true)} tone={pnlTone(summary.value?.day_pnl)} note="Olbos trade results"/>
+      <Metric label="Olbos day P&L" value={money(summary.value?.day_pnl,true)} tone={pnlTone(summary.value?.day_pnl)} note="Realized today (ET) · closed trades only"/>
       <Metric label="Olbos total P&L" value={money(summary.value?.total_pnl,true)} tone={pnlTone(summary.value?.total_pnl)} note="May differ from broker holdings"/>
       <Metric label="Buying power" value={money(buyingPower.value)} note={checked(buyingPower.at,buyingPower.fresh)}/>
       <div className="dc-metric"><span>Daily loss budget used</span><strong>{used===null?"—":`${used.toFixed(1)}%`}</strong>{used!==null&&<progress aria-label="Daily loss budget used" value={Math.min(used,100)} max={100}/>}<small>{used===null?"Unavailable":`${((loss as number)*100).toFixed(2)}% loss / ${((limit as number)*100).toFixed(2)}% limit`}</small></div>

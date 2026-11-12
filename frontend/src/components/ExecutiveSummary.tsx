@@ -291,7 +291,7 @@ export default function ExecutiveSummary() {
           sub="Desk-wide closed trades · not broker account return" />
         <Kpi label="Desk day P&L" icon="trend"
           value={pnlAvailable ? money(s!.day_pnl) : "—"} color={pnlAvailable ? pnlColor(s!.day_pnl) : undefined}
-          sub="Recorded closed trades today · desk-wide" />
+          sub="Realized P&L of trades closed today (ET) · desk-wide · open P&L not included" />
       </div>
 
       <p style={{fontSize:11,color:"var(--ink-dim)",margin:"0 0 14px",lineHeight:1.5}}>Broker balance, recorded desk-wide P&amp;L, and the performance sample have different scopes. An empty sample is shown as unavailable.</p>

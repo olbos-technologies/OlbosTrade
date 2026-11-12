@@ -4185,7 +4185,11 @@ async def dashboard_summary(conn: HTTPConnection):
     total_pnl = day_pnl = 0.0
     db_ok = True
     try:
-        today = _date.today()
+        # "Today" is the US Eastern market day, not the server's UTC date: on a UTC server the
+        # UTC date rolls over at 19:00 ET, so from 7 PM ET the tile read $0 for a day that had
+        # trades. Realized P&L of trades closed in that day; unrealized is not included.
+        from app.utils.market_hours import market_day_bounds
+        day_start, day_end = market_day_bounds()
         from app.api.scope_deps import scope_or_401
         from app.services.trade_scope import owned_by
         async with AsyncSessionLocal() as s:
@@ -4199,7 +4203,7 @@ async def dashboard_summary(conn: HTTPConnection):
                 select(func.coalesce(func.sum(Trade.pnl), 0)).where(
                     and_(owned_by(org_id),
                          Trade.status == "closed", Trade.pnl.isnot(None),
-                         func.date(Trade.exit_date) == today))
+                         Trade.exit_date >= day_start, Trade.exit_date < day_end))
             )).scalar() or 0)
     except Exception:
         db_ok = False
