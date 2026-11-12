@@ -1,5 +1,5 @@
 # OlbosTrade Master Upgrade Plan v2.0
-**Updated:** 2026-10-25
+**Updated:** 2026-11-12
 **Status:** controlled implementation roadmap, not certification of completion.
 **Applies to:** human contributors, GitHub Copilot, Cursor, Claude Code, Codex, and other coding agents.
 
@@ -12,13 +12,38 @@
 6. `AGENTS.md` defines tool-independent working rules; Claude, Cursor and Copilot entry points must link to it.
 If instructions conflict, do not silently override safety invariants; document the conflict in the PR and request a decision.
 
-## Baseline and state
+## Historical baseline — 2026-10-25
+The bullets in this section preserve the original review context. For current
+status use the evidence snapshot immediately below; do not treat old open-PR
+or proposed-branch statements as today's GitHub state.
 - Frontend React/TypeScript/Vite; backend Python/FastAPI; PostgreSQL and broker adapters. Preserve working interfaces.
 - Onboarding PR #123 merged into `main` at `8dee8245adb0`: experience-level **welcome guidance only**; this is not three application-wide UX modes.
 - Audit PR #124 is separate and may not be merged. Check its current status.
 - At reviewed main `f4bdf746ee04`, database-load failure already refuses entries (`PortfolioStateUnavailable`); the old DB fail-open finding is resolved in code. Broker position-read failure still fell back to database-only counts. The R1 follow-up on `codex/r1-broker-portfolio-fail-closed` removes that fallback; it is a proposal until merged and separately paper-validated.
 - Open PRs #148 and #149 contain entry-history/authorization proposals; #149 is explicitly WIP and deny-all. Do not overwrite those branches or treat them as completed R2 work. PRs #124, #129 and #151 also remain open at this review.
 - Code, migrations, dependency versions, and agent rules may evolve. Validate `main` before work; update this ledger in each related PR.
+
+### Current evidence snapshot — 2026-11-12
+
+This snapshot reviews GitHub `main` at `f03a395`; it supersedes the dated
+*status* in the October 25 ledger below, not that ledger's historical handoffs.
+The latest main CI run passed backend, frontend, and browser jobs
+([run 42884424770](https://github.com/olbos-technologies/OlbosTrade/actions/runs/42884424770)).
+Merged code and CI do not establish what is deployed, connected to a broker,
+or successful in a paper drill. No production deployment was inspected here.
+
+| Track | Implemented on reviewed main | Deployment / operational validation | Next evidence gate |
+| --- | --- | --- | --- |
+| R0/R1 | Fail-closed portfolio work and operational preflight exist | Current production SHA and full fault-drill record unverified in this review | Record broker/account identity, paper lifecycle, disconnect/reconnect, ambiguous submit, authorized exit, and isolated restore |
+| R2 | Reconciliation and authorization components exist | One non-bypassable, account-bound path across every order source not certified | Source-by-source inventory plus paper fill/cancel/restart and broker reconciliation evidence |
+| UX-1/3/5 | Chart, Signals, Positions, mobile refinements and explanations merged through #277 | CI browser coverage exists; actual-device and production verification unverified | Test synchronized Pro workflow at 320/390/768/1440px, stale/empty/error states, iOS/Android accessibility |
+| UX-2/4 | Onboarding preference and research/education surfaces exist | App-wide presentation parity and guided paper journey unverified | Same data and permissions in Beginner/Intermediate/Pro; reversible preference and paper walkthrough |
+| ML-1 | Heuristic/ML plumbing, outcome and score-band reports exist | Predictive skill not established; #279 reported zero closed options trades in its 90-day server check | Cost-inclusive walk-forward baseline and forward paper sample before a predictive claim or promotion |
+| SaaS-1 | Auth, tenant and broker-connection groundwork exists | Customer/live-capital release not certified | Independent route/tenant/security review, data rights, broker approvals, operating-model decision |
+
+Use `docs/PAPER_PILOT_READINESS.md` for the internal paper go/no-go, and §22
+of `MASTER_ARCHITECTURE.md` for later institutional production criteria. Update
+this snapshot with dated evidence, not UI impressions or a green health probe.
 
 ## Non-negotiable product boundaries
 - Manual, Copilot and Autopilot are **execution permissions/workflows**, never presentation modes.
@@ -58,6 +83,28 @@ Contextual glossary, guided onboarding and **paper-only** trade walk-through, wh
 ### UX-5 — Mobile and usability verification
 Real-browser iPhone/Android/tablet/desktop matrix; test authentication, data-state errors, navigation, signal explanations, paper preview, rejection workflows, keyboard and screen-reader access. Record feedback from finance novices and experienced traders. JSDOM-only unit tests do not prove responsive rendering.
 
+### PRO-1 — Benchmark-led research workspace [AFTER R0/R1 evidence]
+
+Benchmark workflows, not competitor branding or claimed investment returns.
+The following are product references, not assertions of feature parity:
+
+| Reference | Olbos surface to reuse | Gap to test | Acceptance evidence |
+| --- | --- | --- | --- |
+| [TradingView charts](https://www.tradingview.com/pricing/) / [TrendSpider research](https://help.trendspider.com/kb/charting/interface-overview) | Chart Workstation, watchlist, Signals | One instrument selection across chart, watchlist, signal and position; source/freshness continuity | Real-browser desktop/tablet/phone tests; no cross-panel stale or fabricated values |
+| [Option Alpha automation](https://optionalpha.com/faqs) | Trade Desk 2.0, Copilot, modes | Explain each eligibility/approval/exit state without parallel order controls | Paper-only intent-to-reconciliation trace and negative authorization tests |
+| [OptionStrat scenarios](https://optionstrat.com/tutorials/options-builder) | Options Desk, Greeks, scenario lab | Contract-verified multi-leg payoff, max loss and fees with unknown quote states | Quote/contract fixtures and scenario parity tests; no probability claims from uncalibrated scores |
+| [QuantConnect research](https://www.quantconnect.com/docs/v2/writing-algorithms/live-trading) | Backtest Center, model registry, replay | Research-to-paper parity, reproducible data and costs | Point-in-time, net-of-cost walk-forward and forward-paper reports with sample sizes |
+| [IBKR Risk Navigator](https://www.interactivebrokers.com/en/trading/risk-navigator.php) | Risk Center, portfolio/position views | Broker-reconciled exposure and what-if drill-down | Account-scoped source and freshness evidence; unknown exposure never displayed as zero |
+
+First delivery is a read-only Pro workspace that reuses the existing chart,
+watchlist, Signals and risk panels. Selecting a symbol updates relevant panels
+without creating an approval, trade intent, or order. Follow with options
+scenario and backtest-evidence PRs only after their data contracts are verified.
+AI agents and automated pattern recognition are separate research proposals;
+they are not prerequisites for the Pro shell and cannot bypass R1/R2 gates.
+The inspected component map and first PR contract are in
+`docs/PRO_WORKSPACE_IMPLEMENTATION_MAP.md`.
+
 ### ML-1 — Signal science
 Validate point-in-time features, train/serve parity, data leakage, VIX-term-slope history, walk-forward net expectancy, baselines, costs, calibration and drawdown. Keep ML separate from hard risk controls; only expand automation after demonstrated paper evidence.
 
@@ -76,7 +123,9 @@ Verify tenancy, RBAC, auth, broker credentials, audit, billing, privacy, data li
 6. In PR body record milestone, user-visible behavior, affected files, tests, risk/permissions impacts, data provenance, release/rollback, and outstanding issues.
 7. After merge, update this plan's milestone status and link the PR. Deployment and production verification are separate from merge.
 
-## Status ledger
+## Historical status ledger — 2026-10-25
+The entries below record the October 25 handoff and are **not** current release
+status. Use the November 12 evidence snapshot above until it is superseded.
 | Track | Status | Evidence / next gate |
 | --- | --- | --- |
 | R0 | Incomplete | Offline paper preflight on main; **operator must deploy `30ef70d` then run the paper drill** in `BROKER_PAPER_VALIDATION_RUNBOOK.md` (see R0 handoff below) |
