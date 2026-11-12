@@ -79,6 +79,7 @@ export default function SignalDetailDrawer({
   open,
   onClose,
   signal,
+  loadState = "ready",
   symbol,
   timeframe,
   latestBar,
@@ -86,6 +87,7 @@ export default function SignalDetailDrawer({
   open: boolean;
   onClose: () => void;
   signal: SignalLike | null;
+  loadState?: "loading" | "ready" | "unavailable";
   symbol: string;
   timeframe: string;
   latestBar: LatestBar | null;
@@ -125,7 +127,11 @@ export default function SignalDetailDrawer({
   const body = (
         <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 14 }}>
           {!signal ? (
-            <div className="empty-state">No signal payload is selected for this symbol yet.</div>
+            <div className="empty-state" role="status">{loadState === "unavailable"
+              ? "Signals are unavailable. The signal feed could not be verified."
+              : loadState === "loading"
+              ? "Loading signal evidence…"
+              : "No signal payload is selected for this symbol yet."}</div>
           ) : (
             <>
               <Panel>
