@@ -9,7 +9,7 @@ only order submission is paused outside RTH and resumes automatically at the ope
 
 from __future__ import annotations
 
-from datetime import datetime, time
+from datetime import datetime, time, timedelta, timezone
 from typing import Optional
 from zoneinfo import ZoneInfo
 
@@ -50,6 +50,20 @@ def now_et(now: datetime | None = None) -> datetime:
     if now is None:
         return datetime.now(_ET)
     return now.astimezone(_ET) if now.tzinfo else now.replace(tzinfo=_ET)
+
+
+def market_day_bounds(now: datetime | None = None) -> tuple[datetime, datetime]:
+    """UTC bounds [start, end) of the US Eastern calendar day containing `now`.
+
+    The market's day is an Eastern day. A server running on UTC rolls its own date over at
+    19:00 ET (20:00 during daylight time), in the evening of a trading day, so a "today" taken
+    from the server's clock shows the wrong day for the last five hours of every Eastern day.
+    Both bounds are Eastern midnights converted to UTC, so a day is 24 hours except on the two
+    daylight-saving changes (25 and 23)."""
+    day = now_et(now).date()
+    start = datetime.combine(day, time.min, tzinfo=_ET)
+    end = datetime.combine(day + timedelta(days=1), time.min, tzinfo=_ET)
+    return start.astimezone(timezone.utc), end.astimezone(timezone.utc)
 
 
 def is_market_open(now: datetime | None = None) -> bool:

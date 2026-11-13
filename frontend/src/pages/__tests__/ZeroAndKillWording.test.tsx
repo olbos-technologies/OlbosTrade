@@ -47,6 +47,16 @@ const metric = (label: string) => {
 };
 
 describe("Command Center day P&L", () => {
+  it("says it is realized P&L on the Eastern market day, so a red open book is not mistaken for it", async () => {
+    stubFetch(0);
+    render(<DesktopCommandCenter />);
+    await screen.findByText("$125,000.00");
+    const note = screen.getByText("Olbos day P&L").parentElement!.querySelector("small") as HTMLElement;
+    expect(note.textContent).toMatch(/realized/i);
+    expect(note.textContent).toMatch(/ET/);
+    expect(note.textContent).toMatch(/closed trades only/i);
+  });
+
   it("a flat day is $0.00 in the neutral colour: no plus sign, not green", async () => {
     stubFetch(0);
     render(<DesktopCommandCenter />);
