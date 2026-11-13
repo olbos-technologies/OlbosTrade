@@ -384,6 +384,12 @@ export const api = {
   // Note what these never carry back: the API key and secret go UP and are
   // never returned. The list shows key_last4, which the server stores in the
   // clear precisely so that a read-only screen never has to decrypt anything.
+  paperComparison: () => request<{ comparison: PaperComparison | null; execution_enabled: false }>("/api/brokers/oauth/paper-comparison"),
+  savePaperComparison: (body: { system_grant_id: string; hybrid_grant_id: string; expected_revision: string | null }) =>
+    request<{ comparison: PaperComparison; execution_enabled: false }>("/api/brokers/oauth/paper-comparison", { method: "PUT", body: JSON.stringify(body) }),
+  observePaperComparison: (revision: string) => request<PaperComparisonObservation>("/api/brokers/oauth/paper-comparison/snapshot", {
+    method: "POST", body: JSON.stringify({expected_revision: revision}),
+  }),
   brokerOAuthProviders: () => request<{ providers: BrokerProvider[]; execution_enabled: false }>("/api/brokers/oauth/providers"),
   brokerOAuthConnections: () => request<{ connections: BrokerOAuthConnection[]; execution_enabled: false }>("/api/brokers/oauth/connections"),
   startBrokerOAuth: (provider: string) => request<{ authorization_url: string }>(
@@ -585,4 +591,14 @@ export interface BrokerPaperSnapshot {
   health: string; last_checked_at: string; status: string;
   balances: SnapshotSection<{currency: string; equity: string; cash: string; buying_power: string}>;
   positions: SnapshotSection<PaperPosition[]>; open_orders: SnapshotSection<PaperOrder[]>;
+}
+
+
+export interface PaperComparison {
+  revision: string; system_grant_id: string; hybrid_grant_id: string; updated_at: string;
+}
+export interface PaperComparisonObservation {
+  comparison: PaperComparison; execution_enabled: false; snapshot_atomic: false;
+  collection_started_at: string; collection_completed_at: string;
+  accounts: Record<"system" | "hybrid", { state: "observed" | "unavailable" | "changed"; snapshot: BrokerPaperSnapshot | null }>;
 }

@@ -281,3 +281,71 @@ async def test_snapshot_route_denies_missing_or_changed_connection(web,monkeypat
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=web),base_url="https://olbos.example") as client:
         response=await client.post(f"/api/brokers/oauth/connections/{USER}/snapshot")
     assert response.status_code==(409 if changed else 404)
+
+
+@pytest.mark.asyncio
+async def test_comparison_routes_are_scoped_read_only_no_store(web, monkeypatch):
+    from app.services import paper_comparison as comparison
+    revision, a, b = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    row = NS(revision=revision, system_grant_id=a, hybrid_grant_id=b, updated_at=datetime.now(timezone.utc))
+    saved = comparison.view(row)
+    get = AsyncMock(return_value=row)
+    save = AsyncMock(return_value=saved)
+    observe = AsyncMock(return_value={"execution_enabled":False,"accounts":{}})
+    monkeypatch.setattr(comparison,"get",get)
+    monkeypatch.setattr(comparison,"save",save)
+    monkeypatch.setattr(comparison,"observe",observe)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=web),base_url="https://olbos.example") as client:
+        r = await client.get("/api/brokers/oauth/paper-comparison")
+        assert r.json() == {"comparison":saved,"execution_enabled":False}
+        assert r.headers["cache-control"] == "no-store"
+        r = await client.put("/api/brokers/oauth/paper-comparison",json={"system_grant_id":str(a),"hybrid_grant_id":str(b),"expected_revision":str(revision)})
+        assert r.status_code == 200 and r.json()["execution_enabled"] is False
+        assert r.headers["cache-control"] == "no-store"
+        assert save.call_args.args[1:] == (ORG,a,b,revision)
+        r = await client.post("/api/brokers/oauth/paper-comparison/snapshot",json={"expected_revision":str(revision)})
+        assert r.status_code == 200 and r.headers["cache-control"] == "no-store"
+        assert observe.call_args.args[1:] == (ORG,revision)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("error,status",[("InvalidPair",400),("ComparisonChanged",409)])
+async def test_comparison_save_rejects_bad_pair_and_stale_writes(web,monkeypatch,error,status):
+    from app.services import paper_comparison as comparison
+    monkeypatch.setattr(comparison,"save",AsyncMock(side_effect=getattr(comparison,error)()))
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=web),base_url="https://olbos.example") as client:
+        r=await client.put("/api/brokers/oauth/paper-comparison",json={"system_grant_id":str(uuid.uuid4()),"hybrid_grant_id":str(uuid.uuid4())})
+        assert r.status_code==status
+
+
+@pytest.mark.asyncio
+async def test_comparison_observe_changed_and_uuid_validation(web,monkeypatch):
+    from app.services import paper_comparison as comparison
+    observe=AsyncMock(side_effect=comparison.ComparisonChanged())
+    monkeypatch.setattr(comparison,"observe",observe)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=web),base_url="https://olbos.example") as client:
+        assert (await client.post("/api/brokers/oauth/paper-comparison/snapshot",json={"expected_revision":str(uuid.uuid4())})).status_code==409
+        assert (await client.post("/api/brokers/oauth/paper-comparison/snapshot",json={"expected_revision":"bad"})).status_code==422
+        assert (await client.put("/api/brokers/oauth/paper-comparison",json={"system_grant_id":"bad","hybrid_grant_id":"bad","execution_enabled":True})).status_code==422
+    assert observe.await_count==1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("access",["disabled","anonymous","tier"])
+async def test_comparison_requires_broker_entitlement_and_auth(web,monkeypatch,access):
+    from app.services import paper_comparison as comparison
+    get=AsyncMock(side_effect=AssertionError("must not read storage"))
+    monkeypatch.setattr(comparison,"get",get)
+    if access=="disabled": monkeypatch.setattr(settings,"auth_enabled",False)
+    else:
+        clean=FastAPI(); clean.include_router(routes.router)
+        clean.dependency_overrides.update(web.dependency_overrides)
+        @clean.middleware("http")
+        async def override(request,call_next):
+            request.state.user=None if access=="anonymous" else {"id":str(USER),"tier":"free","session_id":"session"}
+            return await call_next(request)
+        web=clean
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=web),base_url="https://olbos.example") as client:
+        r=await client.get("/api/brokers/oauth/paper-comparison")
+        assert r.status_code in (401,403,404)
+    get.assert_not_called()

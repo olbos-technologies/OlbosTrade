@@ -1,4 +1,6 @@
 """Authenticated broker-hosted sign-in, currently paper/read-only only."""
+from uuid import UUID
+from pydantic import BaseModel, ConfigDict
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from app.api.auth_deps import current_user
@@ -6,7 +8,7 @@ from app.api.rate_limit import rate_limit
 from app.api.routes.access_requests import require_auth_enabled
 from app.api.tier_deps import require_broker_access
 from app.core.database import get_async_session
-from app.services import broker_oauth_service as svc, credential_cipher
+from app.services import broker_oauth_service as svc, credential_cipher, paper_comparison as comparison
 from app.services.organization_service import personal_org_for
 
 router = APIRouter(prefix="/api/brokers/oauth", tags=["Broker Sign-in"],
@@ -100,4 +102,51 @@ async def account_snapshot(grant_id: str, request: Request, db=Depends(get_async
         raise HTTPException(404, "Connection unavailable. Reconnect this account.") from None
     except health.ConnectionChanged:
         raise HTTPException(409, "Connection changed during retrieval. Refresh and try again.") from None
+    return JSONResponse(result, headers=HEADERS)
+
+
+# These routes share the broker sign-in authentication/tier boundary. They only
+# save a pairing and retrieve data; roles confer no execution authority.
+
+class ComparisonPair(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    system_grant_id: UUID
+    hybrid_grant_id: UUID
+    expected_revision: UUID | None = None
+
+
+class ComparisonRead(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    expected_revision: UUID
+
+
+@router.get("/paper-comparison")
+async def get_comparison(request: Request, db=Depends(get_async_session)):
+    from fastapi.responses import JSONResponse
+    org, _, _ = await identity(request, db)
+    return JSONResponse({"comparison": comparison.view(await comparison.get(db, org)),
+                         "execution_enabled": False}, headers=HEADERS)
+
+
+@router.put("/paper-comparison", dependencies=[Depends(rate_limit)])
+async def save_comparison(body: ComparisonPair, request: Request, db=Depends(get_async_session)):
+    from fastapi.responses import JSONResponse
+    org, _, _ = await identity(request, db)
+    try:
+        saved = await comparison.save(db, org, body.system_grant_id, body.hybrid_grant_id, body.expected_revision)
+    except comparison.InvalidPair:
+        raise HTTPException(400, "Choose two different active Alpaca paper accounts connected to your organization.") from None
+    except comparison.ComparisonChanged:
+        raise HTTPException(409, "Comparison changed. Reload the saved pairing before saving again.") from None
+    return JSONResponse({"comparison": saved, "execution_enabled": False}, headers=HEADERS)
+
+
+@router.post("/paper-comparison/snapshot", dependencies=[Depends(rate_limit)])
+async def observe_comparison(body: ComparisonRead, request: Request, db=Depends(get_async_session)):
+    from fastapi.responses import JSONResponse
+    org, _, _ = await identity(request, db)
+    try:
+        result = await comparison.observe(db, org, body.expected_revision)
+    except comparison.ComparisonChanged:
+        raise HTTPException(409, "Comparison changed. Reload the saved pairing and retrieve new observations.") from None
     return JSONResponse(result, headers=HEADERS)

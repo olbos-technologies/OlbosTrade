@@ -185,6 +185,11 @@ jobs:
           --cov=app.api.routes.broker_oauth
           --cov=app.api.broker_oauth_redaction
           --cov-report=term-missing --cov-fail-under=95
+      - name: Paper comparison — hard 95% gate
+        run: >
+          pytest tests/test_paper_comparison_pg.py
+          --cov=app.services.paper_comparison
+          --cov-report=term-missing --cov-fail-under=95
       - name: Read-only Flex intake — hard 95% gate
         run: >
           python -m pytest tests/test_ibkr_flex_intake.py
@@ -224,6 +229,7 @@ jobs:
           set +e
           pytest --no-header -rs --junitxml=pg-tests.xml \
             tests/test_broker_oauth_pg.py \
+            tests/test_paper_comparison_pg.py \
             tests/test_position_claim_pg.py \
             tests/test_trade_desk_claim_route.py \
             tests/test_claim_reconciliation_pg.py \
