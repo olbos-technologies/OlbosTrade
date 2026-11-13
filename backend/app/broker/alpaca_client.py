@@ -22,7 +22,7 @@ from __future__ import annotations
 import logging
 from datetime import date, datetime, timezone
 from decimal import Decimal
-from typing import List, Literal, Optional
+from typing import List, Literal, Optional, Sequence
 
 import httpx
 
@@ -475,9 +475,15 @@ class AlpacaClient(BrokerInterface):
             timestamp=_parse_ts(q.get("t")) or datetime.now(timezone.utc),
         )
 
-    async def get_options_chain(self, symbol: str, expiry: str) -> OptionsChain:
+    async def get_options_chain(
+        self, symbol: str, expiry: str, *,
+        window: Optional[int] = None,
+        center: Optional[float] = None,
+        option_types: Sequence[str] = ("call", "put"),
+    ) -> OptionsChain:
         """See the module docstring re: options endpoints being unverified
-        against a live Alpaca account."""
+        against a live Alpaca account. `window`/`center`/`option_types` are accepted for
+        interface compatibility and ignored: the full chain is returned."""
         contracts_data = await self._get(
             self._trading_base, "/v2/options/contracts",
             params={"underlying_symbols": symbol.upper(), "expiration_date": expiry, "limit": 500},

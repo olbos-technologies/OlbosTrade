@@ -13,7 +13,7 @@ import math as _math
 import time
 from datetime import date, datetime, timezone
 from decimal import Decimal
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Sequence, Tuple
 
 from ib_insync import IB, Contract, Index, LimitOrder, Option, Stock
 
@@ -65,6 +65,15 @@ def _safe_decimal(value, default: float = 0) -> Decimal:
 # IBKR caps concurrent market-data lines per connection tier — batch chain
 # qualify/ticker requests in conservative chunks rather than one giant call.
 _CHAIN_BATCH_SIZE = 50
+
+
+def _strikes_around(strikes: "list[float]", center: float, window: int) -> "list[float]":
+    """The `window` listed strikes either side of the one nearest `center` (sorted input)."""
+    if not strikes:
+        return []
+    window = max(int(window), 0)
+    mid = min(range(len(strikes)), key=lambda i: abs(strikes[i] - center))
+    return strikes[max(mid - window, 0): mid + window + 1]
 
 
 def _chunked(items: list, size: int) -> "list[list]":
@@ -351,10 +360,23 @@ class IBKRClient(BrokerInterface):
 
     # ── BrokerInterface implementation ──────────────────────────────────────
 
-    async def get_options_chain(self, symbol: str, expiry: str) -> OptionsChain:
+    async def get_options_chain(
+        self, symbol: str, expiry: str, *,
+        window: Optional[int] = None,
+        center: Optional[float] = None,
+        option_types: Sequence[str] = ("call", "put"),
+    ) -> OptionsChain:
         """
         Fetch options chain via IBKR's reqSecDefOptParams + batched reqTickers.
         expiry: 'YYYY-MM-DD'
+
+        WINDOWED FETCH (optional). By default every strike, calls and puts, is
+        qualified and quoted, which is the slow step (20-80 s for a liquid name). A
+        caller that only needs strikes near the money on one side passes `window=N`
+        to keep the N strikes either side of `center` (the nearest listed strike is
+        the middle one; `center` defaults to the underlying's last price) and
+        `option_types=("call",)` or `("put",)` to drop the other side. That is
+        roughly a 10-20x smaller request. With neither, behaviour is unchanged.
 
         Previously fetched one strike at a time (qualify + reqTickers per
         strike, per call/put) — dozens of sequential round-trips per chain,
@@ -383,10 +405,23 @@ class IBKRClient(BrokerInterface):
         if not target_chain:
             raise ValueError(f"No IBKR chain found for {symbol} on {expiry}")
 
+        strikes = sorted(target_chain.strikes)
+        under_ticker = None
+        if window is not None:
+            if center is None:
+                under_ticker = await self.ib.reqTickersAsync(underlying)
+                center = float(_safe_decimal(under_ticker[0].last)) if under_ticker else 0.0
+            if not center or center <= 0:
+                raise ValueError(f"No underlying price for {symbol}; cannot window the chain")
+            strikes = _strikes_around(strikes, center, window)
+        rights = [("C" if t == "call" else "P") for t in option_types if t in ("call", "put")]
+        if not rights:
+            raise ValueError("option_types must include 'call' and/or 'put'")
+
         candidates = [
-            Option(symbol, expiry_ib, strike, option_type, "SMART")
-            for strike in sorted(target_chain.strikes)
-            for option_type in ("C", "P")
+            Option(symbol, expiry_ib, strike, right, "SMART")
+            for strike in strikes
+            for right in rights
         ]
 
         # qualifyContractsAsync silently drops any contract IBKR can't
@@ -429,8 +464,9 @@ class IBKRClient(BrokerInterface):
             )
             (calls if option_type == "call" else puts).append(contract)
 
-        # Underlying price
-        under_ticker = await self.ib.reqTickersAsync(underlying)
+        # Underlying price (already fetched above when the chain was windowed)
+        if under_ticker is None:
+            under_ticker = await self.ib.reqTickersAsync(underlying)
         underlying_price = _safe_decimal(under_ticker[0].last) if under_ticker else Decimal("0")
 
         return OptionsChain(
