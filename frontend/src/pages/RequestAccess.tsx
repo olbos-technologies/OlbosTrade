@@ -16,6 +16,7 @@
  * wait for nothing.
  */
 
+import { getBrand } from "../brand/brands";
 import React, { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
@@ -31,7 +32,7 @@ const MAX_REASON = 2000;                 // matches MAX_REASON_LEN on the server
 const PITCH = (
   <Pitch
     eyebrow="Invite only"
-    title="Request access to Olbos Trade."
+    title={`Request access to ${getBrand().name}.`}
     lede={
       "Accounts are reviewed by a person before they are issued. Tell us how "
       + "you trade, and what you want the system to do for you."

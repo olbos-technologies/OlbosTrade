@@ -1,3 +1,4 @@
+import { getBrand } from "../brand/brands";
 import React, {useEffect, useState} from "react";
 import {pnlColor,gainSign} from "../utils/pnlTone";
 import {killSwitchWord} from "../utils/killSwitchWords";
@@ -74,14 +75,14 @@ export default function DesktopCommandCenter() {
     {(halted||warnings.length>0)&&<div className="dc-warning" role="status">{halted&&<strong>Kill switch engaged. Verify broker exposure. </strong>}{warnings.join(" · ")} <button onClick={()=>nav("risk")}>Review risk →</button></div>}
     <section className="dc-metrics" aria-label="Account overview">
       <Metric label={broker.value?.paper_mode===true?"Paper account value":broker.value?.paper_mode===false?"Live account value":"Broker account value"} value={money(summary.value?.total_equity)} note={checked(summary.at,summary.fresh)}/>
-      <Metric label="Olbos day P&L" value={money(summary.value?.day_pnl,true)} tone={pnlTone(summary.value?.day_pnl)} note="Olbos trade results"/>
-      <Metric label="Olbos total P&L" value={money(summary.value?.total_pnl,true)} tone={pnlTone(summary.value?.total_pnl)} note="May differ from broker holdings"/>
+      <Metric label={`${getBrand().shortName} day P&L`} value={money(summary.value?.day_pnl,true)} tone={pnlTone(summary.value?.day_pnl)} note={`${getBrand().shortName} trade results`}/>
+      <Metric label={`${getBrand().shortName} total P&L`} value={money(summary.value?.total_pnl,true)} tone={pnlTone(summary.value?.total_pnl)} note="May differ from broker holdings"/>
       <Metric label="Buying power" value={money(buyingPower.value)} note={checked(buyingPower.at,buyingPower.fresh)}/>
       <div className="dc-metric"><span>Daily loss budget used</span><strong>{used===null?"—":`${used.toFixed(1)}%`}</strong>{used!==null&&<progress aria-label="Daily loss budget used" value={Math.min(used,100)} max={100}/>}<small>{used===null?"Unavailable":`${((loss as number)*100).toFixed(2)}% loss / ${((limit as number)*100).toFixed(2)}% limit`}</small></div>
     </section>
     <div className="dc-main-grid">
-      <section className="dc-panel dc-chart" aria-label="Olbos closed-trade performance">
-        <header><h2><i>01</i> Olbos closed-trade P&L</h2><div className="dc-ranges" role="group" aria-label="Performance range">{["1W","1M","3M","ALL"].map(r=><button key={r} aria-pressed={range===r} onClick={()=>setRange(r)}>{r}</button>)}</div></header>
+      <section className="dc-panel dc-chart" aria-label={`${getBrand().shortName} closed-trade performance`}>
+        <header><h2><i>01</i> {getBrand().shortName} closed-trade P&L</h2><div className="dc-ranges" role="group" aria-label="Performance range">{["1W","1M","3M","ALL"].map(r=><button key={r} aria-pressed={range===r} onClick={()=>setRange(r)}>{r}</button>)}</div></header>
         <div className="dc-chart-caption"><span>Cumulative realized P&L · up to 500 returned trades</span><strong style={{color:pnlTone(points[points.length-1]?.value)}}>{money(points[points.length-1]?.value,true)}</strong></div>
         <div className="dc-chart-body">{history.value===null?<div className="dc-empty" role="status">{history.loading?"Loading trade history…":"Trade performance unavailable. Refresh to retry."}</div>:points.length===0?<div className="dc-empty">No closed trades in this range.</div>:<ResponsiveContainer width="100%" height="100%"><AreaChart data={points} margin={{top:16,right:24,bottom:8,left:16}}><CartesianGrid stroke="#23374e" strokeDasharray="3 5"/><XAxis dataKey="at" type="number" domain={["dataMin","dataMax"]} tickFormatter={n=>new Date(n).toLocaleDateString(undefined,{month:"short",day:"numeric"})} tick={{fill:"#adbed4",fontSize:11}}/><YAxis tick={{fill:"#adbed4",fontSize:11}} tickFormatter={n=>`$${n}`} width={70}/><Tooltip labelFormatter={n=>new Date(Number(n)).toLocaleString()} formatter={(v:number)=>[money(v,true),"Cumulative realized P&L"]} contentStyle={{background:"#101b29",border:"1px solid #2b4059",color:"#eef3fa"}}/><Area type="linear" dataKey="value" stroke="#39ce9a" fill="#39ce9a" fillOpacity={.1} isAnimationActive={false} dot={points.length===1}/></AreaChart></ResponsiveContainer>}</div>
         <p className="dc-footnote">Trade history reconstruction, not broker account equity or intraday marks. Range buttons show recent dates within the returned history; cumulative values retain their history baseline.</p>

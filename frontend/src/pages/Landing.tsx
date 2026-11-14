@@ -12,6 +12,8 @@
  * not match the codebase and are intentionally not repeated here. See the
  * implementation report for the full claim-verification table.
  */
+import LanguageToggle from "../components/LanguageToggle";
+import { getBrand } from "../brand/brands";
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import "../landing.css";
@@ -167,6 +169,7 @@ export default function Landing() {
             <NavLink href="#pricing">Pricing</NavLink>
           </nav>
           <div className="landing-nav-actions">
+            <LanguageToggle />
             <Link className="landing-signin" to="/terminal">Sign In</Link>
             {/* One label now. This carried two — "Start Paper Trading" and a
                 compact "Start Free" swapped by CSS — because the full label
@@ -215,7 +218,7 @@ export default function Landing() {
                 none exists yet. Same rule the numbers follow: say what exists,
                 label what does not. */}
             <p className="landing-lede">
-              Olbos Trading System runs a rules-based options and equity workflow — regime
+              {getBrand().systemName} runs a rules-based options and equity workflow — regime
               detection, a trained signal model, and a fail-closed risk gate — in front of every
               trade decision. Nothing executes without passing guardrails, and every signal shows
               where it came from. Crypto is signals-only — scanned and tracked for forward
@@ -284,7 +287,7 @@ export default function Landing() {
               <Cell title="Divergence disclosure" body="On the equity scan panel, when the scan engine and the background scanner disagree for the same symbol, the terminal shows the disagreement explicitly instead of resolving it visually." />
               <Cell title="Manual oversight" body="Autopilot can be turned off at any time; Manual and Copilot modes keep a human in the approval loop." />
               <Cell title="Explainability" body="The signal model's training pipeline runs a SHAP-based economic-direction check at train time and on live signals, to catch backwards feature logic." />
-              <Cell title="No validated track record yet" body="Olbos Trading System has not completed a validated paper-trading evaluation period. We say so plainly instead of implying otherwise." />
+              <Cell title="No validated track record yet" body={`${getBrand().systemName} has not completed a validated paper-trading evaluation period. We say so plainly instead of implying otherwise.`} />
             </div>
           </div>
         </section>
@@ -430,7 +433,7 @@ export default function Landing() {
           </div>
           <p className="landing-disclosure">
             Options and equity trading involves substantial risk of loss and is not suitable for
-            all investors. Olbos Trading System is currently in paper-trading evaluation with no
+            all investors. {getBrand().systemName} is currently in paper-trading evaluation with no
             verified live performance history. Nothing on this page is investment advice, and past
             or simulated results, once published, will not guarantee future returns.
           </p>
