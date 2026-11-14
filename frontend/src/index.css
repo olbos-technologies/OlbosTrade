@@ -7,13 +7,16 @@
   --bg-2:      #0e1624;
   --bg-3:      #131c2e;
   --bg-4:      #1a2538;
-  --line:      rgba(212, 175, 55, 0.18);
+  --line:      rgba(var(--brand-rgb), 0.18);
   --line-dim:  rgba(255,255,255,0.09);
   --ink:       #e8edf4;
   --ink-dim:   #9aa8bc;
   --ink-faint: #6b7a90;
   /* Brand gold — LOGO & brand chrome ONLY. Never P&L, prices, or metrics. */
   --brand:     #D4AF37;
+  /* The same colour as RGB components, so tints of the brand colour (borders,
+     washes) follow the brand instead of being hard-coded gold. */
+  --brand-rgb: 212, 175, 55;
   /* Interactive accent (blue) — links, focus rings, non-active affordances. */
   --accent:    #3b82f6;
   /* Solid slate fill for ACTIVE tabs/buttons (not a thin border). */
@@ -50,7 +53,7 @@
                   0 4px 10px rgba(0,0,0,0.5),
                   inset 0 1px 0 rgba(255,255,255,0.10),
                   inset 0 -1px 0 rgba(0,0,0,0.4);
-  --chassis-edge: 1px solid rgba(212, 175, 55, 0.22);
+  --chassis-edge: 1px solid rgba(var(--brand-rgb), 0.22);
   --rack-groove:  linear-gradient(180deg, #0a101c 0%, #121a2a 48%, #0a101c 100%);
   /* Corner radii — one scale so every raised surface reads as one family. */
   --radius-card:    12px;
@@ -78,7 +81,7 @@
 html { font-size: 14px; }
 body {
   background:
-    radial-gradient(1200px 600px at 50% -10%, rgba(212,175,55,0.04), transparent 55%),
+    radial-gradient(1200px 600px at 50% -10%, rgba(var(--brand-rgb), 0.04), transparent 55%),
     var(--bg);
   color: var(--ink);
   font-family: var(--sans);
@@ -163,7 +166,7 @@ body {
 .panel {
   background: linear-gradient(180deg, #121b2c 0%, var(--bg-2) 40%, #0c1420 100%);
   border: 1px solid var(--line-dim);
-  border-top-color: rgba(212, 175, 55, 0.16);
+  border-top-color: rgba(var(--brand-rgb), 0.16);
   box-shadow: var(--raised-bezel);
   position: relative;
   border-radius: var(--radius-card);
@@ -327,7 +330,7 @@ body {
 .btn-t:hover { border-color: var(--brand); color: var(--ink); }
 .btn-t:active { box-shadow: var(--inset-well); transform: translateY(1px); }
 .btn-t.active {
-  border-color: rgba(212,175,55,0.35);
+  border-color: rgba(var(--brand-rgb), 0.35);
   background: linear-gradient(180deg, #2a3548 0%, var(--fill-active) 100%);
   color: var(--ink);
 }
@@ -537,7 +540,7 @@ summary span[aria-hidden="true"] { display: inline-block; transition: transform 
 .exec-card {
   background: linear-gradient(180deg, #121b2c 0%, var(--bg-2) 40%, #0c1420 100%);
   border: 1px solid var(--line-dim);
-  border-top-color: rgba(212, 175, 55, 0.16);
+  border-top-color: rgba(var(--brand-rgb), 0.16);
   border-radius: var(--radius-card);
   box-shadow: var(--raised-bezel);
   position: relative;
@@ -565,7 +568,7 @@ summary span[aria-hidden="true"] { display: inline-block; transition: transform 
 .instrument-card {
   background: linear-gradient(180deg, #121b2c 0%, var(--bg-2) 40%, #0c1420 100%);
   border: 1px solid var(--line-dim);
-  border-top-color: rgba(212, 175, 55, 0.16);
+  border-top-color: rgba(var(--brand-rgb), 0.16);
   border-radius: var(--radius-card);
   box-shadow: var(--raised-bezel);
   position: relative;
@@ -582,7 +585,7 @@ summary span[aria-hidden="true"] { display: inline-block; transition: transform 
 .surface-card {
   background: linear-gradient(180deg, #121b2c 0%, var(--bg-2) 40%, #0c1420 100%);
   border: 1px solid var(--line-dim);
-  border-top-color: rgba(212, 175, 55, 0.16);
+  border-top-color: rgba(var(--brand-rgb), 0.16);
   border-radius: var(--radius-card);
   box-shadow: var(--raised-bezel);
   position: relative;
@@ -592,7 +595,7 @@ summary span[aria-hidden="true"] { display: inline-block; transition: transform 
 .instrument-stat-strip {
   display: grid;
   border: 1px solid var(--line-dim);
-  border-top-color: rgba(212, 175, 55, 0.16);
+  border-top-color: rgba(var(--brand-rgb), 0.16);
   border-radius: var(--radius-card);
   box-shadow: var(--raised-bezel);
   background: linear-gradient(180deg, #121b2c 0%, var(--bg-2) 40%, #0c1420 100%);
@@ -663,7 +666,7 @@ summary span[aria-hidden="true"] { display: inline-block; transition: transform 
 .instrument-rail {
   background: linear-gradient(180deg, #101826 0%, #0c1320 100%);
   border: 1px solid var(--line-dim);
-  border-top-color: rgba(212,175,55,0.12);
+  border-top-color: rgba(var(--brand-rgb), 0.12);
   box-shadow: var(--raised-bezel);
   border-radius: var(--radius-card);
   overflow: hidden;
@@ -712,10 +715,10 @@ summary span[aria-hidden="true"] { display: inline-block; transition: transform 
   box-shadow: var(--raised-bezel);
   transition: border-color var(--motion-fast), box-shadow var(--motion-fast);
 }
-.instrument-mode-card:hover { border-color: rgba(212,175,55,0.35); }
+.instrument-mode-card:hover { border-color: rgba(var(--brand-rgb), 0.35); }
 .instrument-mode-card.is-active {
-  border-color: rgba(212,175,55,0.45);
-  box-shadow: var(--raised-bezel), inset 0 0 0 1px rgba(212,175,55,0.12);
+  border-color: rgba(var(--brand-rgb), 0.45);
+  box-shadow: var(--raised-bezel), inset 0 0 0 1px rgba(var(--brand-rgb), 0.12);
 }
 .instrument-halt {
   appearance: none;
@@ -1173,7 +1176,7 @@ summary span[aria-hidden="true"] { display: inline-block; transition: transform 
   flex-shrink: 0;
   background: linear-gradient(180deg, #121b2c 0%, var(--bg-2) 100%);
   border-bottom: 1px solid var(--line-dim);
-  border-top-color: rgba(212, 175, 55, 0.14);
+  border-top-color: rgba(var(--brand-rgb), 0.14);
   box-shadow: inset 0 1px 0 var(--bevel-hi);
 }
 .discovery-rail-tabs__btn {
@@ -1243,7 +1246,7 @@ summary span[aria-hidden="true"] { display: inline-block; transition: transform 
 .desk-tab--active {
   color: var(--brand);
   border-bottom-color: var(--brand);
-  background: linear-gradient(180deg, rgba(212,175,55,0.08) 0%, transparent 100%);
+  background: linear-gradient(180deg, rgba(var(--brand-rgb), 0.08) 0%, transparent 100%);
 }
 .desk-tab__badge {
   font-size: 9px;
@@ -1986,7 +1989,7 @@ summary span[aria-hidden="true"] { display: inline-block; transition: transform 
   border-bottom: 2px solid transparent;
   border-radius: 0;
 }
-.btn-t.btn-t--selector:hover { background: rgba(255,255,255,0.03); color: var(--ink); border-bottom-color: rgba(212,175,55,0.45); }
+.btn-t.btn-t--selector:hover { background: rgba(255,255,255,0.03); color: var(--ink); border-bottom-color: rgba(var(--brand-rgb), 0.45); }
 .btn-t.btn-t--selector:active { box-shadow: none; transform: none; }
 .btn-t.btn-t--selector.active {
   background: transparent;
@@ -2056,7 +2059,7 @@ summary span[aria-hidden="true"] { display: inline-block; transition: transform 
   border: 1px solid var(--line-dim);
   border-radius: 3px;
 }
-.btn-t.btn-t--flat:hover { background: rgba(255,255,255,.03); border-color: rgba(212,175,55,.5); color: var(--ink); }
+.btn-t.btn-t--flat:hover { background: rgba(255,255,255,.03); border-color: rgba(var(--brand-rgb), .5); color: var(--ink); }
 .btn-t.btn-t--flat:active { box-shadow: none; transform: none; }
 .btn-t.btn-t--flat[aria-pressed="true"] { border-color: var(--brand); color: var(--brand); background: transparent; }
 
@@ -2064,7 +2067,7 @@ summary span[aria-hidden="true"] { display: inline-block; transition: transform 
   width: 110px; background: var(--bg-3); border: 1px solid var(--line-dim); color: var(--ink);
   font: 11px var(--mono); padding: 5px 8px; text-transform: uppercase;
 }
-.instrument-bar__goto input:focus { outline: none; border-color: rgba(212,175,55,.6); }
+.instrument-bar__goto input:focus { outline: none; border-color: rgba(var(--brand-rgb), .6); }
 .instrument-bar__goto input[aria-invalid="true"] { border-color: var(--red); }
 .instrument-bar__unpin { background: none; border: 0; color: var(--ink-faint); cursor: pointer; padding: 0 6px; font-size: 14px; }
 .instrument-bar__unpin:hover { color: var(--red); }
@@ -2103,7 +2106,7 @@ summary span[aria-hidden="true"] { display: inline-block; transition: transform 
 .dock-table th { font: 500 10px var(--mono); text-transform: uppercase; letter-spacing: .05em; color: var(--ink-faint); }
 .dock-table th:first-child, .dock-table td:first-child { text-align: left; }
 .dock-table td.dock-why { text-align: left; white-space: normal; color: var(--ink-dim); }
-.dock-row--current td { background: rgba(212,175,55,.07); }
+.dock-row--current td { background: rgba(var(--brand-rgb), .07); }
 .dock-row--current td:first-child { box-shadow: inset 2px 0 var(--brand); }
 .dock-link {
   background: none; border: none; padding: 0; cursor: pointer; color: var(--ink);

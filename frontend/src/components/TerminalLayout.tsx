@@ -10,6 +10,8 @@
  * The full official wordmark remains visible in either state.
  */
 
+import { useT } from "../i18n/i18n";
+import { getBrand } from "../brand/brands";
 import React, { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useIsMobile } from "../hooks/useIsMobile";
@@ -1012,6 +1014,7 @@ function Sidebar({ active, onNav, expanded, isMobile = false }: {
   expanded: boolean;
   isMobile?: boolean;
 }) {
+  const tr = useT();
   const [hovered, setHovered] = useState<string | null>(null);
   /** Collapsed icon-rail tip — portaled so overflow:hidden on the rail cannot clip it. */
   const [iconTip, setIconTip] = useState<{ label: string; top: number; left: number } | null>(null);
@@ -1092,13 +1095,13 @@ function Sidebar({ active, onNav, expanded, isMobile = false }: {
           style={{ position: "relative", width: "100%" }}
           onMouseEnter={(e) => {
             setHovered(g.id);
-            if (!showLabels) showIconTip(g.label, e.currentTarget);
+            if (!showLabels) showIconTip(tr(g.label), e.currentTarget);
           }}
           onMouseLeave={() => { setHovered(null); clearIconTip(); }}
         >
           <button
             onClick={onHeaderClick}
-            aria-label={g.label}
+            aria-label={tr(g.label)}
             aria-current={isActive ? "page" : undefined}
             style={{
               width: "100%", height: 38, display: "flex", alignItems: "center",
@@ -1117,7 +1120,7 @@ function Sidebar({ active, onNav, expanded, isMobile = false }: {
                 flex: 1, textAlign: "left", fontFamily: "var(--mono)", fontSize: 11,
                 letterSpacing: "0.04em", textTransform: "uppercase",
               }}>
-                {g.label}
+                {tr(g.label)}
               </span>
             )}
             {showLabels && !isLeaf && (
@@ -1141,7 +1144,7 @@ function Sidebar({ active, onNav, expanded, isMobile = false }: {
                   onClick={() => onNav(c.key)}
                   onMouseEnter={() => setHovered(c.key)}
                   onMouseLeave={() => setHovered(null)}
-                  aria-label={c.label}
+                  aria-label={tr(c.label)}
                   aria-current={subActive ? "page" : undefined}
                   style={{
                     width: "100%", height: 32, display: "flex", alignItems: "center",
@@ -1155,7 +1158,7 @@ function Sidebar({ active, onNav, expanded, isMobile = false }: {
                   }}
                 >
                   <span style={{ fontFamily: "var(--mono)", fontSize: 10.5, letterSpacing: "0.04em" }}>
-                    {c.label}
+                    {tr(c.label)}
                   </span>
                 </button>
               );
@@ -1499,7 +1502,7 @@ function StatusBar({ page, isMobile }: { page: string; isMobile: boolean }) {
       {/* The account chip and Sign out live in the top bar (see "desktop-account"),
           not here: the top-right corner is where an operator looks for them. */}
       <span style={{ color: "var(--brand)", fontWeight: 700 }}>
-        Olbos Beta{import.meta.env.VITE_GIT_SHA ? ` ${String(import.meta.env.VITE_GIT_SHA).slice(0, 7)}` : " · build unknown"}
+        {getBrand().shortName} Beta{import.meta.env.VITE_GIT_SHA ? ` ${String(import.meta.env.VITE_GIT_SHA).slice(0, 7)}` : " · build unknown"}
       </span>
     </div>
   );

@@ -4,6 +4,7 @@
  * Options cards: OptionsSignals (spread premium, Greeks, contracts, DTE).
  */
 
+import { getBrand } from "../brand/brands";
 import React, { useEffect, useState } from "react";
 import SignalDetailDrawer from "../components/SignalDetailDrawer";
 import BrokerStatus from "../components/BrokerStatus";
@@ -435,7 +436,7 @@ function buildShareText(top: Signal[], label: string): string {
     month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
   });
   return [
-    `📊 Top ${label} Signals — OlbosTrade (${when})`,
+    `📊 Top ${label} Signals — ${getBrand().compactName} (${when})`,
     "",
     ...lines,
     "",

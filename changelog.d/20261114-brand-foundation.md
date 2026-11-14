@@ -1,0 +1,6 @@
+## Unreleased — Brand foundation: Cimphawng Trade as a brand on this platform
+
+- The platform can now present as more than one brand. **Cimphawng Trade** (Zomi community focus) is the first addition; Olbos Trade is unchanged and remains the default. The brand is chosen from the hostname before the page renders, so there is no flash of the wrong name, and `?brand=cimphawng` previews it on localhost or staging. A hostname a brand owns cannot be overridden.
+- Cimphawng has its own logo lockup, a blue institutional colour skin and Inter typography, and a language switch (English / Zomi). The Zomi dictionary holds only three reviewed terms so far; everything else shows English. Wording around orders, risk, the kill switch, execution modes and paper/live stays English until a Zomi speaker approves the exact sentences, enforced by a guard test.
+- Presentation only. The backend never reads the brand; execution mode, risk limits, broker permissions and account isolation are untouched. Olbos renders pixel-identically to before across 12 checked screens.
+- Not live on its own domain yet: that needs DNS, Caddy/nginx and Alpaca redirect settings (see `docs/BRAND_PLATFORM.md`). Also adds `docs/ZOMI_GLOSSARY.md`.

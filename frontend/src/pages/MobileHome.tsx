@@ -1,3 +1,4 @@
+import { getBrand } from "../brand/brands";
 import React, { useCallback, useEffect, useState } from "react";
 import { gainSign, pnlColor, PNL_NEGATIVE, PNL_POSITIVE } from "../utils/pnlTone";
 import { adoptedLabel } from "../utils/positionLabels";
@@ -178,8 +179,8 @@ export default function MobileHome() {
         {!summary.value && !summary.loading && <p className="mh-warning">Account data unavailable. Refresh to retry.</p>}
         {summary.value?.total_equity == null && summary.value && <p className="mh-warning">Broker account value unavailable.</p>}
         <div className="mh-pnl-grid">
-          <div><span className="mh-muted">Olbos day P&amp;L</span><strong className={pnlClass(summary.value?.day_pnl)}>{money(summary.value?.day_pnl, true)}</strong></div>
-          <div><span className="mh-muted">Olbos total P&amp;L</span><strong>{money(summary.value?.total_pnl, true)}</strong></div>
+          <div><span className="mh-muted">{getBrand().shortName} day P&amp;L</span><strong className={pnlClass(summary.value?.day_pnl)}>{money(summary.value?.day_pnl, true)}</strong></div>
+          <div><span className="mh-muted">{getBrand().shortName} total P&amp;L</span><strong>{money(summary.value?.total_pnl, true)}</strong></div>
         </div>
         <p className="mh-muted">Trade P&amp;L and broker balance may cover different holdings.</p>
       </section>

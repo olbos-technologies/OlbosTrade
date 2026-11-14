@@ -14,6 +14,7 @@
  * active state and page resolution stay in one place.
  */
 
+import { useT } from "../i18n/i18n";
 import React from "react";
 
 export type BottomNavItem = {
@@ -75,6 +76,7 @@ export default function MobileBottomNav({
   onOpenMore: () => void;
   moreOpen?: boolean;
 }) {
+  const tr = useT();
   const isActive = (item: BottomNavItem) =>
     active === item.key || (item.matches?.includes(active) ?? false);
 
@@ -88,24 +90,24 @@ export default function MobileBottomNav({
             type="button"
             className={`mobile-bottom-nav__tab${on ? " is-active" : ""}`}
             aria-current={on ? "page" : undefined}
-            aria-label={item.label}
+            aria-label={tr(item.label)}
             onClick={() => onNav(item.key)}
           >
             {item.icon}
-            <span className="mobile-bottom-nav__label">{item.label}</span>
+            <span className="mobile-bottom-nav__label">{tr(item.label)}</span>
           </button>
         );
       })}
       <button
         type="button"
         className={`mobile-bottom-nav__tab${moreOpen || !BOTTOM_NAV_ITEMS.some(isActive) ? " is-active" : ""}`}
-        aria-label="More"
+        aria-label={tr("More")}
         aria-current={!BOTTOM_NAV_ITEMS.some(isActive) ? "page" : undefined}
         aria-expanded={moreOpen}
         onClick={onOpenMore}
       >
         <Icon><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></Icon>
-        <span className="mobile-bottom-nav__label">More</span>
+        <span className="mobile-bottom-nav__label">{tr("More")}</span>
       </button>
     </nav>
   );

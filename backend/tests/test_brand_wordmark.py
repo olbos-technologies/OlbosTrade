@@ -14,9 +14,11 @@ from pathlib import Path
 
 FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
 COMPONENT = FRONTEND / "src" / "components" / "BrandWordmark.tsx"
+REGISTRY = FRONTEND / "src" / "brand" / "brands.ts"
 PUBLIC = FRONTEND / "public"
 LOCKUP = PUBLIC / "olbos-trade-lockup.webp"
 MARK = PUBLIC / "olbos-mark.webp"
+CIMPHAWNG = PUBLIC / "brands" / "cimphawng"
 SURFACES = [
     FRONTEND / "src" / "components" / "TerminalLayout.tsx",
     FRONTEND / "src" / "pages" / "Landing.tsx",
@@ -25,18 +27,38 @@ SURFACES = [
 
 
 def test_brand_assets_are_optimized_webp_files():
-    for path in (LOCKUP, MARK):
+    # Every brand's chrome artwork meets the same weight limit.
+    for path in (LOCKUP, MARK, CIMPHAWNG / "lockup.webp", CIMPHAWNG / "mark.webp"):
         data = path.read_bytes()
         assert data[:4] == b"RIFF" and data[8:12] == b"WEBP"
         assert len(data) < 100_000, f"{path.name} is too heavy for application chrome"
 
 
 def test_component_reserves_the_lockup_aspect_ratio():
-    src = COMPONENT.read_text()
-    assert 'src="/olbos-trade-lockup.webp"' in src
-    assert "const LOCKUP_W = 1086" in src
-    assert "const LOCKUP_H = 280" in src
-    assert 'alt="Olbos Trade"' in src
+    """The lockup's path, proportions and alt text live in the brand registry.
+
+    BrandWordmark reads them from there, so the header, landing page and sign-in
+    shell cannot assemble different logos. The Olbos values are pinned here so a
+    change to them is deliberate.
+    """
+    registry = REGISTRY.read_text()
+    assert registry.strip(), "brands.ts did not load - this scan is reading nothing"
+    assert 'src: "/olbos-trade-lockup.webp"' in registry
+    assert "aspect: 1086 / 280" in registry
+    assert 'alt: "Olbos Trade"' in registry
+    component = COMPONENT.read_text()
+    assert "wordmark.aspect" in component, "width must be reserved from the brand's aspect ratio"
+    assert "wordmark.src" in component and "wordmark.alt" in component
+    # No brand's artwork path is hard-coded in the component any more.
+    assert "olbos-trade-lockup" not in component
+
+
+def test_every_brand_lockup_asset_exists():
+    registry = REGISTRY.read_text()
+    srcs = re.findall(r'wordmark: \{ src: "([^"]+)"', registry)
+    assert len(srcs) >= 2, "expected a wordmark for each brand"
+    for src in srcs:
+        assert (PUBLIC / src.lstrip("/")).is_file(), f"missing brand lockup {src}"
 
 
 def test_every_brand_surface_uses_the_shared_component():
