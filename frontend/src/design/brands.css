@@ -18,6 +18,15 @@
 
 /* ---------------------------------------------------------------- Part 1 */
 
+/* The landing page carries the language switch twice: beside the sign-in
+   actions on a wide screen, and inside the menu on a phone (600px and under,
+   where the nav row has no room for it). Only one is ever displayed. */
+.landing-nav .landing-lang-menu { display: none; }
+@media (max-width: 600px) {
+  .landing-nav .landing-lang-nav { display: none; }
+  .landing-nav .landing-nav-links.open .landing-lang-menu { display: inline-flex; align-self: flex-start; margin-top: 8px; }
+}
+
 /* Language switch: a small segmented control. */
 .lang-toggle {
   display: inline-flex;
@@ -54,7 +63,7 @@
 }
 
 /* ---------------------------------------------------------------- Part 2 */
-/* Cimphawng Trade: institutional navy. */
+/* Cimphawng Trading: institutional navy. */
 
 html[data-brand="cimphawng"],
 html[data-brand="cimphawng"] .app-shell,
@@ -252,3 +261,25 @@ html[data-brand="cimphawng"] .app-shell .signal-filter-panel > summary {
    auth.css remaps --accent to gold on these pages. For this brand the accent
    here is the action colour, like everywhere else. */
 html[data-brand="cimphawng"] .auth-page { --accent: var(--design-action); }
+
+/* Landing nav on a tablet (601-900px). Cimphawng's row (wider logo, a Community
+   link and the language switch) stops fitting at 880px, where Olbos's fits down
+   to ~710px, so it uses the same dropdown menu the phone layout uses. Sign In and
+   the language switch stay beside the menu button: there is room for them. */
+@media (min-width: 601px) and (max-width: 900px) {
+  html[data-brand="cimphawng"] .landing-nav-links {
+    display: none;
+    flex-direction: column;
+    gap: 4px;
+    position: absolute;
+    top: 64px;
+    left: 0;
+    right: 0;
+    background: var(--bg-2);
+    border-bottom: 1px solid var(--line-dim);
+    padding: 14px 24px 18px;
+  }
+  html[data-brand="cimphawng"] .landing-nav-links.open { display: flex; }
+  html[data-brand="cimphawng"] .landing-nav-links a { padding: 8px 0; }
+  html[data-brand="cimphawng"] .landing-nav-toggle { display: flex; width: 44px; height: 44px; }
+}

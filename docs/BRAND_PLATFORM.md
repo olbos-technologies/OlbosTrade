@@ -2,7 +2,7 @@
 
 **Status:** foundation slice (BRAND-1). Presentation, language and UI only.
 
-Olbos Trade (worldwide) and Cimphawng Trade (Zomi community focus) are the same
+Olbos Trade (worldwide) and Cimphawng Trading (Zomi community focus) are the same
 platform: the same backend, quantitative research, signals, algo trading and
 automated-execution machinery, the same broker adapters (Alpaca for equities,
 options and crypto), the same risk gates and the same tenant isolation. A
@@ -57,6 +57,25 @@ Zomi (Chin Tedim) is tagged `ctd` in `<html lang>`. The default locale for
 Cimphawng is English; a visitor switches to Zomi, and the choice is remembered.
 The glossary of terms still needing review is `docs/ZOMI_GLOSSARY.md`.
 
+## Landing-page copy
+
+What the landing page says about the system (pipeline, risk controls, plans and
+limits, track-record placeholders, disclosures) is the same for every brand,
+because it is the same platform and those statements are verified against it.
+Only the framing is per brand, in `frontend/src/brand/landingCopy.ts`: the
+headline, the lede, the closing heading and an optional community section.
+Olbos has no community section, and its strings are pinned by a test.
+
+Copy rules, enforced by a guard test on the Cimphawng strings: say what exists
+and label what does not; imply no track record; no promises of returns, no
+"guaranteed", "risk-free", "verified" or "licensed"; do not claim more Zomi
+coverage than exists. A brand whose nav is wider (Cimphawng's has a Community
+link and the language switch) collapses it into the dropdown menu earlier, up
+to 900px, in `design/brands.css`.
+
+Known and pre-existing, not part of this change: Olbos's landing nav scrolls
+sideways by up to 102px between 610 and 710px wide.
+
 ## Adding a brand
 
 1. Add an entry to `BRANDS` (domains lower-case, no port).
@@ -82,7 +101,7 @@ The glossary of terms still needing review is `docs/ZOMI_GLOSSARY.md`.
 - Pages not reviewed in the browser may still show hard-coded gold.
 - Cimphawng marketing copy reuses the Olbos landing text with the name swapped.
 - The status bar label "IBKR GATEWAY" is pre-existing and not brand related.
-- The Cimphawng lockup reads "TRADING" while the product name used in copy is "Cimphawng Trade"; the owner should pick one.
+- The product name is "Cimphawng Trading", matching the logo. The domain stays `cimphawng.trade` until the owner decides otherwise.
 - The logo is gold and silver, like Olbos's, while the Cimphawng colour skin is blue, so the two stay distinguishable. Say if the skin should follow the logo instead.
 
 ## Proposed next slices

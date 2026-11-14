@@ -14,6 +14,7 @@
  */
 import LanguageToggle from "../components/LanguageToggle";
 import { getBrand } from "../brand/brands";
+import { landingCopyFor } from "../brand/landingCopy";
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import "../landing.css";
@@ -151,6 +152,7 @@ export const PLANS: Plan[] = [
 
 export default function Landing() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const copy = landingCopyFor(getBrand());
 
   return (
     <div className="landing">
@@ -163,13 +165,17 @@ export default function Landing() {
             aria-label="Primary"
           >
             <NavLink href="#product">Product</NavLink>
+            {copy.community && <NavLink href="#community">Community</NavLink>}
             <NavLink href="#how">How It Works</NavLink>
             <NavLink href="#risk">Risk Controls</NavLink>
             <NavLink href="#track-record">Track Record</NavLink>
             <NavLink href="#pricing">Pricing</NavLink>
+            {/* On a phone the switch lives in this menu: beside the logo and the
+                Sign Up button it left the button 26px wide at 320px. */}
+            <LanguageToggle className="landing-lang-menu" />
           </nav>
           <div className="landing-nav-actions">
-            <LanguageToggle />
+            <LanguageToggle className="landing-lang-nav" />
             <Link className="landing-signin" to="/terminal">Sign In</Link>
             {/* One label now. This carried two — "Start Paper Trading" and a
                 compact "Start Free" swapped by CSS — because the full label
@@ -198,9 +204,9 @@ export default function Landing() {
         {/* ── Hero ──────────────────────────────────────────────────────── */}
         <section className="landing-section landing-hero" id="product">
           <div className="landing-container">
-            <div className="landing-eyebrow">Systematic Options &amp; Equity Execution</div>
+            <div className="landing-eyebrow">{copy.eyebrow}</div>
             <h1 className="landing-h1">
-              Systematic options and equity execution with risk controls built into every decision.
+              {copy.h1}
             </h1>
             {/* Crypto's claim changed in #84 and this sentence had to change
                 with it. It used to read "planned and not yet supported", which
@@ -217,14 +223,7 @@ export default function Landing() {
                 claims nothing beyond it — no track record is implied, because
                 none exists yet. Same rule the numbers follow: say what exists,
                 label what does not. */}
-            <p className="landing-lede">
-              {getBrand().systemName} runs a rules-based options and equity workflow — regime
-              detection, a trained signal model, and a fail-closed risk gate — in front of every
-              trade decision. Nothing executes without passing guardrails, and every signal shows
-              where it came from. Crypto is signals-only — scanned and tracked for forward
-              outcomes, with no order path. Currently in paper-trading evaluation; live capital
-              requires a validated track record first.
-            </p>
+            <p className="landing-lede">{copy.lede}</p>
             <div className="landing-hero-ctas">
               <Link className="landing-cta-btn" to="/request-access">Start Paper Trading</Link>
               <a className="landing-cta-btn secondary" href="#risk">See risk controls</a>
@@ -254,6 +253,20 @@ export default function Landing() {
             </div>
           </div>
         </section>
+
+        {/* ── Community (brands that have one) ──────────────────────────── */}
+        {copy.community && (
+          <section className="landing-section" id="community">
+            <div className="landing-container">
+              <div className="landing-eyebrow">{copy.community.eyebrow}</div>
+              <h2 className="landing-h2">{copy.community.heading}</h2>
+              <p className="landing-lede">{copy.community.lede}</p>
+              <div className="landing-grid-3">
+                {copy.community.cells.map((c) => <Cell key={c.title} title={c.title} body={c.body} />)}
+              </div>
+            </div>
+          </section>
+        )}
 
         {/* ── How it works ─────────────────────────────────────────────── */}
         <section className="landing-section" id="how">
@@ -402,7 +415,7 @@ export default function Landing() {
         {/* ── Final CTA ─────────────────────────────────────────────────── */}
         <section className="landing-section" style={{ textAlign: "center" }}>
           <div className="landing-container">
-            <h2 className="landing-h2">Start in paper. Prove the edge before it's live.</h2>
+            <h2 className="landing-h2">{copy.finalHeading}</h2>
             <p className="landing-lede" style={{ margin: "0 auto 28px" }}>
               Accounts open in paper trading — no live order can be placed until the account and
               environment are explicitly switched to live. Access is invite-only; a person reviews
