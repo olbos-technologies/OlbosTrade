@@ -14,7 +14,7 @@ design tokens.
 
 | Panel | Reuses |
 | --- | --- |
-| Chart (always in the centre) | `api.getEquityChart`, `CandlestickChart` (MA, VWAP, MACD, volume, **volume profile**), `IntervalStrip`, `RangeBar` |
+| Chart (always in the centre) | `api.getEquityChart`, `CandlestickChart` (MA, VWAP, MACD, volume, **volume profile**, **drawing tools**), `IntervalStrip`, `RangeBar` |
 | Watchlist | `WatchlistTable`; the **same list as the Chart page** (`olbos.chart.watchlist`) |
 | Positions | `PositionsTable` via `usePaperTrade` |
 | Unusual options | `OptionsFlow` |
@@ -57,6 +57,55 @@ Known: when the chart is removed while a redraw is pending, the charting library
 checkout of `main`). The profile adds none; a test compares the same flow with the
 profile on and off.
 
+## Drawing tools
+
+A rail beside the chart: **Select**, **Trend line**, **Horizontal line**, **Vertical line**,
+**Rectangle** and **Fib retracement** (levels 0, 23.6, 38.2, 50, 61.8, 78.6 and 100%), a
+**Magnet**, a **Style** button (six colours, three line widths; it shows the current colour
+and unfolds in place), and **Undo**, **Redo**, **Delete** and **Clear all**.
+
+- **Drawing.** Pick a tool, then click the first point, move, and click the second; or press,
+  drag and release. One-point tools (horizontal and vertical line) take a single click. When a
+  drawing is finished it is selected and the tool returns to Select. **Escape** cancels a
+  half-placed drawing, then leaves the tool, then deselects.
+- **Editing.** Click a drawing to select it. Drag its body to move it, or drag one of its
+  handles to move just that end. **Delete** removes it. **Ctrl/Cmd+Z** undoes, **Ctrl/Cmd+Shift+Z**
+  or **Ctrl+Y** redoes. One drag is one undo step. Clear all can be undone. Choosing a colour
+  or width recolours the selected drawing and sets the style for new ones.
+- **Magnet.** Pulls a new point or a handle onto the nearest bar and its nearest open, high, low
+  or close, when the pointer is within 12px.
+- **Anchored to time and price**, not to pixels or bar numbers, so a drawing stays on the same
+  candle and price through zoom, scroll, resize and a change of bar interval. A point may sit
+  between two bars or in the future past the last bar (positions there are extended using the
+  median gap between bars, so a weekend does not distort it).
+- **Saved per symbol in this browser only.** Not in the account, and not on other devices. Up
+  to 200 drawings per symbol and 40 symbols; the oldest symbols go first. Opening a symbol writes
+  nothing back; only an edit saves. Stored data is validated on load (browser storage can be
+  edited): unknown kinds, malformed or out-of-range numbers, bad colours, duplicate ids and
+  hostile keys such as `__proto__` are dropped or repaired.
+- **Mouse and pen only.** The charting library listens for touch with handlers that cannot be
+  intercepted, so drawing on a touch screen would fight the chart's own panning. The rail is not
+  offered on the stacked phone layout (900px and under); saved drawings still show there but
+  cannot be edited.
+- **Notes, not orders.** Drawings place no orders, set no stops and feed no risk or execution
+  logic. A horizontal line is a mark on the chart, not a stop or a limit price. Colours leave out
+  pure green and red, which mean profit and loss elsewhere.
+
+How it is built (`frontend/src/workspace/drawings/`): `model.ts` (kinds, validation, storage),
+`history.ts` (undo and redo), `time.ts` (bar position to and from time, with interpolation and
+extension), `geometry.ts` (pixel shapes and hit testing; the same shapes are drawn and picked),
+`snap.ts` (magnet), `engine.ts` (the tool, selection and gesture state machine, with no DOM or
+chart in it), `DrawingsPrimitive.ts` (a charting-library series primitive that paints on the
+candle series and uses the chart's own scales), `useDrawings.ts` (attaches it, listens to the
+mouse and keyboard, saves edits) and `DrawingToolbar.tsx`. `CandlestickChart` gained an opt-in
+`onReady` handle; without it nothing changes, so the Chart page is untouched.
+
+Known: the charting library logs "Object is disposed" when a chart is removed with a redraw
+pending. That already happens on the Chart page (checked on a clean checkout of `main`). The
+drawings are detached before the chart is removed, as a precaution. No test can tell whether
+that order matters (nothing emits between the two steps in any flow we can drive), so it is
+protection, not something proven.
+
 ## What it never does
 
 It places no orders and writes nothing to the server by itself (a test asserts that
@@ -86,9 +135,10 @@ working.
 
 - **Seasonality.** Needs years of price history and a confirmed data source and
   rights. No placeholder numbers are shown.
-- **Drawing tools on the chart.** The chart has MA, VWAP, MACD, volume and the volume
-  profile today. Drawing tools are a larger piece of work.
-- **A volume profile on the Chart page**, and **session or fixed-range profiles** (it
+- **More drawing tools.** Text notes, rays and extended lines, parallel channels, Fibonacci
+  extensions, a measure tool, and per-drawing visibility. Drawings saved to the account or
+  shared across devices. Touch drawing.
+- **Drawing tools and a volume profile on the Chart page**, and **session or fixed-range profiles** (it
   covers the bars in view). **Tick-accurate profiles** need trade data we do not load.
 - **Free-form docking** (dragging a panel to a new edge) and **layouts that follow
   the account across devices.** Layouts are per browser. A server-side saved layout

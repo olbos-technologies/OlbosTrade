@@ -5,11 +5,19 @@
  *
  * Bars come from the same endpoint the Chart page uses. A failed or empty
  * response says so; it never draws a made-up series.
+ *
+ * Drawing tools (trend, horizontal and vertical lines, rectangle, Fibonacci) sit in
+ * a rail beside the chart. Drawings are notes anchored to time and price and are
+ * saved per symbol in this browser; they place no orders and set no stops. They
+ * are mouse and pen only, so the rail is not offered on the stacked phone layout.
  */
 
 import React, { useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
-import CandlestickChart, { type ChartBar } from "../components/CandlestickChart";
+import CandlestickChart, { type ChartBar, type ChartHandle } from "../components/CandlestickChart";
+import { useIsMobile } from "../hooks/useIsMobile";
+import DrawingToolbar from "./drawings/DrawingToolbar";
+import { useDrawings } from "./drawings/useDrawings";
 import IntervalStrip from "../components/chart/IntervalStrip";
 import RangeBar from "../components/chart/RangeBar";
 import {
@@ -38,6 +46,9 @@ export default function ChartPanel({ symbol }: { symbol: string }) {
   const [note, setNote] = useState<string | null>(null);
   const [quote, setQuote] = useState<{ last: number | null; chg: number | null } | null>(null);
   const [profileText, setProfileText] = useState<string | null>(null);
+  const interactive = !useIsMobile(900);
+  const [handle, setHandle] = useState<ChartHandle | null>(null);
+  const [rootEl, setRootEl] = useState<HTMLDivElement | null>(null);
   const [showProfile, setShowProfile] = useState<boolean>(() => readProfilePref(browserStorage()));
   const toggleProfile = () => setShowProfile((on) => { writeProfilePref(browserStorage(), !on); return !on; });
 
@@ -81,9 +92,12 @@ export default function ChartPanel({ symbol }: { symbol: string }) {
   }, [symbol]);
 
   const last = bars.length ? bars[bars.length - 1] : null;
+  const { engine, state: drawState } = useDrawings({ handle, bars, symbol, interactive, keyTarget: rootEl });
+  const showTools = interactive && !error && (loading || bars.length > 0);
+  const rootClass = `ws-chart${drawState.tool !== "select" ? " ws-chart--drawing" : ""}${drawState.hoverId ? " ws-chart--hit" : ""}`;
 
   return (
-    <div className="ws-chart">
+    <div className={rootClass} ref={setRootEl} tabIndex={-1}>
       <div className="ws-chart__bar">
         <span className="ws-chart__symbol">{symbol}</span>
         <span className="ws-chart__quote" aria-label="Last close snapshot">
@@ -101,6 +115,8 @@ export default function ChartPanel({ symbol }: { symbol: string }) {
         </button>
         <IntervalStrip value={interval} onChange={setIntervalKey} />
       </div>
+      <div className="ws-chart__body">
+      {showTools && <DrawingToolbar state={drawState} engine={engine} />}
       <div className="ws-chart__canvas" ref={wrap}>
         {loading ? (
           <div className="skeleton-block" style={{ height: h }} aria-busy="true" aria-label="Loading chart">
@@ -111,8 +127,9 @@ export default function ChartPanel({ symbol }: { symbol: string }) {
         ) : bars.length === 0 ? (
           <p className="ws-note" role="status">No bars returned for {symbol} in this range.</p>
         ) : (
-          <CandlestickChart bars={bars} levels={[]} height={h} volumeProfile={showProfile} onProfileSummary={setProfileText} />
+          <CandlestickChart bars={bars} levels={[]} height={h} volumeProfile={showProfile} onProfileSummary={setProfileText} onReady={setHandle} />
         )}
+      </div>
       </div>
       <div className="ws-chart__foot">
         {showProfile && profileText && (
