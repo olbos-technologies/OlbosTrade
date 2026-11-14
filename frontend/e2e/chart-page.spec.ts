@@ -15,7 +15,7 @@ const bars = Array.from({ length: 60 }, (_, i) => ({
 const requests: string[] = [];
 const lastRequest = () => requests[requests.length - 1];
 
-async function open(page: Page, width = 1440, height = 900) {
+async function open(page: Page, width = 1440, height = 900, signalResponse?: unknown) {
   requests.length = 0;
   await stubBackend(page);
   await page.route("**/api/**", r => r.fulfill(r.request().url().includes("/api/auth/status")
@@ -36,11 +36,31 @@ async function open(page: Page, width = 1440, height = 900) {
     { symbol: "AMZN", quantity: 7, avg_cost: 262.35, unrealized_pnl: -21, hold_days: 2 },
     { symbol: "FER", quantity: -337, avg_cost: 58.57, unrealized_pnl: -46, hold_days: 2 },
   ] })));
+  if (signalResponse !== undefined) {
+    await page.route("**/api/equity/signals?*", r => r.fulfill(reply(signalResponse)));
+  }
   await page.addInitScript(() => { try { localStorage.clear(); } catch { /* ignore */ } });
   await page.setViewportSize({ width, height });
   await page.goto("/terminal/markets/chart?symbol=AAPL");
   await expect(page.getByRole("heading", { name: "Market workspace" })).toBeVisible();
 }
+
+for (const width of [1440, 390]) {
+  test(`a failed signal read is not presented as no signal at ${width}px`, async ({ page }) => {
+    await open(page, width, 900);
+    await expect(page.getByLabel("Selected instrument", { exact: true })).toContainText("Signals unavailable");
+    await expect(page.getByLabel("Selected instrument", { exact: true })).not.toContainText("No signal");
+    await page.getByRole("button", { name: "Signal detail" }).click();
+    await expect(page.getByText("Signals are unavailable. The signal feed could not be verified.")).toBeVisible();
+    await expectNoHorizontalOverflow(page, width);
+  });
+}
+
+test("a successful empty signal read is an empty state", async ({ page }) => {
+  await open(page, 1440, 900, { signals: [] });
+  await expect(page.getByLabel("Selected instrument", { exact: true })).toContainText("No signal");
+  await expect(page.getByLabel("Selected instrument", { exact: true })).not.toContainText("Signals unavailable");
+});
 
 test("positions on the left, the chart in the middle, the watchlist on the right", async ({ page }) => {
   await open(page);

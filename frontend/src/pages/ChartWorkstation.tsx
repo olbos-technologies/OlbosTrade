@@ -1,6 +1,6 @@
 import { useIsMobile } from "../hooks/useIsMobile";
 import { pnlColor } from "../utils/pnlTone";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client";
 import SignalAttribution from "../components/SignalAttribution";
 import SignalDetailDrawer from "../components/SignalDetailDrawer";
@@ -206,6 +206,8 @@ export default function ChartWorkstation({
   const [rangeNote, setRangeNote] = useState<string | null>(null);
   const [watchSnapshots, setWatchSnapshots] = useState<Record<string, WatchSnapshot>>({});
   const [signals, setSignals] = useState<Signal[]>([]);
+  const [signalsState, setSignalsState] = useState<"loading" | "ready" | "unavailable">("loading");
+  const signalsRequestId = useRef(0);
   const [ivRank, setIvRank] = useState<any>(null);
   const [chartBars, setChartBars] = useState<ChartBar[]>([]);
   const [chartLoading, setChartLoading] = useState(false);
@@ -261,6 +263,7 @@ export default function ChartWorkstation({
   };
 
   const loadSignals = async () => {
+    const requestId = ++signalsRequestId.current;
     try {
       // Must cover the full watchlist (~102 tickers, deduped server-side to
       // one entry per ticker) — selectedSignal below looks up the CURRENTLY
@@ -268,9 +271,14 @@ export default function ChartWorkstation({
       // here silently showed "NO SIGNAL" for any symbol that wasn't among
       // the last few scanned, even when a real signal existed for it.
       const res: any = await api.getEquitySignals(150);
-      setSignals(res.signals || []);
+      if (!Array.isArray(res?.signals)) throw new Error("Signal response unavailable");
+      if (requestId !== signalsRequestId.current) return;
+      setSignals(res.signals);
+      setSignalsState("ready");
     } catch {
+      if (requestId !== signalsRequestId.current) return;
       setSignals([]);
+      setSignalsState("unavailable");
     }
   };
 
@@ -279,6 +287,7 @@ export default function ChartWorkstation({
     const si = setInterval(loadSignals, 60000);
     return () => {
       clearInterval(si);
+      signalsRequestId.current += 1;
     };
   }, []);
 
@@ -391,7 +400,11 @@ export default function ChartWorkstation({
             bar={latestBar}
             freshness={latestBar ? `Last close snapshot · Chart bar: ${new Date(latestBar.timestamp).toLocaleString()}` : "Chart data unavailable"}
             freshnessShort={latestBar ? `Last bar ${new Date(latestBar.timestamp).toLocaleString(undefined, { month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit" })}` : undefined}
-            signalBadge={selectedSignal
+            signalBadge={signalsState === "unavailable"
+              ? <span className="dock-nosignal" role="status">Signals unavailable</span>
+              : signalsState === "loading"
+              ? <span className="dock-nosignal" role="status">Loading signals</span>
+              : selectedSignal
               ? <SignalAttribution data={toChartSignalAttribution(selectedSignal)} size="sm" />
               : <span className="dock-nosignal">No signal</span>}
             onSignalDetail={() => setSignalDrawerOpen(true)}
@@ -427,6 +440,7 @@ export default function ChartWorkstation({
           open={signalDrawerOpen}
           onClose={() => setSignalDrawerOpen(false)}
           signal={selectedSignal}
+          loadState={signalsState}
           symbol={symbol}
           timeframe={timeframe}
           latestBar={latestBar}
@@ -478,7 +492,11 @@ export default function ChartWorkstation({
               }} className="workstation-metrics-grid">
                 <StatTile
                   variant="boxed" label="Signal" hint={hintFor("Signal")}
-                  value={selectedSignal
+                  value={signalsState === "unavailable"
+                    ? <span role="status">SIGNALS UNAVAILABLE</span>
+                    : signalsState === "loading"
+                    ? <span role="status">LOADING SIGNALS</span>
+                    : selectedSignal
                     ? <SignalAttribution data={toChartSignalAttribution(selectedSignal)} size="sm" />
                     : <span style={{ color: "var(--ink-dim)" }}>NO SIGNAL</span>}
                 />
@@ -515,6 +533,7 @@ export default function ChartWorkstation({
         open={signalDrawerOpen}
         onClose={() => setSignalDrawerOpen(false)}
         signal={selectedSignal}
+        loadState={signalsState}
         symbol={symbol}
         timeframe={timeframe}
         latestBar={latestBar}
