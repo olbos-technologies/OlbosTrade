@@ -96,6 +96,14 @@ describe("the brand registry", () => {
   it("every brand's default locale is one it offers", () => {
     for (const b of Object.values(BRANDS)) expect(b.locales).toContain(b.defaultLocale);
   });
+  it("Cimphawng\'s name, tab title and logo label all agree (\"Trading\", as in the logo)", () => {
+    const b = BRANDS.cimphawng;
+    expect(b.name).toBe("Cimphawng Trading");
+    expect(b.compactName).toBe(b.name);
+    expect(b.title).toBe(b.name);
+    expect(b.wordmark.alt).toBe(b.name);
+    expect(b.systemName).toBe("Cimphawng Trading System");
+  });
   it("Olbos stays English-only, so it shows no language switch", () => {
     expect(BRANDS.olbos.locales).toEqual(["en"]);
   });

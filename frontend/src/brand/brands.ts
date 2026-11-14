@@ -67,14 +67,14 @@ export const BRANDS: Readonly<Record<BrandKey, BrandConfig>> = {
   },
   cimphawng: {
     key: "cimphawng",
-    name: "Cimphawng Trade",
+    name: "Cimphawng Trading",
     shortName: "Cimphawng",
-    compactName: "Cimphawng Trade",
+    compactName: "Cimphawng Trading",
     systemName: "Cimphawng Trading System",
     domains: ["cimphawng.trade", "www.cimphawng.trade"],
     locales: ["en", "zo"],
     defaultLocale: "en",
-    title: "Cimphawng Trade",
+    title: "Cimphawng Trading",
     wordmark: { src: "/brands/cimphawng/lockup.webp", alt: "Cimphawng Trading", aspect: 1421 / 375 },
     standaloneMark: { src: "/brands/cimphawng/mark.webp" },
     favicon: {

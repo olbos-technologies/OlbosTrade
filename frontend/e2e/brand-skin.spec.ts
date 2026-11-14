@@ -97,3 +97,60 @@ test.describe("Olbos stays Olbos", () => {
     await expect(page.locator("html")).toHaveAttribute("data-brand", "olbos");
   });
 });
+
+test.describe("Cimphawng landing page", () => {
+  for (const width of [320, 360, 390, 640, 768, 880, 900, 1024, 1440]) {
+    test(`community section shows and nothing overflows at ${width}px`, async ({ page }) => {
+      await stubBackend(page);
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto("/?brand=cimphawng");
+      await expect(page.locator("#community")).toBeVisible();
+      await expect(page.getByRole("heading", { level: 1 })).toContainText("Zomi community");
+      await expect(page).toHaveTitle("Cimphawng Trading");
+      await expectNoHorizontalOverflow(page, width);
+      // The Sign Up button keeps its full label: it was squeezed to 26px at 320px
+      // when the language switch sat beside it.
+      const cta = page.locator(".landing-nav-cta");
+      const box = (await cta.boundingBox())!;
+      expect(box.width).toBeGreaterThanOrEqual(60);
+      expect(await cta.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+    });
+  }
+
+  test("on a phone the language switch lives in the menu and works", async ({ page }) => {
+    await stubBackend(page);
+    await page.setViewportSize({ width: 390, height: 800 });
+    await page.goto("/?brand=cimphawng");
+    await expect(page.locator(".landing-nav .landing-lang-nav")).toBeHidden();
+    await page.getByRole("button", { name: "Open menu" }).click();
+    const inMenu = page.locator(".landing-nav .landing-lang-menu");
+    await expect(inMenu).toBeVisible();
+    await inMenu.getByRole("button", { name: /zomi/i }).click();
+    await expect(page.locator("html")).toHaveAttribute("lang", "ctd");
+  });
+
+  test("on a wide screen the switch is beside the sign-in actions, not in a menu", async ({ page }) => {
+    await stubBackend(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/?brand=cimphawng");
+    await expect(page.locator(".landing-nav .landing-lang-nav")).toBeVisible();
+    await expect(page.locator(".landing-nav .landing-lang-menu")).toBeHidden();
+  });
+
+  test("the safety statements stay and the page makes no promise of returns", async ({ page }) => {
+    await stubBackend(page);
+    await page.goto("/?brand=cimphawng");
+    const text = await page.locator("main").innerText();
+    expect(text).toMatch(/paper-trading evaluation/i);
+    expect(text).toMatch(/no order path/i);
+    expect(text).not.toMatch(/guarantee|risk[- ]free|passive income/i);
+    await expect(page.locator("#community")).toContainText("still English");
+  });
+
+  test("Olbos landing has no community section and no language switch", async ({ page }) => {
+    await stubBackend(page);
+    await page.goto("/");
+    await expect(page.locator("#community")).toHaveCount(0);
+    await expect(page.locator(".lang-toggle")).toHaveCount(0);
+  });
+});
