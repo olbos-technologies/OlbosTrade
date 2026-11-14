@@ -38,6 +38,15 @@ import Watchlists      from "./pages/markets/Watchlists";
 import SectorRotation  from "./pages/markets/SectorRotation";
 import ChartWorkstation from "./pages/ChartWorkstation";     // Price-action / market-structure chart
 import NewsEventsCenter from "./pages/markets/NewsEventsCenter";
+// Loaded on demand: it pulls in the scanners, backtest and options-flow pages together.
+const ProWorkspaceLazy = React.lazy(() => import("./pages/ProWorkspace"));
+function ProWorkspacePage() {
+  return (
+    <React.Suspense fallback={<div style={{ padding: 24, color: "var(--ink-dim)", font: "12px var(--mono)" }} role="status">Loading workspace…</div>}>
+      <ProWorkspaceLazy />
+    </React.Suspense>
+  );
+}
 import { isTradeDeskV2Enabled } from "./trade-desk/featureFlags";
 import SignalCalendar from "./components/SignalCalendar";
 
@@ -118,6 +127,7 @@ export const BASE_PAGES: Record<string, React.ComponentType> = {
   "markets:heatmaps":   Heatmap,
   "markets:watchlists": Watchlists,
   "markets:chart":      ChartWorkstation,
+  "markets:workspace":  ProWorkspacePage,
   "markets:news":       NewsEventsCenter,
   "markets:sector-rotation": SectorRotation,
 

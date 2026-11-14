@@ -1,0 +1,146 @@
+/*
+ * Pro Workspace. Colours come from the shared design tokens, so every brand's
+ * skin applies without a rule of its own. Layout uses CSS grid with `fr` tracks
+ * and fixed 6px splitter tracks, so the regions always add up exactly.
+ */
+
+.ws-root {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+  min-height: 560px;
+  padding: 10px;
+  box-sizing: border-box;
+  min-width: 0;
+}
+.ws-root--stacked { min-height: 0; height: auto; }
+
+/* ── Toolbar ─────────────────────────────────────────────────────────────── */
+.ws-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; flex: none; }
+.ws-toolbar__group { display: inline-flex; gap: 4px; }
+.ws-toolbar button,
+.ws-mobilestrip button,
+.ws-symbolform button,
+.ws-addsymbol button {
+  min-height: 28px;
+  padding: 0 10px;
+  font: 500 12px var(--sans, system-ui, sans-serif);
+  color: var(--ink-dim);
+  background: var(--bg-3);
+  border: 1px solid var(--line-dim);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.ws-toolbar button:hover,
+.ws-mobilestrip button:hover,
+.ws-symbolform button:hover,
+.ws-addsymbol button:hover { color: var(--ink); border-color: var(--line); }
+.ws-toolbar button[aria-pressed="true"],
+.ws-mobilestrip button[aria-pressed="true"] {
+  color: var(--ink);
+  border-color: var(--design-action, var(--brand));
+}
+.ws-symbolform, .ws-addsymbol { display: inline-flex; align-items: center; gap: 6px; }
+.ws-symbolform__label { font: 500 11px var(--mono, monospace); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-faint); }
+.ws-symbolform input,
+.ws-addsymbol input {
+  width: 110px;
+  min-height: 28px;
+  padding: 0 8px;
+  font: 500 12px var(--mono, monospace);
+  text-transform: uppercase;
+  color: var(--ink);
+  background: var(--bg-2);
+  border: 1px solid var(--line-dim);
+  border-radius: 6px;
+}
+.ws-symbolform input[aria-invalid="true"],
+.ws-addsymbol input[aria-invalid="true"] { border-color: var(--red); }
+.ws-toolbar button:focus-visible,
+.ws-mobilestrip button:focus-visible,
+.ws-symbolform input:focus-visible,
+.ws-addsymbol input:focus-visible,
+.ws-slot__pick:focus-visible,
+.ws-splitter:focus-visible {
+  outline: 2px solid var(--design-action, var(--brand));
+  outline-offset: 1px;
+}
+
+/* ── Regions ─────────────────────────────────────────────────────────────── */
+.ws-main { display: grid; flex: 1; min-height: 0; min-width: 0; }
+.ws-top { display: grid; min-height: 0; min-width: 0; }
+.ws-side { display: grid; min-height: 0; min-width: 0; }
+
+.ws-slot {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--bg-2);
+  border: 1px solid var(--line-dim);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.ws-slot__head { flex: none; display: flex; align-items: center; padding: 4px 6px; border-bottom: 1px solid var(--line-dim); }
+.ws-slot__pick {
+  max-width: 100%;
+  min-height: 26px;
+  font: 600 12px var(--sans, system-ui, sans-serif);
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.ws-slot__pick:hover { border-color: var(--line-dim); }
+.ws-slot__body { flex: 1; min-height: 0; min-width: 0; overflow: auto; }
+.ws-slot--chart .ws-slot__body { overflow: hidden; }
+.ws-slot--mobile .ws-slot__body { overflow: auto; }
+
+/* ── Splitters ───────────────────────────────────────────────────────────── */
+.ws-splitter { position: relative; background: transparent; touch-action: none; }
+.ws-splitter::after {
+  content: "";
+  position: absolute;
+  background: var(--line-dim);
+  border-radius: 2px;
+  transition: background .12s;
+}
+.ws-splitter--vertical { cursor: col-resize; }
+.ws-splitter--vertical::after { left: 2px; right: 2px; top: 0; bottom: 0; }
+.ws-splitter--horizontal { cursor: row-resize; }
+.ws-splitter--horizontal::after { top: 2px; bottom: 2px; left: 0; right: 0; }
+.ws-splitter:hover::after,
+.ws-splitter:focus-visible::after { background: var(--design-action, var(--brand)); }
+/* A wider invisible hit area, so a 6px track is easy to grab. */
+.ws-splitter--vertical::before { content: ""; position: absolute; inset: 0 -4px; }
+.ws-splitter--horizontal::before { content: ""; position: absolute; inset: -4px 0; }
+
+/* ── Chart panel ─────────────────────────────────────────────────────────── */
+.ws-chart { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.ws-chart__bar {
+  flex: none;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line-dim);
+}
+.ws-chart__symbol { font: 700 15px var(--mono, monospace); color: var(--ink); }
+.ws-chart__quote { font: 500 12px var(--mono, monospace); color: var(--ink-dim); font-variant-numeric: tabular-nums; }
+.ws-chart__ohlc { font: 400 11px var(--mono, monospace); color: var(--ink-faint); font-variant-numeric: tabular-nums; }
+.ws-chart__canvas { flex: 1; min-height: 0; overflow: hidden; }
+.ws-chart .interval-strip { margin-left: auto; }
+.ws-chart .range-bar { flex: none; padding: 4px 10px; border-top: 1px solid var(--line-dim); }
+
+.ws-note { margin: 10px; font: 400 12px var(--sans, system-ui, sans-serif); color: var(--ink-dim); }
+.ws-note--warn { color: var(--amber); }
+
+/* ── Watchlist panel ─────────────────────────────────────────────────────── */
+.ws-watchlist .ws-addsymbol { padding: 6px; }
+.ws-watchlist .ws-addsymbol input { flex: 1; width: auto; min-width: 0; }
+
+/* ── Phone ───────────────────────────────────────────────────────────────── */
+.ws-mobilestrip { display: flex; gap: 4px; overflow-x: auto; flex: none; padding-bottom: 2px; }
+.ws-mobilestrip button { flex: none; }
+.ws-slot--mobile { min-height: 420px; }
+.ws-mobilechart { height: 460px; }
