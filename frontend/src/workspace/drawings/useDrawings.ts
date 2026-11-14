@@ -124,7 +124,10 @@ export function useDrawings(opts: {
     el.addEventListener("mousedown", onDown, true); // capture: before the chart's own handler
     el.addEventListener("mousemove", onMove);
     el.addEventListener("mouseleave", onLeave);
+    let removed = false; // the chart's disposer and React's cleanup can both call this
     const remove = () => {
+      if (removed) return;
+      removed = true;
       el.removeEventListener("mousedown", onDown, true);
       el.removeEventListener("mousemove", onMove);
       el.removeEventListener("mouseleave", onLeave);

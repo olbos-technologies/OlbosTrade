@@ -21,20 +21,24 @@ async function open(page: Page, width = 1440, height = 900, query = "") {
 }
 
 /**
- * Page errors thrown by a flow, with the profile on or off.
+ * Page errors thrown while a flow runs.
  *
- * The charting library throws "Object is disposed" from its own redraw when a chart
- * is removed with an update pending. That happens on the existing Chart page too
- * (verified on a clean checkout of main), so the right check is not "no errors" but
- * "the profile adds none": same flow, profile on versus off.
+ * The charting library throws "Object is disposed" from its own redraw when a chart is
+ * removed with an update pending. That happens on the existing Chart page too (verified on
+ * clean main) and whether it fires in a given run depends on timing: a test that COUNTED
+ * these, profile on versus off, failed 7 runs in 30 on clean main under CPU load. So this
+ * checks the part that is stable, that nothing ELSE is ever thrown (no TypeError from our
+ * code, say). The ORDER of teardown, the thing that decides whether our code adds to the
+ * library's error, is pinned deterministically in CandlestickChartTeardown.test.tsx.
  */
-async function errorsFrom(browser: Browser, profileOff: boolean, flow: (page: Page) => Promise<void>): Promise<string[]> {
+const KNOWN_LIBRARY_ERROR = "Object is disposed";
+
+async function errorsFrom(browser: Browser, flow: (page: Page) => Promise<void>): Promise<string[]> {
   const context = await browser.newContext();
   const page = await context.newPage();
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await mockData(page);
-  if (profileOff) await page.addInitScript(() => localStorage.setItem("olbos.workspace.volumeProfile", "off"));
   await flow(page);
   await context.close();
   return errors;
@@ -109,6 +113,9 @@ test.describe("Volume profile on the workspace chart", () => {
   test("follows zoom and scroll: the bars in view and the profile change", async ({ page }) => {
     await mockData(page);
     await open(page);
+    // Wait for the chart to settle on all 160 bars before measuring from it: reading the count
+    // while it is still fitting the data gave a half-finished number (130) and a flaky zoom check.
+    await expect(readout(page)).toContainText("160 bars");
     const all = (await readout(page).innerText());
     const count = (t: string) => Number(/(\d+) bars/.exec(t)![1]);
     expect(count(all)).toBeGreaterThan(100);
@@ -165,27 +172,24 @@ test.describe("Volume profile on the workspace chart", () => {
   });
 
   test("it recomputes for a new symbol and survives a resize and an interval change", async ({ browser }) => {
-    const flow = async (page: Page, profileOn: boolean) => {
+    const errors = await errorsFrom(browser, async (page) => {
       await open(page);
-      let first = "";
-      if (profileOn) { await expect(readout(page)).toBeVisible(); first = await readout(page).innerText(); }
+      await expect(readout(page)).toBeVisible();
+      const first = await readout(page).innerText();
       await page.getByLabel("Symbol", { exact: true }).fill("nvda");
       await page.getByRole("toolbar", { name: "Workspace controls" }).getByRole("button", { name: "Go", exact: true }).click();
       await expect(page.locator(".ws-chart__symbol")).toHaveText("NVDA");
-      if (profileOn) await expect.poll(async () => await readout(page).innerText()).not.toBe(first);
+      await expect.poll(async () => await readout(page).innerText()).not.toBe(first);
       await page.getByRole("separator", { name: /Resize chart and side panels/ }).focus();
       for (let i = 0; i < 5; i++) await page.keyboard.press("ArrowLeft");
       await page.getByRole("group", { name: "Chart timeframe" }).getByRole("button", { name: "1 hour", exact: true }).click();
-      await page.waitForTimeout(300);
-    };
-    const withProfile = await errorsFrom(browser, false, async (page) => { await flow(page, true); await expect(readout(page)).toBeVisible(); });
-    const without = await errorsFrom(browser, true, async (page) => { await flow(page, false); });
-    expect(withProfile.every((m) => m === "Object is disposed"), `unexpected error: ${withProfile.join(" | ")}`).toBe(true);
-    expect(withProfile.length).toBeLessThanOrEqual(without.length);
+      await expect(readout(page)).toBeVisible();
+    });
+    expect(errors.filter((m) => m !== KNOWN_LIBRARY_ERROR), "an error that is not the library's own").toEqual([]);
   });
 
-  test("leaving the page tears the profile down without adding errors", async ({ browser }) => {
-    const flow = async (page: Page) => {
+  test("leaving the page and coming back throws nothing of our own", async ({ browser }) => {
+    const errors = await errorsFrom(browser, async (page) => {
       await open(page);
       await page.getByRole("button", { name: "Chart", exact: true }).first().click();
       await expect(page).toHaveURL(/\/terminal\/markets\/chart$/);
@@ -193,15 +197,11 @@ test.describe("Volume profile on the workspace chart", () => {
       // Back through history is client-side, so the workspace mounts again from scratch.
       await page.goBack();
       await expect(page).toHaveURL(/\/terminal\/markets\/workspace$/);
-      await page.waitForTimeout(300);
+      await expect(readout(page)).toBeVisible();
       await page.goForward();
       await expect(page).toHaveURL(/\/terminal\/markets\/chart$/);
-      await page.waitForTimeout(300);
-    };
-    const withProfile = await errorsFrom(browser, false, flow);
-    const without = await errorsFrom(browser, true, flow);
-    expect(withProfile.every((m) => m === "Object is disposed"), `unexpected error: ${withProfile.join(" | ")}`).toBe(true);
-    expect(withProfile.length).toBeLessThanOrEqual(without.length);
+    });
+    expect(errors.filter((m) => m !== KNOWN_LIBRARY_ERROR), "an error that is not the library's own").toEqual([]);
   });
 
   test("a failed or empty chart shows no profile and no error", async ({ page }) => {

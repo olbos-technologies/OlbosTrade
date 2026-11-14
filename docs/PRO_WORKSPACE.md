@@ -54,8 +54,12 @@ so the Chart page and every other user of the chart are unchanged).
 
 Known: when the chart is removed while a redraw is pending, the charting library logs
 "Object is disposed". That already happens on the Chart page (checked on a clean
-checkout of `main`). The profile adds none; a test compares the same flow with the
-profile on and off.
+checkout of `main`), and whether it fires in a given browser run is timing. So no browser
+test counts it (one that did failed 7 runs in 30 on clean `main` under CPU load). The part
+that is not timing, the ORDER of teardown (the profile and the drawings let go before the
+chart is removed), is pinned on a fake chart in `CandlestickChartTeardown.test.tsx` and
+`drawings/useDrawings.test.tsx`; the browser tests check that nothing other than the
+library's own message is ever thrown.
 
 ## Drawing tools
 
@@ -100,11 +104,10 @@ candle series and uses the chart's own scales), `useDrawings.ts` (attaches it, l
 mouse and keyboard, saves edits) and `DrawingToolbar.tsx`. `CandlestickChart` gained an opt-in
 `onReady` handle; without it nothing changes, so the Chart page is untouched.
 
-Known: the charting library logs "Object is disposed" when a chart is removed with a redraw
-pending. That already happens on the Chart page (checked on a clean checkout of `main`). The
-drawings are detached before the chart is removed, as a precaution. No test can tell whether
-that order matters (nothing emits between the two steps in any flow we can drive), so it is
-protection, not something proven.
+The drawings are detached, and their mouse listeners removed, before the chart is removed
+(the chart runs registered disposers first). That order is pinned by deterministic unit tests
+(see the volume profile note above for the library's own "Object is disposed" message, which
+is timing and is not counted by any browser test).
 
 ## What it never does
 
