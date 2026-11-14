@@ -17,8 +17,13 @@ import {
   type IntervalKey, type RangeKey,
 } from "../components/chart/timeframes";
 import { pnlColor } from "../utils/pnlTone";
+import { readProfilePref, writeProfilePref } from "./profilePref";
 
 const MIN_CHART_H = 160;
+
+function browserStorage(): Storage | null {
+  try { return window.localStorage; } catch { return null; }
+}
 
 const px = (n: number | null | undefined) => (typeof n === "number" && Number.isFinite(n) ? n.toFixed(2) : "—");
 const pct = (n: number | null | undefined) =>
@@ -32,6 +37,9 @@ export default function ChartPanel({ symbol }: { symbol: string }) {
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [quote, setQuote] = useState<{ last: number | null; chg: number | null } | null>(null);
+  const [profileText, setProfileText] = useState<string | null>(null);
+  const [showProfile, setShowProfile] = useState<boolean>(() => readProfilePref(browserStorage()));
+  const toggleProfile = () => setShowProfile((on) => { writeProfilePref(browserStorage(), !on); return !on; });
 
   // Measure the chart area so the chart fills it.
   const wrap = useRef<HTMLDivElement>(null);
@@ -87,6 +95,10 @@ export default function ChartPanel({ symbol }: { symbol: string }) {
             O {px(last.open)} H {px(last.high)} L {px(last.low)} C {px(last.close)}
           </span>
         )}
+        <button type="button" className="ws-chart__toggle" aria-pressed={showProfile} onClick={toggleProfile}
+          title="Show where volume traded, for the bars in view (approximate, built from bars)">
+          Volume profile
+        </button>
         <IntervalStrip value={interval} onChange={setIntervalKey} />
       </div>
       <div className="ws-chart__canvas" ref={wrap}>
@@ -99,10 +111,21 @@ export default function ChartPanel({ symbol }: { symbol: string }) {
         ) : bars.length === 0 ? (
           <p className="ws-note" role="status">No bars returned for {symbol} in this range.</p>
         ) : (
-          <CandlestickChart bars={bars} levels={[]} height={h} />
+          <CandlestickChart bars={bars} levels={[]} height={h} volumeProfile={showProfile} onProfileSummary={setProfileText} />
         )}
       </div>
-      <RangeBar value={range} onChange={setRange} note={note} />
+      <div className="ws-chart__foot">
+        {showProfile && profileText && (
+          <span
+            className="ws-chart__profile"
+            aria-label="Volume profile"
+            title={`Volume profile · ${profileText}. Approximate: built from bars, with each bar's volume spread evenly across its high-low range. It shows where volume traded in the bars in view. It is not a signal.`}
+          >
+            Volume profile · {profileText}
+          </span>
+        )}
+        <RangeBar value={range} onChange={setRange} note={note} />
+      </div>
     </div>
   );
 }
