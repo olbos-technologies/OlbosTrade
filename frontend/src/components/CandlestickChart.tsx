@@ -33,6 +33,18 @@ export interface ChartBar {
   volume: number;
 }
 
+/**
+ * What a caller gets to draw on the chart. `onDispose` registers cleanup that runs
+ * BEFORE the chart is removed, so a primitive is detached from a chart that still
+ * exists (detaching afterwards makes the library log "Object is disposed").
+ */
+export interface ChartHandle {
+  chart: IChartApi;
+  series: ISeriesApi<"Candlestick">;
+  container: HTMLElement;
+  onDispose: (fn: () => void) => () => void;
+}
+
 export interface ChartLevel {
   label: string;
   value: number;
@@ -238,6 +250,7 @@ export default function CandlestickChart({
   height = 460,
   volumeProfile = false,
   onProfileSummary,
+  onReady,
 }: {
   bars: ChartBar[];
   levels: ChartLevel[];
@@ -254,6 +267,12 @@ export default function CandlestickChart({
    * changing size when the profile is switched on or off.
    */
   onProfileSummary?: (summary: string | null) => void;
+  /**
+   * Called with a handle once the chart exists, and with null when it is about to be
+   * removed. The chart is rebuilt whenever it is re-mounted (for example while new
+   * bars load), so a caller must re-attach each time it receives a handle.
+   */
+  onReady?: (handle: ChartHandle | null) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -276,6 +295,9 @@ export default function CandlestickChart({
   // chart is created (and removed) by the first one, so without this the primitive
   // would be detached from a chart that no longer exists.
   const profileTeardownRef = useRef<(() => void) | null>(null);
+  const onReadyRef = useRef(onReady);
+  onReadyRef.current = onReady;
+  const disposersRef = useRef(new Set<() => void>());
   // Collapsed by default on every screen size: the key is 13 rows tall and sat
   // over the first part of the price line. The indicator readout above stays
   // visible, and the chart's own right-axis chips name entry / stop / targets.
@@ -353,6 +375,13 @@ export default function CandlestickChart({
 
     chartRef.current = chart;
     candleSeriesRef.current = candleSeries;
+    const disposers = disposersRef.current;
+    onReadyRef.current?.({
+      chart,
+      series: candleSeries,
+      container,
+      onDispose: (fn) => { disposers.add(fn); return () => { disposers.delete(fn); }; },
+    });
     volumeSeriesRef.current = volumeSeries;
     ma5Ref.current = ma5;
     ma10Ref.current = ma10;
@@ -364,6 +393,10 @@ export default function CandlestickChart({
 
     return () => {
       profileTeardownRef.current?.();
+      // Anything a caller attached (drawings) lets go while the chart still exists.
+      disposers.forEach((fn) => { try { fn(); } catch { /* keep tearing down */ } });
+      disposers.clear();
+      onReadyRef.current?.(null);
       chart.remove();
       chartRef.current = null;
       candleSeriesRef.current = null;
