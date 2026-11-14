@@ -14,7 +14,7 @@ LLMUnavailable and the assistant degrades gracefully.
 from __future__ import annotations
 
 # Free-tier-friendly default (verified current; 2.0 Flash was retired 2026-06-01).
-DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
+DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite"
 DEFAULT_ANTHROPIC_MODEL = "claude-haiku-4-5-20251001"
 
 _SYSTEM = (
@@ -70,7 +70,7 @@ def complete_gemini(system: str, prompt: str, model: str, api_key: str,
     resp = client.models.generate_content(
         model=model,
         contents=f"{system}\n\n{prompt}",
-        config={"max_output_tokens": max_tokens, "temperature": 0.2},
+        config={"max_output_tokens": max_tokens + 2048, "temperature": 0.2},
     )
     return (resp.text or "").strip()
 
