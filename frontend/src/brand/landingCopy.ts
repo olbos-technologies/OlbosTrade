@@ -43,8 +43,8 @@ const COPY: Record<BrandKey, (systemName: string) => LandingCopy> = {
     finalHeading: "Start in paper. Prove the edge before it's live.",
   }),
   cimphawng: (systemName) => ({
-    eyebrow: "Systematic Trading for the Zomi Community",
-    h1: "A disciplined trading terminal for the Zomi community, with risk controls built into every decision.",
+    eyebrow: "Built for the Zomi community",
+    h1: "Practice the trade before you place it.",
     lede: heroLede(systemName),
     finalHeading: "Start in paper. Learn the system before it's live.",
     community: {
