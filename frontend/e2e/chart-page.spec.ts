@@ -57,7 +57,9 @@ test("positions on the left, the chart in the middle, the watchlist on the right
   await expect(page.getByLabel("Open positions panel")).toContainText("FER");
   await expect(page.getByLabel("Open positions panel")).toContainText("−$46.00");
   await expect(page.getByLabel("Watchlist panel")).toContainText("342.36");
-  await expect(page.getByRole("tab")).toHaveCount(0);
+  // The only tabs on the page are the research dock's four, under the chart.
+  await expect(page.getByRole("tab")).toHaveCount(4);
+  await expect(page.getByLabel("Research dock").getByRole("tab")).toHaveCount(4);
   await expect(page.locator(".workstation-right, .workstation-watchlist, .workstation-top-strip, .chart-quote")).toHaveCount(0);
   await expectNoHorizontalOverflow(page, 1440);
 });
@@ -173,4 +175,51 @@ test("on a phone the chart comes first with the controls above and below it, the
     expect((await b.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   }
   await expectNoHorizontalOverflow(page, 390);
+});
+
+test("the research dock sits under the full chart row, and the chart stays tall", async ({ page }) => {
+  await open(page);
+  await expect(page.getByRole("tabpanel"), "closed by default on a 900px-tall window").toHaveCount(0);
+  await page.getByRole("tab", { name: "Signal" }).click();
+  await expect(page.getByRole("tabpanel")).toBeVisible();
+  const dock = (await page.getByLabel("Research dock").boundingBox())!;
+  const chart = (await page.locator(".dock-chart").boundingBox())!;
+  const left = (await page.getByLabel("Open positions panel").boundingBox())!;
+  const right = (await page.getByLabel("Watchlist panel").boundingBox())!;
+  expect(dock.y, "dock starts below the chart").toBeGreaterThanOrEqual(chart.y + chart.height - 1);
+  expect(dock.y, "dock starts below both side panels").toBeGreaterThanOrEqual(Math.max(left.y + left.height, right.y + right.height) - 1);
+  expect(dock.width, "dock spans the page").toBeGreaterThan(chart.width + left.width);
+  expect(chart.height, "chart keeps a usable height beside the dock").toBeGreaterThan(280);
+  await expect(page.getByRole("tab", { name: "Signal" })).toHaveAttribute("aria-selected", "true");
+  await page.getByRole("tab", { name: "Levels" }).click();
+  await expect(page.getByRole("tabpanel")).toContainText("ENTRY");
+  await expectNoHorizontalOverflow(page, 1440);
+});
+
+test("a window under 1000px tall starts with the dock closed so the chart keeps its height; it opens on demand", async ({ page }) => {
+  await open(page, 1280, 720);
+  await expect(page.getByRole("tabpanel")).toHaveCount(0);
+  await page.getByRole("tab", { name: "Volatility" }).click();
+  await expect(page.getByRole("tabpanel")).toBeVisible();
+  await page.getByRole("button", { name: "Hide" }).click();
+  await expect(page.getByRole("tabpanel")).toHaveCount(0);
+  await expectNoHorizontalOverflow(page, 1280);
+});
+
+test("a failed volatility read says so in the dock instead of showing nothing", async ({ page }) => {
+  await open(page);
+  await page.getByRole("tab", { name: "Volatility" }).click();
+  await expect(page.getByRole("tabpanel")).toContainText("request failed");
+});
+
+test("on a phone there is no research dock", async ({ page }) => {
+  await open(page, 390, 844);
+  await expect(page.getByLabel("Research dock")).toBeHidden();
+});
+
+test("a tall window starts with the dock open", async ({ page }) => {
+  await open(page, 1600, 1100);
+  await expect(page.getByRole("tabpanel")).toBeVisible();
+  expect((await page.locator(".dock-chart").boundingBox())!.height).toBeGreaterThan(380);
+  await expectNoHorizontalOverflow(page, 1600);
 });

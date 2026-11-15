@@ -15,6 +15,7 @@ import { DEFAULT_INTERVAL, DEFAULT_RANGE, INTERVAL_OPTIONS, RANGE_DEFAULT_INTERV
 import InstrumentBar from "../components/chart/InstrumentBar";
 import PositionsTable from "../components/chart/PositionsTable";
 import WatchlistTable from "../components/chart/WatchlistTable";
+import InsightDock from "../components/chart/InsightDock";
 import { usePaperTrade } from "../hooks/usePaperTrade";
 import { tint } from "../utils/tint";
 import "./markets/Markets.css";
@@ -82,6 +83,9 @@ interface Signal {
 // beyond this from the Market Watch panel; the list persists to localStorage.
 const DEFAULT_WATCHLIST = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "SPY", "QQQ", "IWM"];
 const WATCHLIST_STORAGE_KEY = "olbos.chart.watchlist";
+// Below this window height the research dock starts collapsed: the chart keeps its
+// height (guarded by e2e/chart-page.spec.ts) and one click opens the dock.
+const DOCK_OPEN_MIN_VIEWPORT_H = 1000;
 
 function loadStoredWatchlist(): string[] {
   try {
@@ -207,6 +211,8 @@ export default function ChartWorkstation({
   const [watchSnapshots, setWatchSnapshots] = useState<Record<string, WatchSnapshot>>({});
   const [signals, setSignals] = useState<Signal[]>([]);
   const [ivRank, setIvRank] = useState<any>(null);
+  const [ivFailed, setIvFailed] = useState(false);
+  const [catalystsFailed, setCatalystsFailed] = useState(false);
   const [chartBars, setChartBars] = useState<ChartBar[]>([]);
   const [chartLoading, setChartLoading] = useState(false);
   const [chartError, setChartError] = useState<string | null>(null);
@@ -287,13 +293,15 @@ export default function ChartWorkstation({
   }, [watchlist]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    (api.getIVRank(symbol) as Promise<any>).then(setIvRank).catch(() => setIvRank(null));
+    setIvFailed(false);
+    (api.getIVRank(symbol) as Promise<any>).then(setIvRank).catch(() => { setIvRank(null); setIvFailed(true); });
   }, [symbol]);
 
   useEffect(() => {
+    setCatalystsFailed(false);
     (api.getCatalystCalendar(symbol, 21) as Promise<any>)
       .then((res) => setCatalystEvents(res?.events || []))
-      .catch(() => setCatalystEvents([]));
+      .catch(() => { setCatalystEvents([]); setCatalystsFailed(true); });
   }, [symbol]);
 
   useEffect(() => {
@@ -422,6 +430,20 @@ export default function ChartWorkstation({
                 onSelect={setSymbol} onRemove={(t) => { removeTicker(t); if (t === symbol) setSymbol(watchlist.find((w) => w !== t) ?? symbol); }} />
             </SidePanel>
           </div>
+          {!isMobile && (
+            <InsightDock
+              symbol={symbol}
+              signal={selectedSignal}
+              planned={hasRealPlan}
+              entry={entry}
+              levels={levels}
+              vol={ivRank}
+              volFailed={ivFailed}
+              catalysts={catalystEvents}
+              catalystsFailed={catalystsFailed}
+              defaultOpen={viewportH >= DOCK_OPEN_MIN_VIEWPORT_H}
+            />
+          )}
         </div>
         <SignalDetailDrawer
           open={signalDrawerOpen}

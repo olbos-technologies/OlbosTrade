@@ -2167,6 +2167,33 @@ summary span[aria-hidden="true"] { display: inline-block; transition: transform 
   .range-bar__note { white-space: nowrap; }
 }
 
+/* Research dock under the chart (desktop): Signal / Levels / Volatility / Catalysts.
+   Flat tabs, gold underline for the selected one. Collapsible so a short window
+   keeps its chart; the chart is sized from the space left over (ResizeObserver). */
+.insight-dock { flex: 0 0 auto; background: var(--bg-2); border-top: 1px solid var(--line-dim); }
+.insight-dock__bar { display: flex; align-items: center; justify-content: space-between; padding: 0 8px; border-bottom: 1px solid var(--line-dim); }
+.insight-dock--closed .insight-dock__bar { border-bottom: 0; }
+.insight-dock__tabs { display: flex; gap: 0; }
+.insight-dock__tabs button, .insight-dock__toggle {
+  background: transparent; border: 0; border-bottom: 2px solid transparent; border-radius: 0; cursor: pointer;
+  padding: 7px 12px; font: 600 11px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-dim);
+}
+.insight-dock__tabs button:hover, .insight-dock__toggle:hover { color: var(--ink); background: rgba(255,255,255,.03); }
+.insight-dock__tabs button[aria-selected="true"] { color: var(--brand); border-bottom-color: var(--brand); }
+.insight-dock__toggle { border-bottom: 0; font-weight: 500; }
+.insight-dock__panel { height: 168px; overflow: auto; padding: 8px 12px; }
+.insight-grid { display: grid; grid-template-columns: minmax(200px, 1fr) minmax(180px, 1fr) minmax(220px, 1.4fr); gap: 4px 28px; }
+.insight-facts { margin: 0; display: grid; gap: 0; align-content: start; }
+.insight-facts > div { display: flex; justify-content: space-between; gap: 12px; height: 26px; align-items: center; border-bottom: 1px solid rgba(255,255,255,.05); }
+.insight-facts dt { font: 500 10px var(--mono); text-transform: uppercase; letter-spacing: .05em; color: var(--ink-faint); }
+.insight-facts dd { margin: 0; font-size: 12px; color: var(--ink); text-align: right; }
+.insight-reasons h3 { margin: 0 0 4px; font: 500 10px var(--mono); text-transform: uppercase; letter-spacing: .05em; color: var(--ink-faint); }
+.insight-reasons ul { margin: 0; padding-left: 16px; font-size: 12px; color: var(--ink-dim); }
+.insight-dim { margin: 4px 0; font-size: 12px; color: var(--ink-dim); }
+.insight-swatch { display: inline-block; width: 8px; height: 8px; margin-right: 8px; border-radius: 50%; }
+.insight-levels { max-width: 420px; }
+@media (max-width: 768px) { .insight-dock { display: none; } }
+
 /* Setup Readiness on the Signals page: a readable column, not a full-width stretch. */
 .setup-readiness-page { max-width: 720px; padding: 16px; }
 
