@@ -91,6 +91,10 @@ class ZeroDteProposal:
     spot: float
     quoted_at: datetime
     expires_at: datetime
+    long_bid: float = 0.0          # the four quotes the proposal was built from, per share
+    long_ask: float = 0.0
+    short_bid: float = 0.0
+    short_ask: float = 0.0
     warnings: tuple[str, ...] = ()
 
 
@@ -275,6 +279,7 @@ def propose_debit_spread(
             max_loss=max_loss, max_profit=max_profit, breakeven=round(breakeven, 4),
             reward_to_risk=round((width - limit_debit) / limit_debit, 3),
             spot=spot, quoted_at=fetched, expires_at=now_utc + timedelta(seconds=PROPOSAL_TTL_S),
+            long_bid=long_bid, long_ask=long_ask, short_bid=short_bid, short_ask=short_ask,
             warnings=tuple(warnings),
         ))
 

@@ -88,6 +88,10 @@ class Settings(BaseSettings):
     # than a few hours is describing a market that no longer exists. Older pending
     # approvals are marked "expired" (kept for the audit trail, never executed).
     approval_ttl_minutes: int = Field(default=180, ge=1)
+    # Records what 0DTE debit spreads on SPY/QQQ looked like at fixed times and what they were
+    # worth 5 and 10 minutes later (services/zero_dte_recorder.py). Read-only market data; it
+    # never sends an order. Off by default.
+    zero_dte_recorder_enabled: bool = Field(default=False)
     max_consecutive_losses: int = Field(default=3)
 
     # ── Regime hysteresis ─────────────────────────────────────────────────
