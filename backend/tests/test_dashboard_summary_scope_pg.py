@@ -182,3 +182,57 @@ async def test_an_empty_scope_reports_zero_rather_than_the_desk_total(db):
     empty = await _summary(ORG_A)
     assert empty["total_pnl"] == 0.0, empty
     assert empty["day_pnl"] == 0.0, empty
+
+
+# ── "Today" is the Eastern market day, not the server's UTC date ─────────────
+
+async def _seed_at(factory, org_id, pnl, exit_at, ticker="AAA"):
+    async with factory() as s, s.begin():
+        s.add(Trade(
+            id=uuid.uuid4(), organization_id=org_id,
+            strategy="equity_momentum", underlying=ticker,
+            spread_type="equity_long",
+            entry_date=exit_at - dt.timedelta(days=1), exit_date=exit_at,
+            short_strike=450, long_strike=445,
+            expiration=dt.date(2026, 12, 19),
+            status="closed", pnl=pnl, quantity=10,
+        ))
+
+
+def _at_et(y, mo, d, h, mi):
+    """Pin 'now' to an Eastern wall-clock time (the helper reads the clock through now_et)."""
+    from zoneinfo import ZoneInfo
+    fixed = dt.datetime(y, mo, d, h, mi, tzinfo=ZoneInfo("America/New_York"))
+    return patch("app.utils.market_hours.now_et", lambda now=None: fixed)
+
+
+async def test_day_pnl_after_the_utc_rollover_still_counts_the_trading_day(db):
+    """The reported case: at 22:21 ET (03:21 UTC the next date) Day P&L read $0 although
+    trades had closed during that Eastern day. A UTC-date filter counted only what closed
+    after 00:00 UTC."""
+    utc = dt.timezone.utc
+    await _seed_at(db, ORG_A, -300.0, dt.datetime(2026, 11, 11, 18, 0, tzinfo=utc))    # 13:00 ET, 11-11
+    await _seed_at(db, ORG_A, -40.0, dt.datetime(2026, 11, 12, 2, 0, tzinfo=utc))      # 21:00 ET, 11-11
+    await _seed_at(db, ORG_A, +10.0, dt.datetime(2026, 11, 12, 6, 0, tzinfo=utc))      # 01:00 ET, 11-12: next day
+    await _seed_at(db, ORG_A, -50.0, dt.datetime(2026, 11, 11, 4, 0, tzinfo=utc))      # 23:00 ET, 11-10: previous day
+
+    with _at_et(2026, 11, 11, 22, 21):
+        a = await _summary(ORG_A)
+    assert a["day_pnl"] == -340.0, a
+    assert a["total_pnl"] == -380.0, a                      # the lifetime figure is unaffected
+
+
+async def test_day_pnl_on_the_next_morning_starts_from_zero_again(db):
+    utc = dt.timezone.utc
+    await _seed_at(db, ORG_A, -300.0, dt.datetime(2026, 11, 11, 18, 0, tzinfo=utc))
+    with _at_et(2026, 11, 12, 9, 45):
+        assert (await _summary(ORG_A))["day_pnl"] == 0.0
+
+
+async def test_the_day_filter_still_sits_on_top_of_the_ownership_filter(db):
+    utc = dt.timezone.utc
+    await _seed_at(db, ORG_A, -120.0, dt.datetime(2026, 11, 11, 20, 0, tzinfo=utc))
+    await _seed_at(db, ORG_B, +4000.0, dt.datetime(2026, 11, 11, 20, 0, tzinfo=utc))
+    with _at_et(2026, 11, 11, 22, 21):
+        assert (await _summary(ORG_A))["day_pnl"] == -120.0
+        assert (await _summary(ORG_B))["day_pnl"] == 4000.0

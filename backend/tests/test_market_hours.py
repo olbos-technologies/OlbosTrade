@@ -66,3 +66,57 @@ async def test_execute_signal_blocked_when_market_closed():
 
     assert result["result"] == "blocked"
     assert "market_closed" in result["reason"]
+
+
+# ── market_day_bounds: the Eastern calendar day, in UTC ──────────────────────
+
+from datetime import timezone  # noqa: E402
+
+from app.utils.market_hours import market_day_bounds  # noqa: E402
+
+UTC = timezone.utc
+
+
+def _utc(y, mo, d, h=0, mi=0):
+    return datetime(y, mo, d, h, mi, tzinfo=UTC)
+
+
+def test_the_evening_after_the_utc_rollover_is_still_the_same_market_day():
+    """The reported case: 22:21 ET on 2026-11-11 is 03:21 UTC on 2026-11-12, but still market day 11-11."""
+    start, end = market_day_bounds(_utc(2026, 11, 12, 3, 21))
+    assert start == _utc(2026, 11, 11, 5, 0) and end == _utc(2026, 11, 12, 5, 0)     # EST: ET midnight is 05:00 UTC
+
+
+def test_just_after_eastern_midnight_starts_the_next_market_day():
+    start, end = market_day_bounds(_utc(2026, 11, 12, 5, 0))       # exactly 00:00 ET on 11-12
+    assert start == _utc(2026, 11, 12, 5, 0) and end == _utc(2026, 11, 13, 5, 0)
+    start, _ = market_day_bounds(_utc(2026, 11, 12, 4, 59))        # one minute earlier is still 11-11
+    assert start == _utc(2026, 11, 11, 5, 0)
+
+
+def test_during_daylight_time_eastern_midnight_is_04_utc():
+    start, end = market_day_bounds(_utc(2026, 7, 15, 3, 0))        # 23:00 ET on 07-14
+    assert start == _utc(2026, 7, 14, 4, 0) and end == _utc(2026, 7, 15, 4, 0)
+
+
+@pytest.mark.parametrize("now,hours", [
+    (_utc(2026, 3, 8, 12, 0), 23),     # spring forward: the Eastern day is 23 hours long
+    (_utc(2026, 11, 1, 12, 0), 25),    # fall back: 25 hours
+    (_utc(2026, 6, 10, 12, 0), 24),
+    (_utc(2026, 12, 10, 12, 0), 24),
+])
+def test_a_day_is_24_hours_except_on_the_two_daylight_saving_changes(now, hours):
+    start, end = market_day_bounds(now)
+    assert (end - start).total_seconds() / 3600 == hours
+    assert start <= now < end
+
+
+def test_a_naive_time_is_read_as_eastern_like_the_rest_of_the_module():
+    start, end = market_day_bounds(datetime(2026, 11, 11, 22, 21))     # 22:21 ET, no tzinfo
+    assert start == _utc(2026, 11, 11, 5, 0) and end == _utc(2026, 11, 12, 5, 0)
+
+
+def test_the_bounds_are_timezone_aware_utc():
+    start, end = market_day_bounds(_utc(2026, 11, 11, 15, 0))
+    assert start.tzinfo is not None and end.tzinfo is not None
+    assert start.utcoffset().total_seconds() == 0 and end.utcoffset().total_seconds() == 0

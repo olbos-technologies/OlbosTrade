@@ -13,6 +13,8 @@ type Snap = {
   label: string;
   value: string;
   compactValue?: string;
+  /** Plain-language explanation shown on hover (desktop). */
+  hint?: string;
   tone?: "ok" | "warn" | "crit" | "muted";
   /**
    * What happens to this chip on a phone.
@@ -25,14 +27,14 @@ type Snap = {
   priority?: "always" | "expand";
 };
 
-function Chip({ label, value, compactValue, tone = "muted", priority = "expand", extraClass }: Snap & { extraClass?: string }) {
+function Chip({ label, value, compactValue, tone = "muted", priority = "expand", extraClass, hint }: Snap & { extraClass?: string }) {
   const color =
     tone === "ok" ? "var(--green)" :
     tone === "warn" ? "var(--amber)" :
     tone === "crit" ? "var(--red)" :
     "var(--ink)";
   return (
-    <div className={`instrument-chip${extraClass ? ` ${extraClass}` : ""}`} data-priority={priority} style={{ ["--chip-border" as string]: tint(color, 0.333) }}>
+    <div className={`instrument-chip${extraClass ? ` ${extraClass}` : ""}`} data-priority={priority} title={hint} style={{ ["--chip-border" as string]: tint(color, 0.333) }}>
       <span className="instrument-chip-label">{label}</span>
       <span className="instrument-chip-value instrument-chip-value--desktop" style={{ color }}>{value}</span>
       {compactValue && (
@@ -198,7 +200,8 @@ export default function TradeDeskHeader() {
         tone={env === "Live" ? "crit" : envTone}
         priority="always"
       />
-      <Chip label="Day P&L" value={dayPnl} tone={dayPnlTone} priority="always" />
+      <Chip label="Day P&L" value={dayPnl} tone={dayPnlTone} priority="always"
+        hint="Realized P&L of trades closed today (US Eastern market day). Open P&L is not included." />
       <Chip label="Broker" value={`${broker} · ${brokerStatus}`} tone={brokerTone} />
       <Chip label="Regime" value={regime} />
       <Chip label="Risk budget" value={heat} />
