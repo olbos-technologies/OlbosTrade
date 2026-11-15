@@ -2,6 +2,7 @@
  * Progressive, educational first-visit guidance. Presentation preferences do NOT
  * change execution mode, broker permissions, or backend risk gates.
  */
+import { getBrand } from "../brand/brands";
 import React, { useState } from "react";
 import { useTerminalNav } from "./TerminalNavContext";
 
@@ -55,7 +56,7 @@ export default function WelcomeBanner({ onDismiss }: { onDismiss: () => void }) 
   );
 
   return (
-    <section aria-label="Getting started with OlbosTrade" style={{ margin: "12px 16px 0", padding: "20px", background: "var(--bg-2)", border: "1px solid var(--line-dim)", borderRadius: 12 }}>
+    <section aria-label={`Getting started with ${getBrand().compactName}`} style={{ margin: "12px 16px 0", padding: "20px", background: "var(--bg-2)", border: "1px solid var(--line-dim)", borderRadius: 12 }}>
       <div style={{ display: "flex", gap: 14, alignItems: "flex-start", flexWrap: "wrap" }}>
         <div style={{ flex: 1, minWidth: 200 }}>
           <div className="kicker" style={{ marginBottom: 6 }}>WELCOME · GETTING STARTED</div>

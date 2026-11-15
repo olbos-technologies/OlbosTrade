@@ -2,6 +2,7 @@
  * Unified, read-only Command Center navigation and experience guidance.
  * This preference never changes authorization, broker mode, risk or execution.
  */
+import { getBrand } from "../brand/brands";
 import React, { useState } from "react";
 import { useTerminalNav } from "./TerminalNavContext";
 import { EXPERIENCE_LEVEL_KEY, readExperienceLevel, type ExperienceLevel } from "./WelcomeBanner";
@@ -48,7 +49,7 @@ export default function CommandCenterWorkspace() {
           </select>
         </div>
       </div>
-      <nav aria-label="Quick access to OlbosTrade workspaces" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 155px), 1fr))", gap: 8, marginTop: 16 }}>
+      <nav aria-label={`Quick access to ${getBrand().compactName} workspaces`} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 155px), 1fr))", gap: 8, marginTop: 16 }}>
         {DESTINATIONS.map(item => (
           <button key={item.page} type="button" onClick={() => onNav(item.page)}
             style={{ minHeight: 68, textAlign: "left", cursor: "pointer", padding: "12px", border: "1px solid var(--line-dim)", borderRadius: 9, background: "var(--bg-3)", color: "var(--ink)" }}>

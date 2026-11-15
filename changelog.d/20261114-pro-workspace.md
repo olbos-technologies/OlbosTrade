@@ -1,0 +1,5 @@
+## Unreleased — Pro Workspace: a dockable multi-panel Terminal view
+
+- New page, **Markets → Pro Workspace**: a chart with MA, VWAP, MACD and volume in the middle, a side column and a bottom dock. Each slot shows one panel the terminal already has (watchlist, positions, unusual options, news and catalysts, scanners, backtest), chosen from a menu. Splitters resize by mouse, touch or keyboard, the layout is remembered in the browser, and presets (Trader, Research, Chart only) switch it in one click. On a phone the panels stack one at a time.
+- It is an additional page for every brand. Every existing page is unchanged; the only difference on them is the new menu item. It places no orders and writes nothing to the server, and a failing panel or an unavailable price is shown as unavailable, never as zero or a made-up series.
+- Not included yet: seasonality (needs a confirmed history source and data rights), volume profile and drawing tools, free-form docking, and layouts saved to the account. See `docs/PRO_WORKSPACE.md`.

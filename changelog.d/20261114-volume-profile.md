@@ -1,0 +1,5 @@
+## Unreleased — Volume profile on the Pro Workspace chart
+
+- The Pro Workspace chart now shows a **volume profile**: a horizontal histogram at the right edge of the price pane showing how much volume traded at each price, for the bars in view, with a dashed line at the busiest price (point of control) and a stronger band for the value area (70% of the volume). It updates as you zoom and scroll, and a **Volume profile** button in the chart bar turns it off (remembered per browser). A line under the chart gives the bars in view, the point of control and the value area.
+- It is approximate and labelled as such: it is built from bars, with each bar's volume spread evenly across its high-low range, not from individual trades. It describes where volume traded; it is not a signal.
+- Opt-in on the chart component (off by default), so the Chart page and every other chart are unchanged. Not included: drawing tools, a profile on the Chart page, session or fixed-range profiles. See `docs/PRO_WORKSPACE.md`.

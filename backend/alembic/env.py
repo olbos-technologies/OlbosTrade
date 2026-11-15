@@ -27,6 +27,7 @@ from app.models import (  # noqa: F401
     trade,
     trade_intent,
     user,
+    zero_dte_observation,
 )
 
 config = context.config

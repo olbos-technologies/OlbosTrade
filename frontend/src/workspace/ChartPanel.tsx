@@ -1,0 +1,148 @@
+/**
+ * The workspace chart: a slim control strip over a candlestick chart that fills
+ * whatever space the panel is given. The size is measured from the panel, not
+ * guessed, so dragging a splitter resizes the chart live.
+ *
+ * Bars come from the same endpoint the Chart page uses. A failed or empty
+ * response says so; it never draws a made-up series.
+ *
+ * Drawing tools (trend, horizontal and vertical lines, rectangle, Fibonacci) sit in
+ * a rail beside the chart. Drawings are notes anchored to time and price and are
+ * saved per symbol in this browser; they place no orders and set no stops. They
+ * are mouse and pen only, so the rail is not offered on the stacked phone layout.
+ */
+
+import React, { useEffect, useRef, useState } from "react";
+import { api } from "../api/client";
+import CandlestickChart, { type ChartBar, type ChartHandle } from "../components/CandlestickChart";
+import { useIsMobile } from "../hooks/useIsMobile";
+import DrawingToolbar from "./drawings/DrawingToolbar";
+import { useDrawings } from "./drawings/useDrawings";
+import IntervalStrip from "../components/chart/IntervalStrip";
+import RangeBar from "../components/chart/RangeBar";
+import {
+  DEFAULT_INTERVAL, DEFAULT_RANGE, INTERVAL_OPTIONS, clampNote,
+  type IntervalKey, type RangeKey,
+} from "../components/chart/timeframes";
+import { pnlColor } from "../utils/pnlTone";
+import { readProfilePref, writeProfilePref } from "./profilePref";
+
+const MIN_CHART_H = 160;
+
+function browserStorage(): Storage | null {
+  try { return window.localStorage; } catch { return null; }
+}
+
+const px = (n: number | null | undefined) => (typeof n === "number" && Number.isFinite(n) ? n.toFixed(2) : "—");
+const pct = (n: number | null | undefined) =>
+  typeof n === "number" && Number.isFinite(n) ? `${n < 0 ? "−" : n > 0 ? "+" : ""}${Math.abs(n).toFixed(2)}%` : "—";
+
+export default function ChartPanel({ symbol }: { symbol: string }) {
+  const [interval, setIntervalKey] = useState<IntervalKey>(DEFAULT_INTERVAL);
+  const [range, setRange] = useState<RangeKey>(DEFAULT_RANGE);
+  const [bars, setBars] = useState<ChartBar[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const [quote, setQuote] = useState<{ last: number | null; chg: number | null } | null>(null);
+  const [profileText, setProfileText] = useState<string | null>(null);
+  const interactive = !useIsMobile(900);
+  const [handle, setHandle] = useState<ChartHandle | null>(null);
+  const [rootEl, setRootEl] = useState<HTMLDivElement | null>(null);
+  const [showProfile, setShowProfile] = useState<boolean>(() => readProfilePref(browserStorage()));
+  const toggleProfile = () => setShowProfile((on) => { writeProfilePref(browserStorage(), !on); return !on; });
+
+  // Measure the chart area so the chart fills it.
+  const wrap = useRef<HTMLDivElement>(null);
+  const [h, setH] = useState(0);
+  useEffect(() => {
+    const el = wrap.current;
+    if (!el) return;
+    const read = () => setH(Math.max(MIN_CHART_H, Math.floor(el.clientHeight)));
+    read();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(read);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  useEffect(() => {
+    let live = true; // a slower, older answer must not overwrite the newest pick
+    setLoading(true);
+    setError(null);
+    (api.getEquityChart(symbol, { timeframe: interval, range, limit: 5000 }) as Promise<any>)
+      .then((res) => {
+        if (!live) return;
+        setBars(res.bars || []);
+        const title = INTERVAL_OPTIONS.find((o) => o.key === interval)?.title ?? String(interval);
+        setNote(res.range_clamped ? clampNote(title, res.period) : null);
+      })
+      .catch((e: Error) => { if (live) { setBars([]); setNote(null); setError(e.message || "Chart data unavailable"); } })
+      .finally(() => { if (live) setLoading(false); });
+    return () => { live = false; };
+  }, [symbol, interval, range]);
+
+  useEffect(() => {
+    let live = true;
+    setQuote(null);
+    (api.getSnapshot(symbol) as Promise<{ last_close: number | null; change_pct: number | null }>)
+      .then((s) => { if (live) setQuote({ last: s.last_close, chg: s.change_pct }); })
+      .catch(() => { if (live) setQuote({ last: null, chg: null }); });
+    return () => { live = false; };
+  }, [symbol]);
+
+  const last = bars.length ? bars[bars.length - 1] : null;
+  const { engine, state: drawState } = useDrawings({ handle, bars, symbol, interactive, keyTarget: rootEl });
+  const showTools = interactive && !error && (loading || bars.length > 0);
+  const rootClass = `ws-chart${drawState.tool !== "select" ? " ws-chart--drawing" : ""}${drawState.hoverId ? " ws-chart--hit" : ""}`;
+
+  return (
+    <div className={rootClass} ref={setRootEl} tabIndex={-1}>
+      <div className="ws-chart__bar">
+        <span className="ws-chart__symbol">{symbol}</span>
+        <span className="ws-chart__quote" aria-label="Last close snapshot">
+          {px(quote?.last)}{" "}
+          <span style={{ color: quote?.chg == null ? "var(--ink-faint)" : pnlColor(quote.chg) }}>{pct(quote?.chg)}</span>
+        </span>
+        {last && (
+          <span className="ws-chart__ohlc" aria-label="Latest bar">
+            O {px(last.open)} H {px(last.high)} L {px(last.low)} C {px(last.close)}
+          </span>
+        )}
+        <button type="button" className="ws-chart__toggle" aria-pressed={showProfile} onClick={toggleProfile}
+          title="Show where volume traded, for the bars in view (approximate, built from bars)">
+          Volume profile
+        </button>
+        <IntervalStrip value={interval} onChange={setIntervalKey} />
+      </div>
+      <div className="ws-chart__body">
+      {showTools && <DrawingToolbar state={drawState} engine={engine} />}
+      <div className="ws-chart__canvas" ref={wrap}>
+        {loading ? (
+          <div className="skeleton-block" style={{ height: h }} aria-busy="true" aria-label="Loading chart">
+            <div className="skeleton-shimmer" />
+          </div>
+        ) : error ? (
+          <p className="ws-note ws-note--warn" role="status">Chart data unavailable for {symbol}. {error}</p>
+        ) : bars.length === 0 ? (
+          <p className="ws-note" role="status">No bars returned for {symbol} in this range.</p>
+        ) : (
+          <CandlestickChart bars={bars} levels={[]} height={h} volumeProfile={showProfile} onProfileSummary={setProfileText} onReady={setHandle} />
+        )}
+      </div>
+      </div>
+      <div className="ws-chart__foot">
+        {showProfile && profileText && (
+          <span
+            className="ws-chart__profile"
+            aria-label="Volume profile"
+            title={`Volume profile · ${profileText}. Approximate: built from bars, with each bar's volume spread evenly across its high-low range. It shows where volume traded in the bars in view. It is not a signal.`}
+          >
+            Volume profile · {profileText}
+          </span>
+        )}
+        <RangeBar value={range} onChange={setRange} note={note} />
+      </div>
+    </div>
+  );
+}

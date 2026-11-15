@@ -6,6 +6,8 @@
  * nothing is worse than no affordance.
  */
 
+import LanguageToggle from "./LanguageToggle";
+import { useT } from "../i18n/i18n";
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -21,6 +23,7 @@ export default function UserMenu({ opens = "up" }: { opens?: "up" | "down" } = {
   // provider must mean "nothing to show", not a crash that takes the shell
   // down. See useAuthOptional.
   const auth = useAuthOptional();
+  const tr = useT();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -131,6 +134,7 @@ export default function UserMenu({ opens = "up" }: { opens?: "up" | "down" } = {
           }}>
             {user.tier} tier
           </div>
+          <LanguageToggle />
 
           {/* Two cases land here, and they differ in where the warning is read:
               - unreachable: the phase stays "signed-in" on purpose, so this
@@ -174,7 +178,7 @@ export default function UserMenu({ opens = "up" }: { opens?: "up" | "down" } = {
               textTransform: "uppercase",
             }}
           >
-            {busy ? "Signing out…" : "Sign out"}
+            {busy ? "Signing out…" : tr("Sign out")}
           </button>
         </div>,
         document.body

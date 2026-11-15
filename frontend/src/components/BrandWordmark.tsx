@@ -1,33 +1,38 @@
 /**
- * The complete Olbos Trade horizontal lockup.
+ * The horizontal logo lockup for whichever brand this page is.
  *
- * The artwork contains the angular silver O mark, the OLBOS wordmark and the
- * gold TRADE descriptor as one immutable asset. Keeping those proportions in
- * one file prevents the header, landing page and authentication shell from
- * assembling slightly different logos.
+ * Each brand's mark, name and descriptor are one finished image. Keeping the
+ * proportions in the brand registry (and this one component) prevents the
+ * header, landing page and authentication shell from assembling slightly
+ * different logos.
  *
- * `height` is the rendered height of the complete lockup. Width is reserved
- * from the cropped artwork's intrinsic aspect ratio so the surrounding chrome
- * never shifts while the image loads.
+ * `height` is the rendered height of the lockup. Width is reserved from the
+ * brand's aspect ratio, so the surrounding chrome never shifts while the image
+ * loads and callers need no per-brand layout.
  */
 
-const LOCKUP_W = 1086;
-const LOCKUP_H = 280;
-export const WORDMARK_ASPECT = LOCKUP_W / LOCKUP_H;
+import { getBrand } from "../brand/brands";
 
 export default function BrandWordmark({ height, className }: {
   height: number;
   className?: string;
 }) {
+  const { wordmark } = getBrand();
   return (
     <img
       className={className}
-      src="/olbos-trade-lockup.webp"
-      width={Math.round(height * WORDMARK_ASPECT)}
+      src={wordmark.src}
+      width={Math.round(height * wordmark.aspect)}
       height={height}
-      alt="Olbos Trade"
+      alt={wordmark.alt}
       decoding="async"
       style={{ display: "block", flexShrink: 0, objectFit: "contain" }}
     />
   );
+}
+
+/** The standalone mark (no wordmark), at a square `size`. */
+export function BrandMark({ size, className }: { size: number; className?: string }) {
+  const { standaloneMark } = getBrand();
+  return <img className={className} src={standaloneMark.src} alt="" width={size} height={size} />;
 }

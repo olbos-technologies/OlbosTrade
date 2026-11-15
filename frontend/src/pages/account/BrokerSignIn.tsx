@@ -1,3 +1,4 @@
+import { getBrand } from "../../brand/brands";
 import React, { useCallback, useEffect, useState } from "react";
 import { api, type BrokerOAuthConnection, type BrokerProvider } from "../../api/client";
 import PaperAccountSnapshot from "./PaperAccountSnapshot";
@@ -47,7 +48,7 @@ export default function BrokerSignIn() {
     } catch { setError("Could not start broker sign-in. Try again shortly."); setBusy(""); }
   };
   const disconnect = async (id: string) => {
-    if (!window.confirm("Disconnect this account from OlbosTrade? You can reconnect through Alpaca.")) return;
+    if (!window.confirm(`Disconnect this account from ${getBrand().compactName}? You can reconnect through Alpaca.`)) return;
     setBusy(id); setError("");
     try { await api.disconnectBrokerOAuth(id); await load(); }
     catch { setError("Could not disconnect. Your connection may still be active; retry."); }
@@ -75,7 +76,7 @@ export default function BrokerSignIn() {
     <h2 style={{ fontSize: 18, margin: "0 0 8px" }}>Choose your broker</h2>
     <p style={{ color: "var(--ink-dim)" }}>
       Use your existing brokerage login on the broker’s website. Your brokerage
-      password stays with your broker. You can continue using OlbosTrade without connecting.
+      password stays with your broker. You can continue using {getBrand().compactName} without connecting.
     </p>
     <p style={{ color: "var(--amber)" }}>Paper accounts · Read-only access · Automated execution unavailable</p>
     {result === "connected" && <p role="status">Broker sign-in completed. Check the connected accounts below. Trading remains off.</p>}
@@ -116,6 +117,6 @@ export default function BrokerSignIn() {
       onHealth={result => setConnections(rows => rows.map(c => c.id === result.connection_id ?
         {...c, health:result.health, last_checked_at:result.last_checked_at, status:result.status} : c))}/>}
     <p style={{ fontSize: 12, color: "var(--ink-dim)" }}>Account checks are point-in-time only. They do not verify positions, protective orders, or permission for automated execution.</p>
-    <p style={{ fontSize: 12, color: "var(--ink-dim)" }}>Disconnecting deletes the saved token from OlbosTrade. You can also revoke this application in Alpaca’s settings.</p>
+    <p style={{ fontSize: 12, color: "var(--ink-dim)" }}>{`Disconnecting deletes the saved token from ${getBrand().compactName}. You can also revoke this application in Alpaca’s settings.`}</p>
   </section>;
 }

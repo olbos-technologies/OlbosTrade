@@ -597,6 +597,10 @@ async def _background_scheduler() -> None:
     # Fire on the first tick: if the process restarted inside the 10:00 ET
     # hour, the day's snapshot is still catchable.
     last_snapshot        = 0.0
+    # Off unless ZERO_DTE_RECORDER_ENABLED. Read-only market data, never an order. The job decides
+    # for itself whether a slot or a mark is due, so a 60 s tick with an internal gate survives
+    # a restart mid-session.
+    last_zero_dte        = 0.0
     # Fires on the first tick so a row exists as soon as the process is up, then
     # every guardrail_snapshot_interval_s. EmotionGuard's own persist updates the
     # latest row after each trade; this is what guarantees there is one to update.
@@ -754,6 +758,12 @@ async def _background_scheduler() -> None:
             if now - last_snapshot >= snapshot_interval_s:
                 await _guarded(_capture_daily_snapshot(), "daily_snapshot", 60)
                 last_snapshot = now
+
+            # Every 60 s while enabled: the 0DTE recorder (observations at fixed ET slots and
+            # 5/10-minute marks). Read-only; see services/zero_dte_recorder.py.
+            if settings.zero_dte_recorder_enabled and now - last_zero_dte >= 60:
+                await _guarded(_run_zero_dte_recorder(), "zero_dte_recorder", 150)
+                last_zero_dte = now
 
             # Keep a portfolio_snapshots row current. Without one EmotionGuard's
             # pause and loss count cannot survive a restart, and restarting the
@@ -3532,6 +3542,26 @@ async def _capture_daily_snapshot() -> None:
     logger.info("daily snapshot %s: froze %d — buy %s / sell %s",
                 report.get("trade_date"), report.get("captured"),
                 report.get("buy"), report.get("sell"))
+
+
+async def _run_zero_dte_recorder() -> None:
+    """One tick of the 0DTE recorder. Market-data reads only, queued at the scans' priority so
+    they can never delay an order or a risk check."""
+    from app.broker.broker_factory import get_broker
+    from app.broker.ibkr_coordinator import Priority, ibkr_coordinator
+    from app.services.zero_dte_recorder import record_tick
+
+    broker = get_broker()
+
+    async def _fetch(symbol: str, expiry_iso: str, **kwargs):
+        return await ibkr_coordinator.submit(
+            Priority.P2, lambda: broker.get_options_chain(symbol, expiry_iso, **kwargs),
+            timeout=45.0, req_type="ZERO_DTE_RECORDER", symbol=symbol,
+        )
+
+    report = await record_tick(_fetch)
+    if report.get("observed") or report.get("marks"):
+        logger.info("0DTE recorder: %s", report)
 
 
 async def _refresh_sector_cache() -> None:

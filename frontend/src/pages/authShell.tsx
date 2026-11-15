@@ -14,9 +14,10 @@
  * which has to go through tint()/color-mix to work at all.
  */
 
+import LanguageToggle from "../components/LanguageToggle";
 import React from "react";
 import { Link } from "react-router-dom";
-import BrandWordmark from "../components/BrandWordmark";
+import BrandWordmark, { BrandMark } from "../components/BrandWordmark";
 
 import { tint } from "../utils/tint";
 import "../auth.css";
@@ -77,13 +78,7 @@ export function Pitch({
   return (
     <div>
       {mark && (
-        <img
-          className="auth-mark"
-          src="/olbos-mark.webp"
-          alt=""
-          width={96}
-          height={96}
-        />
+        <BrandMark className="auth-mark" size={96} />
       )}
       <div className="auth-eyebrow">{eyebrow}</div>
       <h1 className="auth-h1">{title}</h1>
@@ -125,6 +120,7 @@ export function AuthPage({
           <a className="auth-brand" href="/">
             <BrandWordmark className="auth-wordmark" height={32} />
           </a>
+          <LanguageToggle />
           {navAction && (
             navAction.external
               ? <a className="auth-nav-link" href={navAction.to}>{navAction.label}</a>

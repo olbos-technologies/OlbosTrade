@@ -2,8 +2,19 @@ import React, { Suspense, lazy } from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import "./index.css";
+import "./design/brands.css";
 import { AuthProvider } from "./auth/AuthContext";
 import AuthGate from "./auth/AuthGate";
+import { applyBrandToDocument, getBrand } from "./brand/brands";
+import { LocaleProvider } from "./i18n/i18n";
+
+// Decide the brand from the hostname and put it on the document BEFORE the
+// first render, so a visitor on a brand's own address never sees another
+// brand's frame flash past. Presentation only: see brand/brands.ts.
+applyBrandToDocument(getBrand());
+// The terminal loads the UI fonts itself (App.tsx), but the public pages do not.
+// A brand whose skin uses Inter needs it there too. Olbos is unchanged.
+if (getBrand().key !== "olbos") void import("./figma-fonts.css");
 
 // Route-level code splitting: the public landing page and the terminal
 // (recharts, every page module) are large and mutually exclusive on first
@@ -33,6 +44,7 @@ function RouteFallback() {
 // route itself and would 401 a browser that skipped this entirely.
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
+    <LocaleProvider>
     <BrowserRouter>
       <Suspense fallback={<RouteFallback />}>
         <Routes>
@@ -58,5 +70,6 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
         </Routes>
       </Suspense>
     </BrowserRouter>
+    </LocaleProvider>
   </React.StrictMode>
 );

@@ -9,6 +9,7 @@
  * Time-range buttons filter the curve by calendar window.
  */
 
+import { getBrand } from "../brand/brands";
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { pnlColor, gainSign } from "../utils/pnlTone";
 import { api }           from "../api/client";
@@ -413,7 +414,7 @@ function DesktopDashboard() {
           variant="divider" size="default"
           label="Managed positions" hint={hintFor("Open Positions")}
           value={portfolio && !portfolioError ? String(managedPositions.length) : "—"}
-          sub={untrackedPositions.length > 0 ? `${untrackedPositions.length} untracked broker holdings` : "Olbos-managed positions only"}
+          sub={untrackedPositions.length > 0 ? `${untrackedPositions.length} untracked broker holdings` : `${getBrand().shortName}-managed positions only`}
         />
       </div>
 
@@ -464,7 +465,7 @@ function DesktopDashboard() {
                 color: "var(--amber)", background: "rgba(245,158,11,0.06)",
                 borderBottom: "1px solid var(--line-dim)",
               }}>
-                ⚠ {untrackedPositions.length} broker holding{untrackedPositions.length > 1 ? "s" : ""} not opened by Olbos — review/reconcile in the paper account.
+                ⚠ {untrackedPositions.length} broker holding{untrackedPositions.length > 1 ? "s" : ""} not opened by {getBrand().shortName} — review/reconcile in the paper account.
               </div>
             )}
             <table className="t-table">

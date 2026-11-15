@@ -875,3 +875,104 @@ async def test_get_account_summary_attaches_the_callback():
     assert task.done()
     # Retrieved by the callback, not left for asyncio to shout about.
     assert task._log_traceback is False
+
+
+# ── windowed options chain (0DTE needs a few strikes, not the whole chain) ───
+
+def _chain_param(expiry_ib, strikes):
+    cp = MagicMock()
+    cp.expirations = [expiry_ib]
+    cp.strikes = strikes
+    return cp
+
+
+async def _window_run(client, **kwargs):
+    """Run get_options_chain against fakes; return (result, contracts qualified for the OPTIONS batch)."""
+    qualified_batches = []
+
+    async def _qualify(*contracts):
+        qualified_batches.append(list(contracts))
+        return list(contracts)
+
+    def _ticker(contract, last=600.2):
+        t = MagicMock()
+        t.contract = contract
+        t.bid, t.ask, t.last = 1.0, 1.2, last
+        t.volume, t.callOpenInterest, t.putOpenInterest = 10, 5, 5
+        t.modelGreeks = None
+        return t
+
+    async def _tickers(*contracts):
+        return [_ticker(c) for c in contracts]
+
+    strikes = [float(k) for k in range(590, 611)]            # 590..610, 21 strikes
+    with patch.object(client.ib, "qualifyContractsAsync", new_callable=AsyncMock, side_effect=_qualify), \
+         patch.object(client.ib, "reqSecDefOptParamsAsync", new_callable=AsyncMock,
+                      return_value=[_chain_param("20261111", strikes)]), \
+         patch.object(client.ib, "reqTickersAsync", new_callable=AsyncMock, side_effect=_tickers) as tk:
+        result = await client.get_options_chain("SPY", "2026-11-11", **kwargs)
+    options = [c for batch in qualified_batches[1:] for c in batch]      # batch 0 is the underlying
+    return result, options, tk
+
+
+@pytest.mark.asyncio
+async def test_windowed_chain_requests_only_the_strikes_near_the_money_on_one_side(client):
+    result, options, _ = await _window_run(client, window=3, center=600.0, option_types=("call",))
+    assert sorted(float(o.strike) for o in options) == [597.0, 598.0, 599.0, 600.0, 601.0, 602.0, 603.0]
+    assert {o.right for o in options} == {"C"}
+    assert result.puts == [] and len(result.calls) == 7
+
+
+@pytest.mark.asyncio
+async def test_windowed_chain_defaults_the_centre_to_the_underlying_price(client):
+    result, options, tk = await _window_run(client, window=1, option_types=("put",))
+    assert sorted(float(o.strike) for o in options) == [599.0, 600.0, 601.0]       # 600.2 -> nearest is 600
+    assert {o.right for o in options} == {"P"}
+    assert float(result.underlying_price) == 600.2
+    # underlying quoted once and reused, not once more at the end
+    assert sum(1 for call in tk.call_args_list if len(call.args) == 1 and call.args[0].secType == "STK") == 1
+
+
+@pytest.mark.asyncio
+async def test_unwindowed_chain_still_requests_everything(client):
+    _, options, _ = await _window_run(client)
+    assert len(options) == 21 * 2 and {o.right for o in options} == {"C", "P"}
+
+
+@pytest.mark.asyncio
+async def test_window_at_the_edge_of_the_chain_is_clipped_not_an_error(client):
+    _, options, _ = await _window_run(client, window=5, center=591.0, option_types=("call",))
+    assert sorted(float(o.strike) for o in options)[0] == 590.0 and len(options) == 7   # 590..596
+
+
+@pytest.mark.asyncio
+async def test_window_without_any_underlying_price_raises_rather_than_guess(client):
+    async def _qualify(*c):
+        return list(c)
+
+    async def _tickers(*c):
+        t = MagicMock()
+        t.last = float("nan")
+        return [t]
+
+    with patch.object(client.ib, "qualifyContractsAsync", new_callable=AsyncMock, side_effect=_qualify), \
+         patch.object(client.ib, "reqSecDefOptParamsAsync", new_callable=AsyncMock,
+                      return_value=[_chain_param("20261111", [600.0])]), \
+         patch.object(client.ib, "reqTickersAsync", new_callable=AsyncMock, side_effect=_tickers):
+        with pytest.raises(ValueError, match="cannot window"):
+            await client.get_options_chain("SPY", "2026-11-11", window=2)
+
+
+@pytest.mark.asyncio
+async def test_option_types_must_name_calls_or_puts(client):
+    with pytest.raises(ValueError, match="option_types"):
+        await _window_run(client, window=2, center=600.0, option_types=("straddle",))
+
+
+def test_strikes_around_helper():
+    from app.broker.ibkr_client import _strikes_around
+    ks = [1.0, 2.0, 3.0, 4.0, 5.0]
+    assert _strikes_around(ks, 3.2, 1) == [2.0, 3.0, 4.0]
+    assert _strikes_around(ks, 99.0, 1) == [4.0, 5.0]
+    assert _strikes_around(ks, 3.0, 0) == [3.0]
+    assert _strikes_around([], 3.0, 2) == []

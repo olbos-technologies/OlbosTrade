@@ -119,3 +119,7 @@
   overflow-y: auto;
   background: rgba(6, 11, 23, 0.92);
 }
+
+/* The volume profile summary shares the readout line; it uses the profile's own
+   point-of-control colour so the text and the dashed line read as one thing. */
+.candlestick-chart__profile { color: rgba(125, 170, 255, 0.9); }

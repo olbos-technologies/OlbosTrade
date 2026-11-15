@@ -20,6 +20,8 @@ import {
   type LineData,
 } from "lightweight-charts";
 import { useIsMobile } from "../hooks/useIsMobile";
+import { VolumeProfilePrimitive } from "./chart/VolumeProfilePrimitive";
+import { computeVolumeProfile, summarizeProfile } from "./chart/volumeProfile";
 import "./CandlestickChart.css";
 
 export interface ChartBar {
@@ -29,6 +31,18 @@ export interface ChartBar {
   low: number;
   close: number;
   volume: number;
+}
+
+/**
+ * What a caller gets to draw on the chart. `onDispose` registers cleanup that runs
+ * BEFORE the chart is removed, so a primitive is detached from a chart that still
+ * exists (detaching afterwards makes the library log "Object is disposed").
+ */
+export interface ChartHandle {
+  chart: IChartApi;
+  series: ISeriesApi<"Candlestick">;
+  container: HTMLElement;
+  onDispose: (fn: () => void) => () => void;
 }
 
 export interface ChartLevel {
@@ -234,10 +248,31 @@ export default function CandlestickChart({
   bars,
   levels,
   height = 460,
+  volumeProfile = false,
+  onProfileSummary,
+  onReady,
 }: {
   bars: ChartBar[];
   levels: ChartLevel[];
   height?: number;
+  /**
+   * Draw a volume profile for the bars currently in view, at the right edge of the
+   * price pane. Off by default, so a chart that does not ask for it is unchanged.
+   */
+  volumeProfile?: boolean;
+  /**
+   * Where to show the profile's summary text (bars in view, point of control,
+   * value area). When given, the chart reports the text here and does NOT add a
+   * line to its own readout, so the caller can place it without the chart
+   * changing size when the profile is switched on or off.
+   */
+  onProfileSummary?: (summary: string | null) => void;
+  /**
+   * Called with a handle once the chart exists, and with null when it is about to be
+   * removed. The chart is rebuilt whenever it is re-mounted (for example while new
+   * bars load), so a caller must re-attach each time it receives a handle.
+   */
+  onReady?: (handle: ChartHandle | null) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -251,6 +286,18 @@ export default function CandlestickChart({
   const macdSignalRef = useRef<ISeriesApi<"Line"> | null>(null);
   const macdHistRef = useRef<ISeriesApi<"Histogram"> | null>(null);
   const isMobile = useIsMobile();
+  // The readout text for the volume profile (bars in view, point of control, value area).
+  const [profileSummary, setProfileSummary] = useState<string | null>(null);
+  const onSummaryRef = useRef(onProfileSummary);
+  onSummaryRef.current = onProfileSummary;
+  // The profile's teardown, so the chart's own cleanup can run it BEFORE the chart
+  // is removed. React cleans effects up in the order they were declared, and the
+  // chart is created (and removed) by the first one, so without this the primitive
+  // would be detached from a chart that no longer exists.
+  const profileTeardownRef = useRef<(() => void) | null>(null);
+  const onReadyRef = useRef(onReady);
+  onReadyRef.current = onReady;
+  const disposersRef = useRef(new Set<() => void>());
   // Collapsed by default on every screen size: the key is 13 rows tall and sat
   // over the first part of the price line. The indicator readout above stays
   // visible, and the chart's own right-axis chips name entry / stop / targets.
@@ -328,6 +375,13 @@ export default function CandlestickChart({
 
     chartRef.current = chart;
     candleSeriesRef.current = candleSeries;
+    const disposers = disposersRef.current;
+    onReadyRef.current?.({
+      chart,
+      series: candleSeries,
+      container,
+      onDispose: (fn) => { disposers.add(fn); return () => { disposers.delete(fn); }; },
+    });
     volumeSeriesRef.current = volumeSeries;
     ma5Ref.current = ma5;
     ma10Ref.current = ma10;
@@ -338,6 +392,11 @@ export default function CandlestickChart({
     macdHistRef.current = macdHist;
 
     return () => {
+      profileTeardownRef.current?.();
+      // Anything a caller attached (drawings) lets go while the chart still exists.
+      disposers.forEach((fn) => { try { fn(); } catch { /* keep tearing down */ } });
+      disposers.clear();
+      onReadyRef.current?.(null);
       chart.remove();
       chartRef.current = null;
       candleSeriesRef.current = null;
@@ -370,6 +429,48 @@ export default function CandlestickChart({
     macdHistRef.current.setData(macd.histogram);
     chartRef.current?.timeScale().fitContent();
   }, [bars]);
+
+  // Volume profile of the bars in view. It is recomputed when the visible range
+  // changes (zoom, scroll) at most once per frame, and drawn by a primitive on the
+  // candle series so it shares the candles' own price scale.
+  useEffect(() => {
+    const chart = chartRef.current;
+    const series = candleSeriesRef.current;
+    if (!volumeProfile || !chart || !series || !bars.length) {
+      setProfileSummary(null);
+      onSummaryRef.current?.(null);
+      return;
+    }
+    const primitive = new VolumeProfilePrimitive();
+    series.attachPrimitive(primitive);
+    let frame = 0;
+    const recompute = () => {
+      frame = 0;
+      const range = chart.timeScale().getVisibleLogicalRange();
+      const from = range ? Math.max(0, Math.ceil(range.from)) : 0;
+      const to = range ? Math.min(bars.length - 1, Math.floor(range.to)) : bars.length - 1;
+      const profile = computeVolumeProfile(bars, { from, to });
+      primitive.setProfile(profile);
+      const text = summarizeProfile(profile);
+      setProfileSummary(text);
+      onSummaryRef.current?.(text);
+    };
+    const schedule = () => { if (!frame) frame = requestAnimationFrame(recompute); };
+    chart.timeScale().subscribeVisibleLogicalRangeChange(schedule);
+    recompute();
+    const teardown = () => {
+      if (frame) { cancelAnimationFrame(frame); frame = 0; }
+      try { chart.timeScale().unsubscribeVisibleLogicalRangeChange(schedule); } catch { /* chart already disposed */ }
+      try { series.detachPrimitive(primitive); } catch { /* chart already disposed */ }
+      profileTeardownRef.current = null;
+    };
+    profileTeardownRef.current = teardown;
+    return () => {
+      teardown();
+      setProfileSummary(null);
+      onSummaryRef.current?.(null);
+    };
+  }, [volumeProfile, bars]);
 
   useEffect(() => {
     const series = candleSeriesRef.current;
@@ -416,6 +517,15 @@ export default function CandlestickChart({
         <span style={{ color: (readout.hist ?? 0) >= 0 ? COLOR.upCandle : COLOR.downCandle }}>
           Hist {fmtNum(readout.hist, 3)}
         </span>
+        {volumeProfile && profileSummary && !onProfileSummary && (
+          <span
+            className="candlestick-chart__profile"
+            aria-label="Volume profile"
+            title="Approximate: built from bars, with each bar's volume spread evenly across its high-low range. It shows where volume traded in the bars in view. It is not a signal."
+          >
+            Volume profile · {profileSummary}
+          </span>
+        )}
       </div>
       <div className="candlestick-chart__stage">
       <div className="candlestick-chart__legend-chrome">
