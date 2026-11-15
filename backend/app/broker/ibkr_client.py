@@ -67,6 +67,17 @@ def _safe_decimal(value, default: float = 0) -> Decimal:
 _CHAIN_BATCH_SIZE = 50
 
 
+def _chain_data_type(tickers) -> Optional[int]:
+    """The market-data type of a chain: 1 only if every quoted ticker says live, else the most
+    delayed type seen; None when no ticker reported one. One delayed contract makes the chain
+    not live, because a spread is priced off two of them."""
+    seen = [t.marketDataType for t in tickers
+            if isinstance(getattr(t, "marketDataType", None), int) and t.marketDataType in (1, 2, 3, 4)]
+    if not seen:
+        return None
+    return 1 if all(x == 1 for x in seen) else max(x for x in seen if x != 1)
+
+
 def _strikes_around(strikes: "list[float]", center: float, window: int) -> "list[float]":
     """The `window` listed strikes either side of the one nearest `center` (sorted input)."""
     if not strikes:
@@ -476,6 +487,7 @@ class IBKRClient(BrokerInterface):
             calls=calls,
             puts=puts,
             fetched_at=datetime.now(timezone.utc),
+            market_data_type=_chain_data_type(tickers),
         )
 
     async def get_greeks(

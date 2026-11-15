@@ -50,6 +50,11 @@ class OptionsChain(BaseModel):
     calls: List[OptionContract]
     puts: List[OptionContract]
     fetched_at: datetime
+    # IBKR market-data type the quotes arrived as: 1 live, 2 frozen, 3 delayed (15 min),
+    # 4 delayed-frozen. None means the broker did not say, which callers must treat as NOT
+    # known to be live. The app asks IBKR for type 4, so an account without a live
+    # subscription gets 15-minute-old quotes that look exactly like live ones.
+    market_data_type: Optional[int] = None
 
 
 class SpreadLeg(BaseModel):

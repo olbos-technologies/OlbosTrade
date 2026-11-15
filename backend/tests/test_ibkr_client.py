@@ -976,3 +976,47 @@ def test_strikes_around_helper():
     assert _strikes_around(ks, 99.0, 1) == [4.0, 5.0]
     assert _strikes_around(ks, 3.0, 0) == [3.0]
     assert _strikes_around([], 3.0, 2) == []
+
+
+# ── the chain says whether its quotes were live ──────────────────────────────
+
+def test_chain_data_type_is_live_only_when_every_ticker_is_live():
+    from app.broker.ibkr_client import _chain_data_type
+    T = lambda v: SimpleNamespace(marketDataType=v)
+    assert _chain_data_type([T(1), T(1), T(1)]) == 1
+    assert _chain_data_type([T(1), T(3), T(1)]) == 3          # one delayed leg makes the chain not live
+    assert _chain_data_type([T(4), T(3)]) == 4                # the most delayed type seen
+    assert _chain_data_type([]) is None
+    assert _chain_data_type([SimpleNamespace(), MagicMock()]) is None     # nothing usable reported
+    assert _chain_data_type([T(99), T(None)]) is None
+
+
+@pytest.mark.asyncio
+async def test_get_options_chain_reports_the_data_type_its_tickers_arrived_as(client):
+    async def _qualify(*c):
+        return list(c)
+
+    def _ticker(contract, mdt):
+        t = MagicMock()
+        t.contract = contract
+        t.bid, t.ask, t.last = 1.0, 1.2, 1.1
+        t.volume, t.callOpenInterest, t.putOpenInterest = 1, 1, 1
+        t.modelGreeks = None
+        t.marketDataType = mdt
+        return t
+
+    async def _tickers(*contracts):
+        if len(contracts) == 1 and getattr(contracts[0], "secType", None) == "STK":
+            u = MagicMock()
+            u.last = 600.0
+            return [u]
+        return [_ticker(c, 3 if c.strike == 601.0 else 1) for c in contracts]
+
+    cp = MagicMock()
+    cp.expirations = ["20261116"]
+    cp.strikes = [600.0, 601.0]
+    with patch.object(client.ib, "qualifyContractsAsync", new_callable=AsyncMock, side_effect=_qualify), \
+         patch.object(client.ib, "reqSecDefOptParamsAsync", new_callable=AsyncMock, return_value=[cp]), \
+         patch.object(client.ib, "reqTickersAsync", new_callable=AsyncMock, side_effect=_tickers):
+        chain = await client.get_options_chain("SPY", "2026-11-16")
+    assert chain.market_data_type == 3
