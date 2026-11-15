@@ -10,7 +10,7 @@ from abc import ABC, abstractmethod
 from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
-from typing import List, Literal, Optional
+from typing import List, Literal, Optional, Sequence
 
 from pydantic import BaseModel, Field
 
@@ -254,8 +254,19 @@ class BrokerInterface(ABC):
         ...
 
     @abstractmethod
-    async def get_options_chain(self, symbol: str, expiry: str) -> OptionsChain:
-        """Fetch the full options chain for a symbol at a given expiry (YYYY-MM-DD)."""
+    async def get_options_chain(
+        self, symbol: str, expiry: str, *,
+        window: Optional[int] = None,
+        center: Optional[float] = None,
+        option_types: Sequence[str] = ("call", "put"),
+    ) -> OptionsChain:
+        """Fetch the options chain for a symbol at a given expiry (YYYY-MM-DD).
+
+        By default the full chain. `window`, `center` and `option_types` ask for a smaller
+        one (N strikes either side of `center`, one side only); a broker that cannot narrow
+        the request may ignore them and return more, so callers must still pick the
+        strikes they need from what comes back.
+        """
         ...
 
     @abstractmethod
