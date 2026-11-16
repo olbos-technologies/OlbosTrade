@@ -15,6 +15,7 @@ import { DEFAULT_INTERVAL, DEFAULT_RANGE, INTERVAL_OPTIONS, RANGE_DEFAULT_INTERV
 import InstrumentBar from "../components/chart/InstrumentBar";
 import PositionsTable from "../components/chart/PositionsTable";
 import WatchlistTable from "../components/chart/WatchlistTable";
+import { readProfilePref, writeProfilePref } from "../workspace/profilePref";
 import { usePaperTrade } from "../hooks/usePaperTrade";
 import { tint } from "../utils/tint";
 import "./markets/Markets.css";
@@ -169,6 +170,11 @@ function UpcomingCatalysts({ events }: { events: CatalystEvent[] }) {
   );
 }
 
+/** Browser storage, or null when it is missing or blocked (the saved choice then just lasts the visit). */
+function safeStorage(): Storage | null {
+  try { return typeof window !== "undefined" ? window.localStorage : null; } catch { return null; }
+}
+
 export default function ChartWorkstation({
   symbol: controlledSymbol,
   onSymbolChange,
@@ -213,6 +219,10 @@ export default function ChartWorkstation({
   const [catalystEvents, setCatalystEvents] = useState<CatalystEvent[]>([]);
   const [signalDrawerOpen, setSignalDrawerOpen] = useState(false);
   const [watchlist, setWatchlist] = useState<string[]>(loadStoredWatchlist);
+  // The volume profile (price-pane histogram, point of control and value area). On by default,
+  // the same saved choice as the Pro Workspace chart, so turning it off in one turns it off in both.
+  const [showProfile, setShowProfile] = useState<boolean>(() => readProfilePref(safeStorage()));
+  const toggleProfile = () => setShowProfile((on) => { writeProfilePref(safeStorage(), !on); return !on; });
 
   // Desktop chart height follows the window.
   const [viewportH, setViewportH] = useState(() => window.innerHeight);
@@ -403,6 +413,10 @@ export default function ChartWorkstation({
             <div className="chart-col">
               <div className="chart-toolbar">
                 <IntervalStrip value={timeframe as IntervalKey} onChange={setTimeframe} />
+                <button type="button" className="chart-toolbar__toggle" aria-pressed={showProfile} onClick={toggleProfile}
+                  title="Show where volume traded, for the bars in view (approximate, built from bars)">
+                  Volume profile
+                </button>
               </div>
               <div ref={setChartWrap} className="dock-chart instrument-card--flat chart-canvas-wrap" style={{ position: "relative" }}>
                 {!chartLoading && <UpcomingCatalysts events={catalystEvents} />}
@@ -411,7 +425,7 @@ export default function ChartWorkstation({
                     <div className="skeleton-shimmer" />
                   </div>
                 ) : (
-                  <CandlestickChart bars={chartBars} levels={levels} height={chartH} />
+                  <CandlestickChart bars={chartBars} levels={levels} height={chartH} volumeProfile={showProfile} />
                 )}
                 {chartError && <div className="dock-chart__error" role="status">{chartError}</div>}
               </div>
