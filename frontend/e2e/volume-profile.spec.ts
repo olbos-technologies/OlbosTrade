@@ -231,13 +231,16 @@ test.describe("Volume profile on the workspace chart", () => {
   }
 });
 
-test.describe("Other charts are unchanged", () => {
-  test("the Chart page has no volume profile and no toggle", async ({ page }) => {
+test.describe("The Chart page", () => {
+  // It used to have no profile; it now has the same one as the workspace, with its own toggle.
+  // The compact Equity and Options desk charts are still unchanged, which a unit test pins
+  // (ChartWorkstationVolumeProfile.test.tsx), and chart-volume-profile.spec.ts covers the page.
+  test("shows the volume profile and its toggle", async ({ page }) => {
     await mockData(page);
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/terminal/markets/chart");
     await expect(page.locator(".candlestick-chart").first()).toBeVisible();
-    await expect(readout(page)).toHaveCount(0);
-    await expect(toggle(page)).toHaveCount(0);
+    await expect(readout(page)).toBeVisible();
+    await expect(toggle(page)).toHaveCount(1);
   });
 });
