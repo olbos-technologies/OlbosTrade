@@ -22,7 +22,15 @@ import {
 import { useIsMobile } from "../hooks/useIsMobile";
 import { VolumeProfilePrimitive } from "./chart/VolumeProfilePrimitive";
 import { computeVolumeProfile, summarizeProfile } from "./chart/volumeProfile";
+import { attachIndicators, type AttachedIndicators } from "./chart/indicatorSeries";
+import {
+  computeMacd, DEFAULT_INDICATORS, emaSeries, legendFor, normaliseSelection, readoutFor, selectionKey, toUnixSeconds,
+  toVolumeData, type IndicatorId,
+} from "./chart/indicators";
 import "./CandlestickChart.css";
+
+// These live in chart/indicators.ts now; re-exported so everything that imports them from here is unchanged.
+export { computeMacd, emaSeries, toUnixSeconds };
 
 export interface ChartBar {
   timestamp: string;
@@ -79,10 +87,6 @@ export function axisTitleForLevel(label: string, compact: boolean): string {
   return key.slice(0, 1) || label;
 }
 
-export function toUnixSeconds(iso: string): UTCTimestamp {
-  return Math.floor(new Date(iso).getTime() / 1000) as UTCTimestamp;
-}
-
 export function barsToCandlestickData(bars: ChartBar[]): CandlestickData[] {
   return bars.map((b) => ({
     time: toUnixSeconds(b.timestamp),
@@ -93,13 +97,8 @@ export function barsToCandlestickData(bars: ChartBar[]): CandlestickData[] {
   }));
 }
 
-export function barsToVolumeData(bars: ChartBar[]): HistogramData[] {
-  return bars.map((b) => ({
-    time: toUnixSeconds(b.timestamp),
-    value: b.volume,
-    color: b.close >= b.open ? COLOR.upVolume : COLOR.downVolume,
-  }));
-}
+/** Volume bars, coloured by the bar's direction. */
+export const barsToVolumeData = toVolumeData;
 
 export function movingAverage(bars: ChartBar[], period: number): (number | null)[] {
   return bars.map((_, idx) => {
@@ -132,68 +131,6 @@ export function barsToVwapData(bars: ChartBar[]): LineData[] {
   return rollingVwap(bars).map((value, idx) => ({ time: toUnixSeconds(bars[idx].timestamp), value }));
 }
 
-/** EMA seed = SMA of the first `period` closes, then standard EMA. */
-export function emaSeries(closes: number[], period: number): (number | null)[] {
-  const out: (number | null)[] = closes.map(() => null);
-  if (closes.length < period) return out;
-  const k = 2 / (period + 1);
-  let ema = closes.slice(0, period).reduce((a, b) => a + b, 0) / period;
-  out[period - 1] = ema;
-  for (let i = period; i < closes.length; i++) {
-    ema = closes[i] * k + ema * (1 - k);
-    out[i] = ema;
-  }
-  return out;
-}
-
-export function computeMacd(bars: ChartBar[], fast = 12, slow = 26, signal = 9): {
-  macd: LineData[];
-  signal: LineData[];
-  histogram: HistogramData[];
-} {
-  const closes = bars.map((b) => b.close);
-  const fastEma = emaSeries(closes, fast);
-  const slowEma = emaSeries(closes, slow);
-  const macdRaw: (number | null)[] = closes.map((_, i) =>
-    fastEma[i] != null && slowEma[i] != null ? (fastEma[i] as number) - (slowEma[i] as number) : null,
-  );
-  const macdValues = macdRaw.map((v) => (v == null ? 0 : v));
-  // Signal EMA only over defined MACD points — seed at first full MACD index.
-  const firstMacd = macdRaw.findIndex((v) => v != null);
-  const signalRaw: (number | null)[] = closes.map(() => null);
-  if (firstMacd >= 0 && closes.length - firstMacd >= signal) {
-    const seedEnd = firstMacd + signal;
-    let sig = 0;
-    for (let i = firstMacd; i < seedEnd; i++) sig += macdRaw[i] as number;
-    sig /= signal;
-    signalRaw[seedEnd - 1] = sig;
-    const k = 2 / (signal + 1);
-    for (let i = seedEnd; i < closes.length; i++) {
-      if (macdRaw[i] == null) continue;
-      sig = (macdRaw[i] as number) * k + sig * (1 - k);
-      signalRaw[i] = sig;
-    }
-  }
-
-  const macd: LineData[] = [];
-  const signalLine: LineData[] = [];
-  const histogram: HistogramData[] = [];
-  bars.forEach((bar, i) => {
-    const t = toUnixSeconds(bar.timestamp);
-    if (macdRaw[i] != null) macd.push({ time: t, value: macdRaw[i] as number });
-    if (signalRaw[i] != null) signalLine.push({ time: t, value: signalRaw[i] as number });
-    if (macdRaw[i] != null && signalRaw[i] != null) {
-      const hist = (macdRaw[i] as number) - (signalRaw[i] as number);
-      histogram.push({
-        time: t,
-        value: hist,
-        color: hist >= 0 ? COLOR.macdHistUp : COLOR.macdHistDown,
-      });
-    }
-  });
-  return { macd, signal: signalLine, histogram };
-}
-
 export function lastIndicatorReadout(bars: ChartBar[]): {
   ma5: number | null;
   ma10: number | null;
@@ -223,19 +160,6 @@ export function lastIndicatorReadout(bars: ChartBar[]): {
   };
 }
 
-const LEGEND_ITEMS_BASE = [
-  { label: "MA5", color: COLOR.ma5, style: "solid" as const },
-  { label: "MA10", color: COLOR.ma10, style: "solid" as const },
-  { label: "MA20", color: COLOR.ma20, style: "solid" as const },
-  { label: "VWAP", color: COLOR.vwap, style: "dashed" as const },
-  { label: "Volume", color: "rgba(148,163,184,0.7)", style: "bar" as const },
-  { label: "MACD", color: COLOR.macd, style: "solid" as const },
-];
-
-function fmtNum(n: number | null, digits = 2): string {
-  return n == null || !Number.isFinite(n) ? "—" : n.toFixed(digits);
-}
-
 const LEGEND_KEY = "olbos.chart.legend";
 function readLegendPreference(): boolean {
   try { return window.localStorage.getItem(LEGEND_KEY) === "open"; } catch { return false; }
@@ -251,10 +175,17 @@ export default function CandlestickChart({
   volumeProfile = false,
   onProfileSummary,
   onReady,
+  indicators,
 }: {
   bars: ChartBar[];
   levels: ChartLevel[];
   height?: number;
+  /**
+   * Which indicators to draw. Left out, the chart draws exactly what it always has (MA5, MA10, MA20,
+   * VWAP, volume, MACD), so a chart that is not given a selection is unchanged. A different selection
+   * rebuilds the chart (the caller re-attaches through `onReady`); the zoom position is kept.
+   */
+  indicators?: readonly IndicatorId[];
   /**
    * Draw a volume profile for the bars currently in view, at the right edge of the
    * price pane. Off by default, so a chart that does not ask for it is unchanged.
@@ -277,14 +208,14 @@ export default function CandlestickChart({
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
-  const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
-  const ma5Ref = useRef<ISeriesApi<"Line"> | null>(null);
-  const ma10Ref = useRef<ISeriesApi<"Line"> | null>(null);
-  const ma20Ref = useRef<ISeriesApi<"Line"> | null>(null);
-  const vwapSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
-  const macdLineRef = useRef<ISeriesApi<"Line"> | null>(null);
-  const macdSignalRef = useRef<ISeriesApi<"Line"> | null>(null);
-  const macdHistRef = useRef<ISeriesApi<"Histogram"> | null>(null);
+  const attachedRef = useRef<AttachedIndicators | null>(null);
+  // The visible range just before a rebuild for a new selection, so the zoom survives the change.
+  const savedRangeRef = useRef<{ from: number; to: number; bars: number } | null>(null);
+  const barsLenRef = useRef(0);
+  const selection = indicators ? normaliseSelection(indicators) : (DEFAULT_INDICATORS as IndicatorId[]);
+  const selKey = selectionKey(selection);
+  const selectionRef = useRef(selection);
+  selectionRef.current = selection;
   const isMobile = useIsMobile();
   // The readout text for the volume profile (bars in view, point of control, value area).
   const [profileSummary, setProfileSummary] = useState<string | null>(null);
@@ -339,39 +270,7 @@ export default function CandlestickChart({
       wickDownColor: COLOR.downCandle,
     });
 
-    const ma5 = pricePane.addSeries(LineSeries, {
-      color: COLOR.ma5, lineWidth: 1, priceLineVisible: false, lastValueVisible: false,
-    });
-    const ma10 = pricePane.addSeries(LineSeries, {
-      color: COLOR.ma10, lineWidth: 1, priceLineVisible: false, lastValueVisible: false,
-    });
-    const ma20 = pricePane.addSeries(LineSeries, {
-      color: COLOR.ma20, lineWidth: 2, priceLineVisible: false, lastValueVisible: false,
-    });
-    const vwapSeries = pricePane.addSeries(LineSeries, {
-      color: COLOR.vwap, lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false,
-    });
-
-    const volumePane = chart.addPane(true);
-    volumePane.setStretchFactor(0.85);
-    const volumeSeries = volumePane.addSeries(HistogramSeries, {
-      priceFormat: { type: "volume" },
-      priceLineVisible: false,
-      lastValueVisible: false,
-    });
-
-    const macdPane = chart.addPane(true);
-    macdPane.setStretchFactor(1.1);
-    const macdHist = macdPane.addSeries(HistogramSeries, {
-      priceLineVisible: false,
-      lastValueVisible: false,
-    });
-    const macdLine = macdPane.addSeries(LineSeries, {
-      color: COLOR.macd, lineWidth: 1, priceLineVisible: false, lastValueVisible: false,
-    });
-    const macdSignal = macdPane.addSeries(LineSeries, {
-      color: COLOR.macdSignal, lineWidth: 1, priceLineVisible: false, lastValueVisible: false,
-    });
+    const attached = attachIndicators(chart, pricePane, selectionRef.current);
 
     chartRef.current = chart;
     candleSeriesRef.current = candleSeries;
@@ -382,16 +281,14 @@ export default function CandlestickChart({
       container,
       onDispose: (fn) => { disposers.add(fn); return () => { disposers.delete(fn); }; },
     });
-    volumeSeriesRef.current = volumeSeries;
-    ma5Ref.current = ma5;
-    ma10Ref.current = ma10;
-    ma20Ref.current = ma20;
-    vwapSeriesRef.current = vwapSeries;
-    macdLineRef.current = macdLine;
-    macdSignalRef.current = macdSignal;
-    macdHistRef.current = macdHist;
+    attachedRef.current = attached;
 
     return () => {
+      // Remember where the chart was scrolled and zoomed, in case this is a rebuild for a new selection.
+      try {
+        const r = chart.timeScale().getVisibleLogicalRange?.();
+        savedRangeRef.current = r ? { from: r.from, to: r.to, bars: barsLenRef.current } : null;
+      } catch { savedRangeRef.current = null; }
       profileTeardownRef.current?.();
       // Anything a caller attached (drawings) lets go while the chart still exists.
       disposers.forEach((fn) => { try { fn(); } catch { /* keep tearing down */ } });
@@ -400,35 +297,22 @@ export default function CandlestickChart({
       chart.remove();
       chartRef.current = null;
       candleSeriesRef.current = null;
-      volumeSeriesRef.current = null;
-      ma5Ref.current = null;
-      ma10Ref.current = null;
-      ma20Ref.current = null;
-      vwapSeriesRef.current = null;
-      macdLineRef.current = null;
-      macdSignalRef.current = null;
-      macdHistRef.current = null;
+      attachedRef.current = null;
     };
-  }, []);
+    // A new selection is a new chart. Nothing else rebuilds it.
+  }, [selKey]);
 
   useEffect(() => {
-    if (
-      !candleSeriesRef.current || !volumeSeriesRef.current ||
-      !ma5Ref.current || !ma10Ref.current || !ma20Ref.current || !vwapSeriesRef.current ||
-      !macdLineRef.current || !macdSignalRef.current || !macdHistRef.current
-    ) return;
+    if (!candleSeriesRef.current || !attachedRef.current) return;
+    barsLenRef.current = bars.length;
     candleSeriesRef.current.setData(barsToCandlestickData(bars));
-    volumeSeriesRef.current.setData(barsToVolumeData(bars));
-    ma5Ref.current.setData(barsToSmaData(bars, 5));
-    ma10Ref.current.setData(barsToSmaData(bars, 10));
-    ma20Ref.current.setData(barsToSmaData(bars, 20));
-    vwapSeriesRef.current.setData(barsToVwapData(bars));
-    const macd = computeMacd(bars);
-    macdLineRef.current.setData(macd.macd);
-    macdSignalRef.current.setData(macd.signal);
-    macdHistRef.current.setData(macd.histogram);
-    chartRef.current?.timeScale().fitContent();
-  }, [bars]);
+    attachedRef.current.update(bars);
+    // After a rebuild for a new selection, put the chart back where it was; otherwise fit everything.
+    const saved = savedRangeRef.current;
+    savedRangeRef.current = null;
+    if (saved && saved.bars === bars.length) chartRef.current?.timeScale().setVisibleLogicalRange({ from: saved.from, to: saved.to });
+    else chartRef.current?.timeScale().fitContent();
+  }, [bars, selKey]);
 
   // Volume profile of the bars in view. It is recomputed when the visible range
   // changes (zoom, scroll) at most once per frame, and drawn by a primitive on the
@@ -470,7 +354,7 @@ export default function CandlestickChart({
       setProfileSummary(null);
       onSummaryRef.current?.(null);
     };
-  }, [volumeProfile, bars]);
+  }, [volumeProfile, bars, selKey]);
 
   useEffect(() => {
     const series = candleSeriesRef.current;
@@ -486,7 +370,7 @@ export default function CandlestickChart({
       }),
     );
     return () => { priceLines.forEach((line) => series.removePriceLine(line)); };
-  }, [levels, isMobile]);
+  }, [levels, isMobile, selKey]);
 
   if (!bars.length) {
     return (
@@ -499,24 +383,18 @@ export default function CandlestickChart({
     );
   }
 
-  const readout = lastIndicatorReadout(bars);
+  const readout = readoutFor(bars, selection);
   const legendItems = [
-    ...LEGEND_ITEMS_BASE,
+    ...legendFor(selection),
     ...levels.map((level) => ({ label: level.label, color: level.color, style: "level" as const })),
   ];
 
   return (
     <div className={`candlestick-chart${isMobile ? " candlestick-chart--mobile" : ""}`} style={{ height }}>
       <div className="candlestick-chart__readout" aria-label="Indicator readout">
-        <span style={{ color: COLOR.ma5 }}>MA5 {fmtNum(readout.ma5)}</span>
-        <span style={{ color: COLOR.ma10 }}>MA10 {fmtNum(readout.ma10)}</span>
-        <span style={{ color: COLOR.ma20 }}>MA20 {fmtNum(readout.ma20)}</span>
-        <span style={{ color: COLOR.vwap }}>VWAP {fmtNum(readout.vwap)}</span>
-        <span style={{ color: COLOR.macd }}>MACD {fmtNum(readout.macd, 3)}</span>
-        <span style={{ color: COLOR.macdSignal }}>Sig {fmtNum(readout.signal, 3)}</span>
-        <span style={{ color: (readout.hist ?? 0) >= 0 ? COLOR.upCandle : COLOR.downCandle }}>
-          Hist {fmtNum(readout.hist, 3)}
-        </span>
+        {readout.map((item) => (
+          <span key={item.text.split(" ")[0] + item.color} style={{ color: item.color }}>{item.text}</span>
+        ))}
         {volumeProfile && profileSummary && !onProfileSummary && (
           <span
             className="candlestick-chart__profile"

@@ -1,0 +1,76 @@
+/* The indicator picker's panel. Fixed and in a portal: the chart toolbar scrolls sideways on a phone
+   and would clip anything inside it. Colour here is neutral; indicator swatches carry their own. */
+.indicator-picker__panel {
+  position: fixed;
+  z-index: 60;
+  top: var(--ip-top, 96px);
+  right: var(--ip-right, 12px);
+  width: min(420px, calc(100vw - 16px));
+  max-height: min(72vh, calc(100vh - var(--ip-top, 96px) - 12px));
+  overflow-y: auto;
+  padding: 10px 12px 12px;
+  background: var(--bg-2, #0b1120);
+  color: var(--ink, #e6edf7);
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.16));
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  font: 500 12px var(--sans, system-ui, sans-serif);
+  outline: none;
+}
+.indicator-picker__head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+.indicator-picker__head span { color: var(--ink-dim, #94a3b8); font-size: 11px; }
+.indicator-picker__group { border: 0; margin: 8px 0 0; padding: 0; min-width: 0; }
+.indicator-picker__group legend {
+  padding: 0; margin-bottom: 2px; color: var(--ink-dim, #94a3b8);
+  font: 600 10px var(--mono, monospace); letter-spacing: 0.08em; text-transform: uppercase;
+}
+.indicator-picker__group ul { list-style: none; margin: 0; padding: 0; }
+.indicator-picker__row { padding: 1px 0; }
+/* Desktop: one compact line per indicator. The full sentence stays in the page for assistive technology
+   (it is what the checkbox is described by) but is visually hidden; the short phrase is what is seen. */
+@media (min-width: 601px) {
+  .indicator-picker__row { display: flex; align-items: center; gap: 8px; }
+  .indicator-picker__row label { flex: 0 0 128px; min-height: 26px; }
+  .indicator-picker__short {
+    flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+    color: var(--ink-dim, #94a3b8); font-size: 11px; cursor: help;
+  }
+  .indicator-picker__desc {
+    position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden;
+    clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0;
+  }
+}
+/* A phone has no hover, so the full sentence is shown under the name instead of the short phrase. */
+@media (max-width: 600px) {
+  .indicator-picker__short { display: none; }
+}
+.indicator-picker__row label { display: flex; align-items: center; gap: 8px; min-height: 28px; cursor: pointer; }
+.indicator-picker__row--locked label { cursor: not-allowed; opacity: 0.5; }
+.indicator-picker__row input { margin: 0; flex: none; width: 16px; height: 16px; accent-color: var(--design-action, var(--brand, #ffc247)); }
+.indicator-picker__row input:focus-visible { outline: 2px solid var(--design-action, var(--brand, #ffc247)); outline-offset: 2px; }
+.indicator-picker__name { font-weight: 600; }
+.indicator-picker__desc { display: block; margin: 0 0 2px 40px; color: var(--ink-dim, #94a3b8); font-size: 11px; line-height: 1.35; }
+.indicator-picker__swatch { flex: none; width: 18px; height: 0; border-top: 2px solid transparent; }
+.indicator-picker__swatch--solid { height: 2px; border-top: 0; }
+.indicator-picker__swatch--bar { height: 8px; border-top: 0; width: 10px; border-radius: 1px; }
+.indicator-picker__swatch--dashed { border-top-style: dashed; }
+.indicator-picker__cap { margin: 8px 0 0; color: var(--amber, #f4c64f); font-size: 11px; }
+.indicator-picker__note { margin: 10px 0 0; color: var(--ink-faint, #64748b); font-size: 11px; }
+.indicator-picker__foot { display: flex; justify-content: space-between; gap: 8px; margin-top: 10px; }
+.indicator-picker__foot button {
+  min-height: 32px; padding: 0 12px; cursor: pointer; color: var(--ink-dim, #94a3b8);
+  background: var(--bg-3, #111a2e); border: 1px solid var(--line-dim, rgba(255, 255, 255, 0.1)); border-radius: 6px;
+  font: 500 12px var(--sans, system-ui, sans-serif);
+}
+.indicator-picker__foot button:hover { color: var(--ink, #e6edf7); border-color: var(--line, rgba(255, 255, 255, 0.2)); }
+.indicator-picker__foot button:focus-visible { outline: 2px solid var(--design-action, var(--brand, #ffc247)); outline-offset: 1px; }
+
+/* A phone: a sheet above the bottom navigation, with rows big enough to tap. */
+@media (max-width: 600px) {
+  .indicator-picker__panel {
+    top: auto; right: 8px; left: 8px; bottom: 64px; width: auto; max-height: 62vh;
+  }
+  .indicator-picker__row label { min-height: 44px; }
+  .indicator-picker__row input { width: 22px; height: 22px; }
+  .indicator-picker__foot button { min-height: 44px; }
+}

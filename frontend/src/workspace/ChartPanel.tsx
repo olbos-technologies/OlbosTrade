@@ -26,6 +26,8 @@ import {
 } from "../components/chart/timeframes";
 import { pnlColor } from "../utils/pnlTone";
 import { readProfilePref, writeProfilePref } from "./profilePref";
+import IndicatorPicker from "../components/chart/IndicatorPicker";
+import { useIndicatorSelection } from "../components/chart/useIndicatorSelection";
 
 const MIN_CHART_H = 160;
 
@@ -51,6 +53,7 @@ export default function ChartPanel({ symbol }: { symbol: string }) {
   const [rootEl, setRootEl] = useState<HTMLDivElement | null>(null);
   const [showProfile, setShowProfile] = useState<boolean>(() => readProfilePref(browserStorage()));
   const toggleProfile = () => setShowProfile((on) => { writeProfilePref(browserStorage(), !on); return !on; });
+  const [indicators, setIndicators, resetIndicators] = useIndicatorSelection();
 
   // Measure the chart area so the chart fills it.
   const wrap = useRef<HTMLDivElement>(null);
@@ -109,6 +112,7 @@ export default function ChartPanel({ symbol }: { symbol: string }) {
             O {px(last.open)} H {px(last.high)} L {px(last.low)} C {px(last.close)}
           </span>
         )}
+        <IndicatorPicker selected={indicators} onChange={setIndicators} onReset={resetIndicators} buttonClassName="ws-chart__toggle" />
         <button type="button" className="ws-chart__toggle" aria-pressed={showProfile} onClick={toggleProfile}
           title="Show where volume traded, for the bars in view (approximate, built from bars)">
           Volume profile
@@ -127,7 +131,7 @@ export default function ChartPanel({ symbol }: { symbol: string }) {
         ) : bars.length === 0 ? (
           <p className="ws-note" role="status">No bars returned for {symbol} in this range.</p>
         ) : (
-          <CandlestickChart bars={bars} levels={[]} height={h} volumeProfile={showProfile} onProfileSummary={setProfileText} onReady={setHandle} />
+          <CandlestickChart bars={bars} levels={[]} height={h} volumeProfile={showProfile} onProfileSummary={setProfileText} onReady={setHandle} indicators={indicators} />
         )}
       </div>
       </div>

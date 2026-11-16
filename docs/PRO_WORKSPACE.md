@@ -14,7 +14,7 @@ design tokens.
 
 | Panel | Reuses |
 | --- | --- |
-| Chart (always in the centre) | `api.getEquityChart`, `CandlestickChart` (MA, VWAP, MACD, volume, **volume profile**, **drawing tools**), `IntervalStrip`, `RangeBar` |
+| Chart (always in the centre) | `api.getEquityChart`, `CandlestickChart` (the **indicator picker**: moving averages, VWAP, Bollinger, volume, MACD, RSI, ATR; **volume profile**; **drawing tools**), `IntervalStrip`, `RangeBar` |
 | Watchlist | `WatchlistTable`; the **same list as the Chart page** (`olbos.chart.watchlist`) |
 | Positions | `PositionsTable` via `usePaperTrade` |
 | Unusual options | `OptionsFlow` |
@@ -64,6 +64,39 @@ that is not timing, the ORDER of teardown (the profile and the drawings let go b
 chart is removed), is pinned on a fake chart in `CandlestickChartTeardown.test.tsx` and
 `drawings/useDrawings.test.tsx`; the browser tests check that nothing other than the
 library's own message is ever thrown.
+
+## Indicators
+
+An **Indicators** button in the chart bar (the Workspace chart bar and the Chart page's chart toolbar) opens a
+panel of checkboxes: what the chart draws. Overlays go on the price chart and panels get their own pane
+below it. The choice is remembered in this browser and is **one shared choice for the Chart page and the
+Workspace**: turn one on in either and it is on in both. **Reset to default** restores what the chart drew
+before the picker existed.
+
+| Overlays (on the price chart) | Panels (below it) |
+| --- | --- |
+| MA5, MA10, MA20, MA50, MA200 (simple averages) | Volume |
+| EMA9, EMA21, EMA50 (exponential averages) | MACD (12, 26, 9) |
+| VWAP | RSI (14, with guides at 30 and 70) |
+| Bollinger bands (20, 2 standard deviations) | ATR (14) |
+
+- **Up to 10 at once.** A phone has little room and every panel takes a slice of the chart. At the cap the
+  unticked boxes are disabled and the panel says why. Candles only (none ticked) is valid.
+- **Accuracy.** RSI and ATR use Wilder's smoothing. The RSI is checked in a test against the published values
+  of the classic worked example (all 19, to two decimals); ATR, Bollinger and the averages are checked against
+  small cases worked by hand. A line that needs more bars than are loaded (MA200 on a short range) reads as a
+  dash, never as a made-up number. VWAP is cumulative over the bars loaded, not reset each session, and its
+  description says so.
+- **Not signals.** The panel says "Indicators describe past prices. They are not signals." Colours avoid the
+  green and red that mean profit and loss elsewhere in the app (MACD's histogram keeps its signed colouring).
+- **How it works.** `chart/indicators.ts` (what exists, the maths, readout and legend text),
+  `chart/indicatorSeries.ts` (draws them), `chart/IndicatorPicker.tsx` (the panel, in a portal so the scrolling
+  phone toolbar cannot clip it; a sheet above the bottom nav on a phone), `chart/indicatorPrefs.ts` (the saved
+  choice, validated on read). `CandlestickChart` takes `indicators`; left out it draws exactly what it always did,
+  so the compact Equity and Options desk charts are unchanged. A different selection rebuilds the chart and
+  keeps the zoom.
+- **Not here yet.** User-set periods (every indicator has one fixed period), more indicators (Stochastic,
+  OBV and others), saving named sets, and tying the count to a plan tier (see `PLAN_BENCHMARK.md`).
 
 ## Drawing tools
 
