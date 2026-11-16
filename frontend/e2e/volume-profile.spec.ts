@@ -193,7 +193,10 @@ test.describe("Volume profile on the workspace chart", () => {
       await open(page);
       await page.getByRole("button", { name: "Chart", exact: true }).first().click();
       await expect(page).toHaveURL(/\/terminal\/markets\/chart$/);
-      await expect(readout(page)).toHaveCount(0);
+      // The workspace chart is gone. (The Chart page now has a profile readout of its own, so this
+      // looks only inside the workspace's chart, not anywhere on the page.)
+      await expect(page.locator(".ws-chart")).toHaveCount(0);
+      await expect(page.locator(".ws-chart").getByLabel("Volume profile", { exact: true })).toHaveCount(0);
       // Back through history is client-side, so the workspace mounts again from scratch.
       await page.goBack();
       await expect(page).toHaveURL(/\/terminal\/markets\/workspace$/);

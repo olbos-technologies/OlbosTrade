@@ -88,3 +88,28 @@ test("phone: the toggle is a real touch target, nothing overflows, and the chart
   await toggle(page).click();
   await expect(toggle(page)).toHaveAttribute("aria-pressed", "false");
 });
+
+// The readout row sits above the chart, so every extra line pushes the chart down. The Chart page
+// promises at least 300px of chart above the 56px bottom nav on a phone (adaptive-mobile.spec.ts).
+const plotTop = async (page: Page) => (await page.getByLabel("Price chart", { exact: true }).boundingBox())!.y;
+
+test("phone 320px: with the profile on the chart still starts early enough, and only the readout line is dropped", async ({ page }) => {
+  await open(page, 320, 844);
+  await expect(toggle(page)).toHaveAttribute("aria-pressed", "true");     // the profile itself is on
+  await expect(readout(page)).toBeHidden();                               // no room for its text line
+  expect(await plotTop(page) + 300, "at least 300px of the chart above the bottom nav").toBeLessThanOrEqual(844 - 56);
+});
+
+test("phone 390px: the readout is one truncated line, never several, and costs the chart little room", async ({ page }) => {
+  await open(page, 390, 844);
+  await expect(readout(page)).toBeVisible();
+  const box = (await readout(page).boundingBox())!;
+  expect(box.height, "one line of 10px text, not a wrapped block").toBeLessThan(20);
+  const withProfile = await plotTop(page);
+  await toggle(page).scrollIntoViewIfNeeded();
+  await toggle(page).click();
+  await expect(readout(page)).toHaveCount(0);
+  const without = await plotTop(page);
+  expect(withProfile - without, "the readout adds at most one line").toBeLessThanOrEqual(24);
+  expect(withProfile + 300, "at least 300px of the chart above the bottom nav").toBeLessThanOrEqual(844 - 56);
+});

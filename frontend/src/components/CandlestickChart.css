@@ -122,4 +122,18 @@
 
 /* The volume profile summary shares the readout line; it uses the profile's own
    point-of-control colour so the text and the dashed line read as one thing. */
-.candlestick-chart__profile { color: rgba(125, 170, 255, 0.9); }
+.candlestick-chart__profile {
+  color: rgba(125, 170, 255, 0.9);
+  /* One line, never several: the readout row sits above the chart, so every extra line pushes the
+     chart down, and a phone has little room to give. The full text is in the tooltip. */
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+/* On the narrowest phones (320px class) there is no room for it at all without pushing the chart
+   below the first screen. The histogram and the toggle stay; only this line goes. */
+@media (max-width: 340px) {
+  .candlestick-chart__profile { display: none; }
+}

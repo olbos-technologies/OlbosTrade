@@ -53,7 +53,8 @@ red that mean profit and loss. `CandlestickChart` takes `volumeProfile` (off by 
 every user of the chart that does not ask for it is unchanged). The workspace chart and the
 Chart page (Markets > Chart) ask for it; the compact desk charts do not. The Chart page has the
 same **Volume profile** button, in its chart toolbar, and shares this saved choice: turning the
-profile off in one turns it off in both. Its readout is in the chart legend there.
+profile off in one turns it off in both. Its readout is in the chart legend there, kept to one
+line (it pushes the chart down otherwise) and dropped at 340px and under.
 
 Known: when the chart is removed while a redraw is pending, the charting library logs
 "Object is disposed". That already happens on the Chart page (checked on a clean
