@@ -7,7 +7,9 @@ import SignalDetailDrawer from "../components/SignalDetailDrawer";
 import { chartLevelColors, toChartSignalAttribution } from "../utils/chartWorkstationDisplay";
 import MetricHint, { resolveMetricHint } from "../components/MetricHint";
 import { Panel, StatTile, Button } from "../components/ui";
-import CandlestickChart from "../components/CandlestickChart";
+import CandlestickChart, { type ChartHandle } from "../components/CandlestickChart";
+import DrawingToolbar from "../workspace/drawings/DrawingToolbar";
+import { useDrawings } from "../workspace/drawings/useDrawings";
 import IntervalStrip from "../components/chart/IntervalStrip";
 import RangeBar from "../components/chart/RangeBar";
 import SidePanel from "../components/chart/SidePanel";
@@ -225,6 +227,16 @@ export default function ChartWorkstation({
   // the same saved choice as the Pro Workspace chart, so turning it off in one turns it off in both.
   const [showProfile, setShowProfile] = useState<boolean>(() => readProfilePref(safeStorage()));
   const toggleProfile = () => setShowProfile((on) => { writeProfilePref(safeStorage(), !on); return !on; });
+
+  // Drawing tools (non-compact page only). On a desktop they are always on; on a phone they are
+  // behind a Draw switch, so a finger on the chart pans and pinches by default and only draws on request.
+  const [chartHandle, setChartHandle] = useState<ChartHandle | null>(null);
+  const [drawKeyEl, setDrawKeyEl] = useState<HTMLDivElement | null>(null);
+  const [drawOn, setDrawOn] = useState(false);
+  const drawInteractive = !compact && (!isMobile || drawOn);
+  const { engine: drawEngine, state: drawState } = useDrawings({
+    handle: chartHandle, bars: chartBars, symbol, interactive: drawInteractive, keyTarget: drawKeyEl,
+  });
   // Which indicators the chart draws: saved in this browser, shared with the Pro Workspace chart.
   const [indicators, setIndicators, resetIndicators] = useIndicatorSelection();
 
@@ -414,10 +426,17 @@ export default function ChartWorkstation({
             <SidePanel title="Positions" count={positionsError ? "—" : positions.length} label="Open positions panel">
               <PositionsTable narrow positions={positions as never[]} error={Boolean(positionsError)} />
             </SidePanel>
-            <div className="chart-col">
+            <div className="chart-col" ref={setDrawKeyEl} tabIndex={-1}>
               <div className="chart-toolbar">
                 <IntervalStrip value={timeframe as IntervalKey} onChange={setTimeframe} />
                 <div className="chart-toolbar__actions">
+                  {isMobile && (
+                    <button type="button" className="chart-toolbar__toggle" aria-pressed={drawOn}
+                      onClick={() => { if (drawOn) drawEngine.cancel(); setDrawOn(!drawOn); }}
+                      title="Draw lines and levels on the chart with your finger. Notes only: no orders.">
+                      Draw
+                    </button>
+                  )}
                   <IndicatorPicker selected={indicators} onChange={setIndicators} onReset={resetIndicators} buttonClassName="chart-toolbar__toggle" />
                   <button type="button" className="chart-toolbar__toggle" aria-pressed={showProfile} onClick={toggleProfile}
                     title="Show where volume traded, for the bars in view (approximate, built from bars)">
@@ -425,16 +444,20 @@ export default function ChartWorkstation({
                   </button>
                 </div>
               </div>
-              <div ref={setChartWrap} className="dock-chart instrument-card--flat chart-canvas-wrap" style={{ position: "relative" }}>
-                {!chartLoading && <UpcomingCatalysts events={catalystEvents} />}
-                {chartLoading ? (
-                  <div className="skeleton-block" style={{ height: chartH }} aria-busy="true" aria-label="Loading chart">
-                    <div className="skeleton-shimmer" />
-                  </div>
-                ) : (
-                  <CandlestickChart bars={chartBars} levels={levels} height={chartH} volumeProfile={showProfile} indicators={indicators} />
-                )}
-                {chartError && <div className="dock-chart__error" role="status">{chartError}</div>}
+              {isMobile && drawOn && <DrawingToolbar state={drawState} engine={drawEngine} orientation="horizontal" />}
+              <div className={`chart-stage${drawState.tool !== "select" && drawInteractive ? " chart-stage--drawing" : ""}${drawState.hoverId && drawInteractive ? " chart-stage--hit" : ""}`}>
+                {!isMobile && !chartLoading && chartBars.length > 0 && <DrawingToolbar state={drawState} engine={drawEngine} />}
+                <div ref={setChartWrap} className="dock-chart instrument-card--flat chart-canvas-wrap" style={{ position: "relative" }}>
+                  {!chartLoading && <UpcomingCatalysts events={catalystEvents} />}
+                  {chartLoading ? (
+                    <div className="skeleton-block" style={{ height: chartH }} aria-busy="true" aria-label="Loading chart">
+                      <div className="skeleton-shimmer" />
+                    </div>
+                  ) : (
+                    <CandlestickChart bars={chartBars} levels={levels} height={chartH} volumeProfile={showProfile} indicators={indicators} onReady={setChartHandle} />
+                  )}
+                  {chartError && <div className="dock-chart__error" role="status">{chartError}</div>}
+                </div>
               </div>
               <RangeBar value={range} note={rangeNote} onChange={(r) => { setRange(r); setTimeframe(RANGE_DEFAULT_INTERVAL[r]); }} />
             </div>

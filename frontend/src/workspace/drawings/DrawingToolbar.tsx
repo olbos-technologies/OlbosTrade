@@ -10,6 +10,7 @@
 
 import React, { useState } from "react";
 import type { DrawingEngine, EngineState, Tool } from "./engine";
+import "./DrawingToolbar.css";
 import { KIND_TITLES, LINE_WIDTHS, PALETTE, type DrawingKind } from "./model";
 
 type IconProps = { children: React.ReactNode };
@@ -33,11 +34,16 @@ const TOOLS: { tool: Tool; title: string }[] = [
   ...(["trend", "hline", "vline", "rect", "fib"] as DrawingKind[]).map((k) => ({ tool: k as Tool, title: KIND_TITLES[k] })),
 ];
 
-export default function DrawingToolbar({ state, engine }: { state: EngineState; engine: DrawingEngine }) {
+export default function DrawingToolbar({ state, engine, orientation = "vertical" }: {
+  state: EngineState;
+  engine: DrawingEngine;
+  /** "horizontal" is the finger-sized bar the Chart page shows on a phone. */
+  orientation?: "vertical" | "horizontal";
+}) {
   const hasSelection = state.selectedId !== null;
   const [styleOpen, setStyleOpen] = useState(false);
   return (
-    <div className="ws-drawtools" role="toolbar" aria-label="Drawing tools" aria-orientation="vertical">
+    <div className={`ws-drawtools${orientation === "horizontal" ? " ws-drawtools--bar" : ""}`} role="toolbar" aria-label="Drawing tools" aria-orientation={orientation}>
       <div className="ws-drawtools__group" role="group" aria-label="Tool">
         {TOOLS.map(({ tool, title }) => (
           <button key={tool} type="button" className="ws-drawtools__btn" aria-label={title} title={title}

@@ -1,0 +1,7 @@
+## Unreleased — Drawing tools on the Chart page, with a phone Draw mode
+
+- **Markets > Chart** now has the drawing tools the Pro Workspace had: trend line, horizontal and vertical line, rectangle and Fib retracement, with colour, line width, magnet, undo/redo, delete and clear. On a desktop the rail sits beside the chart. Drawings are notes anchored to time and price, saved per symbol in this browser, and shared with the Workspace page (same saved list). They place no orders and change no risk setting.
+- **Phone:** the default chart is unchanged, so one finger still pans and two fingers still pinch. A new **Draw** switch in the chart toolbar opens a finger-sized tool bar (44px buttons, scrolls sideways inside itself, no page-wide scroll at 320px). With Draw on, one finger draws, drags a line or its end handle; a finger that lands within about 14px of a line (20px of a handle) picks it up, where a mouse needs to be within 6px. A second finger cancels a half-drawn line and hands the gesture back to the chart for pinch-zoom; empty space still pans. Switching Draw off hides the bar and the drawings stay.
+- Touch drawing is available to the Workspace chart's hook too; the Workspace page itself is unchanged (its tools stay off on its stacked phone layout).
+- Fixed in passing: the old code comment that touch "cannot be intercepted" was wrong; a capture-phase, non-passive handler does stop the chart panning (shown in a real browser with touch events).
+- Frontend only: needs a frontend rebuild; no backend restart, no migration, no new environment variables.
