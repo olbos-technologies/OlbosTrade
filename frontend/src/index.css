@@ -2136,8 +2136,9 @@ summary span[aria-hidden="true"] { display: inline-block; transition: transform 
   display: flex; align-items: center; gap: 8px; padding: 0 8px; background: var(--bg-2);
 }
 .chart-toolbar { border-bottom: 1px solid var(--line-dim); }
+.chart-toolbar__actions { margin-left: auto; display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
 .chart-toolbar__toggle {
-  margin-left: auto; flex: 0 0 auto; min-height: 24px; padding: 0 8px; cursor: pointer;
+  flex: 0 0 auto; min-height: 24px; padding: 0 8px; cursor: pointer;
   font: 500 11px var(--sans, system-ui, sans-serif); color: var(--ink-dim);
   background: var(--bg-3); border: 1px solid var(--line-dim); border-radius: 6px;
 }

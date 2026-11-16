@@ -38,11 +38,12 @@ against the landing page by a test, so any change is a deliberate, owner-approve
 2. **Price points overlap loosely.** Pro ($29) sits between their Essential and Plus; Elite
    ($99) sits between Premium and Ultimate. That says little, because the products differ.
 3. **We have no charting quotas to sell.** The workspace shows **one** chart. The indicators
-   (MA 5/10/20, VWAP, MACD, volume, volume profile) are a fixed set, not a user-chosen list.
+   are now a user-chosen list (an indicator picker, up to 10 per chart, from 14), added after this
+   comparison was first written; the cap exists in code but is not tied to a tier.
    Alert rules exist but are only rate-limited, not capped per tier. History is already tiered
    (1 / 5 / 5 years). **Selling a limit for a feature that does not exist yet would be a
-   mistake**, so charts per tab and indicators per chart cannot be tiers until a multi-chart
-   view and an indicator picker exist.
+   mistake**. An indicator picker now exists, so a cap on indicators per chart is possible (the code
+   already caps at 10, tied to no tier); charts per tab still cannot be a tier until a multi-chart view exists.
 4. **Volume profile is not gated.** TradingView includes it on every paid plan. Ours is in
    the workspace for every tier today. That is a choice to make, not an accident to fix.
 5. **Real-time data has a cost we do not control.** Their top plan advertises unlimited
@@ -56,7 +57,7 @@ against the landing page by a test, so any change is a deliberate, owner-approve
 | **A. Change nothing** (recommended now) | Keep Free / Pro / Elite as published. | None. Billing is not wired, so prices are still intended, not charged. |
 | **B. Cap alert rules per tier** | e.g. a count per tier. Alert rules already exist, so this is a server-side count at creation. | Small and enforceable. Needs your numbers, a landing-page row and a test update. Existing users above a new cap need a rule (grandfather or warn). |
 | **C. Gate the volume profile** | Pro and Elite only. | Easy, but takes a visible feature away from Free users, and the workspace is new. |
-| **D. Charts per tab / indicators per chart** | Tier the multi-chart and indicator features. | **Not possible yet.** Build the features first, then decide tiers. |
+| **D. Charts per tab / indicators per chart** | Tier the multi-chart and indicator features. | **Indicators per chart:** possible now (the picker exists; the cap is 10, tied to no tier). **Charts per tab:** not possible yet; build the multi-chart view first. |
 
 ## Decisions for the owner
 

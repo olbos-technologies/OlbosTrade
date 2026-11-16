@@ -12,12 +12,17 @@ const mockPane = {
   addSeries: vi.fn(() => mockSeries),
   setStretchFactor: vi.fn(),
 };
+const mockTimeScale = {
+  fitContent: vi.fn(),
+  getVisibleLogicalRange: vi.fn(() => null as { from: number; to: number } | null),
+  setVisibleLogicalRange: vi.fn(),
+};
 const mockChart = {
   addSeries: vi.fn(() => mockSeries),
   addPane: vi.fn(() => mockPane),
   panes: vi.fn(() => [mockPane]),
   remove: vi.fn(),
-  timeScale: vi.fn(() => ({ fitContent: vi.fn() })),
+  timeScale: vi.fn(() => mockTimeScale),
 };
 
 vi.mock("lightweight-charts", () => ({
@@ -27,6 +32,7 @@ vi.mock("lightweight-charts", () => ({
   LineSeries: "LineSeries",
 }));
 
+import { createChart } from "lightweight-charts";
 import CandlestickChart, {
   toUnixSeconds,
   barsToCandlestickData,
@@ -178,5 +184,135 @@ describe("CandlestickChart component", () => {
     const { unmount } = render(<CandlestickChart bars={sampleBars} levels={[]} />);
     unmount();
     expect(mockChart.remove).toHaveBeenCalledTimes(1);
+  });
+});
+
+
+describe("the indicator selection", () => {
+  const reset = () => {
+    cleanup();
+    vi.mocked(createChart).mockClear();
+    mockChart.addPane.mockClear();
+    mockChart.remove.mockClear();
+    mockPane.addSeries.mockClear();
+    mockSeries.setData.mockClear();
+    mockSeries.createPriceLine.mockClear();
+    mockTimeScale.fitContent.mockClear();
+    mockTimeScale.setVisibleLogicalRange.mockClear();
+    mockTimeScale.getVisibleLogicalRange.mockReturnValue(null);
+  };
+  const readoutText = () => screen.getByLabelText("Indicator readout").textContent ?? "";
+
+  it("with no selection draws exactly what it always has, and reads out exactly what it always did", () => {
+    reset();
+    render(<CandlestickChart bars={sampleBars} levels={[]} />);
+    expect(mockChart.addPane).toHaveBeenCalledTimes(2);
+    expect(mockPane.addSeries).toHaveBeenCalledTimes(9);
+    const r = lastIndicatorReadout(sampleBars);
+    const f = (n: number | null, d = 2) => (n == null ? "—" : n.toFixed(d));
+    expect(readoutText()).toBe(
+      `MA5 ${f(r.ma5)}MA10 ${f(r.ma10)}MA20 ${f(r.ma20)}VWAP ${f(r.vwap)}MACD ${f(r.macd, 3)}Sig ${f(r.signal, 3)}Hist ${f(r.hist, 3)}`);
+  });
+
+  it("an explicit default selection is the same chart as no selection", () => {
+    reset();
+    render(<CandlestickChart bars={sampleBars} levels={[]} indicators={["ma5", "ma10", "ma20", "vwap", "volume", "macd"]} />);
+    expect(mockChart.addPane).toHaveBeenCalledTimes(2);
+    expect(mockPane.addSeries).toHaveBeenCalledTimes(9);
+  });
+
+  it("RSI gets its own pane with guides at 30 and 70, and its readout", () => {
+    reset();
+    render(<CandlestickChart bars={sampleBars} levels={[]} indicators={["rsi"]} />);
+    expect(mockChart.addPane).toHaveBeenCalledTimes(1);
+    expect(mockPane.addSeries).toHaveBeenCalledTimes(2);                 // candles + the RSI line
+    expect(mockSeries.createPriceLine.mock.calls.map((c) => (c as unknown as [{ price: number }])[0].price)).toEqual([30, 70]);
+    expect(readoutText()).toMatch(/^RSI \d/);
+  });
+
+  it("overlays share the price pane: no new panes, and Bollinger is three lines", () => {
+    reset();
+    render(<CandlestickChart bars={sampleBars} levels={[]} indicators={["ma50", "ema9", "bb"]} />);
+    expect(mockChart.addPane).not.toHaveBeenCalled();
+    expect(mockPane.addSeries).toHaveBeenCalledTimes(1 + 1 + 1 + 3);     // candles + MA50 + EMA9 + three bands
+    expect(readoutText()).toMatch(/MA50.*EMA9.*BB /);
+  });
+
+  it("no indicators at all is candles only", () => {
+    reset();
+    render(<CandlestickChart bars={sampleBars} levels={[]} indicators={[]} />);
+    expect(mockChart.addPane).not.toHaveBeenCalled();
+    expect(mockPane.addSeries).toHaveBeenCalledTimes(1);
+    expect(readoutText()).toBe("");
+  });
+
+  it("unknown ids are ignored, never drawn", () => {
+    reset();
+    render(<CandlestickChart bars={sampleBars} levels={[]} indicators={["nope", "rsi", "__proto__"] as never} />);
+    expect(mockPane.addSeries).toHaveBeenCalledTimes(2);
+    expect(readoutText()).toMatch(/^RSI/);
+  });
+
+  it("the legend lists the chosen indicators and not the ones that are off", () => {
+    reset();
+    render(<CandlestickChart bars={sampleBars} levels={[]} indicators={["rsi", "ma5"]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Legend" }));
+    const legend = screen.getByLabelText("Chart legend");
+    expect(legend.textContent).toContain("RSI");
+    expect(legend.textContent).toContain("MA5");
+    expect(legend.textContent).not.toContain("MACD");
+    expect(legend.textContent).not.toContain("VWAP");
+  });
+
+  it("a different selection rebuilds the chart: the old one is removed and a new one built", () => {
+    reset();
+    const { rerender } = render(<CandlestickChart bars={sampleBars} levels={[]} indicators={["ma5"]} />);
+    expect(vi.mocked(createChart)).toHaveBeenCalledTimes(1);
+    rerender(<CandlestickChart bars={sampleBars} levels={[]} indicators={["ma5", "rsi"]} />);
+    expect(vi.mocked(createChart)).toHaveBeenCalledTimes(2);
+    expect(mockChart.remove).toHaveBeenCalledTimes(1);
+    expect(readoutText()).toMatch(/MA5.*RSI/);
+  });
+
+  it("the same selection in another order, or a new array of the same ids, does not rebuild", () => {
+    reset();
+    const { rerender } = render(<CandlestickChart bars={sampleBars} levels={[]} indicators={["rsi", "ma5"]} />);
+    rerender(<CandlestickChart bars={sampleBars} levels={[]} indicators={["ma5", "rsi"]} />);
+    rerender(<CandlestickChart bars={sampleBars} levels={[]} indicators={["ma5", "rsi"]} />);
+    expect(vi.mocked(createChart)).toHaveBeenCalledTimes(1);
+    expect(mockChart.remove).not.toHaveBeenCalled();
+  });
+
+  it("keeps the zoom across a rebuild when the bars have not changed", () => {
+    reset();
+    const { rerender } = render(<CandlestickChart bars={sampleBars} levels={[]} indicators={["ma5"]} />);
+    mockTimeScale.fitContent.mockClear();
+    mockTimeScale.getVisibleLogicalRange.mockReturnValue({ from: 5, to: 30 });
+    rerender(<CandlestickChart bars={sampleBars} levels={[]} indicators={["ma5", "rsi"]} />);
+    expect(mockTimeScale.setVisibleLogicalRange).toHaveBeenCalledWith({ from: 5, to: 30 });
+    expect(mockTimeScale.fitContent).not.toHaveBeenCalled();
+  });
+
+  it("fits everything instead when the bars changed along with the selection", () => {
+    reset();
+    const { rerender } = render(<CandlestickChart bars={sampleBars} levels={[]} indicators={["ma5"]} />);
+    mockTimeScale.fitContent.mockClear();
+    mockTimeScale.getVisibleLogicalRange.mockReturnValue({ from: 5, to: 30 });
+    rerender(<CandlestickChart bars={sampleBars.slice(0, 30)} levels={[]} indicators={["ma5", "rsi"]} />);
+    expect(mockTimeScale.setVisibleLogicalRange).not.toHaveBeenCalled();
+    expect(mockTimeScale.fitContent).toHaveBeenCalled();
+  });
+
+  it("changing only the bars never rebuilds the chart", () => {
+    reset();
+    const { rerender } = render(<CandlestickChart bars={sampleBars} levels={[]} indicators={["rsi"]} />);
+    rerender(<CandlestickChart bars={sampleBars.slice(0, 30)} levels={[]} indicators={["rsi"]} />);
+    expect(vi.mocked(createChart)).toHaveBeenCalledTimes(1);
+  });
+
+  it("an indicator with too few bars to start still renders, with a dash in the readout", () => {
+    reset();
+    render(<CandlestickChart bars={sampleBars} levels={[]} indicators={["ma200"]} />);
+    expect(readoutText()).toBe("MA200 —");
   });
 });
