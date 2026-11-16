@@ -77,6 +77,7 @@ from app.api.routes import (
     market_data,
     paper_trade,
     research,
+    edge_ledger,
     risk,
     strategy,
     trading_mode,
@@ -311,6 +312,7 @@ app.include_router(risk.router,        prefix="/api/risk",         tags=["Risk"]
 app.include_router(options_flow.router, prefix="/api/options-flow", tags=["Options Flow"])
 app.include_router(income_matrix.router, prefix="/api/income-matrix", tags=["Income Matrix"])
 app.include_router(research.router,    prefix="/api/research",     tags=["Research"])
+app.include_router(edge_ledger.router, prefix="/api/edge-ledger", tags=["Edge Lab"])
 app.include_router(journal.router,     prefix="/api/journal",      tags=["Journal"])
 app.include_router(analytics.router,   prefix="/api/analytics",    tags=["Analytics"])
 app.include_router(trading_mode.router,prefix="/api/mode",         tags=["Trading Mode"])
