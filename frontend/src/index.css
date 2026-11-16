@@ -2136,6 +2136,14 @@ summary span[aria-hidden="true"] { display: inline-block; transition: transform 
   display: flex; align-items: center; gap: 8px; padding: 0 8px; background: var(--bg-2);
 }
 .chart-toolbar { border-bottom: 1px solid var(--line-dim); }
+.chart-toolbar__toggle {
+  margin-left: auto; flex: 0 0 auto; min-height: 24px; padding: 0 8px; cursor: pointer;
+  font: 500 11px var(--sans, system-ui, sans-serif); color: var(--ink-dim);
+  background: var(--bg-3); border: 1px solid var(--line-dim); border-radius: 6px;
+}
+.chart-toolbar__toggle:hover { color: var(--ink); border-color: var(--line); }
+.chart-toolbar__toggle[aria-pressed="true"] { color: var(--ink); border-color: var(--design-action, var(--brand)); }
+.chart-toolbar__toggle:focus-visible { outline: 2px solid var(--design-action, var(--brand)); outline-offset: 1px; }
 .range-bar { border-top: 1px solid var(--line-dim); justify-content: flex-end; }
 .range-bar__note { margin-right: auto; font-size: 11px; color: var(--amber); }
 .interval-strip, .range-bar__buttons { display: flex; gap: 0; }
@@ -2163,7 +2171,7 @@ summary span[aria-hidden="true"] { display: inline-block; transition: transform 
   .side-panel__body { max-height: 260px; }
   .chart-toolbar, .range-bar { overflow-x: auto; scrollbar-width: none; }
   .chart-toolbar::-webkit-scrollbar, .range-bar::-webkit-scrollbar { display: none; }
-  .interval-strip button, .range-bar__buttons button { min-height: 44px; min-width: 44px; flex: 0 0 auto; }
+  .interval-strip button, .range-bar__buttons button, .chart-toolbar__toggle { min-height: 44px; min-width: 44px; flex: 0 0 auto; }
   .range-bar__note { white-space: nowrap; }
 }
 

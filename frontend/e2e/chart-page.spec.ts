@@ -161,14 +161,24 @@ test("a laptop-size window keeps the chart and both panels usable", async ({ pag
 
 test("on a phone the chart comes first with the controls above and below it, then the panels", async ({ page }) => {
   await open(page, 390, 844);
-  const chart = (await page.locator(".dock-chart").boundingBox())!;
-  const strip = (await page.getByRole("group", { name: "Chart timeframe" }).boundingBox())!;
-  const range = (await page.getByRole("group", { name: "Chart range" }).boundingBox())!;
-  const positions = (await page.getByLabel("Open positions panel").boundingBox())!;
-  expect(strip.y + strip.height).toBeLessThanOrEqual(chart.y + 1);
-  expect(range.y).toBeGreaterThanOrEqual(chart.y + chart.height - 1);
-  expect(positions.y, "panels are below the chart").toBeGreaterThan(range.y);
-  expect(chart.y + 300, "at least 300px of the chart is visible above the bottom nav").toBeLessThanOrEqual(844 - 56);
+  // The chart takes a moment to settle after it first appears, and longer when the machine is busy
+  // (several browser tests run at once). Reading its box and then the range bar's box at two
+  // different moments can straddle that, so the ordering is checked on repeated readings until it
+  // holds. A layout that is genuinely wrong never holds and still fails after the timeout.
+  const order = async () => {
+    const chart = (await page.locator(".dock-chart").boundingBox())!;
+    const strip = (await page.getByRole("group", { name: "Chart timeframe" }).boundingBox())!;
+    const range = (await page.getByRole("group", { name: "Chart range" }).boundingBox())!;
+    const positions = (await page.getByLabel("Open positions panel").boundingBox())!;
+    return {
+      stripAboveChart: strip.y + strip.height <= chart.y + 1,
+      rangeBelowChart: range.y >= chart.y + chart.height - 1,
+      panelsBelowRange: positions.y > range.y,
+      chartTopVisible: chart.y + 300 <= 844 - 56,   // at least 300px of the chart above the bottom nav
+    };
+  };
+  await expect.poll(order, { timeout: 8000, message: "the controls sit above and below the chart, the panels under it" })
+    .toEqual({ stripAboveChart: true, rangeBelowChart: true, panelsBelowRange: true, chartTopVisible: true });
   for (const b of await page.getByRole("group", { name: "Chart timeframe" }).getByRole("button").all()) {
     expect((await b.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   }

@@ -49,8 +49,12 @@ is conserved exactly; invalid bars are skipped; a flat window is one level).
 the candle series, so it uses the candles' own price scale and stays aligned through
 zoom, scroll and resize. It is behind the candles and neutral grey with a blue POC line:
 a profile shows where volume traded, not gain or loss, so it does not use the green and
-red that mean profit and loss. `CandlestickChart` takes `volumeProfile` (off by default,
-so the Chart page and every other user of the chart are unchanged).
+red that mean profit and loss. `CandlestickChart` takes `volumeProfile` (off by default, so
+every user of the chart that does not ask for it is unchanged). The workspace chart and the
+Chart page (Markets > Chart) ask for it; the compact desk charts do not. The Chart page has the
+same **Volume profile** button, in its chart toolbar, and shares this saved choice: turning the
+profile off in one turns it off in both. Its readout is in the chart legend there, kept to one
+line (it pushes the chart down otherwise) and dropped at 340px and under.
 
 Known: when the chart is removed while a redraw is pending, the charting library logs
 "Object is disposed". That already happens on the Chart page (checked on a clean
@@ -141,7 +145,7 @@ working.
 - **More drawing tools.** Text notes, rays and extended lines, parallel channels, Fibonacci
   extensions, a measure tool, and per-drawing visibility. Drawings saved to the account or
   shared across devices. Touch drawing.
-- **Drawing tools and a volume profile on the Chart page**, and **session or fixed-range profiles** (it
+- **Drawing tools on the Chart page**, and **session or fixed-range profiles** (it
   covers the bars in view). **Tick-accurate profiles** need trade data we do not load.
 - **Free-form docking** (dragging a panel to a new edge) and **layouts that follow
   the account across devices.** Layouts are per browser. A server-side saved layout
