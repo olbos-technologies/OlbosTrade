@@ -8,24 +8,32 @@ import { DEFAULT_INDICATORS, normaliseSelection, type IndicatorId } from "./indi
 
 export const INDICATORS_PREF_KEY = "olbos.chart.indicators";
 
-export function readIndicatorPref(storage?: Pick<Storage, "getItem"> | null): IndicatorId[] {
+export function readIndicatorPref(
+  storage?: Pick<Storage, "getItem"> | null,
+  key: string = INDICATORS_PREF_KEY,
+  fallback: readonly IndicatorId[] = DEFAULT_INDICATORS,
+): IndicatorId[] {
   try {
-    const raw = storage?.getItem(INDICATORS_PREF_KEY);
-    if (raw == null) return [...DEFAULT_INDICATORS];
+    const raw = storage?.getItem(key);
+    if (raw == null) return [...fallback];
     const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [...DEFAULT_INDICATORS];
+    if (!Array.isArray(parsed)) return [...fallback];
     const clean = normaliseSelection(parsed);
     // An empty list the person chose ("candles only") is valid. A non-empty list of ids this
     // version has never heard of is corruption or an older build: use the default, not a blank chart.
-    if (clean.length === 0 && parsed.length > 0) return [...DEFAULT_INDICATORS];
+    if (clean.length === 0 && parsed.length > 0) return [...fallback];
     return clean;
   } catch {
-    return [...DEFAULT_INDICATORS];
+    return [...fallback];
   }
 }
 
-export function writeIndicatorPref(storage: Pick<Storage, "setItem"> | null | undefined, selection: readonly IndicatorId[]): void {
+export function writeIndicatorPref(
+  storage: Pick<Storage, "setItem"> | null | undefined,
+  selection: readonly IndicatorId[],
+  key: string = INDICATORS_PREF_KEY,
+): void {
   try {
-    storage?.setItem(INDICATORS_PREF_KEY, JSON.stringify(normaliseSelection(selection)));
+    storage?.setItem(key, JSON.stringify(normaliseSelection(selection)));
   } catch { /* storage unavailable: the choice lasts for this visit */ }
 }

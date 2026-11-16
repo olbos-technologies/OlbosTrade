@@ -37,6 +37,7 @@ import Heatmap         from "./pages/markets/Heatmap";
 import Watchlists      from "./pages/markets/Watchlists";
 import SectorRotation  from "./pages/markets/SectorRotation";
 import ChartWorkstation from "./pages/ChartWorkstation";     // Price-action / market-structure chart
+import MultiTimeframe from "./pages/MultiTimeframe";           // One symbol on 2-4 charts at different bar intervals
 import NewsEventsCenter from "./pages/markets/NewsEventsCenter";
 // Loaded on demand: it pulls in the scanners, backtest and options-flow pages together.
 const ProWorkspaceLazy = React.lazy(() => import("./pages/ProWorkspace"));
@@ -128,6 +129,7 @@ export const BASE_PAGES: Record<string, React.ComponentType> = {
   "markets:watchlists": Watchlists,
   "markets:chart":      ChartWorkstation,
   "markets:workspace":  ProWorkspacePage,
+  "markets:multi":      MultiTimeframe,
   "markets:news":       NewsEventsCenter,
   "markets:sector-rotation": SectorRotation,
 

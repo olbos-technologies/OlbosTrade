@@ -15,6 +15,7 @@ export const NAV_MODEL_LEGACY: NavGroup[] = [
   { id: "markets",   label: "Markets",        icon: "markets", children: [
     { key: "markets:chart",      label: "Chart" },
     { key: "markets:workspace",  label: "Pro Workspace" },
+    { key: "markets:multi",      label: "Multi-timeframe" },
     { key: "markets:watchlists", label: "Watchlists" },
     { key: "markets:heatmaps",   label: "Heatmaps", sidebar: false },
     { key: "markets:news",       label: "News & Events", sidebar: false },
@@ -92,6 +93,7 @@ export const NAV_MODEL_V2: NavGroup[] = [
   { id: "markets",   label: "Markets",        icon: "markets", children: [
     { key: "markets:chart",      label: "Chart" },
     { key: "markets:workspace",  label: "Pro Workspace" },
+    { key: "markets:multi",      label: "Multi-timeframe" },
     { key: "markets:watchlists", label: "Watchlists" },
     { key: "markets:heatmaps",   label: "Heatmaps", sidebar: false },
     { key: "markets:news",       label: "News & Events", sidebar: false },

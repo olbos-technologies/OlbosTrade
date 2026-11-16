@@ -43,7 +43,8 @@ against the landing page by a test, so any change is a deliberate, owner-approve
    Alert rules exist but are only rate-limited, not capped per tier. History is already tiered
    (1 / 5 / 5 years). **Selling a limit for a feature that does not exist yet would be a
    mistake**. An indicator picker now exists, so a cap on indicators per chart is possible (the code
-   already caps at 10, tied to no tier); charts per tab still cannot be a tier until a multi-chart view exists.
+   already caps at 10, tied to no tier). A multi-chart view now exists too (Markets > Multi-timeframe: 2 to 4
+   charts of one symbol per page, tied to no tier), so charts per tab could also be a tier; it is a choice, not a given.
 4. **Volume profile is not gated.** TradingView includes it on every paid plan. Ours is in
    the workspace for every tier today. That is a choice to make, not an accident to fix.
 5. **Real-time data has a cost we do not control.** Their top plan advertises unlimited
@@ -57,7 +58,7 @@ against the landing page by a test, so any change is a deliberate, owner-approve
 | **A. Change nothing** (recommended now) | Keep Free / Pro / Elite as published. | None. Billing is not wired, so prices are still intended, not charged. |
 | **B. Cap alert rules per tier** | e.g. a count per tier. Alert rules already exist, so this is a server-side count at creation. | Small and enforceable. Needs your numbers, a landing-page row and a test update. Existing users above a new cap need a rule (grandfather or warn). |
 | **C. Gate the volume profile** | Pro and Elite only. | Easy, but takes a visible feature away from Free users, and the workspace is new. |
-| **D. Charts per tab / indicators per chart** | Tier the multi-chart and indicator features. | **Indicators per chart:** possible now (the picker exists; the cap is 10, tied to no tier). **Charts per tab:** not possible yet; build the multi-chart view first. |
+| **D. Charts per tab / indicators per chart** | Tier the multi-chart and indicator features. | **Indicators per chart:** possible now (the picker exists; the cap is 10, tied to no tier). **Charts per tab:** possible now (the multi-timeframe view shows 2 to 4; tied to no tier). |
 
 ## Decisions for the owner
 
