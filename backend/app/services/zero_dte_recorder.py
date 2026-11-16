@@ -90,6 +90,11 @@ def build_mark(chain: Any, *, option_type: str, long_strike: float, short_strike
         "long_bid": None, "long_ask": None, "short_bid": None, "short_ask": None,
         "natural_credit": None, "mid_credit": None,
     }
+    mark["market_data_type"] = getattr(chain, "market_data_type", None)
+    if mark["market_data_type"] != 1:
+        # Delayed or unknown-freshness quotes are not a price you could have closed at.
+        mark["problem"] = f"quotes not live (market-data type {mark['market_data_type']})"
+        return mark
     if lg is None or sh is None:
         mark["problem"] = "leg missing from chain"
         return mark
@@ -109,7 +114,8 @@ def build_mark(chain: Any, *, option_type: str, long_strike: float, short_strike
 def _observation_row(model: Any, *, trade_date, slot, symbol, direction, now, chain, err):
     spot = _f(getattr(chain, "underlying_price", 0)) or None if chain is not None else None
     base = dict(trade_date=trade_date, slot=slot, symbol=symbol, direction=direction,
-                observed_at=now, spot=spot, marks=[])
+                observed_at=now, spot=spot, marks=[],
+                context={"market_data_type": getattr(chain, "market_data_type", None)} if chain is not None else None)
     if chain is None:
         return model(**base, proposed=False, refusal_reasons=[f"chain unavailable: {err}"])
     res = propose_debit_spread(chain, symbol=symbol, direction=direction,
@@ -117,12 +123,13 @@ def _observation_row(model: Any, *, trade_date, slot, symbol, direction, now, ch
     if not res.ok:
         return model(**base, proposed=False, refusal_reasons=list(res.reasons))
     p = res.proposal
+    base["context"] = {**(base["context"] or {}), "quoted_at": p.quoted_at.isoformat(),
+                       "warnings": list(p.warnings)}
     return model(
         **base, proposed=True, option_type=p.option_type,
         long_strike=p.long_strike, short_strike=p.short_strike, width=p.width,
         long_bid=p.long_bid, long_ask=p.long_ask, short_bid=p.short_bid, short_ask=p.short_ask,
         mid_debit=p.limit_debit, natural_debit=p.natural_debit,
-        context={"quoted_at": p.quoted_at.isoformat(), "warnings": list(p.warnings)},
     )
 
 

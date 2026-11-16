@@ -205,6 +205,13 @@ def propose_debit_spread(
     if age < -5:
         return ZeroDteResult(None, ("quote time is in the future",))
 
+    data_type = getattr(chain, "market_data_type", None)
+    if data_type != 1:
+        what = {2: "frozen", 3: "delayed 15 minutes", 4: "delayed 15 minutes"}.get(data_type, "of unknown freshness")
+        return ZeroDteResult(None, (
+            f"quotes are not live (market-data type {data_type}: {what}); 0DTE needs a live "
+            "options and stock data subscription",))
+
     spot = _f(getattr(chain, "underlying_price", 0))
     if spot <= 0:
         return ZeroDteResult(None, ("no underlying price",))

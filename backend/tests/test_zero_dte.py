@@ -20,7 +20,7 @@ def opt(strike, bid, ask):
     return SimpleNamespace(strike=strike, bid=bid, ask=ask, last=(bid + ask) / 2)
 
 
-def make_chain(*, calls=None, puts=None, spot=600.2, expiration=TODAY, age_s=3, fetched_at=None):
+def make_chain(*, calls=None, puts=None, spot=600.2, expiration=TODAY, age_s=3, fetched_at=None, data_type=1):
     return SimpleNamespace(
         underlying="SPY", expiration=expiration, underlying_price=spot,
         calls=calls if calls is not None else [
@@ -30,6 +30,7 @@ def make_chain(*, calls=None, puts=None, spot=600.2, expiration=TODAY, age_s=3, 
             opt(595, 0.05, 0.07), opt(598, 0.60, 0.64), opt(599, 0.95, 0.99),
             opt(600, 1.60, 1.64), opt(601, 2.20, 2.24), opt(602, 2.90, 2.94)],
         fetched_at=fetched_at or (NOW - timedelta(seconds=age_s)),
+        market_data_type=data_type,
     )
 
 
@@ -242,3 +243,24 @@ def test_the_module_imports_nothing_that_can_reach_a_broker():
     assert imports, "read no import lines: the guard would pass vacuously"
     for ln in imports:
         assert not any(w in ln for w in ("broker", "coordinator", "order", "execution", "main")), ln
+
+
+# ── the quotes must be live ──────────────────────────────────────────────────
+
+def test_live_quotes_are_accepted():
+    assert propose(make_chain(data_type=1)).ok
+
+
+@pytest.mark.parametrize("data_type,text", [
+    (3, "delayed 15 minutes"), (4, "delayed 15 minutes"), (2, "frozen"), (None, "unknown freshness"), (7, "unknown freshness"),
+])
+def test_quotes_that_are_not_known_to_be_live_are_refused(data_type, text):
+    r = propose(make_chain(data_type=data_type))
+    refused(r, "not live")
+    assert any(text in x for x in r.reasons), r.reasons
+
+
+def test_a_chain_with_no_data_type_attribute_at_all_is_refused():
+    c = make_chain()
+    del c.market_data_type
+    refused(propose(c), "not live")

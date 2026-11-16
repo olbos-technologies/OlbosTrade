@@ -31,7 +31,7 @@ def opt(strike, bid, ask):
     return SimpleNamespace(strike=strike, bid=bid, ask=ask, last=(bid + ask) / 2)
 
 
-def chain_at(now, *, calls=None, puts=None, spot=600.2, age_s=3):
+def chain_at(now, *, calls=None, puts=None, spot=600.2, age_s=3, data_type=1):
     return SimpleNamespace(
         underlying="SPY", expiration=TODAY, underlying_price=spot,
         calls=calls if calls is not None else [
@@ -39,6 +39,7 @@ def chain_at(now, *, calls=None, puts=None, spot=600.2, age_s=3):
         puts=puts if puts is not None else [
             opt(598, 0.60, 0.64), opt(599, 0.95, 0.99), opt(600, 1.60, 1.64)],
         fetched_at=now - timedelta(seconds=age_s),
+        market_data_type=data_type,
     )
 
 
@@ -333,3 +334,43 @@ async def test_the_unique_key_rejects_a_duplicate_row(factory):
                   observed_at=T0, proposed=False, marks=[]))
         with pytest.raises(IntegrityError):
             await s.commit()
+
+
+# ── delayed quotes are never recorded as if they were real ───────────────────
+
+@pg
+@pytest.mark.asyncio
+async def test_delayed_quotes_are_recorded_as_refusals_with_the_data_type(factory):
+    f = Fetcher(chain_for=lambda s, kw: chain_at(T0, data_type=4))
+    await tick(f, factory, T0)
+    got = await rows(factory)
+    assert len(got) == 4 and all(not r.proposed for r in got)
+    assert all("not live" in r.refusal_reasons[0] for r in got)
+    assert all(r.context == {"market_data_type": 4} for r in got)
+
+
+@pg
+@pytest.mark.asyncio
+async def test_a_proposed_observation_records_that_its_quotes_were_live(factory):
+    await tick(Fetcher(), factory, T0)
+    spy_bull = next(r for r in await rows(factory) if r.symbol == "SPY" and r.direction == "bullish")
+    assert spy_bull.context["market_data_type"] == 1 and "quoted_at" in spy_bull.context
+
+
+@pg
+@pytest.mark.asyncio
+async def test_a_delayed_mark_is_unreadable_not_a_price(factory):
+    f = Fetcher()
+    await tick(f, factory, T0)
+    f.chain_for = lambda s, kw: mark_chain_data(f.now, 3)
+    await tick(f, factory, T0 + timedelta(seconds=305))
+    spy_bull = next(r for r in await rows(factory) if r.symbol == "SPY" and r.direction == "bullish")
+    m = spy_bull.marks[0]
+    assert m["quote_ok"] is False and "not live" in m["problem"] and m["market_data_type"] == 3
+    assert m["natural_credit"] is None
+
+
+def mark_chain_data(now, data_type):
+    return chain_at(now, calls=[opt(600, 1.50, 1.54), opt(601, 1.00, 1.04), opt(602, 0.50, 0.54)],
+                    puts=[opt(598, 0.30, 0.34), opt(599, 0.60, 0.64), opt(600, 1.00, 1.04)],
+                    spot=600.9, data_type=data_type)
