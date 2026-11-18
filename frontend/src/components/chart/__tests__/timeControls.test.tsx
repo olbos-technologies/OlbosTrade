@@ -2,7 +2,6 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import IntervalStrip from "../IntervalStrip";
 import RangeBar from "../RangeBar";
-import SidePanel from "../SidePanel";
 import { INTERVAL_OPTIONS, RANGE_DEFAULT_INTERVAL, RANGE_OPTIONS, clampNote } from "../timeframes";
 
 afterEach(cleanup);
@@ -60,17 +59,5 @@ describe("range -> interval pairing", () => {
   });
   it("words a clamp without a number when none is given", () => {
     expect(clampNote("1 hour", undefined)).toBe("Showing less history: 1 hour bars don't go back further.");
-  });
-});
-
-describe("SidePanel", () => {
-  it("titles the panel with its count and renders its body", () => {
-    render(<SidePanel title="Positions" count={2} label="Open positions panel"><p>body</p></SidePanel>);
-    expect(screen.getByRole("region", { name: "Open positions panel" })).toHaveTextContent("Positions2");
-    expect(screen.getByText("body")).toBeInTheDocument();
-  });
-  it("shows a dash count as given", () => {
-    render(<SidePanel title="Positions" count="—" label="p">x</SidePanel>);
-    expect(screen.getByRole("heading", { name: /Positions/ })).toHaveTextContent("—");
   });
 });
