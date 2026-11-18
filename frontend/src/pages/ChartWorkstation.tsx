@@ -1,6 +1,6 @@
 import { useIsMobile } from "../hooks/useIsMobile";
 import { pnlColor } from "../utils/pnlTone";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client";
 import SignalAttribution from "../components/SignalAttribution";
 import SignalDetailDrawer from "../components/SignalDetailDrawer";
@@ -192,6 +192,10 @@ export default function ChartWorkstation({
   const [range] = useState<RangeKey | null>(null);
   const [watchSnapshots, setWatchSnapshots] = useState<Record<string, WatchSnapshot>>({});
   const [signals, setSignals] = useState<Signal[]>([]);
+  // A failed signal read is not "no signal": say it is unavailable, and never keep showing the old
+  // evidence as if it were current. A successful empty read is still an honest "NO SIGNAL".
+  const [signalsState, setSignalsState] = useState<"loading" | "ready" | "unavailable">("loading");
+  const signalsRequestId = useRef(0);
   const [ivRank, setIvRank] = useState<any>(null);
   const [chartBars, setChartBars] = useState<ChartBar[]>([]);
   const [chartLoading, setChartLoading] = useState(false);
@@ -214,6 +218,7 @@ export default function ChartWorkstation({
   };
 
   const loadSignals = async () => {
+    const requestId = ++signalsRequestId.current;   // a slower, older answer must not overwrite a newer one
     try {
       // Must cover the full watchlist (~102 tickers, deduped server-side to
       // one entry per ticker) — selectedSignal below looks up the CURRENTLY
@@ -221,9 +226,14 @@ export default function ChartWorkstation({
       // here silently showed "NO SIGNAL" for any symbol that wasn't among
       // the last few scanned, even when a real signal existed for it.
       const res: any = await api.getEquitySignals(150);
-      setSignals(res.signals || []);
+      if (!Array.isArray(res?.signals)) throw new Error("Signal response unavailable");
+      if (requestId !== signalsRequestId.current) return;
+      setSignals(res.signals);
+      setSignalsState("ready");
     } catch {
+      if (requestId !== signalsRequestId.current) return;
       setSignals([]);
+      setSignalsState("unavailable");
     }
   };
 
@@ -232,6 +242,7 @@ export default function ChartWorkstation({
     const si = setInterval(loadSignals, 60000);
     return () => {
       clearInterval(si);
+      signalsRequestId.current += 1;   // an answer arriving after unmount is discarded
     };
   }, []);
 
@@ -274,8 +285,8 @@ export default function ChartWorkstation({
   // No fallback to signals[0] — a symbol with no signal of its own must show
   // an explicit "no signal" state, not another ticker's trade plan.
   const selectedSignal = useMemo(
-    () => signals.find((item) => item.ticker === symbol) || null,
-    [signals, symbol],
+    () => (signalsState === "ready" ? signals.find((item) => item.ticker === symbol) || null : null),
+    [signals, symbol, signalsState],
   );
   const selectedSnapshot = watchSnapshots[symbol];
   const latestBar = chartBars[chartBars.length - 1] || null;
@@ -354,7 +365,11 @@ export default function ChartWorkstation({
               }} className="workstation-metrics-grid">
                 <StatTile
                   variant="boxed" label="Signal" hint={hintFor("Signal")}
-                  value={selectedSignal
+                  value={signalsState === "unavailable"
+                    ? <span role="status" style={{ color: "var(--amber)" }}>SIGNALS UNAVAILABLE</span>
+                    : signalsState === "loading"
+                    ? <span role="status" style={{ color: "var(--ink-dim)" }}>LOADING SIGNALS</span>
+                    : selectedSignal
                     ? <SignalAttribution data={toChartSignalAttribution(selectedSignal)} size="sm" />
                     : <span style={{ color: "var(--ink-dim)" }}>NO SIGNAL</span>}
                 />
@@ -391,6 +406,7 @@ export default function ChartWorkstation({
         open={signalDrawerOpen}
         onClose={() => setSignalDrawerOpen(false)}
         signal={selectedSignal}
+        loadState={signalsState}
         symbol={symbol}
         timeframe={timeframe}
         latestBar={latestBar}

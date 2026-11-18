@@ -37,3 +37,24 @@ describe("SignalDetailDrawer rationale", () => {
     expect(screen.getByText("8. Bullish order flow (+0.040)")).toBeTruthy();
   });
 });
+
+describe("SignalDetailDrawer with no signal", () => {
+  const base = { open: true, onClose: () => {}, symbol: "QQQ", timeframe: "1d", latestBar: null, signal: null } as const;
+
+  it("says the feed is unavailable when it could not be read, not that nothing was selected", () => {
+    render(<SignalDetailDrawer {...base} loadState="unavailable" />);
+    expect(screen.getByText("Signals are unavailable. The signal feed could not be verified.")).toBeTruthy();
+    expect(screen.queryByText(/No signal payload/)).toBeNull();
+  });
+
+  it("says it is loading while the first read is out", () => {
+    render(<SignalDetailDrawer {...base} loadState="loading" />);
+    expect(screen.getByText("Loading signal evidence…")).toBeTruthy();
+  });
+
+  it("keeps the original empty message for a successful empty read (and by default)", () => {
+    render(<SignalDetailDrawer {...base} />);
+    expect(screen.getByText("No signal payload is selected for this symbol yet.")).toBeTruthy();
+  });
+});
+

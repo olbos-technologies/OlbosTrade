@@ -1,0 +1,5 @@
+## Unreleased — Desk chart: a failed signal read no longer reads as "No signal"
+
+- On the Equity and Options desk chart (the compact chart), the Signal tile and the signal detail drawer now tell an unavailable signal feed from a successful read with no signal. A failed or malformed read shows **SIGNALS UNAVAILABLE** (amber, with the drawer saying the feed could not be verified); the first load shows **LOADING SIGNALS**; a successful empty read still says **NO SIGNAL**. A failed 60-second refresh clears the previous signal instead of leaving old evidence on screen looking current, and a slower, older answer never overwrites a newer one.
+- This replaces the signal-state part of #284, which targeted the old Chart page that #302 removed; the Chart page (the former Pro Workspace) has no signal tile. Signal generation, approval, order submission, risk gates and broker paths are unchanged.
+- Frontend only: needs a frontend rebuild; no backend restart, no migration, no new environment variables.
