@@ -36,7 +36,6 @@ import Alerts          from "./pages/strategies/Alerts";     // Smart Alert rule
 import Heatmap         from "./pages/markets/Heatmap";
 import Watchlists      from "./pages/markets/Watchlists";
 import SectorRotation  from "./pages/markets/SectorRotation";
-import ChartWorkstation from "./pages/ChartWorkstation";     // Price-action / market-structure chart
 import MultiTimeframe from "./pages/MultiTimeframe";           // One symbol on 2-4 charts at different bar intervals
 import NewsEventsCenter from "./pages/markets/NewsEventsCenter";
 // Loaded on demand: it pulls in the scanners, backtest and options-flow pages together.
@@ -47,6 +46,13 @@ function ProWorkspacePage() {
       <ProWorkspaceLazy />
     </React.Suspense>
   );
+}
+/** The Pro Workspace address now redirects: bookmarks and links keep working and settle on Chart. */
+export function WorkspaceMovedToChart() {
+  const navigate = useNavigate();
+  const { search } = useLocation();
+  React.useEffect(() => { navigate(pageKeyToUrl("markets:chart") + search, { replace: true }); }, [navigate, search]);
+  return <div style={{ padding: 24, color: "var(--ink-dim)", font: "12px var(--mono)" }} role="status">Opening Chart…</div>;
 }
 import { isTradeDeskV2Enabled } from "./trade-desk/featureFlags";
 import SignalCalendar from "./components/SignalCalendar";
@@ -127,8 +133,11 @@ export const BASE_PAGES: Record<string, React.ComponentType> = {
 
   "markets:heatmaps":   Heatmap,
   "markets:watchlists": Watchlists,
-  "markets:chart":      ChartWorkstation,
-  "markets:workspace":  ProWorkspacePage,
+  // One chart page. It is the former Pro Workspace: chart in the middle with drawing tools, indicators
+  // and volume profile, watchlist/positions/news/scanners beside and below. The old Chart page is gone
+  // (the compact ChartWorkstation still serves the Equity and Options desks).
+  "markets:chart":      ProWorkspacePage,
+  "markets:workspace":  WorkspaceMovedToChart,  // old address: lands on Chart, keeping ?symbol=
   "markets:multi":      MultiTimeframe,
   "markets:news":       NewsEventsCenter,
   "markets:sector-rotation": SectorRotation,

@@ -10,7 +10,7 @@ const reply = (b: unknown) => ({ status: 200, contentType: "application/json", b
 const ROUTES = [
   "risk/rules", "backtest", "lab/scenario", "lab/intel", "strat/cards", "strat/health",
   "strat/alpha-edge", "strat/signal-history", "options/income", "options/flow",
-  "markets/chart", "markets/watchlists", "trade/settings",
+  "markets/watchlists", "trade/settings",
 ];
 
 for (const width of [390, 320]) {

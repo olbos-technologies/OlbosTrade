@@ -7,9 +7,10 @@
  *    when the engine used it, so panning and zooming keep working everywhere else;
  *  - loads a symbol's saved drawings, and saves after every real edit.
  *
- * Mouse and pen only. The chart library listens for touch with passive handlers
- * that cannot be intercepted, so drawing on a touch screen would fight the chart's
- * own panning; the workspace does not offer the tools on the stacked phone layout.
+ * Touch works the same way as the mouse: a one-finger press the engine uses is
+ * kept from the chart (capture phase, non-passive, so it can be stopped before the
+ * chart's own pan handler sees it); a press on empty space is left alone so one
+ * finger still pans, and a second finger cancels any gesture so pinch-zoom works.
  */
 
 import { useEffect, useRef, useSyncExternalStore } from "react";
@@ -38,7 +39,7 @@ export function useDrawings(opts: {
   handle: ChartHandle | null;
   bars: readonly ChartBar[];
   symbol: string;
-  /** Mouse interaction and keys on. Off on the phone layout, where saved drawings still show. */
+  /** Mouse, touch and keys on. Off on the phone layout until Draw mode is switched on; saved drawings still show. */
   interactive: boolean;
   /** The element that receives the keyboard shortcuts (Delete, Escape, Ctrl+Z). */
   keyTarget: HTMLElement | null;
@@ -132,6 +133,68 @@ export function useDrawings(opts: {
       el.removeEventListener("mousemove", onMove);
       el.removeEventListener("mouseleave", onLeave);
       stopDoc();
+    };
+    const off = handle.onDispose(remove);
+    return () => { off(); remove(); };
+  }, [handle, interactive, engine, keyTarget]);
+
+  // Touch: one finger draws or drags when the engine uses the press; anything else is the chart's.
+  useEffect(() => {
+    if (!handle || !interactive) return;
+    const el = handle.container;
+    let active: number | null = null;
+    const rel = (t: Touch): Pt => {
+      const r = el.getBoundingClientRect();
+      return { x: t.clientX - r.left, y: t.clientY - r.top };
+    };
+    const find = (list: TouchList, id: number): Touch | null => {
+      for (let i = 0; i < list.length; i++) if (list[i].identifier === id) return list[i];
+      return null;
+    };
+    const release = () => { active = null; };
+    const onStart = (e: TouchEvent) => {
+      if (e.touches.length > 1) { // a second finger is a pinch: hand the gesture back to the chart
+        if (active !== null) { engine.cancel(); release(); }
+        return;
+      }
+      const t = e.changedTouches[0];
+      if (!t || !engine.pointerDown(rel(t), true)) return;
+      active = t.identifier;
+      e.stopPropagation();
+      if (e.cancelable) e.preventDefault();
+      keyTarget?.focus({ preventScroll: true });
+    };
+    const onMove = (e: TouchEvent) => {
+      if (active === null) return;
+      const t = find(e.changedTouches, active);
+      if (!t) return;
+      e.stopPropagation();
+      if (e.cancelable) e.preventDefault();
+      engine.pointerMove(rel(t));
+    };
+    const onEnd = (e: TouchEvent) => {
+      if (active === null) return;
+      const t = find(e.changedTouches, active);
+      if (!t) return;
+      e.stopPropagation();
+      if (e.cancelable) e.preventDefault();
+      engine.pointerUp(rel(t));
+      release();
+    };
+    const onCancel = () => { if (active !== null) { engine.cancel(); release(); } };
+    const opts = { capture: true, passive: false } as const;
+    el.addEventListener("touchstart", onStart, opts);
+    el.addEventListener("touchmove", onMove, opts);
+    el.addEventListener("touchend", onEnd, opts);
+    el.addEventListener("touchcancel", onCancel, opts);
+    let removed = false;
+    const remove = () => {
+      if (removed) return;
+      removed = true;
+      el.removeEventListener("touchstart", onStart, opts);
+      el.removeEventListener("touchmove", onMove, opts);
+      el.removeEventListener("touchend", onEnd, opts);
+      el.removeEventListener("touchcancel", onCancel, opts);
     };
     const off = handle.onDispose(remove);
     return () => { off(); remove(); };

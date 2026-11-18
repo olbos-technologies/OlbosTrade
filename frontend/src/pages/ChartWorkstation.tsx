@@ -8,17 +8,7 @@ import { chartLevelColors, toChartSignalAttribution } from "../utils/chartWorkst
 import MetricHint, { resolveMetricHint } from "../components/MetricHint";
 import { Panel, StatTile, Button } from "../components/ui";
 import CandlestickChart from "../components/CandlestickChart";
-import IntervalStrip from "../components/chart/IntervalStrip";
-import RangeBar from "../components/chart/RangeBar";
-import SidePanel from "../components/chart/SidePanel";
-import { DEFAULT_INTERVAL, DEFAULT_RANGE, INTERVAL_OPTIONS, RANGE_DEFAULT_INTERVAL, clampNote, type IntervalKey, type RangeKey } from "../components/chart/timeframes";
-import InstrumentBar from "../components/chart/InstrumentBar";
-import PositionsTable from "../components/chart/PositionsTable";
-import WatchlistTable from "../components/chart/WatchlistTable";
-import { readProfilePref, writeProfilePref } from "../workspace/profilePref";
-import IndicatorPicker from "../components/chart/IndicatorPicker";
-import { useIndicatorSelection } from "../components/chart/useIndicatorSelection";
-import { usePaperTrade } from "../hooks/usePaperTrade";
+import { DEFAULT_INTERVAL, type IntervalKey, type RangeKey } from "../components/chart/timeframes";
 import { tint } from "../utils/tint";
 import "./markets/Markets.css";
 
@@ -172,15 +162,9 @@ function UpcomingCatalysts({ events }: { events: CatalystEvent[] }) {
   );
 }
 
-/** Browser storage, or null when it is missing or blocked (the saved choice then just lasts the visit). */
-function safeStorage(): Storage | null {
-  try { return typeof window !== "undefined" ? window.localStorage : null; } catch { return null; }
-}
-
 export default function ChartWorkstation({
   symbol: controlledSymbol,
-  onSymbolChange,
-  compact = false,
+  compact = true,
 }: {
   /** When set, symbol is controlled by the parent (Equity Desk). */
   symbol?: string;
@@ -190,16 +174,11 @@ export default function ChartWorkstation({
 } = {}) {
   const isMobile = useIsMobile();
 
-  const { positions, positionsError } = usePaperTrade();
   const [internalSymbol, setInternalSymbol] = useState(() => {
     const requested = new URLSearchParams(window.location.search).get("symbol")?.toUpperCase();
     return controlledSymbol || (requested && /^[A-Z0-9.^=:-]{1,20}$/.test(requested) ? requested : "AAPL");
   });
   const symbol = controlledSymbol ?? internalSymbol;
-  const setSymbol = (next: string) => {
-    if (controlledSymbol === undefined) setInternalSymbol(next);
-    onSymbolChange?.(next);
-  };
 
   useEffect(() => {
     if (controlledSymbol != null && controlledSymbol !== internalSymbol) {
@@ -210,8 +189,7 @@ export default function ChartWorkstation({
   // Non-compact charts have two controls, like TradingView: the bar interval and
   // the range of history. The compact desk charts keep the original four buttons.
   const [timeframe, setTimeframe] = useState<Timeframe | IntervalKey>(compact ? "15m" : DEFAULT_INTERVAL);
-  const [range, setRange] = useState<RangeKey | null>(compact ? null : DEFAULT_RANGE);
-  const [rangeNote, setRangeNote] = useState<string | null>(null);
+  const [range] = useState<RangeKey | null>(null);
   const [watchSnapshots, setWatchSnapshots] = useState<Record<string, WatchSnapshot>>({});
   const [signals, setSignals] = useState<Signal[]>([]);
   const [ivRank, setIvRank] = useState<any>(null);
@@ -220,46 +198,7 @@ export default function ChartWorkstation({
   const [chartError, setChartError] = useState<string | null>(null);
   const [catalystEvents, setCatalystEvents] = useState<CatalystEvent[]>([]);
   const [signalDrawerOpen, setSignalDrawerOpen] = useState(false);
-  const [watchlist, setWatchlist] = useState<string[]>(loadStoredWatchlist);
-  // The volume profile (price-pane histogram, point of control and value area). On by default,
-  // the same saved choice as the Pro Workspace chart, so turning it off in one turns it off in both.
-  const [showProfile, setShowProfile] = useState<boolean>(() => readProfilePref(safeStorage()));
-  const toggleProfile = () => setShowProfile((on) => { writeProfilePref(safeStorage(), !on); return !on; });
-  // Which indicators the chart draws: saved in this browser, shared with the Pro Workspace chart.
-  const [indicators, setIndicators, resetIndicators] = useIndicatorSelection();
-
-  // Desktop chart height follows the window.
-  const [viewportH, setViewportH] = useState(() => window.innerHeight);
-  // The chart takes the left two thirds of the page and the panel the right third,
-  // so the chart is sized from the space it was actually given, not from a guess.
-  const [chartWrap, setChartWrap] = useState<HTMLDivElement | null>(null);
-  const [wrapH, setWrapH] = useState(0);
-  useEffect(() => {
-    if (!chartWrap || typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(() => setWrapH(chartWrap.clientHeight));
-    ro.observe(chartWrap);
-    setWrapH(chartWrap.clientHeight);
-    return () => ro.disconnect();
-  }, [chartWrap]);
-  useEffect(() => {
-    const onResize = () => setViewportH(window.innerHeight);
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, []);
-
-  const persistWatchlist = (next: string[]) => {
-    setWatchlist(next);
-    try {
-      localStorage.setItem(WATCHLIST_STORAGE_KEY, JSON.stringify(next));
-    } catch {
-      /* ignore quota/storage errors — in-memory state still updates */
-    }
-  };
-
-  const removeTicker = (ticker: string) => {
-    persistWatchlist(watchlist.filter((t) => t !== ticker));
-  };
-
+  const [watchlist] = useState<string[]>(loadStoredWatchlist);
   const loadWatchlist = async () => {
     const entries = await Promise.all(
       watchlist.map(async (ticker) => {
@@ -322,13 +261,10 @@ export default function ChartWorkstation({
       .then((res) => {
         if (!live) return;
         setChartBars(res.bars || []);
-        const title = INTERVAL_OPTIONS.find((o) => o.key === timeframe)?.title ?? String(timeframe);
-        setRangeNote(res.range_clamped ? clampNote(title, res.period) : null);
       })
       .catch((err: Error) => {
         if (!live) return;
         setChartBars([]);
-        setRangeNote(null);
         setChartError(err.message);
       })
       .finally(() => { if (live) setChartLoading(false); });
@@ -347,8 +283,6 @@ export default function ChartWorkstation({
   const support = recentBars.length ? Math.min(...recentBars.map((bar) => bar.low)) : latestBar?.low ?? 0;
   const resistance = recentBars.length ? Math.max(...recentBars.map((bar) => bar.high)) : latestBar?.high ?? 0;
   const entry = selectedSignal?.trade_plan?.entry_price ?? latestBar?.close ?? 0;
-  const stop = selectedSignal?.trade_plan?.stop_price ?? support;
-  const target = selectedSignal?.trade_plan?.target_price ?? resistance;
   const levelColors = chartLevelColors();
 
   // A real trade plan (live signal with its own stop/target, not the
@@ -376,85 +310,6 @@ export default function ChartWorkstation({
         { label: "RESISTANCE", value: resistance, color: levelColors.resistance },
       ].filter((level) => level.value > 0);
 
-
-  // The chart page, on desktop and on phones: just the instrument bar and a tall
-  // chart. Only the compact Equity/Options desk chart uses the layout below.
-  if (!compact) {
-    const chipsH = catalystEvents.length && !chartLoading ? 30 : 0;
-    const chartH = isMobile
-      ? Math.max(300, Math.min(720, viewportH - 400))
-      : Math.max(260, (wrapH || viewportH - 430) - chipsH);
-    const goTo = (raw: string) => {
-      const next = raw.trim().toUpperCase();
-      if (!/^[A-Z0-9.^=:-]{1,20}$/.test(next)) return false;
-      if (!watchlist.includes(next)) persistWatchlist([...watchlist, next]);
-      setSymbol(next);
-      return true;
-    };
-    return (
-      <div className="chart-workspace chart-workspace--dock">
-        <div className="workstation-center">
-          <InstrumentBar
-            symbols={Array.from(new Set([symbol, ...watchlist])).slice(0, 6)}
-            symbol={symbol}
-            onSelect={setSymbol}
-            onGoTo={goTo}
-            onUnpin={watchlist.includes(symbol) && watchlist.length > 1 ? () => { const rest = watchlist.filter((t) => t !== symbol); removeTicker(symbol); setSymbol(rest[0]); } : undefined}
-            price={selectedSnapshot?.last_close ?? latestBar?.close}
-            changePct={selectedSnapshot?.change_pct}
-            bar={latestBar}
-            freshness={latestBar ? `Last close snapshot · Chart bar: ${new Date(latestBar.timestamp).toLocaleString()}` : "Chart data unavailable"}
-            freshnessShort={latestBar ? `Last bar ${new Date(latestBar.timestamp).toLocaleString(undefined, { month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit" })}` : undefined}
-            signalBadge={selectedSignal
-              ? <SignalAttribution data={toChartSignalAttribution(selectedSignal)} size="sm" />
-              : <span className="dock-nosignal">No signal</span>}
-            onSignalDetail={() => setSignalDrawerOpen(true)}
-          />
-          <div className="chart-split">
-            <SidePanel title="Positions" count={positionsError ? "—" : positions.length} label="Open positions panel">
-              <PositionsTable narrow positions={positions as never[]} error={Boolean(positionsError)} />
-            </SidePanel>
-            <div className="chart-col">
-              <div className="chart-toolbar">
-                <IntervalStrip value={timeframe as IntervalKey} onChange={setTimeframe} />
-                <div className="chart-toolbar__actions">
-                  <IndicatorPicker selected={indicators} onChange={setIndicators} onReset={resetIndicators} buttonClassName="chart-toolbar__toggle" />
-                  <button type="button" className="chart-toolbar__toggle" aria-pressed={showProfile} onClick={toggleProfile}
-                    title="Show where volume traded, for the bars in view (approximate, built from bars)">
-                    Volume profile
-                  </button>
-                </div>
-              </div>
-              <div ref={setChartWrap} className="dock-chart instrument-card--flat chart-canvas-wrap" style={{ position: "relative" }}>
-                {!chartLoading && <UpcomingCatalysts events={catalystEvents} />}
-                {chartLoading ? (
-                  <div className="skeleton-block" style={{ height: chartH }} aria-busy="true" aria-label="Loading chart">
-                    <div className="skeleton-shimmer" />
-                  </div>
-                ) : (
-                  <CandlestickChart bars={chartBars} levels={levels} height={chartH} volumeProfile={showProfile} indicators={indicators} />
-                )}
-                {chartError && <div className="dock-chart__error" role="status">{chartError}</div>}
-              </div>
-              <RangeBar value={range} note={rangeNote} onChange={(r) => { setRange(r); setTimeframe(RANGE_DEFAULT_INTERVAL[r]); }} />
-            </div>
-            <SidePanel title="Watchlist" count={watchlist.length} label="Watchlist panel">
-              <WatchlistTable watchlist={watchlist} snapshots={watchSnapshots} symbol={symbol}
-                onSelect={setSymbol} onRemove={(t) => { removeTicker(t); if (t === symbol) setSymbol(watchlist.find((w) => w !== t) ?? symbol); }} />
-            </SidePanel>
-          </div>
-        </div>
-        <SignalDetailDrawer
-          open={signalDrawerOpen}
-          onClose={() => setSignalDrawerOpen(false)}
-          signal={selectedSignal}
-          symbol={symbol}
-          timeframe={timeframe}
-          latestBar={latestBar}
-        />
-      </div>
-    );
-  }
 
   return (
     <div className="chart-workspace chart-workspace--compact" style={{ padding: 0, display: "flex", flexDirection: "column", gap: 14, height: "100%" }}>

@@ -1,0 +1,5 @@
+## Unreleased — Drawing tools with phone Draw mode (part of the merged Chart page)
+
+- The drawing tools (trend line, horizontal and vertical line, rectangle, Fib retracement; colour, width, magnet, undo/redo, delete, clear) now work by touch. On a phone the chart bar has a **Draw** switch: off by default, so one finger still pans and two still pinch; on it opens a finger-sized tool bar (44px buttons, scrolls sideways inside itself). With Draw on, one finger draws and drags lines and their end handles; a finger within about 14px of a line (20px of a handle) picks it up, where a mouse must be within 6px. A second finger cancels a half-drawn line and gives the gesture back to the chart for pinch-zoom; empty space still pans.
+- Drawings are notes anchored to time and price, saved per symbol in this browser. They place no orders and change no risk setting.
+- Fixed: a code comment claimed touch "cannot be intercepted"; a capture-phase, non-passive handler does stop the chart panning (shown in a real browser with touch events).

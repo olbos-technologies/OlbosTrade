@@ -1,7 +1,9 @@
 # Pro Workspace
 
-**Status:** first slice. A dockable, resizable multi-panel view of the terminal at
-`/terminal/markets/workspace` (sidebar: Markets → Pro Workspace). Presentation only.
+**Status:** this is now the **Chart page**, at `/terminal/markets/chart` (sidebar: Markets → Chart).
+It replaced the earlier single-chart page and the separate "Pro Workspace" entry; the old address
+`/terminal/markets/workspace` redirects here and keeps `?symbol=`. The compact chart inside the
+Equity and Options desks is unchanged. Presentation only.
 
 ## What it is
 
@@ -124,10 +126,17 @@ and unfolds in place), and **Undo**, **Redo**, **Delete** and **Clear all**.
   nothing back; only an edit saves. Stored data is validated on load (browser storage can be
   edited): unknown kinds, malformed or out-of-range numbers, bad colours, duplicate ids and
   hostile keys such as `__proto__` are dropped or repaired.
-- **Mouse and pen only.** The charting library listens for touch with handlers that cannot be
-  intercepted, so drawing on a touch screen would fight the chart's own panning. The rail is not
-  offered on the stacked phone layout (900px and under); saved drawings still show there but
-  cannot be edited.
+- **Touch.** The same gestures work with one finger: press, drag and release (or tap twice) to
+  draw; drag a line or a handle to edit. A fingertip is less exact, so touch picks a line within
+  14px and a handle within 20px (a mouse: 6px and 7px). The hook listens in the capture phase
+  with non-passive handlers and keeps a press from the chart only when the engine used it, so
+  one finger on empty space still pans; a second finger cancels the gesture so pinch-zoom works
+  (verified with real touch events in `e2e/chart-drawing.spec.ts`).
+- **Where.** On a desktop (900px and wider) the rail sits beside the chart. On a phone it is behind a
+  **Draw** switch in the chart bar: off by default so the chart behaves as before (one finger pans,
+  two pinch), on it opens a finger-sized horizontal bar (44px buttons) above the chart. The phone
+  layout is chart-first: the chart takes about 80% of the screen height, the OHLC line is dropped
+  from the bar, the bar's buttons are 44px, and the range buttons scroll in one row.
 - **Notes, not orders.** Drawings place no orders, set no stops and feed no risk or execution
   logic. A horizontal line is a mark on the chart, not a stop or a limit price. Colours leave out
   pure green and red, which mean profit and loss elsewhere.

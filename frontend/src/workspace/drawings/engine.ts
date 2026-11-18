@@ -55,6 +55,9 @@ export interface KeyInput { key: string; ctrlKey?: boolean; metaKey?: boolean; s
 export const DRAG_CREATE_MIN = 6;
 /** A second point closer than this to the first would be invisible, so it is ignored. */
 export const MIN_SIZE = 2;
+/** A fingertip is far less precise than a mouse: touch picks a line within this many px, and a handle within TOUCH_HANDLE. */
+export const TOUCH_TOL = 14;
+export const TOUCH_HANDLE = 20;
 
 type Pending = { kind: DrawingKind; first: Anchor; firstPx: Pt; pressed: boolean; last: Anchor };
 type Drag = { id: string; mode: "handle" | "move"; index: number; base: readonly Drawing[]; startPx: Pt; origPx: Pt[] };
@@ -229,9 +232,9 @@ export class DrawingEngine {
   // ── Pointer ────────────────────────────────────────────────────────────────
 
   /** A press. Returns true when the engine used it, so the caller must keep it from the chart. */
-  pointerDown(p: Pt): boolean {
+  pointerDown(p: Pt, touch = false): boolean {
     if (this.tool !== "select") return this.placePoint(p, true);
-    return this.selectOrGrab(p);
+    return this.selectOrGrab(p, touch);
   }
 
   pointerMove(p: Pt): void {
@@ -301,8 +304,11 @@ export class DrawingEngine {
     return true;
   }
 
-  private selectOrGrab(p: Pt): boolean {
-    const hit = hitTest(this.deps.shapes(), p, { selectedId: this.selectedId });
+  private selectOrGrab(p: Pt, touch: boolean): boolean {
+    const hit = hitTest(this.deps.shapes(), p, {
+      selectedId: this.selectedId,
+      ...(touch ? { tol: TOUCH_TOL, handleRadius: TOUCH_HANDLE } : {}),
+    });
     if (!hit) {
       if (this.selectedId) { this.selectedId = null; this.emit(); }
       return false; // empty space: the chart may pan

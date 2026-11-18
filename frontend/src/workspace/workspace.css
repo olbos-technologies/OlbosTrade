@@ -137,53 +137,6 @@
 .ws-chart--hit .candlestick-chart__canvas,
 .ws-chart--hit .candlestick-chart__canvas * { cursor: pointer !important; }
 
-/* ── Drawing tools rail ─────────────────────────────────────────────────── */
-.ws-drawtools {
-  flex: none;
-  width: 66px;
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 6px 4px;
-  overflow-y: auto;
-  border-right: 1px solid var(--line-dim);
-  background: var(--bg-2);
-}
-/* Two columns, so every control fits on a short panel without scrolling. */
-.ws-drawtools__group { display: grid; grid-template-columns: repeat(2, 28px); justify-content: center; gap: 3px; }
-.ws-drawtools__group + .ws-drawtools__group { padding-top: 8px; border-top: 1px solid var(--line-dim); }
-.ws-drawtools__btn {
-  width: 28px; height: 28px;
-  display: inline-flex; align-items: center; justify-content: center;
-  padding: 0;
-  color: var(--ink-dim);
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  cursor: pointer;
-}
-.ws-drawtools__btn:hover:not(:disabled) { color: var(--ink); border-color: var(--line-dim); }
-.ws-drawtools__btn[aria-pressed="true"] { color: var(--ink); background: var(--bg-3); border-color: var(--design-action, var(--brand)); }
-.ws-drawtools__btn:disabled { opacity: 0.35; cursor: default; }
-.ws-drawtools__dot { display: block; width: 14px; height: 14px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.35); }
-.ws-drawtools__style { display: flex; flex-direction: column; gap: 8px; }
-.ws-drawtools__style > .ws-drawtools__group { padding-top: 8px; border-top: 1px solid var(--line-dim); }
-.ws-drawtools__swatches { grid-template-columns: repeat(3, 14px); gap: 6px 8px; }
-.ws-drawtools__swatch { width: 14px; height: 14px; padding: 0; border-radius: 50%; border: 1px solid rgba(255,255,255,0.25); cursor: pointer; }
-.ws-drawtools__swatch[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--bg-2), 0 0 0 3px var(--ink); }
-.ws-drawtools__widths { grid-template-columns: repeat(3, 18px); gap: 4px; }
-.ws-drawtools__width {
-  width: 18px; height: 18px; padding: 0 3px;
-  display: inline-flex; align-items: center;
-  background: transparent; border: 1px solid transparent; border-radius: 4px; cursor: pointer;
-}
-.ws-drawtools__width span { display: block; width: 100%; background: var(--ink-dim); border-radius: 1px; }
-.ws-drawtools__width[aria-pressed="true"] { border-color: var(--design-action, var(--brand)); }
-.ws-drawtools__width[aria-pressed="true"] span { background: var(--ink); }
-.ws-drawtools__btn:focus-visible, .ws-drawtools__swatch:focus-visible, .ws-drawtools__width:focus-visible {
-  outline: 2px solid var(--design-action, var(--brand)); outline-offset: 1px;
-}
 .ws-chart .interval-strip { margin-left: auto; }
 .ws-chart__toggle {
   min-height: 24px;
@@ -236,3 +189,12 @@
    summary gets a line of its own above them instead of being squeezed to nothing. */
 .ws-root--stacked .ws-chart__foot { flex-wrap: wrap; }
 .ws-root--stacked .ws-chart__profile { flex: 1 1 100%; order: -1; white-space: normal; }
+
+
+/* Phone, chart first: the chart takes most of the screen, the bar drops the OHLC line (the
+   quote is beside the symbol), its buttons are finger-sized, and the range buttons scroll in one row. */
+.ws-root--stacked .ws-mobilechart { height: clamp(480px, 82dvh, 800px); }
+.ws-root--stacked .ws-chart__ohlc { display: none; }
+.ws-root--stacked .ws-chart__toggle { min-height: 44px; min-width: 44px; }
+.ws-root--stacked .ws-chart__foot .range-bar { margin-left: 0; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+.ws-root--stacked .ws-chart__foot .range-bar::-webkit-scrollbar { display: none; }

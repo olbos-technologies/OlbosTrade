@@ -48,7 +48,11 @@ export default function ChartPanel({ symbol }: { symbol: string }) {
   const [note, setNote] = useState<string | null>(null);
   const [quote, setQuote] = useState<{ last: number | null; chg: number | null } | null>(null);
   const [profileText, setProfileText] = useState<string | null>(null);
-  const interactive = !useIsMobile(900);
+  // A desktop always has the drawing tools. A phone gets them behind a Draw switch, so by default one
+  // finger pans and two fingers pinch the chart, and a finger only draws when asked.
+  const phone = useIsMobile(900);
+  const [drawOn, setDrawOn] = useState(false);
+  const interactive = !phone || drawOn;
   const [handle, setHandle] = useState<ChartHandle | null>(null);
   const [rootEl, setRootEl] = useState<HTMLDivElement | null>(null);
   const [showProfile, setShowProfile] = useState<boolean>(() => readProfilePref(browserStorage()));
@@ -96,7 +100,8 @@ export default function ChartPanel({ symbol }: { symbol: string }) {
 
   const last = bars.length ? bars[bars.length - 1] : null;
   const { engine, state: drawState } = useDrawings({ handle, bars, symbol, interactive, keyTarget: rootEl });
-  const showTools = interactive && !error && (loading || bars.length > 0);
+  const toolsAvailable = !error && (loading || bars.length > 0);
+  const showTools = interactive && toolsAvailable;
   const rootClass = `ws-chart${drawState.tool !== "select" ? " ws-chart--drawing" : ""}${drawState.hoverId ? " ws-chart--hit" : ""}`;
 
   return (
@@ -112,6 +117,13 @@ export default function ChartPanel({ symbol }: { symbol: string }) {
             O {px(last.open)} H {px(last.high)} L {px(last.low)} C {px(last.close)}
           </span>
         )}
+        {phone && toolsAvailable && (
+          <button type="button" className="ws-chart__toggle" aria-pressed={drawOn}
+            onClick={() => { if (drawOn) engine.cancel(); setDrawOn(!drawOn); }}
+            title="Draw lines and levels on the chart with your finger. Notes only: no orders.">
+            Draw
+          </button>
+        )}
         <IndicatorPicker selected={indicators} onChange={setIndicators} onReset={resetIndicators} buttonClassName="ws-chart__toggle" />
         <button type="button" className="ws-chart__toggle" aria-pressed={showProfile} onClick={toggleProfile}
           title="Show where volume traded, for the bars in view (approximate, built from bars)">
@@ -119,8 +131,9 @@ export default function ChartPanel({ symbol }: { symbol: string }) {
         </button>
         <IntervalStrip value={interval} onChange={setIntervalKey} />
       </div>
+      {phone && showTools && <DrawingToolbar state={drawState} engine={engine} orientation="horizontal" />}
       <div className="ws-chart__body">
-      {showTools && <DrawingToolbar state={drawState} engine={engine} />}
+      {!phone && showTools && <DrawingToolbar state={drawState} engine={engine} />}
       <div className="ws-chart__canvas" ref={wrap}>
         {loading ? (
           <div className="skeleton-block" style={{ height: h }} aria-busy="true" aria-label="Loading chart">

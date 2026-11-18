@@ -1,9 +1,13 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ChartBar, ChartHandle } from "../../components/CandlestickChart";
 import { useDrawings } from "./useDrawings";
+import { makeDrawing } from "./model";
+import type { Shape } from "./geometry";
 
 afterEach(cleanup);
+// Drawings are saved per symbol in localStorage, so one test's drawing must not appear in the next.
+beforeEach(() => { window.localStorage.clear(); });
 
 const bars: ChartBar[] = Array.from({ length: 10 }, (_, i) => ({
   timestamp: new Date(Date.UTC(2026, 8, 1, 14, 30) + i * 3600e3).toISOString(),
@@ -96,5 +100,125 @@ describe("useDrawings and the chart's lifetime", () => {
     rerender({ h: b.handle });
     expect(b.series.attachPrimitive).toHaveBeenCalledTimes(1);
     expect(a.series.detachPrimitive).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ── touch ────────────────────────────────────────────────────────────────────
+
+type FakeTouch = { identifier: number; clientX: number; clientY: number };
+const T = (x: number, y: number, id = 1): FakeTouch => ({ identifier: id, clientX: x, clientY: y });
+
+/** jsdom has no Touch constructor, so a touch event is a plain event carrying the two lists the hook reads. */
+function touch(type: string, el: HTMLElement, changed: FakeTouch[], all: FakeTouch[] = changed) {
+  const e = new Event(type, { bubbles: true, cancelable: true });
+  Object.assign(e, { touches: type === "touchend" || type === "touchcancel" ? [] : all, changedTouches: changed });
+  el.dispatchEvent(e);
+  return e;
+}
+
+/** A hook on a fake chart whose primitive converts every pixel into a price, so gestures can be driven. */
+function drawable(shapes: Shape[] = []) {
+  const f = fakeHandle();
+  const hook = run(f.handle);
+  const prim = f.series.attachPrimitive.mock.calls[0][0];
+  prim.toAnchor = (p: { x: number; y: number }) => ({ time: 1000 + p.x, price: 200 - p.y });
+  prim.inPlot = () => true;
+  prim.shapes = () => shapes;
+  prim.toPixel = (a: { time: number; price: number }) => ({ x: a.time - 1000, y: 200 - a.price });
+  return { f, hook, engine: () => hook.result.current.engine, state: () => hook.result.current.state };
+}
+
+describe("useDrawings: touch", () => {
+  it("registers touch listeners only while interactive, and removes them when the chart's disposers run", () => {
+    const off = fakeHandle();
+    const add = vi.spyOn(off.container, "addEventListener");
+    run(off.handle, false);
+    expect(add).not.toHaveBeenCalled();
+
+    const f = fakeHandle();
+    const removed = vi.spyOn(f.container, "removeEventListener");
+    run(f.handle);
+    act(() => f.runDisposers());
+    const types = removed.mock.calls.map((c) => c[0]);
+    expect(types).toEqual(expect.arrayContaining(["touchstart", "touchmove", "touchend", "touchcancel"]));
+  });
+
+  it("leaves a one-finger press on empty chart alone, so the chart can still pan", () => {
+    const d = drawable();
+    const e = touch("touchstart", d.f.container, [T(50, 50)]);
+    expect(e.defaultPrevented).toBe(false);
+    expect(d.state().drawings).toEqual([]);
+  });
+
+  it("a tap with a one-point tool draws and keeps the press from the chart", () => {
+    const d = drawable();
+    act(() => d.engine().setTool("hline"));
+    let e!: Event;
+    act(() => { e = touch("touchstart", d.f.container, [T(50, 60)]); });
+    expect(e.defaultPrevented).toBe(true);
+    act(() => { touch("touchend", d.f.container, [T(50, 60)]); });
+    expect(d.state().drawings).toHaveLength(1);
+    expect(d.state().drawings[0].kind).toBe("hline");
+  });
+
+  it("press, drag and release draws a two-point line from the two finger positions", () => {
+    const d = drawable();
+    act(() => d.engine().setTool("trend"));
+    act(() => { touch("touchstart", d.f.container, [T(20, 20)]); });
+    const mv = touch("touchmove", d.f.container, [T(120, 80)]);
+    expect(mv.defaultPrevented).toBe(true); // the chart must not pan while the line is being drawn
+    act(() => { touch("touchend", d.f.container, [T(120, 80)]); });
+    const [line] = d.state().drawings;
+    expect(line.kind).toBe("trend");
+    expect(line.points).toEqual([{ time: 1020, price: 180 }, { time: 1120, price: 120 }]);
+  });
+
+  it("picks up a line a fingertip away from it, where a mouse at the same spot misses", () => {
+    const shape: Shape = { id: "d1", kind: "trend", color: "#fff", width: 1, anchors: [{ x: 0, y: 100 }, { x: 200, y: 100 }], segments: [[{ x: 0, y: 100 }, { x: 200, y: 100 }]] };
+    const d = drawable([shape]);
+    act(() => d.engine().load([makeDrawing("trend", [{ time: 1000, price: 100 }, { time: 1200, price: 100 }])], "AAPL"));
+    const mouse = new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0, clientX: 100, clientY: 111 });
+    d.f.container.dispatchEvent(mouse);
+    expect(mouse.defaultPrevented).toBe(false); // 11px off: beyond a mouse's reach
+    const e = touch("touchstart", d.f.container, [T(100, 111)]);
+    expect(e.defaultPrevented).toBe(true); // within a fingertip's
+    act(() => { touch("touchend", d.f.container, [T(100, 111)]); });
+  });
+
+  it("does not reach for a line beyond a fingertip's tolerance", () => {
+    const shape: Shape = { id: "d1", kind: "trend", color: "#fff", width: 1, anchors: [{ x: 0, y: 100 }, { x: 200, y: 100 }], segments: [[{ x: 0, y: 100 }, { x: 200, y: 100 }]] };
+    const d = drawable([shape]);
+    act(() => d.engine().load([makeDrawing("trend", [{ time: 1000, price: 100 }, { time: 1200, price: 100 }])], "AAPL"));
+    const e = touch("touchstart", d.f.container, [T(100, 130)]);
+    expect(e.defaultPrevented).toBe(false);
+  });
+
+  it("a second finger cancels a half-drawn line and gives the gesture back to the chart", () => {
+    const d = drawable();
+    act(() => d.engine().setTool("trend"));
+    act(() => { touch("touchstart", d.f.container, [T(20, 20, 1)]); });
+    expect(d.engine().busy).toBe(true);
+    act(() => { touch("touchstart", d.f.container, [T(90, 90, 2)], [T(20, 20, 1), T(90, 90, 2)]); });
+    expect(d.engine().busy).toBe(false);
+    // the first finger lifting afterwards must not finish the line
+    act(() => { touch("touchend", d.f.container, [T(20, 20, 1)]); });
+    expect(d.state().drawings).toEqual([]);
+  });
+
+  it("a cancelled touch (the system took it) abandons the gesture", () => {
+    const d = drawable();
+    act(() => d.engine().setTool("trend"));
+    act(() => { touch("touchstart", d.f.container, [T(20, 20)]); });
+    act(() => { touch("touchcancel", d.f.container, [T(20, 20)]); });
+    expect(d.engine().busy).toBe(false);
+    expect(d.state().drawings).toEqual([]);
+  });
+
+  it("ignores moves from a finger it is not following", () => {
+    const d = drawable();
+    act(() => d.engine().setTool("trend"));
+    act(() => { touch("touchstart", d.f.container, [T(20, 20, 1)]); });
+    const e = touch("touchmove", d.f.container, [T(300, 300, 7)]);
+    expect(e.defaultPrevented).toBe(false);
   });
 });
