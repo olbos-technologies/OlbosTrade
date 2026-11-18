@@ -189,3 +189,12 @@
    summary gets a line of its own above them instead of being squeezed to nothing. */
 .ws-root--stacked .ws-chart__foot { flex-wrap: wrap; }
 .ws-root--stacked .ws-chart__profile { flex: 1 1 100%; order: -1; white-space: normal; }
+
+
+/* Phone, chart first: the chart takes most of the screen, the bar drops the OHLC line (the
+   quote is beside the symbol), its buttons are finger-sized, and the range buttons scroll in one row. */
+.ws-root--stacked .ws-mobilechart { height: clamp(480px, 82dvh, 800px); }
+.ws-root--stacked .ws-chart__ohlc { display: none; }
+.ws-root--stacked .ws-chart__toggle { min-height: 44px; min-width: 44px; }
+.ws-root--stacked .ws-chart__foot .range-bar { margin-left: 0; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+.ws-root--stacked .ws-chart__foot .range-bar::-webkit-scrollbar { display: none; }

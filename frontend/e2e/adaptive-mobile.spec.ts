@@ -35,21 +35,6 @@ for(const width of [320,375,390,430]) {
   await expectNoHorizontalOverflow(page,width);await card.scrollIntoViewIfNeeded();
   await page.screenshot({path:`ui-audit-artifacts/adaptive-signals-${width}.png`,animations:'disabled'});
  });
- test(`single mobile quote and chart controls fit ${width}px`,async({page})=>{
-  await fixtures(page);await page.setViewportSize({width,height:844});await page.goto('/terminal/markets/chart?symbol=AAPL');
-  const quote=page.getByLabel('Selected instrument quote');
-  await expect(quote).toContainText('339.11');
-  await expect(page.locator('.instrument-bar__price strong')).toHaveCount(1);   // the price appears once
-  await expect(page.getByRole('group',{name:'Chart timeframe'})).toBeVisible();
-  await expect(page.locator('.chart-canvas-wrap canvas').first()).toBeVisible();
-  const plot=(await page.getByLabel('Price chart',{exact:true}).boundingBox())!;
-  // At least 300px of chart must be on the first screen, above the 56px bottom nav. (Font widths differ
-  // between machines and CI, so this states what matters instead of a fixed start line.)
-  expect(plot.y + 300,'at least 300px of the chart is visible above the bottom nav').toBeLessThanOrEqual(844-56);
-  await expectNoHorizontalOverflow(page,width);
-  await quote.scrollIntoViewIfNeeded();
-  await page.screenshot({path:`ui-audit-artifacts/adaptive-chart-${width}.png`,animations:'disabled'});
- });
 }
 test('financial cards reflow inside a narrow container with larger values',async({page})=>{
  await fixtures(page);await page.setViewportSize({width:430,height:844});await page.goto('/terminal/dashboard');

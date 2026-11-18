@@ -1,5 +1,5 @@
 /**
- * The indicator picker on the Chart page and the Pro Workspace. Measured in a real browser: where the
+ * The indicator picker on the Chart page (the former Pro Workspace). Measured in a real browser: where the
  * panel sits, whether the toolbar clips it, the phone sheet, the saved choice across pages, and that
  * the chart really draws a new panel (it is a canvas, so those are compared as pixels).
  */
@@ -22,12 +22,12 @@ async function openChartPage(page: Page, width = 1440, height = 900) {
   await page.addInitScript(() => { try { if (!sessionStorage.getItem("c")) { localStorage.clear(); sessionStorage.setItem("c", "1"); } } catch { /* ignore */ } });
   await page.setViewportSize({ width, height });
   await page.goto("/terminal/markets/chart?symbol=AAPL");
-  await expect(page.locator(".dock-chart .candlestick-chart")).toBeVisible();
+  await expect(page.locator(".ws-chart .candlestick-chart")).toBeVisible();
 }
 
 test("desktop: the button sits in the chart toolbar and opens a panel that is fully on screen", async ({ page }) => {
   await openChartPage(page);
-  const bar = (await page.locator(".chart-toolbar").boundingBox())!;
+  const bar = (await page.locator(".ws-chart__bar").boundingBox())!;
   const btn = (await picker(page).boundingBox())!;
   expect(btn.y).toBeGreaterThanOrEqual(bar.y - 1);
   expect(btn.y + btn.height).toBeLessThanOrEqual(bar.y + bar.height + 1);
@@ -38,7 +38,7 @@ test("desktop: the button sits in the chart toolbar and opens a panel that is fu
   expect(d.x + d.width, "not cut off on the right").toBeLessThanOrEqual(1440);
   expect(d.y, "opens below the button").toBeGreaterThanOrEqual(btn.y + btn.height);
   expect(d.y + d.height, "not cut off at the bottom").toBeLessThanOrEqual(900);
-  await expect(page.locator(".chart-toolbar").locator('[role="dialog"]')).toHaveCount(0);   // not inside the toolbar
+  await expect(page.locator(".ws-chart__bar").locator('[role="dialog"]')).toHaveCount(0);   // not inside the toolbar
   await expectNoHorizontalOverflow(page, 1440);
 });
 
@@ -60,7 +60,7 @@ test("desktop: adding RSI draws a new panel on the chart and adds it to the read
   await page.keyboard.press("Escape");
   await expect(dialog(page)).toHaveCount(0);
   await expect(readout(page)).toContainText("RSI");
-  await expect(page.locator(".dock-chart .candlestick-chart canvas").first()).toBeVisible();
+  await expect(page.locator(".ws-chart .candlestick-chart canvas").first()).toBeVisible();
   const withRsi = await canvasShot(page);
   const diff = await diffShots(page, before, withRsi);
   expect(diff.total, "the chart drew something new (a new panel changes many pixels)").toBeGreaterThan(500);
@@ -85,7 +85,7 @@ test("desktop: the choice is remembered across a reload, and Reset restores the 
   await box(page, "Volume").uncheck();
   await page.keyboard.press("Escape");
   await page.reload();
-  await expect(page.locator(".dock-chart .candlestick-chart")).toBeVisible();
+  await expect(page.locator(".ws-chart .candlestick-chart")).toBeVisible();
   await expect(readout(page)).toContainText("EMA21");
   await picker(page).click();
   await expect(box(page, "EMA21")).toBeChecked();
@@ -95,18 +95,6 @@ test("desktop: the choice is remembered across a reload, and Reset restores the 
   await expect(box(page, "Volume")).toBeChecked();
   await dialog(page).getByRole("button", { name: "Done" }).click();
   await expect(readout(page)).not.toContainText("EMA21");
-});
-
-test("the Chart page and the Pro Workspace share one choice", async ({ page }) => {
-  await openChartPage(page);
-  await picker(page).click();
-  await box(page, "Bollinger").check();
-  await page.keyboard.press("Escape");
-  await expect(readout(page)).toContainText("BB ");
-  await page.goto("/terminal/markets/workspace");
-  await expect(page.locator(".ws-chart .candlestick-chart")).toBeVisible();
-  await expect(readout(page).first()).toContainText("BB ");
-  await expect(picker(page)).toBeVisible();                       // and the Workspace has the same button
 });
 
 test("keyboard: the button opens it, Tab stays inside, Escape closes and returns to the button", async ({ page }) => {

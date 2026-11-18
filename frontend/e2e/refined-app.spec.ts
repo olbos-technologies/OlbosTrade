@@ -1,6 +1,6 @@
 import {test,expect} from '@playwright/test';
 import {SIGNED_IN,expectNoHorizontalOverflow} from './helpers';
-const routes=[['dashboard','Command Center'],['markets/chart','Market workspace'],['equity','Signals'],['trade/positions','Positions'],['risk/heat','Risk & protection'],['account/brokers','Choose your broker']] as const;
+const routes=[['dashboard','Command Center'],['equity','Signals'],['trade/positions','Positions'],['risk/heat','Risk & protection'],['account/brokers','Choose your broker']] as const;
 for(const width of [390,768,1440,1920])for(const [route,heading] of routes){
  test(`refined app ${route} ${width}`,async({page})=>{
   const writes:string[]=[],errors:string[]=[];

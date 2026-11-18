@@ -1,7 +1,9 @@
 # Pro Workspace
 
-**Status:** first slice. A dockable, resizable multi-panel view of the terminal at
-`/terminal/markets/workspace` (sidebar: Markets → Pro Workspace). Presentation only.
+**Status:** this is now the **Chart page**, at `/terminal/markets/chart` (sidebar: Markets → Chart).
+It replaced the earlier single-chart page and the separate "Pro Workspace" entry; the old address
+`/terminal/markets/workspace` redirects here and keeps `?symbol=`. The compact chart inside the
+Equity and Options desks is unchanged. Presentation only.
 
 ## What it is
 
@@ -130,11 +132,11 @@ and unfolds in place), and **Undo**, **Redo**, **Delete** and **Clear all**.
   with non-passive handlers and keeps a press from the chart only when the engine used it, so
   one finger on empty space still pans; a second finger cancels the gesture so pinch-zoom works
   (verified with real touch events in `e2e/chart-drawing.spec.ts`).
-- **Where.** The Pro Workspace shows the rail at 900px and wider and keeps it off its stacked
-  phone layout (saved drawings still show there). The **Chart page** (Markets > Chart) shows it
-  beside the chart on a desktop, and on a phone behind a **Draw** switch in the chart toolbar:
-  off by default so the chart behaves as before, on it opens a finger-sized horizontal bar
-  (44px buttons). Both pages read and write the same saved list.
+- **Where.** On a desktop (900px and wider) the rail sits beside the chart. On a phone it is behind a
+  **Draw** switch in the chart bar: off by default so the chart behaves as before (one finger pans,
+  two pinch), on it opens a finger-sized horizontal bar (44px buttons) above the chart. The phone
+  layout is chart-first: the chart takes about 80% of the screen height, the OHLC line is dropped
+  from the bar, the bar's buttons are 44px, and the range buttons scroll in one row.
 - **Notes, not orders.** Drawings place no orders, set no stops and feed no risk or execution
   logic. A horizontal line is a mark on the chart, not a stop or a limit price. Colours leave out
   pure green and red, which mean profit and loss elsewhere.

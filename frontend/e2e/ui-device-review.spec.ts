@@ -43,8 +43,8 @@ for (const width of [320,390,768,1440]) {
         expect(search!.width).toBeGreaterThan(width * .65);
       }
       if (surface === 'markets/chart') {
-        // The chart page is the instrument bar and a chart; the bar must not spill out.
-        const bar = page.locator('.instrument-bar');
+        // The chart page is the dockable workspace: its toolbar must not spill out sideways.
+        const bar = page.locator('.ws-toolbar');
         expect(await bar.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
       }
       if (width <= 768) {

@@ -142,7 +142,7 @@ test("it is in the Markets menu and a deep link opens it", async ({ page }) => {
   await mock(page, requests);
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/terminal/markets/chart");
-  await expect(page.getByRole("heading", { name: "Market workspace" })).toBeVisible();
+  await expect(page.getByRole("toolbar", { name: "Workspace controls" })).toBeVisible();
   await page.getByRole("button", { name: "Multi-timeframe", exact: true }).click();
   await expect(page).toHaveURL(/\/terminal\/markets\/multi$/);
   await expect(page.getByLabel("Multi-timeframe view")).toBeVisible();
@@ -173,7 +173,7 @@ test("phone: it can be reached from the menu, and opening it closes the menu", a
   await mock(page, requests);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/terminal/markets/chart");
-  await expect(page.getByRole("heading", { name: "Market workspace" })).toBeVisible();
+  await expect(page.getByRole("toolbar", { name: "Workspace controls" })).toBeVisible();
   await page.getByRole("button", { name: /toggle navigation/i }).click();
   const link = page.getByText(/^Multi-timeframe$/i).first();
   await expect(link).toBeVisible();

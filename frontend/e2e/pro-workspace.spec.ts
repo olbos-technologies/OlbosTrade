@@ -25,7 +25,7 @@ async function drag(page: Page, name: RegExp, dx: number, dy: number) {
 
 async function open(page: Page, width = 1440, height = 900, query = "") {
   await page.setViewportSize({ width, height });
-  await page.goto(`/terminal/markets/workspace${query}`);
+  await page.goto(`/terminal/markets/chart${query}`);
   await expect(page.getByRole("region", { name: "Chart", exact: true })).toBeVisible();
 }
 
@@ -43,13 +43,23 @@ test.describe("Pro Workspace layout", () => {
     expect(c.height).toBeGreaterThan(250);
   });
 
-  test("is reachable from the sidebar under Markets", async ({ page }) => {
+  test("is the Chart page: one Chart entry in the Markets menu, and no separate Pro Workspace entry", async ({ page }) => {
     await mockData(page);
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto("/terminal/markets/chart");
-    await page.getByRole("button", { name: "Pro Workspace" }).click();
-    await expect(page).toHaveURL(/\/terminal\/markets\/workspace$/);
+    await page.goto("/terminal/markets/watchlists");
+    await expect(page.getByRole("button", { name: "Pro Workspace" })).toHaveCount(0);
+    await page.getByRole("button", { name: "Chart", exact: true }).first().click();
+    await expect(page).toHaveURL(/\/terminal\/markets\/chart$/);
     await expect(page.getByRole("region", { name: "Chart", exact: true })).toBeVisible();
+    await expect(page.getByRole("toolbar", { name: "Workspace controls" })).toBeVisible();
+  });
+
+  test("the old Pro Workspace address redirects to Chart and keeps the symbol", async ({ page }) => {
+    await mockData(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/terminal/markets/workspace?symbol=NVDA");
+    await expect(page).toHaveURL(/\/terminal\/markets\/chart\?symbol=NVDA$/);
+    await expect(page.locator(".ws-chart__symbol")).toHaveText("NVDA");
   });
 
   test("dragging the vertical splitter resizes the chart, the chart redraws to fit, and it stops at its limit", async ({ page }) => {

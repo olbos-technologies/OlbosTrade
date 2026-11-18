@@ -1,5 +1,5 @@
 /**
- * Drawing tools on the Chart page (Markets > Chart), which only the Pro Workspace had.
+ * Drawing tools on the Chart page (Markets > Chart, the former Pro Workspace) on a phone and a desktop.
  * Desktop gets the rail beside the chart; a phone gets a "Draw" switch, because there one
  * finger must still pan the chart by default. The touch tests send real touch events through
  * the browser's protocol: jsdom cannot show whether the chart panned or a line was drawn.
@@ -17,7 +17,7 @@ const bars = Array.from({ length: 80 }, (_, i) => ({
   close: 341 + Math.sin(i / 4) * 3, volume: 1_000_000 + i * 10_000,
 }));
 
-const canvas = (page: Page) => page.locator(".dock-chart .candlestick-chart__canvas");
+const canvas = (page: Page) => page.locator(".ws-chart .candlestick-chart__canvas");
 const tool = (page: Page, name: string) => page.getByRole("button", { name, exact: true });
 const rail = (page: Page) => page.getByRole("toolbar", { name: "Drawing tools" });
 const drawSwitch = (page: Page) => page.getByRole("button", { name: "Draw", exact: true });
@@ -33,7 +33,7 @@ async function open(page: Page, width: number, height: number) {
   await page.addInitScript(() => { try { if (!sessionStorage.getItem("cleared")) { localStorage.clear(); sessionStorage.setItem("cleared", "1"); } } catch { /* ignore */ } });
   await page.setViewportSize({ width, height });
   await page.goto("/terminal/markets/chart?symbol=AAPL");
-  await expect(page.locator(".dock-chart .candlestick-chart")).toBeVisible();
+  await expect(page.locator(".ws-chart .candlestick-chart")).toBeVisible();
 }
 
 async function stored(page: Page): Promise<{ kind: string; points: { time: number; price: number }[] }[]> {
@@ -98,6 +98,20 @@ test.describe("phone", () => {
     expect(c.x + c.width).toBeLessThanOrEqual(390);
     await expectNoHorizontalOverflow(page, 390);
   });
+
+  for (const w of [320, 390]) {
+    test(`the merged Chart page at ${w}px: controls are touch targets, nothing overflows, the chart keeps its height`, async ({ page }) => {
+      await open(page, w, 844);
+      for (const name of ["Draw", "Indicators", "Volume profile"]) {
+        const b = (await page.getByRole("button", { name, exact: true }).boundingBox())!;
+        expect(b.height, `${name} height`).toBeGreaterThanOrEqual(44);
+      }
+      const c = (await canvas(page).boundingBox())!;
+      expect(c.height, "chart height").toBeGreaterThanOrEqual(380);   // was ~210 before the phone layout was made chart-first
+      expect(c.y + 300, "at least 300px of chart above the bottom nav").toBeLessThanOrEqual(844 - 56);
+      await expectNoHorizontalOverflow(page, w);
+    });
+  }
 
   test("with Draw off, one finger on the chart draws nothing", async ({ page }) => {
     await open(page, 390, 844);

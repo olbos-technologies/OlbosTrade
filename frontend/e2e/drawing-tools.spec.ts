@@ -21,7 +21,7 @@ const bar = (page: Page) => page.getByRole("toolbar", { name: "Workspace control
 
 async function open(page: Page, width = 1440, height = 900, query = "") {
   await page.setViewportSize({ width, height });
-  await page.goto(`/terminal/markets/workspace${query}`);
+  await page.goto(`/terminal/markets/chart${query}`);
   await expect(page.locator(".ws-chart .candlestick-chart")).toBeVisible();
   // The chart is built after the bars arrive; wait until it can take a point.
   await expect(tool(page, "Trend line")).toBeVisible();
@@ -444,7 +444,7 @@ test.describe("screens and brands", () => {
     const errors: string[] = [];
     page.on("pageerror", (e) => errors.push(e.message));
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto("/terminal/markets/workspace");
+    await page.goto("/terminal/markets/chart");
     await expect(page.locator(".ws-chart .candlestick-chart")).toBeVisible();
     await expect(page.getByRole("toolbar", { name: "Drawing tools" })).toHaveCount(0);
     await expectNoHorizontalOverflow(page, 390);
@@ -479,7 +479,7 @@ test.describe("screens and brands", () => {
 test.describe("teardown", () => {
   /**
    * The charting library throws "Object is disposed" from its own redraw when a chart is
-   * removed with an update pending. It does so on the existing Chart page too, and whether it
+   * removed with an update pending. It does so on every chart page, and whether it
    * fires in a given run is timing. A count-based version of this test failed 7 runs in 30 on
    * clean main under load, so this checks only that nothing ELSE is thrown. The order of
    * teardown is pinned deterministically in CandlestickChartTeardown.test.tsx and
@@ -499,8 +499,8 @@ test.describe("teardown", () => {
     await page.mouse.click(X(0.5), Y(0.3));
     await page.getByRole("group", { name: "Chart timeframe" }).getByRole("button", { name: "1 hour", exact: true }).click(); // rebuilds the chart
     await expect(page.locator(".ws-chart .candlestick-chart")).toBeVisible();
-    await page.getByRole("button", { name: "Chart", exact: true }).first().click();
-    await expect(page).toHaveURL(/\/terminal\/markets\/chart$/);
+    await page.getByRole("button", { name: "Watchlists", exact: true }).first().click();
+    await expect(page).toHaveURL(/\/terminal\/markets\/watchlists$/);
     await page.goBack();
     await expect(page.locator(".ws-chart .candlestick-chart")).toBeVisible();
     await page.waitForTimeout(300);
