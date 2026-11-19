@@ -83,6 +83,7 @@ from app.api.routes import (
     trading_mode,
 )
 from app.api.routes import equity
+from app.api.routes import screener as screener_routes
 from app.api.routes import trade_desk
 from app.api.routes import rotation
 from app.api.routes import signal_calendar
@@ -327,6 +328,7 @@ app.include_router(options_csp.router, prefix="/api/options/csp",   tags=["Optio
 app.include_router(options_decision.router, prefix="/api/options-decision", tags=["Options Decision"])
 app.include_router(intel.router,       prefix="/api/intel",        tags=["Intelligence Hub"])
 app.include_router(chart.router,       prefix="/api/chart",        tags=["Chart Intelligence"])
+app.include_router(screener_routes.router, prefix="/api/screener", tags=["Screener"])
 app.include_router(alerts.router,      prefix="/api/alerts",       tags=["Smart Alerts"])
 app.include_router(alerts.notif_router,prefix="/api/notifications",tags=["Notifications"])
 app.include_router(ibkr_live.router,   prefix="/api/ibkr",         tags=["IBKR Live Data"])
