@@ -168,15 +168,25 @@ def test_auth_on_is_logged(posture, caplog):
         "a correctly configured instance should not warn")
 
 
-def test_auth_on_without_a_secret_key_warns(posture, caplog):
+def test_auth_on_without_a_secret_key_refuses_to_start(posture, caplog):
     """The half-configured case: sessions are enforced but the operator-key
-    routes fall open, because require_api_key no-ops on an empty SECRET_KEY.
-    That reads as 'auth is on' while a whole class of route is not."""
-    records = posture(True, "", caplog)
+    routes would fall open, because require_api_key no-ops on an empty
+    SECRET_KEY — any signed-in user of any organization would reach
+    close-position and trading-mode. This used to be a WARNING that scrolled
+    past; it now refuses to start, and says why at CRITICAL first."""
+    with pytest.raises(RuntimeError, match="SECRET_KEY"):
+        posture(True, "", caplog)
 
-    warnings = [r for r in records if r.levelno >= logging.WARNING]
-    assert warnings, "AUTH_ENABLED=true with no SECRET_KEY passed silently"
-    assert "SECRET_KEY" in " ".join(r.getMessage() for r in warnings)
+    critical = [r for r in caplog.records if r.levelno >= logging.CRITICAL]
+    assert critical, "the refusal must be logged before the exception"
+    assert "SECRET_KEY" in " ".join(r.getMessage() for r in critical)
+
+
+def test_auth_off_without_a_secret_key_still_starts(posture, caplog):
+    """The single-operator install behind Basic Auth is a supported mode and
+    must keep starting; only the auth-on/no-key combination is refused."""
+    records = posture(False, "", caplog)
+    assert records
 
 
 def test_the_posture_is_logged_before_anything_else_starts(caplog):

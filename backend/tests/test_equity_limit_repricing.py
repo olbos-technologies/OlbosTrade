@@ -161,36 +161,68 @@ async def test_sell_reprices_to_live_bid_with_marketable_buffer(stub_position_cl
     )
 
 
-@pytest.mark.asyncio
-async def test_falls_back_to_stale_entry_price_when_quote_unavailable(stub_position_claim):
-    """If the live quote fetch fails for any reason, the order must still go
-    out at the original scan-time entry_price rather than blocking the trade
-    entirely — a repricing improvement should never become a new failure mode."""
+def _broker_with_quote(quote_mock):
     broker = MagicMock()
     # Successful broker read is a prerequisite, not a swallowed mock error.
     broker.get_positions = AsyncMock(return_value=[])
-    broker.get_latest_quote = AsyncMock(side_effect=RuntimeError("no market data subscription"))
+    broker.get_latest_quote = quote_mock
     broker.get_account_summary = AsyncMock(return_value=MagicMock(net_liquidation=100_000.0))
     broker.place_equity_order = AsyncMock(return_value=MagicMock(order_id="o3", status="submitted"))
-
-    await _run(_equity_signal(action="BUY", stale_entry_price=150.0), broker)
-
-    limit_price = broker.place_equity_order.call_args.kwargs["limit_price"]
-    assert limit_price == 150.0
+    return broker
 
 
 @pytest.mark.asyncio
-async def test_zero_ask_does_not_reprice_buy(stub_position_claim):
-    """A zeroed/missing ask (e.g. a bad tick) must not produce a $0 limit
-    order — falls back to the stale entry_price instead."""
-    broker = MagicMock()
-    # Successful broker read is a prerequisite, not a swallowed mock error.
-    broker.get_positions = AsyncMock(return_value=[])
-    broker.get_latest_quote = AsyncMock(return_value=_quote(bid=0, ask=0))
-    broker.get_account_summary = AsyncMock(return_value=MagicMock(net_liquidation=100_000.0))
-    broker.place_equity_order = AsyncMock(return_value=MagicMock(order_id="o4", status="submitted"))
+async def test_no_entry_when_the_live_quote_fails(stub_position_claim, caplog):
+    """FAIL CLOSED. A failed quote used to fall back, at DEBUG, to the
+    scan-time entry_price — so a dead data feed still opened positions priced
+    off a daily close. Now the entry is skipped, said at WARNING, and the claim
+    released because nothing was sent. Reverses the earlier
+    test_falls_back_to_stale_entry_price_when_quote_unavailable on purpose."""
+    import logging
+    broker = _broker_with_quote(AsyncMock(side_effect=RuntimeError("no market data subscription")))
+
+    with caplog.at_level(logging.WARNING):
+        result = await _run(_equity_signal(action="BUY", stale_entry_price=150.0), broker)
+
+    assert result["result"] == "skipped"
+    assert result["reason"] == "live_quote_unavailable"
+    broker.place_equity_order.assert_not_awaited()
+    stub_position_claim.mark_submitted.assert_not_awaited()
+    stub_position_claim.resolve.assert_awaited_once()
+    assert any("no usable live quote" in r.getMessage() and r.levelno >= logging.WARNING
+               for r in caplog.records), "the skip must be visible, not a DEBUG line"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("action,bid,ask", [
+    ("BUY", 150.0, 0),             # zeroed ask
+    ("BUY", 150.0, -1.0),          # negative ask
+    ("BUY", 150.0, float("nan")),  # NaN ask
+    ("BUY", 150.0, float("inf")),  # inf ask
+    ("BUY", 150.0, None),          # missing ask
+    ("SELL", 0, 151.0),            # zeroed bid
+    ("SELL", "n/a", 151.0),        # non-numeric bid
+])
+async def test_no_entry_on_an_unusable_quote_side(stub_position_claim, action, bid, ask):
+    """Only the side the order prices off matters (ask for BUY, bid for SELL),
+    and any unusable value on it skips the entry rather than substituting the
+    stale price."""
+    broker = _broker_with_quote(AsyncMock(return_value=_quote(bid=bid, ask=ask)))
+
+    result = await _run(_equity_signal(action=action, stale_entry_price=150.0), broker)
+
+    assert (result["result"], result["reason"]) == ("skipped", "live_quote_unavailable")
+    broker.place_equity_order.assert_not_awaited()
+    stub_position_claim.resolve.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_a_bad_bid_does_not_block_a_buy(stub_position_claim):
+    """The other side of the book is irrelevant: a BUY with a good ask and a
+    zero bid still goes out, repriced off the ask."""
+    broker = _broker_with_quote(AsyncMock(return_value=_quote(bid=0, ask=160.0)))
 
     await _run(_equity_signal(action="BUY", stale_entry_price=150.0), broker)
 
     limit_price = broker.place_equity_order.call_args.kwargs["limit_price"]
-    assert limit_price == 150.0
+    assert 160.0 < limit_price <= 160.0 * 1.002

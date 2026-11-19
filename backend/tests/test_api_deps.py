@@ -28,3 +28,27 @@ def test_require_api_key_configured_needs_secret(monkeypatch):
     with pytest.raises(HTTPException) as exc:
         require_api_key_configured("")
     assert exc.value.status_code == 503
+
+
+def test_require_api_key_compares_in_constant_time():
+    """hmac.compare_digest, not ==, so response timing does not leak how much
+    of a guessed key matched. Read from source: a timing test would be flaky."""
+    import inspect
+    import app.api.deps as deps
+
+    src = inspect.getsource(deps)
+    assert "compare_digest" in src
+    assert "x_api_key != settings.secret_key" not in src
+    assert "x_api_key == settings.secret_key" not in src
+
+
+def test_require_api_key_rejects_a_prefix_of_the_key(monkeypatch):
+    from fastapi import HTTPException
+    import pytest
+    from app.core.config import settings
+    from app.api.deps import require_api_key
+
+    monkeypatch.setattr(settings, "secret_key", "correct-horse")
+    with pytest.raises(HTTPException) as exc:
+        require_api_key("correct-hor")
+    assert exc.value.status_code == 403

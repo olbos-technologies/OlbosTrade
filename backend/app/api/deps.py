@@ -1,9 +1,16 @@
 """Shared FastAPI dependencies for operator-sensitive routes."""
 from __future__ import annotations
 
+import hmac
+
 from fastapi import Header, HTTPException
 
 from app.core.config import settings
+
+
+def _key_matches(supplied: str) -> bool:
+    """Constant-time comparison, so response timing does not leak the key."""
+    return hmac.compare_digest(supplied.encode(), settings.secret_key.encode())
 
 
 def require_api_key(x_api_key: str = Header(default="", alias="X-Api-Key")) -> None:
@@ -17,7 +24,7 @@ def require_api_key(x_api_key: str = Header(default="", alias="X-Api-Key")) -> N
     """
     if not settings.secret_key:
         return
-    if x_api_key != settings.secret_key:
+    if not _key_matches(x_api_key):
         raise HTTPException(status_code=403, detail="Invalid or missing API key")
 
 
@@ -28,5 +35,5 @@ def require_api_key_configured(x_api_key: str = Header(default="", alias="X-Api-
     """
     if not settings.secret_key:
         raise HTTPException(status_code=503, detail="SECRET_KEY not configured")
-    if x_api_key != settings.secret_key:
+    if not _key_matches(x_api_key):
         raise HTTPException(status_code=403, detail="Invalid API key")
