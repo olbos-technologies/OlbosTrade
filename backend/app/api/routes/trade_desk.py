@@ -3,6 +3,8 @@ Trade Desk routes — execution mode + approval queue for Copilot/Autopilot.
 """
 from __future__ import annotations
 
+import math
+
 import asyncio
 import contextlib
 import logging
@@ -36,6 +38,23 @@ router = APIRouter()
 # branch for why this exists (scan-time entry_price goes stale before the
 # order reaches the broker).
 _EQUITY_LIMIT_BUFFER = 0.001  # 10 bps
+
+
+def _usable_quote_price(value) -> float | None:
+    """A quote side usable as the basis of a new entry's limit, or None.
+
+    Rejects missing, non-numeric, NaN/inf, zero and negative prices — every one
+    of which a broker can return for a symbol with no subscription, a halted
+    book or a bad tick. Used only to decide whether to enter; never to invent a
+    replacement price.
+    """
+    try:
+        px = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(px) or px <= 0:
+        return None
+    return px
 
 
 class RiskGateError(Exception):
@@ -2093,17 +2112,42 @@ async def _execute_signal(
             # buffer off the live bid/ask fixes this, mirroring the options
             # path's existing preference for a live chain quote over its
             # Black-Scholes estimate.
+            #
+            # FAIL CLOSED when there is no usable live quote. This used to fall
+            # back silently (at DEBUG) to the scan-time entry_price, so a broken
+            # data feed still opened positions priced off a daily close the
+            # signal could no longer vouch for. A new position needs a live
+            # price; without one the entry is skipped, logged at WARNING and
+            # counted, and the claim is released because nothing was sent.
+            # Exits are not on this path and are unaffected.
+            _quote_problem = None
             try:
                 quote = await broker.get_latest_quote(ticker)
-                if action == "BUY" and quote.ask_price > 0:
-                    entry_price = float(quote.ask_price) * (1 + _EQUITY_LIMIT_BUFFER)
-                elif action == "SELL" and quote.bid_price > 0:
-                    entry_price = float(quote.bid_price) * (1 - _EQUITY_LIMIT_BUFFER)
+                _side_px = quote.ask_price if action == "BUY" else quote.bid_price
+                _px = _usable_quote_price(_side_px)
+                if _px is None:
+                    _quote_problem = (
+                        f"{'ask' if action == 'BUY' else 'bid'}={_side_px!r} is not a usable price"
+                    )
+                elif action == "BUY":
+                    entry_price = _px * (1 + _EQUITY_LIMIT_BUFFER)
+                else:
+                    entry_price = _px * (1 - _EQUITY_LIMIT_BUFFER)
+            except EntryHalted:
+                raise
             except Exception as _q_exc:
-                logger.debug(
-                    "Live quote unavailable for %s, using scan-time entry_price: %s",
-                    ticker, _q_exc,
+                _quote_problem = f"{type(_q_exc).__name__}: {str(_q_exc)[:160]}"
+            if _quote_problem is not None:
+                logger.warning(
+                    "Entry skipped for %s %s — no usable live quote (%s); "
+                    "not falling back to the scan-time price",
+                    action, ticker, _quote_problem,
                 )
+                observability.incr("execute.live_quote_unavailable")
+                observability.event("live_quote_unavailable", ticker=ticker,
+                                    asset_type=asset_type, detail=_quote_problem)
+                await position_claim.resolve(_claim)
+                return _skipped("live_quote_unavailable")
 
             # Durable intent BEFORE the call. A process killed mid-submit has
             # already sent an order; if the claim were still only `pending`,

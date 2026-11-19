@@ -328,6 +328,8 @@ async def test_clean_order_passes_all_stages_in_order(stub_position_claim):
         return order_result
     broker.place_equity_order = _place
     broker.get_account_summary = AsyncMock(return_value=MagicMock(net_liquidation=100_000.0))
+    # A new equity entry needs a live quote (it fails closed without one).
+    broker.get_latest_quote = AsyncMock(return_value=MagicMock(ask_price=150.5, bid_price=150.0))
 
     recorder = MagicMock()
     async def _record_fill(**kwargs):

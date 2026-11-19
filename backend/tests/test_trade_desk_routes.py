@@ -1006,6 +1006,8 @@ async def test_0dte_gate_does_not_apply_to_equity_signals(stub_position_claim):
     # Successful broker read is a prerequisite, not a swallowed mock error.
     broker.get_positions = AsyncMock(return_value=[])
     broker.place_equity_order = AsyncMock(return_value=MagicMock(order_id="ORD-EQ", status="submitted"))
+    # A new equity entry needs a live quote (it fails closed without one).
+    broker.get_latest_quote = AsyncMock(return_value=MagicMock(ask_price=150.5, bid_price=150.0))
     with patch("app.api.routes.trade_desk._fetch_portfolio_state", new=AsyncMock(return_value=_clean())), \
          patch("app.api.routes.trade_desk._is_kill_switch_active", return_value=False), \
          patch("app.broker.broker_factory.get_broker", return_value=broker), \

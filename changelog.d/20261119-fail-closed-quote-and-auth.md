@@ -1,0 +1,6 @@
+## Unreleased — Fail closed on a missing live quote; refuse to start with auth on and no operator key
+
+- **Equity entries need a live quote.** When the broker's live quote fails, or the side the order prices off (ask for BUY, bid for SELL) is missing, zero, negative or not a number, a new equity entry is now **skipped** with reason `live_quote_unavailable`, logged at WARNING and counted (`execute.live_quote_unavailable`). It used to fall back, at DEBUG, to the scan-time daily close. The position claim is released because nothing was sent. Exits and closes are not on this path and are unaffected. Expect more `skipped` entries on symbols without a market-data subscription.
+- **Startup refuses `AUTH_ENABLED=true` with an empty `SECRET_KEY`.** That combination left the operator-key routes (close-position, trading-mode, risk settings) open to any signed-in user. It used to log a warning. `AUTH_ENABLED=false` (single operator behind Basic Auth) is unchanged.
+- **Operator key compared in constant time** (`hmac.compare_digest`).
+- Deploy: backend-only. No migration, no new environment variable. **Before deploying**, confirm `SECRET_KEY` is set in `backend/.env.prod` if `AUTH_ENABLED=true` (e.g. `grep -c '^SECRET_KEY=.' backend/.env.prod` prints 1), or the backend will not start.

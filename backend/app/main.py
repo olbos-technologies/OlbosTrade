@@ -346,9 +346,20 @@ def _log_auth_posture() -> None:
             "set" if settings.secret_key else "NOT SET (operator routes are open)",
         )
         if not settings.secret_key:
-            logger.warning(
+            # Refuse to start. With sessions on, the deployment is presenting
+            # itself as multi-user, yet require_api_key no-ops on an empty
+            # SECRET_KEY, so any signed-in user of any organization reaches the
+            # operator routes (close-position, trading-mode, risk settings).
+            # A warning here scrolled past; a refusal cannot. AUTH_ENABLED=false
+            # (single operator behind Basic Auth) is unaffected.
+            logger.critical(
                 "AUTH_ENABLED=true but SECRET_KEY is empty — operator-key "
-                "routes fall open. Set SECRET_KEY in backend/.env.prod."
+                "routes would fall open. Refusing to start. Set SECRET_KEY in "
+                "backend/.env.prod."
+            )
+            raise RuntimeError(
+                "AUTH_ENABLED=true requires a non-empty SECRET_KEY "
+                "(operator-key routes would otherwise be open to every signed-in user)"
             )
         return
 
