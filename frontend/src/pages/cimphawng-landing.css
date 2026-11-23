@@ -1,0 +1,124 @@
+.landing.cimphawng-landing {
+  --cimp-gold: #edcd86;
+  --cimp-paper: #f4eee2;
+  --cimp-line: #534939;
+  --cimp-navy: #0d1722;
+}
+
+.cimphawng-landing .cimp-hero {
+  padding: clamp(60px, 10vw, 142px) 0;
+  background: radial-gradient(ellipse at 85% 10%, #283242 0, transparent 55%), var(--cimp-navy);
+  border-bottom: 1px solid var(--cimp-line);
+}
+
+.cimphawng-landing .cimp-hero-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  align-items: center;
+  gap: clamp(32px, 6vw, 88px);
+}
+
+.cimphawng-landing .landing-eyebrow {
+  color: var(--cimp-gold);
+}
+
+.cimp-hero h1 {
+  margin: 18px 0 22px;
+  color: var(--cimp-paper);
+  font-family: Georgia, serif;
+  font-size: clamp(46px, 6.65vw, 92px);
+  font-weight: 400;
+  line-height: .99;
+  letter-spacing: -.055em;
+  text-wrap: balance;
+}
+
+.cimp-intro {
+  max-width: 47ch;
+  margin: 0;
+  color: #c5cdd7;
+  font-size: 17px;
+  line-height: 1.65;
+}
+
+.cimphawng-landing .cimp-hero .landing-hero-ctas {
+  margin-top: 28px;
+  margin-bottom: 0;
+}
+
+.cimphawng-landing .cimp-hero .landing-cta-btn:not(.secondary) {
+  color: #1b1813;
+  background: var(--cimp-gold);
+  border-color: var(--cimp-gold);
+}
+
+.cimphawng-landing .cimp-hero .landing-cta-btn:not(.secondary):hover {
+  background: #f8dfa9;
+}
+
+.cimp-workflow {
+  padding: clamp(22px, 3vw, 40px);
+  color: var(--cimp-paper);
+  background: #111e2b;
+  border: 1px solid var(--cimp-line);
+  border-top: 2px solid var(--cimp-gold);
+  border-radius: 4px 4px 20px 20px;
+}
+
+.cimp-workflow-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.cimp-workflow-header img {
+  flex: none;
+  object-fit: contain;
+}
+
+.cimp-workflow h2 {
+  margin: 0;
+  font-family: Georgia, serif;
+  font-size: clamp(24px, 2.4vw, 34px);
+  font-weight: 400;
+  line-height: 1.1;
+}
+
+.cimp-workflow dl {
+  margin: 16px 0 0;
+}
+
+.cimp-workflow dl > div {
+  padding: 14px 0;
+  border-top: 1px solid #384351;
+}
+
+.cimp-workflow dl > div:last-child {
+  padding-bottom: 0;
+}
+
+.cimp-workflow dt {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.cimp-workflow dd {
+  margin: 4px 0 0;
+  color: #c5cdd7;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.cimphawng-landing .landing-h2 {
+  color: var(--cimp-paper);
+  font-family: Georgia, serif;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: -.025em;
+}
+
+@media (max-width: 760px) {
+  .cimphawng-landing .cimp-hero-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

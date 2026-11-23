@@ -18,6 +18,7 @@ import { landingCopyFor } from "../brand/landingCopy";
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import "../landing.css";
+import "./cimphawng-landing.css";
 import BrandWordmark from "../components/BrandWordmark";
 
 function NavLink({ href, children }: { href: string; children: React.ReactNode }) {
@@ -152,10 +153,12 @@ export const PLANS: Plan[] = [
 
 export default function Landing() {
   const [menuOpen, setMenuOpen] = useState(false);
-  const copy = landingCopyFor(getBrand());
+  const brand = getBrand();
+  const copy = landingCopyFor(brand);
+  const isCimphawng = brand.key === "cimphawng";
 
   return (
-    <div className="landing">
+    <div className={isCimphawng ? "landing cimphawng-landing" : "landing"}>
       <header className="landing-nav">
         <div className="landing-container landing-nav-row">
           <BrandWordmark className="landing-wordmark" height={32} />
@@ -202,57 +205,85 @@ export default function Landing() {
 
       <main>
         {/* ── Hero ──────────────────────────────────────────────────────── */}
-        <section className="landing-section landing-hero" id="product">
-          <div className="landing-container">
-            <div className="landing-eyebrow">{copy.eyebrow}</div>
-            <h1 className="landing-h1">
-              {copy.h1}
-            </h1>
-            {/* Crypto's claim changed in #84 and this sentence had to change
-                with it. It used to read "planned and not yet supported", which
-                was true when there was no venue, no data feed and no
-                instrument model. Phase 1 added a scanner: 12 symbols on daily
-                bars, signals recorded to signal_outcomes and resolved against
-                forward price. So "not supported" is now false — the app has a
-                Crypto Signals page a new user can open.
-
-                What did NOT change is the part that matters: there is no order
-                path. run_crypto_scan() never reaches handle_signal, no crypto
-                module imports an execution symbol, and two tests hold that
-                line. "Signals-only ... no order path" is the whole truth and
-                claims nothing beyond it — no track record is implied, because
-                none exists yet. Same rule the numbers follow: say what exists,
-                label what does not. */}
-            <p className="landing-lede">{copy.lede}</p>
-            <div className="landing-hero-ctas">
-              <Link className="landing-cta-btn" to="/request-access">Start Paper Trading</Link>
-              <a className="landing-cta-btn secondary" href="#risk">See risk controls</a>
+        {isCimphawng ? (
+          <section className="cimp-hero" id="product">
+            <div className="landing-container cimp-hero-grid">
+              <div>
+                <p className="landing-eyebrow">{copy.eyebrow}</p>
+                <h1>{copy.h1}</h1>
+                <p className="cimp-intro">Explore stock and options signals, see what drove each setup, and practice your decisions with paper trading.</p>
+                <div className="landing-hero-ctas">
+                  <Link className="landing-cta-btn" to="/request-access">Request paper access</Link>
+                  <a className="landing-cta-btn secondary" href="#how">How it works</a>
+                </div>
+              </div>
+              <aside className="cimp-workflow" aria-labelledby="cimp-workflow-heading">
+                <div className="cimp-workflow-header">
+                  <img src={brand.standaloneMark.src} width="58" height="58" alt="" />
+                  <h2 id="cimp-workflow-heading">Your paper trading workflow</h2>
+                </div>
+                <dl>
+                  <div><dt>Review a signal</dt><dd>Check its source, timeframe, and freshness.</dd></div>
+                  <div><dt>Check the risk</dt><dd>See how position size and loss limits affect the setup.</dd></div>
+                  <div><dt>Practice the decision</dt><dd>Use the paper environment to try the workflow.</dd></div>
+                </dl>
+              </aside>
             </div>
+          </section>
+        ) : (
+          <section className="landing-section landing-hero" id="product">
+            <div className="landing-container">
+              <div className="landing-eyebrow">{copy.eyebrow}</div>
+              <h1 className="landing-h1">
+                {copy.h1}
+              </h1>
+              {/* Crypto's claim changed in #84 and this sentence had to change
+                  with it. It used to read "planned and not yet supported", which
+                  was true when there was no venue, no data feed and no
+                  instrument model. Phase 1 added a scanner: 12 symbols on daily
+                  bars, signals recorded to signal_outcomes and resolved against
+                  forward price. So "not supported" is now false — the app has a
+                  Crypto Signals page a new user can open.
 
-            <div className="pipeline" role="img" aria-label="Execution pipeline: market inputs, regime detection, risk-gated evaluation, controlled execution and audit">
-              <PipelineStage
-                n="01"
-                title="Market inputs"
-                detail="SPY/QQQ/IWM price/volatility data and account state, decoupled from execution."
-              />
-              <PipelineStage
-                n="02"
-                title="Regime detection"
-                detail="Rule-based VIX/ADX classification into four regimes; strategy eligibility follows the regime."
-              />
-              <PipelineStage
-                n="03"
-                title="Risk-gated evaluation"
-                detail="Trained signal model, POP/EV thresholds, Kelly-informed sizing, and hard loss limits — all must pass."
-              />
-              <PipelineStage
-                n="04"
-                title="Controlled execution & audit"
-                detail="Manual, Copilot, or Autopilot dispatch, with every decision written to a trade journal and execution log."
-              />
+                  What did NOT change is the part that matters: there is no order
+                  path. run_crypto_scan() never reaches handle_signal, no crypto
+                  module imports an execution symbol, and two tests hold that
+                  line. "Signals-only ... no order path" is the whole truth and
+                  claims nothing beyond it — no track record is implied, because
+                  none exists yet. Same rule the numbers follow: say what exists,
+                  label what does not. */}
+              <p className="landing-lede">{copy.lede}</p>
+              <div className="landing-hero-ctas">
+                <Link className="landing-cta-btn" to="/request-access">Start Paper Trading</Link>
+                <a className="landing-cta-btn secondary" href="#risk">See risk controls</a>
+              </div>
+
+              <div className="pipeline" role="img" aria-label="Execution pipeline: market inputs, regime detection, risk-gated evaluation, controlled execution and audit">
+                <PipelineStage
+                  n="01"
+                  title="Market inputs"
+                  detail="SPY/QQQ/IWM price/volatility data and account state, decoupled from execution."
+                />
+                <PipelineStage
+                  n="02"
+                  title="Regime detection"
+                  detail="Rule-based VIX/ADX classification into four regimes; strategy eligibility follows the regime."
+                />
+                <PipelineStage
+                  n="03"
+                  title="Risk-gated evaluation"
+                  detail="Trained signal model, POP/EV thresholds, Kelly-informed sizing, and hard loss limits — all must pass."
+                />
+                <PipelineStage
+                  n="04"
+                  title="Controlled execution & audit"
+                  detail="Manual, Copilot, or Autopilot dispatch, with every decision written to a trade journal and execution log."
+                />
+              </div>
             </div>
-          </div>
-        </section>
+          </section>
+
+        )}
 
         {/* ── Community (brands that have one) ──────────────────────────── */}
         {copy.community && (
@@ -277,6 +308,7 @@ export default function Landing() {
               Every step below exists in the running system today — described at the level the
               codebase actually implements it, not aspirationally.
             </p>
+            {isCimphawng && <p className="landing-lede">Crypto signals are available for research. Crypto order execution is outside the current workflow.</p>}
             <div className="landing-grid-4">
               <Cell title="1. Market inputs" body="SPY/QQQ/IWM and related market data feed the scanners and regime classifier, independent of the broker connection used for order execution." />
               <Cell title="2. Regime detection" body="A VIX/ADX-based classifier buckets the market into four regimes every scan cycle; each regime allows or restricts specific strategies." />
