@@ -84,6 +84,7 @@ export function axisTitleForLevel(label: string, compact: boolean): string {
   if (key.startsWith("RES")) return "R";
   if (key.startsWith("SUP")) return "S";
   if (key.startsWith("ENT")) return "E";
+  if (/^(PD[HLC]|~?OR[HL])$/.test(key)) return key;   // day levels: one letter would make PDH, PDL and PDC read alike
   return key.slice(0, 1) || label;
 }
 

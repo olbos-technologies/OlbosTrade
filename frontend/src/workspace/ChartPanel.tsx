@@ -12,12 +12,14 @@
  * are mouse and pen only, so the rail is not offered on the stacked phone layout.
  */
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client";
 import CandlestickChart, { type ChartBar, type ChartHandle } from "../components/CandlestickChart";
 import { useIsMobile } from "../hooks/useIsMobile";
 import DrawingToolbar from "./drawings/DrawingToolbar";
 import { useDrawings } from "./drawings/useDrawings";
+import { computeIntradayLevels, describeLevels, levelLines } from "../components/chart/intradayLevels";
+import { readDayLevelsPref, writeDayLevelsPref } from "./dayLevelsPref";
 import IntervalStrip from "../components/chart/IntervalStrip";
 import RangeBar from "../components/chart/RangeBar";
 import {
@@ -58,6 +60,11 @@ export default function ChartPanel({ symbol }: { symbol: string }) {
   const [showProfile, setShowProfile] = useState<boolean>(() => readProfilePref(browserStorage()));
   const toggleProfile = () => setShowProfile((on) => { writeProfilePref(browserStorage(), !on); return !on; });
   const [indicators, setIndicators, resetIndicators] = useIndicatorSelection();
+  // Intraday day levels: prior day high/low/close, the opening range and session VWAP. Descriptive only.
+  const [showLevels, setShowLevels] = useState<boolean>(() => readDayLevelsPref(browserStorage()));
+  const toggleLevels = () => setShowLevels((on) => { writeDayLevelsPref(browserStorage(), !on); return !on; });
+  const dayLevels = useMemo(() => (showLevels ? computeIntradayLevels(bars, interval) : null), [showLevels, bars, interval]);
+  const levelPriceLines = useMemo(() => (dayLevels?.ready ? levelLines(dayLevels) : []), [dayLevels]);
 
   // Measure the chart area so the chart fills it.
   const wrap = useRef<HTMLDivElement>(null);
@@ -117,18 +124,24 @@ export default function ChartPanel({ symbol }: { symbol: string }) {
             O {px(last.open)} H {px(last.high)} L {px(last.low)} C {px(last.close)}
           </span>
         )}
-        {phone && toolsAvailable && (
-          <button type="button" className="ws-chart__toggle" aria-pressed={drawOn}
-            onClick={() => { if (drawOn) engine.cancel(); setDrawOn(!drawOn); }}
-            title="Draw lines and levels on the chart with your finger. Notes only: no orders.">
-            Draw
+        <div className="ws-chart__tools">
+          {phone && toolsAvailable && (
+            <button type="button" className="ws-chart__toggle" aria-pressed={drawOn}
+              onClick={() => { if (drawOn) engine.cancel(); setDrawOn(!drawOn); }}
+              title="Draw lines and levels on the chart with your finger. Notes only: no orders.">
+              Draw
+            </button>
+          )}
+          <button type="button" className="ws-chart__toggle" aria-pressed={showLevels} onClick={toggleLevels}
+            title="Prior day high, low and close, the opening range (first 30 minutes) and session VWAP. Needs 1 to 30 minute bars. Describes the day; it is not a signal.">
+            Day levels
           </button>
-        )}
-        <IndicatorPicker selected={indicators} onChange={setIndicators} onReset={resetIndicators} buttonClassName="ws-chart__toggle" />
-        <button type="button" className="ws-chart__toggle" aria-pressed={showProfile} onClick={toggleProfile}
-          title="Show where volume traded, for the bars in view (approximate, built from bars)">
-          Volume profile
-        </button>
+          <IndicatorPicker selected={indicators} onChange={setIndicators} onReset={resetIndicators} buttonClassName="ws-chart__toggle" />
+          <button type="button" className="ws-chart__toggle" aria-pressed={showProfile} onClick={toggleProfile}
+            title="Show where volume traded, for the bars in view (approximate, built from bars)">
+            Volume profile
+          </button>
+        </div>
         <IntervalStrip value={interval} onChange={setIntervalKey} />
       </div>
       {phone && showTools && <DrawingToolbar state={drawState} engine={engine} orientation="horizontal" />}
@@ -144,11 +157,16 @@ export default function ChartPanel({ symbol }: { symbol: string }) {
         ) : bars.length === 0 ? (
           <p className="ws-note" role="status">No bars returned for {symbol} in this range.</p>
         ) : (
-          <CandlestickChart bars={bars} levels={[]} height={h} volumeProfile={showProfile} onProfileSummary={setProfileText} onReady={setHandle} indicators={indicators} />
+          <CandlestickChart bars={bars} levels={levelPriceLines} height={h} volumeProfile={showProfile} onProfileSummary={setProfileText} onReady={setHandle} indicators={indicators} />
         )}
       </div>
       </div>
       <div className="ws-chart__foot">
+        {showLevels && dayLevels && !loading && !error && bars.length > 0 && (
+          <span className="ws-chart__levels" role="status" aria-label="Day levels" title={describeLevels(dayLevels)}>
+            {dayLevels.ready ? "Day levels · " : ""}{describeLevels(dayLevels)}
+          </span>
+        )}
         {showProfile && profileText && (
           <span
             className="ws-chart__profile"
