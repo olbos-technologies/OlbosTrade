@@ -1,0 +1,6 @@
+## Unreleased — Signal cards: a headline number and a labelled table
+
+- The expanded equity signal and the options signal card now use a card layout: the symbol large (for options, with the strikes, for example `SPY 415/410P`), one headline number with what it is called and what it is not, and a small table of the numbers on the right (stacked under the headline on a phone). Equity: Entry, Stop, Target, Move, Shares, R:R, Risk. Options: Debit or Credit, Max loss, Breakeven, Contracts, DTE, R:R, Strikes.
+- The headline for an equity signal is the signal score (or the confidence score when there is no composite score), with "Not a probability of profit" under it. The options headline is the net credit or debit, with "Quoted when the scan ran. Not a profit estimate." A missing number is a dash, never zero; an idea with no trade plan says "No trade plan for this idea." instead of showing an empty table. Stop and Target keep the loss and profit colours, and every row has its label in words.
+- The collapsed signal rows, the filters, the "Review idea" drawer, the block status and every number's source are unchanged; the same values are shown, only laid out differently. No signal generation, approval, order, risk or broker code is touched.
+- Frontend only: needs a frontend rebuild; no backend restart, no migration, no new environment variables.

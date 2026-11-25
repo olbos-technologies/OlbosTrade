@@ -1,0 +1,62 @@
+/* Signal card: the headline on the left, a small table of numbers on the right; stacked on a phone. */
+.app-shell .signal-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  gap: 16px;
+  margin: 8px 0 4px;
+  padding: 16px;
+  border: 1px solid var(--line-dim);
+  border-left: 3px solid var(--line);
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--bg-2), var(--bg));
+}
+.signal-hero__main { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.signal-hero__kicker {
+  font: 700 11px var(--sans);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+.signal-hero__symbol {
+  margin: 0;
+  font: 700 clamp(28px, 7vw, 40px)/1.05 var(--sans);
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.signal-hero__sub { margin: 0; font: 400 13px var(--sans); color: var(--ink-dim); }
+.signal-hero__headline { display: flex; flex-direction: column; gap: 2px; margin-top: 8px; }
+.signal-hero__headline small { font: 600 11px var(--sans); letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-dim); }
+.signal-hero__headline strong { font: 700 clamp(28px, 8vw, 42px)/1.05 var(--sans); color: var(--ink); }
+.signal-hero__headline span { font: 400 12px var(--sans); color: var(--ink-dim); }
+.signal-hero__foot { margin: 4px 0 0; font: 400 12px var(--sans); color: var(--ink-faint); }
+.signal-hero__stats {
+  margin: 0;
+  padding: 4px 14px;
+  align-self: start;
+  border: 1px solid var(--line-dim);
+  border-radius: 10px;
+  background: var(--bg);
+}
+.signal-hero__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 0;
+  border-top: 1px solid var(--line-dim);
+}
+.signal-hero__row:first-child { border-top: 0; }
+.signal-hero__row dt { margin: 0; font: 400 13px var(--sans); color: var(--ink-dim); }
+.signal-hero__row dd { margin: 0; font: 600 14px var(--sans); color: var(--ink); text-align: right; overflow-wrap: anywhere; }
+.signal-hero__action { grid-column: 1 / -1; }
+.app-shell .signal-hero .signal-hero__action .design-review { width: 100%; margin-block: 0; }
+.signal-hero__empty { align-self: start; margin: 0; font: 400 13px var(--sans); color: var(--ink-dim); }
+
+/* The stats table keeps the old class names tests and layout rules use; those rules must not turn it back into a grid. */
+.app-shell .signal-hero .signal-hero__stats.signal-trade-plan,
+.app-shell .signal-hero .signal-hero__stats.trade-plan-well { display: block; grid-template-columns: none; gap: 0; border-radius: 10px; }
+
+@media (max-width: 640px) {
+  .app-shell .signal-hero { grid-template-columns: minmax(0, 1fr); padding: 14px; }
+}
