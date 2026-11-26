@@ -1,0 +1,7 @@
+## Unreleased — Day levels on the Chart page (intraday reference levels)
+
+- A new **Day levels** button in the Chart page's chart bar (off by default; remembered in the browser) draws the prior day's high, low and close (`PDH`, `PDL`, `PDC`), today's opening range (`ORH`, `ORL`, the first 30 minutes) and session VWAP on the chart, with a one-line readout in words: the prior day's range, how today opened against the prior close (signed gap), the opening range, and whether price is above, below or inside it and above or below VWAP.
+- Needs 1, 5, 15 or 30 minute bars and the prior session in view (the default 15m / 5D works); on other intervals it says so. It fails closed: a missing opening bar, an early-ending prior session, bad prices or no volume remove only the levels that depend on them, and pre-market and after-hours bars are ignored. A still-forming opening range is marked `~` until 10:00 ET has passed.
+- Neutral colours only (green, red and amber keep their meaning). On a phone the chart bar's buttons now sit in one scrolling row, so adding this button costs the chart no height; the readout takes one line.
+- This describes the day. It is not a signal and nothing reads it: no order, risk or execution code is touched. Whether any rule built on these levels works is for the Edge Lab ledger to test.
+- Frontend only: needs a frontend rebuild; no backend restart, no migration, no new environment variables.

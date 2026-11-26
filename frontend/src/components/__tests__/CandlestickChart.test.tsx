@@ -82,6 +82,13 @@ describe("data-mapping functions (pure, no DOM)", () => {
     expect(axisTitleForLevel("VWAP", true)).toBe("V");
   });
 
+  it("axisTitleForLevel keeps the day-level labels distinct on a phone", () => {
+    for (const label of ["PDH", "PDL", "PDC", "ORH", "ORL", "~ORH", "~ORL"]) {
+      expect(axisTitleForLevel(label, true)).toBe(label);
+      expect(axisTitleForLevel(label, false)).toBe(label);
+    }
+  });
+
   it("computeMacd emits macd/signal/histogram once enough bars exist", () => {
     const { macd, signal, histogram } = computeMacd(sampleBars);
     expect(macd.length).toBeGreaterThan(0);

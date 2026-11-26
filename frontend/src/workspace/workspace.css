@@ -138,6 +138,9 @@
 .ws-chart--hit .candlestick-chart__canvas * { cursor: pointer !important; }
 
 .ws-chart .interval-strip { margin-left: auto; }
+/* The bar's toggles share one group: transparent on a desktop (they sit in the bar as before),
+   one scrolling row on a phone, so adding a button never adds a row and never costs the chart height. */
+.ws-chart__tools { display: contents; }
 .ws-chart__toggle {
   min-height: 24px;
   padding: 0 8px;
@@ -160,6 +163,11 @@
   border-top: 1px solid var(--line-dim);
 }
 .ws-chart__foot .range-bar { margin-left: auto; flex: none; padding: 0; border: 0; }
+/* Day levels readout: one line, never wraps, so toggling it cannot resize the chart. */
+.ws-chart__levels {
+  flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  font: 500 11px var(--mono, monospace); color: var(--ink-dim); cursor: help;
+}
 /* One line that never wraps, so showing or hiding the profile cannot resize the chart. */
 .ws-chart__profile {
   flex: 1 1 auto;
@@ -198,3 +206,7 @@
 .ws-root--stacked .ws-chart__toggle { min-height: 44px; min-width: 44px; }
 .ws-root--stacked .ws-chart__foot .range-bar { margin-left: 0; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
 .ws-root--stacked .ws-chart__foot .range-bar::-webkit-scrollbar { display: none; }
+.ws-root--stacked .ws-chart__levels { flex: 1 1 100%; order: -2; }
+.ws-root--stacked .ws-chart__tools { display: flex; flex: 1 1 100%; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.ws-root--stacked .ws-chart__tools::-webkit-scrollbar { display: none; }
+.ws-root--stacked .ws-chart__tools > * { flex: 0 0 auto; }

@@ -100,6 +100,32 @@ before the picker existed.
 - **Not here yet.** User-set periods (every indicator has one fixed period), more indicators (Stochastic,
   OBV and others), saving named sets, and tying the count to a plan tier (see `PLAN_BENCHMARK.md`).
 
+## Day levels (intraday reference levels)
+
+A **Day levels** button in the chart bar (off by default; the choice is kept in this browser)
+draws, for the latest New York regular-hours session: **PDH / PDL / PDC** (prior day high, low,
+close), **ORH / ORL** (the opening range, the first 30 minutes, 09:30-10:00 ET) and **VWAP**
+(session VWAP). A one-line readout in the chart footer says it in words: the prior day's range, how
+today opened against the prior close, the opening range, and whether price is above, below or inside
+the opening range and above or below VWAP.
+
+- **Needs 1, 5, 15 or 30 minute bars** and the prior session in view (the default 15m / 5D is
+  enough). On other intervals it says so instead of drawing anything.
+- **Fails closed.** A level that the bars cannot support is left out and the reason is not hidden:
+  today's opening bar missing means no open, gap, opening range or VWAP; a prior session that stopped
+  early (before 12:30 ET) gives no prior levels; bars with bad prices are skipped; no volume means no
+  VWAP. Pre-market and after-hours bars are ignored. A range still forming is marked `~ORH`/`~ORL` and
+  "(still forming)" until a bar at or after 10:00 exists.
+- **Neutral colours** (blues, violet, teal): green, red and amber keep their meaning of profit, loss
+  and caution, and the labels and the sentence carry the meaning, so colour is never the only cue.
+- **Description, not a signal.** Nothing here says to buy or sell, and nothing reads it: no order,
+  risk or execution path uses it. A rule built on these levels (an opening-range breakout, a VWAP
+  reversion) is a hypothesis for the Edge Lab ledger and the research scripts to test first;
+  `docs/research/0DTE_STRATEGY_BANK.md` records that none has yet been shown to survive costs.
+
+Code: `components/chart/intradayLevels.ts` (pure, tested), `workspace/dayLevelsPref.ts`,
+`workspace/ChartPanel.tsx`.
+
 ## Drawing tools
 
 A rail beside the chart: **Select**, **Trend line**, **Horizontal line**, **Vertical line**,
