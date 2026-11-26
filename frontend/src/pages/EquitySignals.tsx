@@ -7,6 +7,7 @@
 import { getBrand } from "../brand/brands";
 import React, { useEffect, useState } from "react";
 import SignalDetailDrawer from "../components/SignalDetailDrawer";
+import SignalHero from "../components/SignalHero";
 import BrokerStatus from "../components/BrokerStatus";
 import PortfolioGreeks from "../components/PortfolioGreeks";
 import SignalAttribution from "../components/SignalAttribution";
@@ -227,28 +228,25 @@ function SignalCard({
       <div className="signal-ledger-content">
       <div className="signal-ledger-warnings"><WhyBlockedChip reason={block} />{sig.earnings_gated && <span>EARNINGS GATE</span>}</div>
       <div className="signal-rationale"><span>Why it appeared</span><p>{equitySignalRationale(sig)}</p><small>Research only · Model scores are not probabilities of profit.</small></div>
-      {tp.entry_price != null && (
-        <div className="trade-plan-well signal-trade-plan" style={{ marginTop: 10 }}>
-          <PriceCell label="ENTRY" value={tp.entry_price} color="var(--ink)" />
-          <PriceCell label="STOP"  value={tp.stop_price}  color="var(--red)" />
-          <PriceCell label="TARGET" value={tp.target_price} color="var(--green)" />
-          <PriceCell label="MOVE" value={tp.target_move_pct} color="var(--amber)" suffix="%" />
-          {tp.shares !== undefined && (
-            <div className="signal-sizing" style={{ gridColumn: "1/-1", display: "flex", gap: 16,
-              fontFamily: "var(--mono)", fontSize: 10, color: "var(--ink-dim)", marginTop: 4 }}>
-              <span>SHARES: <b style={{color:"var(--ink)"}}>{tp.shares}</b></span>
-              {tp.risk_reward !== undefined && (
-                <span>R:R <b style={{color:"var(--cyan)"}}>{tp.risk_reward.toFixed(2)}x</b></span>
-              )}
-              {tp.risk_dollars !== undefined && (
-                <span>RISK <b style={{color:"var(--amber)"}}>${tp.risk_dollars.toFixed(0)}</b></span>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-      <time className="signal-generated" dateTime={sig.generated_at}>Generated {new Date(sig.generated_at).toLocaleString()}</time>
-      <button className="design-review" onClick={() => setReviewing(true)}>Review idea <span aria-hidden="true">→</span></button>
+      <SignalHero
+        kicker={`${sig.action === "HOLD" ? "Hold" : sig.action === "BUY" ? "Buy idea" : "Sell idea"} · equity signal`}
+        symbol={sig.ticker}
+        headline={{ label: reward.label, value: reward.value, note: "Not a probability of profit" }}
+        statsClassName="trade-plan-well signal-trade-plan"
+        emptyStats="No trade plan for this idea."
+        stats={tp.entry_price != null ? [
+          { label: "ENTRY", value: fmtPrice(tp.entry_price) },
+          { label: "STOP", value: fmtPrice(tp.stop_price), tone: "var(--red)" },
+          { label: "TARGET", value: fmtPrice(tp.target_price), tone: "var(--green)" },
+          { label: "MOVE", value: tp.target_move_pct === undefined ? undefined : `${tp.target_move_pct.toFixed(1)}%` },
+          ...(tp.shares !== undefined ? [{ label: "SHARES", value: tp.shares }] : []),
+          ...(tp.risk_reward !== undefined ? [{ label: "R:R", value: `${tp.risk_reward.toFixed(2)}x` }] : []),
+          ...(tp.risk_dollars !== undefined ? [{ label: "RISK", value: `$${tp.risk_dollars.toFixed(0)}` }] : []),
+        ] : []}
+        footnote={<time className="signal-generated" dateTime={sig.generated_at}>Generated {new Date(sig.generated_at).toLocaleString()}</time>}
+      >
+        <button className="design-review" onClick={() => setReviewing(true)}>Review idea <span aria-hidden="true">→</span></button>
+      </SignalHero>
       <details className="signal-score-explainer"><summary>About this score</summary>
         <p><strong>{reward.label}: {reward.value}</strong></p>
         <p>{hasSignalScore
@@ -334,18 +332,7 @@ function StatPill({ label, value }: { label: string; value: string }) {
   );
 }
 
-function PriceCell({ label, value, color, suffix }: { label: string; value?: number; color: string; suffix?: "%" }) {
-  return (
-    <div className="signal-price-cell" style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-      <span style={{ color: "var(--ink-dim)", fontFamily: "var(--mono)", fontSize: 9, letterSpacing: "0.08em" }}>
-        {label}
-      </span>
-      <span className="financial-value" style={{ color, fontFamily: "var(--mono)", fontSize: 13, fontWeight: 600 }}>
-        {value === undefined ? "—" : suffix === "%" ? `${value.toFixed(1)}%` : `$${value.toFixed(2)}`}
-      </span>
-    </div>
-  );
-}
+const fmtPrice = (v?: number | null) => (v === undefined || v === null ? undefined : `$${v.toFixed(2)}`);
 
 export function AssetToggle({ tab, onChange }: { tab: AssetTab; onChange: (t: AssetTab) => void }) {
   const btn = (id: AssetTab, label: string) => (

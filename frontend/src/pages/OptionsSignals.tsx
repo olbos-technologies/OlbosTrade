@@ -9,6 +9,7 @@ import SignalAttribution from "../components/SignalAttribution";
 import SignalDirectionBadge from "../components/SignalDirectionBadge";
 import AlphaEdgeInline, { OpportunityScorePill } from "../components/AlphaEdgeInline";
 import MissionCard from "../components/MissionCard";
+import SignalHero from "../components/SignalHero";
 import OptionsFunnelCard from "../components/OptionsFunnelCard";
 import BacktestButtons from "../components/BacktestButtons";
 import { StatTile } from "../components/ui";
@@ -76,23 +77,8 @@ function StatPill({ label, value }: { label: string; value: string }) {
   );
 }
 
-function PriceCell({ label, value, color, prefix = "$" }: {
-  label: string; value?: number | string; color: string; prefix?: string;
-}) {
-  const display = typeof value === "number"
-    ? `${prefix}${value.toFixed(2)}`
-    : (value ?? "—");
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-      <span style={{ color: "var(--ink-dim)", fontFamily: "var(--mono)", fontSize: 9, letterSpacing: "0.08em" }}>
-        {label}
-      </span>
-      <span style={{ color, fontFamily: "var(--mono)", fontSize: 13, fontWeight: 600 }}>
-        {display}
-      </span>
-    </div>
-  );
-}
+/** A dollar amount, or undefined (a dash) when the number is missing: never zero for a gap. */
+const money = (v?: number | null) => (typeof v === "number" && Number.isFinite(v) ? `$${v.toFixed(2)}` : undefined);
 
 function formatStrikePair(spread?: Spread): string {
   if (!spread?.short_strike || !spread?.long_strike) return "";
@@ -226,47 +212,26 @@ function OptionsSignalCard({ sig }: { sig: OptionsSignal }) {
           <AlphaEdgeInline ticker={sig.ticker} assetType="options" />
         </div>
 
-        <div className="workspace-grid" style={{
-          display: "grid", gridTemplateColumns: "repeat(3, 1fr)",
-          gap: 8, background: "var(--bg-3)", borderRadius: 4, padding: "8px 12px",
-        }}>
-          <PriceCell
-            label={isDebit ? "DEBIT" : "CREDIT"}
-            value={net !== undefined ? Math.abs(net) : undefined}
-            color="var(--ink)"
-          />
-          <PriceCell
-            label="MAX LOSS"
-            value={spread.max_loss}
-            color="var(--red)"
-          />
-          <PriceCell
-            label="BREAKEVEN"
-            value={spread.breakeven}
-            color="var(--green)"
-          />
-          <div style={{
-            gridColumn: "1/-1", display: "flex", gap: 16, flexWrap: "wrap",
-            fontFamily: "var(--mono)", fontSize: 10, color: "var(--ink-dim)", marginTop: 4,
-          }}>
-            {sig.quantity !== undefined && (
-              <span>CONTRACTS: <b style={{ color: "var(--ink)" }}>{sig.quantity}</b></span>
-            )}
-            {spread.dte !== undefined && (
-              <span>DTE <b style={{ color: "var(--cyan)" }}>{spread.dte}</b></span>
-            )}
-            {intel.reward_risk !== undefined && (
-              <span>R:R <b style={{ color: "var(--cyan)" }}>{intel.reward_risk.toFixed(2)}x</b></span>
-            )}
-            {spread.short_strike !== undefined && spread.long_strike !== undefined && (
-              <span>
-                STRIKES <b style={{ color: "var(--ink)" }}>
-                  {spread.short_strike}/{spread.long_strike}
-                </b>
-              </span>
-            )}
-          </div>
-        </div>
+        <SignalHero
+          kicker={`${isDebit ? "Debit" : "Credit"} spread · options signal`}
+          symbol={`${sig.ticker}${formatStrikePair(spread) ? ` ${formatStrikePair(spread)}` : ""}`}
+          subtitle={subtitle || undefined}
+          headline={{
+            label: isDebit ? "Net debit" : "Net credit",
+            value: net !== undefined ? `$${Math.abs(net).toFixed(2)}` : "—",
+            note: "Quoted when the scan ran. Not a profit estimate.",
+          }}
+          stats={[
+            { label: isDebit ? "DEBIT" : "CREDIT", value: money(net !== undefined ? Math.abs(net) : undefined) },
+            { label: "MAX LOSS", value: money(spread.max_loss), tone: "var(--red)" },
+            { label: "BREAKEVEN", value: money(spread.breakeven) },
+            ...(sig.quantity !== undefined ? [{ label: "CONTRACTS", value: sig.quantity }] : []),
+            ...(spread.dte !== undefined ? [{ label: "DTE", value: spread.dte }] : []),
+            ...(intel.reward_risk !== undefined ? [{ label: "R:R", value: `${intel.reward_risk.toFixed(2)}x` }] : []),
+            ...(spread.short_strike !== undefined && spread.long_strike !== undefined
+              ? [{ label: "STRIKES", value: `${spread.short_strike}/${spread.long_strike}` }] : []),
+          ]}
+        />
 
         <div style={{ display: "flex", justifyContent: "flex-end" }}>
           <BacktestButtons ticker={sig.ticker} assetType="options" strategy={sig.strategy} />
